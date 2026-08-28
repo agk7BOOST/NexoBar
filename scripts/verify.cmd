@@ -14,6 +14,7 @@ call npm ci || goto :frontend_error
 call npm run typecheck || goto :frontend_error
 call npm run lint || goto :frontend_error
 call npm run format:check || goto :frontend_error
+call npm run test:run || goto :frontend_error
 call npm run build || goto :frontend_error
 popd
 
