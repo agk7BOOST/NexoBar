@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NexoBar.Catalog/NexoBar.Catalog.csproj" />
+    <Project Path="src/NexoBar.Host/NexoBar.Host.csproj" />
+    <Project Path="src/NexoBar.IdentitiesAndCapabilities/NexoBar.IdentitiesAndCapabilities.csproj" />
+    <Project Path="src/NexoBar.Inventory/NexoBar.Inventory.csproj" />
+    <Project Path="src/NexoBar.OperationalConfiguration/NexoBar.OperationalConfiguration.csproj" />
+    <Project Path="src/NexoBar.OrderOperations/NexoBar.OrderOperations.csproj" />
+  </Folder>
+</Solution>

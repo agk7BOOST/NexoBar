@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\NexoBar.OrderOperations\NexoBar.OrderOperations.csproj" />
+    <ProjectReference Include="..\NexoBar.Catalog\NexoBar.Catalog.csproj" />
+    <ProjectReference Include="..\NexoBar.Inventory\NexoBar.Inventory.csproj" />
+    <ProjectReference Include="..\NexoBar.IdentitiesAndCapabilities\NexoBar.IdentitiesAndCapabilities.csproj" />
+    <ProjectReference Include="..\NexoBar.OperationalConfiguration\NexoBar.OperationalConfiguration.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>
