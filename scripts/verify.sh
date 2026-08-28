@@ -7,6 +7,7 @@ cd "$repo_root"
 dotnet restore backend/NexoBar.slnx
 dotnet format backend/NexoBar.slnx --verify-no-changes --no-restore
 dotnet build backend/NexoBar.slnx --no-restore
+dotnet test backend/NexoBar.slnx --no-build --no-restore
 
 cd frontend
 npm ci

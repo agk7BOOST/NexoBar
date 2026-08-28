@@ -7,6 +7,7 @@ pushd "%REPO_ROOT%" || exit /b 1
 dotnet restore backend\NexoBar.slnx || goto :error
 dotnet format backend\NexoBar.slnx --verify-no-changes --no-restore || goto :error
 dotnet build backend\NexoBar.slnx --no-restore || goto :error
+dotnet test backend\NexoBar.slnx --no-build --no-restore || goto :error
 
 pushd frontend || goto :error
 call npm ci || goto :frontend_error
