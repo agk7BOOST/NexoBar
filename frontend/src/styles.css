@@ -42,6 +42,10 @@ button:disabled {
   opacity: 0.65;
 }
 
+.catalog-add-button:disabled {
+  cursor: not-allowed;
+}
+
 .page-shell {
   width: min(920px, calc(100% - 2rem));
   margin: 0 auto;
@@ -192,6 +196,27 @@ button:focus-visible {
   border: 1px solid #8795a3;
   color: #344054;
   background: transparent;
+}
+
+.ephemeral-label {
+  margin: 0;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  color: #52606d;
+  background: #eef2f6;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.informative-price-note {
+  margin: 1rem 0 0;
+  color: #52606d;
+}
+
+.composition-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .table-scroll {

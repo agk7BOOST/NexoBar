@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.tsx";
@@ -272,5 +272,231 @@ describe("Catálogo mínimo operativo", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
     expect(newRequest.idempotencyKey).not.toBe(uncertainRequest.idempotencyKey);
+  });
+});
+
+describe("Composición efímera", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  function compositionRegion() {
+    return screen.getByRole("region", { name: "Composición" });
+  }
+
+  it("empieza vacía", async () => {
+    await renderWithLoadedList([product()]);
+
+    expect(
+      within(compositionRegion()).getByText("La Composición está vacía."),
+    ).toBeInTheDocument();
+  });
+
+  it("agrega un Producto disponible con cantidad 1", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: `Agregar ${listedProduct.operationalName} a la composición`,
+      }),
+    );
+
+    expect(
+      within(compositionRegion()).getByLabelText(
+        `Cantidad de ${listedProduct.operationalName}`,
+      ),
+    ).toHaveTextContent("1");
+  });
+
+  it("vuelve a agregar el mismo Producto incrementando a 2 sin duplicarlo", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    const addButton = screen.getByRole("button", {
+      name: `Agregar ${listedProduct.operationalName} a la composición`,
+    });
+
+    await user.click(addButton);
+    await user.click(addButton);
+
+    const composition = within(compositionRegion());
+    expect(
+      composition.getByLabelText(
+        `Cantidad de ${listedProduct.operationalName}`,
+      ),
+    ).toHaveTextContent("2");
+    expect(
+      composition.getAllByText(listedProduct.operationalName),
+    ).toHaveLength(1);
+  });
+
+  it("aumenta la cantidad en 1", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    await user.click(
+      screen.getByRole("button", {
+        name: `Agregar ${listedProduct.operationalName} a la composición`,
+      }),
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: `Aumentar cantidad de ${listedProduct.operationalName}`,
+      }),
+    );
+
+    expect(
+      within(compositionRegion()).getByLabelText(
+        `Cantidad de ${listedProduct.operationalName}`,
+      ),
+    ).toHaveTextContent("2");
+  });
+
+  it("disminuye la cantidad en 1", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    const addButton = screen.getByRole("button", {
+      name: `Agregar ${listedProduct.operationalName} a la composición`,
+    });
+    await user.click(addButton);
+    await user.click(addButton);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: `Disminuir cantidad de ${listedProduct.operationalName}`,
+      }),
+    );
+
+    expect(
+      within(compositionRegion()).getByLabelText(
+        `Cantidad de ${listedProduct.operationalName}`,
+      ),
+    ).toHaveTextContent("1");
+  });
+
+  it("elimina la entrada al disminuir desde 1", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    await user.click(
+      screen.getByRole("button", {
+        name: `Agregar ${listedProduct.operationalName} a la composición`,
+      }),
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: `Disminuir cantidad de ${listedProduct.operationalName}`,
+      }),
+    );
+
+    expect(
+      within(compositionRegion()).getByText("La Composición está vacía."),
+    ).toBeInTheDocument();
+  });
+
+  it("retira completamente una entrada", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    await user.click(
+      screen.getByRole("button", {
+        name: `Agregar ${listedProduct.operationalName} a la composición`,
+      }),
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: `Retirar ${listedProduct.operationalName} de la composición`,
+      }),
+    );
+
+    expect(
+      within(compositionRegion()).getByText("La Composición está vacía."),
+    ).toBeInTheDocument();
+  });
+
+  it("impide agregar un Producto no disponible", async () => {
+    const unavailableProduct = product({ isAvailable: false });
+    const user = await renderWithLoadedList([unavailableProduct]);
+    const addButton = screen.getByRole("button", {
+      name: `Agregar ${unavailableProduct.operationalName} a la composición`,
+    });
+
+    expect(addButton).toBeDisabled();
+    await user.click(addButton);
+    expect(
+      within(compositionRegion()).getByText("La Composición está vacía."),
+    ).toBeInTheDocument();
+  });
+
+  it("edita la Composición sin producir requests de mutación", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    await user.click(
+      screen.getByRole("button", {
+        name: `Agregar ${listedProduct.operationalName} a la composición`,
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: `Aumentar cantidad de ${listedProduct.operationalName}`,
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: `Disminuir cantidad de ${listedProduct.operationalName}`,
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: `Retirar ${listedProduct.operationalName} de la composición`,
+      }),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]).toEqual([
+      "/api/catalog/products",
+      undefined,
+    ]);
+  });
+
+  it("muestra el precio vigente como informativo y no confirmado ni aplicado", async () => {
+    const listedProduct = product({ price: "9876543210.12345678" });
+    const user = await renderWithLoadedList([listedProduct]);
+    await user.click(
+      screen.getByRole("button", {
+        name: `Agregar ${listedProduct.operationalName} a la composición`,
+      }),
+    );
+
+    const composition = within(compositionRegion());
+    expect(composition.getByText(listedProduct.price)).toBeInTheDocument();
+    expect(
+      composition.getByText(
+        /son informativos y aún no están confirmados ni aplicados/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("mantiene cantidades enteras positivas mediante sus controles", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    await user.click(
+      screen.getByRole("button", {
+        name: `Agregar ${listedProduct.operationalName} a la composición`,
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: `Aumentar cantidad de ${listedProduct.operationalName}`,
+      }),
+    );
+
+    const quantity = within(compositionRegion()).getByLabelText(
+      `Cantidad de ${listedProduct.operationalName}`,
+    );
+    expect(quantity).toHaveTextContent(/^2$/);
+    expect(Number.isInteger(Number(quantity.textContent))).toBe(true);
+    expect(Number(quantity.textContent)).toBeGreaterThan(0);
   });
 });

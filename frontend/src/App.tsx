@@ -19,6 +19,11 @@ interface ProductCreationIntention {
   idempotencyKey: string;
 }
 
+interface CompositionEntry {
+  productId: string;
+  quantity: number;
+}
+
 function functionalErrorMessage(problem: ProblemDetails): string {
   if (problem.code === "catalog.product.operational_name_conflict") {
     return "Ya existe un producto vigente con ese nombre.";
@@ -47,6 +52,7 @@ function App() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [uncertainIntention, setUncertainIntention] =
     useState<ProductCreationIntention | null>(null);
+  const [composition, setComposition] = useState<CompositionEntry[]>([]);
 
   const loadProducts = useCallback(async () => {
     setIsLoading(true);
@@ -155,6 +161,58 @@ function App() {
       message:
         "La intención pendiente fue descartada. El resultado anterior sigue sin confirmarse; el próximo envío será una intención nueva.",
     });
+  }
+
+  function addToComposition(product: Product) {
+    if (!product.isAvailable) {
+      return;
+    }
+
+    setComposition((currentComposition) => {
+      const existingEntry = currentComposition.find(
+        (entry) => entry.productId === product.id,
+      );
+
+      if (existingEntry === undefined) {
+        return [...currentComposition, { productId: product.id, quantity: 1 }];
+      }
+
+      return currentComposition.map((entry) =>
+        entry.productId === product.id
+          ? { ...entry, quantity: entry.quantity + 1 }
+          : entry,
+      );
+    });
+  }
+
+  function increaseQuantity(productId: string) {
+    setComposition((currentComposition) =>
+      currentComposition.map((entry) =>
+        entry.productId === productId
+          ? { ...entry, quantity: entry.quantity + 1 }
+          : entry,
+      ),
+    );
+  }
+
+  function decreaseQuantity(productId: string) {
+    setComposition((currentComposition) =>
+      currentComposition.flatMap((entry) => {
+        if (entry.productId !== productId) {
+          return [entry];
+        }
+
+        return entry.quantity === 1
+          ? []
+          : [{ ...entry, quantity: entry.quantity - 1 }];
+      }),
+    );
+  }
+
+  function removeFromComposition(productId: string) {
+    setComposition((currentComposition) =>
+      currentComposition.filter((entry) => entry.productId !== productId),
+    );
   }
 
   const formDiffersFromUncertainIntention =
@@ -286,6 +344,7 @@ function App() {
                   <th scope="col">Nombre</th>
                   <th scope="col">Precio</th>
                   <th scope="col">Disponibilidad</th>
+                  <th scope="col">Composición</th>
                 </tr>
               </thead>
               <tbody>
@@ -296,11 +355,103 @@ function App() {
                     <td>
                       {product.isAvailable ? "Disponible" : "No disponible"}
                     </td>
+                    <td>
+                      <button
+                        className="catalog-add-button"
+                        type="button"
+                        onClick={() => addToComposition(product)}
+                        disabled={!product.isAvailable}
+                        aria-label={`Agregar ${product.operationalName} a la composición`}
+                      >
+                        Agregar
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+      </section>
+
+      <section className="panel" aria-labelledby="composition-title">
+        <div className="section-heading">
+          <h2 id="composition-title">Composición</h2>
+          <p className="ephemeral-label">Estado efímero</p>
+        </div>
+
+        {composition.length === 0 && <p>La Composición está vacía.</p>}
+        {composition.length > 0 && (
+          <>
+            <p className="informative-price-note">
+              Los precios son los vigentes del Catálogo: son informativos y aún
+              no están confirmados ni aplicados.
+            </p>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Nombre</th>
+                    <th scope="col">Precio vigente informativo</th>
+                    <th scope="col">Cantidad</th>
+                    <th scope="col">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {composition.map((entry) => {
+                    const product = products.find(
+                      (candidate) => candidate.id === entry.productId,
+                    );
+
+                    if (product === undefined) {
+                      return null;
+                    }
+
+                    return (
+                      <tr key={entry.productId}>
+                        <td>{product.operationalName}</td>
+                        <td>{product.price}</td>
+                        <td
+                          aria-label={`Cantidad de ${product.operationalName}`}
+                        >
+                          {entry.quantity}
+                        </td>
+                        <td>
+                          <div className="composition-actions">
+                            <button
+                              type="button"
+                              onClick={() => increaseQuantity(entry.productId)}
+                              aria-label={`Aumentar cantidad de ${product.operationalName}`}
+                            >
+                              +1
+                            </button>
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() => decreaseQuantity(entry.productId)}
+                              aria-label={`Disminuir cantidad de ${product.operationalName}`}
+                            >
+                              −1
+                            </button>
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() =>
+                                removeFromComposition(entry.productId)
+                              }
+                              aria-label={`Retirar ${product.operationalName} de la composición`}
+                            >
+                              Retirar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
     </main>
