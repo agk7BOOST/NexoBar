@@ -1,20 +1,20 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="NexoBar.E2E.DatabaseSetup" />
-    <InternalsVisibleTo Include="NexoBar.Catalog.IntegrationTests" />
-    <InternalsVisibleTo Include="NexoBar.OrderOperations.IntegrationTests" />
+    <ProjectReference Include="..\..\src\NexoBar.Catalog\NexoBar.Catalog.csproj" />
+    <ProjectReference Include="..\..\src\NexoBar.OrderOperations\NexoBar.OrderOperations.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 

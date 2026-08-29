@@ -1,6 +1,13 @@
 @echo off
 setlocal
 
+set "RUN_E2E=0"
+if "%~1"=="" goto :arguments_valid
+if /I not "%~1"=="--e2e" goto :usage
+if not "%~2"=="" goto :usage
+set "RUN_E2E=1"
+
+:arguments_valid
 set "REPO_ROOT=%~dp0.."
 pushd "%REPO_ROOT%" || exit /b 1
 
@@ -18,8 +25,18 @@ call npm run test:run || goto :frontend_error
 call npm run build || goto :frontend_error
 popd
 
+if "%RUN_E2E%"=="1" (
+    pushd frontend || goto :error
+    call npm run test:e2e || goto :frontend_error
+    popd
+)
+
 popd
 exit /b 0
+
+:usage
+echo Usage: scripts\verify.cmd [--e2e] 1>&2
+exit /b 2
 
 :frontend_error
 set "VERIFY_EXIT_CODE=%ERRORLEVEL%"

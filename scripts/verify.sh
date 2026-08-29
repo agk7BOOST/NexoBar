@@ -1,6 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+run_e2e=false
+case "$#" in
+  0) ;;
+  1)
+    if [[ "$1" != "--e2e" ]]; then
+      echo "Usage: ./scripts/verify.sh [--e2e]" >&2
+      exit 2
+    fi
+    run_e2e=true
+    ;;
+  *)
+    echo "Usage: ./scripts/verify.sh [--e2e]" >&2
+    exit 2
+    ;;
+esac
+
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
@@ -16,3 +32,7 @@ npm run lint
 npm run format:check
 npm run test:run
 npm run build
+
+if [[ "$run_e2e" == true ]]; then
+  npm run test:e2e
+fi

@@ -93,6 +93,11 @@
 - Los warnings del código NexoBar se tratan como errores salvo excepción localizada y justificada.
 - ESLint y Prettier en frontend.
 - Verificación global mediante `scripts/verify.cmd` y `scripts/verify.sh`; las suites de tests se incorporarán a esos wrappers cuando existan.
+- Existe una segunda capa E2E del vertical slice con Playwright sobre Chromium y PostgreSQL efímero aislado; no reutiliza la base de `compose.yaml`.
+- La verificación ordinaria no ejecuta E2E. Para incluirla se usa `scripts\verify.cmd --e2e` en Windows o `./scripts/verify.sh --e2e` en Unix.
+- La ejecución E2E requiere Docker operativo y Chromium de Playwright instalado. La preparación inicial del navegador se realiza desde `frontend` con `npm exec playwright install chromium`.
+- Las migraciones E2E se aplican explícitamente mediante `NexoBar.E2E.DatabaseSetup` antes de iniciar la aplicación.
+- Los E2E deben ejecutarse para cambios del vertical slice y antes de considerar cerrado I4.
 
 ## 9. Configuración y secretos
 
