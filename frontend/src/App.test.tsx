@@ -131,6 +131,13 @@ describe("Catálogo mínimo operativo", () => {
     expect(
       screen.getByRole("button", { name: "Crear producto" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Consultar Pedido" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Referencia operacional")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Buscar Pedido" }),
+    ).toBeInTheDocument();
   });
 
   it("loads products and renders the exact string price and availability", async () => {

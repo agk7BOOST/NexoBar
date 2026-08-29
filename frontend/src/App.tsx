@@ -16,6 +16,7 @@ import {
   type FirstConfirmationResponse,
   type OrderOperationsProblemDetails,
 } from "./orderOperations/orderOperationsClient.ts";
+import { OrderLookup } from "./orderOperations/OrderLookup.tsx";
 
 type Notice =
   | { kind: "success"; message: string }
@@ -734,6 +735,8 @@ function App() {
           </div>
         </section>
       )}
+
+      <OrderLookup products={products} />
     </main>
   );
 }

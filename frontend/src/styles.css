@@ -228,6 +228,40 @@ button:focus-visible {
   grid-row: 2;
 }
 
+.order-lookup-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.order-lookup-form label,
+.order-lookup-form label:first-of-type,
+.order-lookup-form label:last-of-type {
+  grid-column: 1;
+}
+
+.order-lookup-form button {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.order-lookup-result {
+  margin-top: 1.25rem;
+}
+
+.current-catalog-name-note {
+  margin: 1.25rem 0 0;
+  color: #52606d;
+}
+
+.order-incorporation {
+  margin-top: 1.5rem;
+  border-top: 1px solid #d9e0e7;
+  padding-top: 1.25rem;
+}
+
+.order-incorporation h3 {
+  margin: 0;
+}
+
 .new-operation-note {
   margin: 1rem 0 0;
   border-left: 4px solid #315f8f;
@@ -302,6 +336,11 @@ th {
   }
 
   .confirmation-form button {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .order-lookup-form button {
     grid-column: 1;
     grid-row: auto;
   }

@@ -26,6 +26,25 @@ export interface FirstConfirmationResponse {
   firstIncorporation: FirstIncorporation;
 }
 
+export interface OrderItem {
+  productId: string;
+  quantity: number;
+  appliedPrice: string;
+}
+
+export interface OrderIncorporation {
+  id: string;
+  ordinal: number;
+  confirmedAt: string;
+  items: OrderItem[];
+}
+
+export interface OrderResponse {
+  operationalReference: string;
+  context: string;
+  incorporations: OrderIncorporation[];
+}
+
 export interface OrderOperationsProblemDetails {
   type?: string;
   title?: string;
@@ -53,6 +72,13 @@ export class OrderOperationsNetworkError extends Error {
       options,
     );
     this.name = "OrderOperationsNetworkError";
+  }
+}
+
+export class OrderLookupNetworkError extends Error {
+  constructor(options?: ErrorOptions) {
+    super("The Order lookup request did not receive a response.", options);
+    this.name = "OrderLookupNetworkError";
   }
 }
 
@@ -92,4 +118,24 @@ export async function confirmFirst(
   }
 
   return (await response.json()) as FirstConfirmationResponse;
+}
+
+export async function getOrder(
+  operationalReference: string,
+): Promise<OrderResponse> {
+  let response: Response;
+
+  try {
+    response = await fetch(
+      `/api/order-operations/orders/${encodeURIComponent(operationalReference)}`,
+    );
+  } catch (error) {
+    throw new OrderLookupNetworkError({ cause: error });
+  }
+
+  if (!response.ok) {
+    throw new OrderOperationsProblemError(await readProblem(response));
+  }
+
+  return (await response.json()) as OrderResponse;
 }
