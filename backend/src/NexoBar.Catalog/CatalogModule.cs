@@ -27,6 +27,7 @@ public static class CatalogModule
                     "__ef_migrations_history",
                     "catalog")));
         services.AddScoped<CatalogService>();
+        services.AddScoped<IOrderConfirmationCatalog, OrderConfirmationCatalog>();
 
         return services;
     }

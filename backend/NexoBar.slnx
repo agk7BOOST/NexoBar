@@ -9,5 +9,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/NexoBar.Catalog.IntegrationTests/NexoBar.Catalog.IntegrationTests.csproj" />
+    <Project Path="tests/NexoBar.OrderOperations.IntegrationTests/NexoBar.OrderOperations.IntegrationTests.csproj" />
   </Folder>
 </Solution>

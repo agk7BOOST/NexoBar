@@ -62,9 +62,14 @@ public sealed class CatalogApiFixture : IAsyncLifetime
     {
         application = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
+            {
                 builder.UseSetting(
                     "ConnectionStrings:Catalog",
-                    postgres.GetConnectionString()));
+                    postgres.GetConnectionString());
+                builder.UseSetting(
+                    "ConnectionStrings:OrderOperations",
+                    postgres.GetConnectionString());
+            });
 
         Client = application.CreateClient();
     }

@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Diagnostics;
 using NexoBar.Catalog;
+using NexoBar.OrderOperations;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 builder.Services.AddCatalog(builder.Configuration);
+builder.Services.AddOrderOperations(builder.Configuration);
 
 var app = builder.Build();
 
@@ -18,6 +20,7 @@ app.UseExceptionHandler(new ExceptionHandlerOptions
 });
 app.MapOpenApi();
 app.MapCatalogEndpoints();
+app.MapOrderOperationsEndpoints();
 
 app.Run();
 

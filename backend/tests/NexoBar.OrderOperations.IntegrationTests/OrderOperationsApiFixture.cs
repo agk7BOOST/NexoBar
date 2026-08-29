@@ -1,0 +1,238 @@
+using System.Net.Http.Json;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using NexoBar.Catalog;
+using NexoBar.OrderOperations;
+using Testcontainers.PostgreSql;
+
+namespace NexoBar.OrderOperations.IntegrationTests;
+
+public sealed class OrderOperationsApiFixture : IAsyncLifetime
+{
+    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:17.6")
+        .WithDatabase("nexobar_order_operations_tests")
+        .WithUsername("nexobar_tests")
+        .WithPassword("nexobar_tests_password")
+        .Build();
+
+    private WebApplicationFactory<Program>? application;
+
+    internal HttpClient Client { get; private set; } = null!;
+    internal string ConnectionString => postgres.GetConnectionString();
+    internal IServiceProvider Services => application!.Services;
+
+    public async ValueTask InitializeAsync()
+    {
+        await postgres.StartAsync();
+        StartApplication();
+
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<CatalogDbContext>()
+            .Database.MigrateAsync();
+        await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .Database.MigrateAsync();
+    }
+
+    internal async Task ResetAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            TRUNCATE TABLE
+                order_operations.first_confirmation_command_contents,
+                order_operations.first_confirmation_commands,
+                order_operations.confirmation_history,
+                order_operations.incorporation_contents,
+                order_operations.incorporations,
+                order_operations.orders,
+                catalog.product_creation_commands,
+                catalog.products
+            """,
+            cancellationToken);
+    }
+
+    internal async Task<ProductResponse> CreateProductAsync(
+        string name,
+        string price,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/catalog/products")
+        {
+            Content = JsonContent.Create(new CreateProductRequest(name, price, false))
+        };
+        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
+
+        using var response = await Client.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return Assert.IsType<ProductResponse>(
+            await response.Content.ReadFromJsonAsync<ProductResponse>(cancellationToken));
+    }
+
+    internal async Task SetProductStateAsync(
+        Guid productId,
+        bool isActive,
+        bool isAvailable,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE catalog.products
+            SET is_active = {isActive}, is_available = {isAvailable}
+            WHERE id = {productId}
+            """,
+            cancellationToken);
+    }
+
+    internal async Task<PersistenceCounts> CountEffectsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        return new PersistenceCounts(
+            await dbContext.Orders.CountAsync(cancellationToken),
+            await dbContext.Incorporations.CountAsync(cancellationToken),
+            await dbContext.IncorporationContents.CountAsync(cancellationToken),
+            await dbContext.ConfirmationHistory.CountAsync(cancellationToken),
+            await dbContext.FirstConfirmationCommands.CountAsync(cancellationToken),
+            await dbContext.FirstConfirmationCommandContents.CountAsync(cancellationToken));
+    }
+
+    internal async Task<OrderOperationsSnapshot> ReadSnapshotAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        return new OrderOperationsSnapshot(
+            await dbContext.Orders.AsNoTracking().SingleAsync(cancellationToken),
+            await dbContext.Incorporations.AsNoTracking().SingleAsync(cancellationToken),
+            await dbContext.IncorporationContents.AsNoTracking().ToArrayAsync(cancellationToken),
+            await dbContext.ConfirmationHistory.AsNoTracking().SingleAsync(cancellationToken),
+            await dbContext.FirstConfirmationCommands.AsNoTracking().SingleAsync(cancellationToken));
+    }
+
+    internal async Task SetHistoryFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+
+        if (enabled)
+        {
+            await dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE OR REPLACE FUNCTION order_operations.fail_confirmation_history()
+                RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    RAISE EXCEPTION 'controlled confirmation history failure';
+                END;
+                $$;
+                CREATE TRIGGER fail_confirmation_history
+                BEFORE INSERT ON order_operations.confirmation_history
+                FOR EACH ROW EXECUTE FUNCTION order_operations.fail_confirmation_history();
+                """,
+                cancellationToken);
+        }
+        else
+        {
+            await dbContext.Database.ExecuteSqlRawAsync(
+                """
+                DROP TRIGGER IF EXISTS fail_confirmation_history
+                    ON order_operations.confirmation_history;
+                DROP FUNCTION IF EXISTS order_operations.fail_confirmation_history();
+                """,
+                cancellationToken);
+        }
+    }
+
+    internal async Task<bool> HasPendingModelChangesAsync()
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .Database.HasPendingModelChanges();
+    }
+
+    internal async Task RestartApplicationAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Client.Dispose();
+        await application!.DisposeAsync();
+        StartApplication();
+    }
+
+    internal WebApplicationFactory<Program> CreateApplicationWithCatalog(
+        IOrderConfirmationCatalog replacement) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IOrderConfirmationCatalog>();
+                services.AddScoped(_ => replacement);
+            }));
+
+    public async ValueTask DisposeAsync()
+    {
+        Client.Dispose();
+        if (application is not null)
+        {
+            await application.DisposeAsync();
+        }
+
+        await postgres.DisposeAsync();
+    }
+
+    private void StartApplication()
+    {
+        application = CreateApplication();
+        Client = application.CreateClient();
+    }
+
+    private WebApplicationFactory<Program> CreateApplication(
+        Action<IWebHostBuilder>? configure = null)
+    {
+        var factory = new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting(
+                    "ConnectionStrings:Catalog",
+                    postgres.GetConnectionString());
+                builder.UseSetting(
+                    "ConnectionStrings:OrderOperations",
+                    postgres.GetConnectionString());
+                configure?.Invoke(builder);
+            });
+
+        return factory;
+    }
+}
+
+internal sealed record PersistenceCounts(
+    int Orders,
+    int Incorporations,
+    int Contents,
+    int History,
+    int Commands,
+    int CommandContents)
+{
+    internal static readonly PersistenceCounts Empty = new(0, 0, 0, 0, 0, 0);
+}
+
+internal sealed record OrderOperationsSnapshot(
+    Order Order,
+    Incorporation Incorporation,
+    IReadOnlyList<IncorporationContent> Contents,
+    ConfirmationHistory History,
+    FirstConfirmationCommand Command);
+
+[CollectionDefinition(Name)]
+public sealed class OrderOperationsApiCollection :
+    ICollectionFixture<OrderOperationsApiFixture>
+{
+    public const string Name = "OrderOperations API with PostgreSQL";
+}
