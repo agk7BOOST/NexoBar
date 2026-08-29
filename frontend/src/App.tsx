@@ -8,6 +8,14 @@ import {
   type ProblemDetails,
   type Product,
 } from "./catalog/catalogClient.ts";
+import {
+  confirmFirst,
+  OrderOperationsNetworkError,
+  OrderOperationsProblemError,
+  type FirstConfirmationRequest,
+  type FirstConfirmationResponse,
+  type OrderOperationsProblemDetails,
+} from "./orderOperations/orderOperationsClient.ts";
 
 type Notice =
   | { kind: "success"; message: string }
@@ -22,6 +30,11 @@ interface ProductCreationIntention {
 interface CompositionEntry {
   productId: string;
   quantity: number;
+}
+
+interface FirstConfirmationIntention {
+  request: FirstConfirmationRequest;
+  idempotencyKey: string;
 }
 
 function functionalErrorMessage(problem: ProblemDetails): string {
@@ -42,6 +55,39 @@ function functionalErrorMessage(problem: ProblemDetails): string {
   return "No se pudo crear el producto. Revisá los datos e intentá nuevamente.";
 }
 
+function confirmationErrorMessage(
+  problem: OrderOperationsProblemDetails,
+  products: Product[],
+): string {
+  const product = products.find(
+    (candidate) => candidate.id === problem.productId,
+  );
+  const productLabel = product
+    ? ` El Producto afectado es ${product.operationalName}.`
+    : "";
+
+  switch (problem.code) {
+    case "order_operations.first_confirmation.context_required":
+      return "Ingresá un Contexto para confirmar la Composición.";
+    case "order_operations.first_confirmation.composition_empty":
+      return "Agregá al menos un Producto a la Composición.";
+    case "order_operations.first_confirmation.quantity_invalid":
+      return `Cada cantidad debe ser un entero positivo.${productLabel}`;
+    case "order_operations.first_confirmation.duplicate_product":
+      return `Un Producto no puede aparecer más de una vez en la Confirmación.${productLabel}`;
+    case "order_operations.first_confirmation.product_not_current":
+      return `Un Producto de la Composición ya no está vigente.${productLabel}`;
+    case "order_operations.first_confirmation.product_unavailable":
+      return `Un Producto de la Composición ya no está disponible.${productLabel}`;
+    case "order_operations.first_confirmation.requires_preparation_not_supported":
+      return `Un Producto requiere preparación, que todavía no está admitida.${productLabel}`;
+    case "order_operations.first_confirmation.idempotency_key_conflict":
+      return "La identidad de esta Confirmación ya fue usada para otra intención. Revisá la Composición e intentá nuevamente.";
+    default:
+      return "No se pudo confirmar la Composición. Revisá los datos e intentá nuevamente.";
+  }
+}
+
 function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -53,6 +99,15 @@ function App() {
   const [uncertainIntention, setUncertainIntention] =
     useState<ProductCreationIntention | null>(null);
   const [composition, setComposition] = useState<CompositionEntry[]>([]);
+  const [context, setContext] = useState("");
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [confirmationNotice, setConfirmationNotice] = useState<Notice | null>(
+    null,
+  );
+  const [uncertainConfirmation, setUncertainConfirmation] =
+    useState<FirstConfirmationIntention | null>(null);
+  const [confirmedOrder, setConfirmedOrder] =
+    useState<FirstConfirmationResponse | null>(null);
 
   const loadProducts = useCallback(async () => {
     setIsLoading(true);
@@ -164,7 +219,7 @@ function App() {
   }
 
   function addToComposition(product: Product) {
-    if (!product.isAvailable) {
+    if (!product.isAvailable || isCompositionLocked) {
       return;
     }
 
@@ -215,10 +270,85 @@ function App() {
     );
   }
 
+  async function submitFirstConfirmation(
+    intention: FirstConfirmationIntention,
+  ) {
+    setConfirmationNotice(null);
+    setIsConfirming(true);
+
+    try {
+      const confirmed = await confirmFirst(
+        intention.request,
+        intention.idempotencyKey,
+      );
+      setUncertainConfirmation(null);
+      setComposition([]);
+      setConfirmedOrder(confirmed);
+      setConfirmationNotice({
+        kind: "success",
+        message: "Primera Confirmación realizada. Se creó el Pedido.",
+      });
+    } catch (error) {
+      if (error instanceof OrderOperationsProblemError) {
+        setUncertainConfirmation(null);
+        setConfirmationNotice({
+          kind: "functional-error",
+          message: confirmationErrorMessage(error.problem, products),
+        });
+      } else {
+        setUncertainConfirmation(intention);
+        setConfirmationNotice({
+          kind: "uncertain",
+          message:
+            error instanceof OrderOperationsNetworkError
+              ? "Resultado no confirmado: se perdió la comunicación y no sabemos si el Pedido fue creado."
+              : "Resultado no confirmado: no fue posible confirmar la respuesta del servidor.",
+        });
+      }
+    } finally {
+      setIsConfirming(false);
+    }
+  }
+
+  async function handleFirstConfirmation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (
+      context.trim().length === 0 ||
+      composition.length === 0 ||
+      uncertainConfirmation !== null
+    ) {
+      return;
+    }
+
+    await submitFirstConfirmation({
+      request: {
+        context,
+        items: composition.map(({ productId, quantity }) => ({
+          productId,
+          quantity,
+        })),
+      },
+      idempotencyKey: crypto.randomUUID(),
+    });
+  }
+
+  function discardUncertainConfirmation() {
+    setUncertainConfirmation(null);
+    setConfirmationNotice({
+      kind: "uncertain",
+      message:
+        "La intención incierta fue descartada. El resultado previo sigue sin confirmarse; una futura Confirmación será una intención nueva.",
+    });
+  }
+
   const formDiffersFromUncertainIntention =
     uncertainIntention !== null &&
     (operationalName !== uncertainIntention.request.operationalName ||
       price !== uncertainIntention.request.price);
+  const isCompositionLocked = isConfirming || uncertainConfirmation !== null;
+  const canConfirm =
+    context.trim().length > 0 && composition.length > 0 && !isCompositionLocked;
 
   return (
     <main className="page-shell">
@@ -360,7 +490,7 @@ function App() {
                         className="catalog-add-button"
                         type="button"
                         onClick={() => addToComposition(product)}
-                        disabled={!product.isAvailable}
+                        disabled={!product.isAvailable || isCompositionLocked}
                         aria-label={`Agregar ${product.operationalName} a la composición`}
                       >
                         Agregar
@@ -379,6 +509,90 @@ function App() {
           <h2 id="composition-title">Composición</h2>
           <p className="ephemeral-label">Estado efímero</p>
         </div>
+
+        {confirmedOrder && (
+          <p className="new-operation-note">
+            Esta Composición prepara una operación nueva e independiente del
+            Pedido recién creado.
+          </p>
+        )}
+
+        <form
+          className="confirmation-form"
+          onSubmit={(event) => void handleFirstConfirmation(event)}
+        >
+          <label htmlFor="order-context">Contexto</label>
+          <input
+            id="order-context"
+            name="context"
+            value={context}
+            onChange={(event) => setContext(event.target.value)}
+            disabled={isCompositionLocked}
+          />
+          <button type="submit" disabled={!canConfirm}>
+            {isConfirming ? "Confirmando…" : "Confirmar Composición"}
+          </button>
+        </form>
+
+        {confirmationNotice && (
+          <p
+            className={`notice notice--${confirmationNotice.kind}`}
+            role="status"
+          >
+            {confirmationNotice.message}
+          </p>
+        )}
+
+        {uncertainConfirmation && (
+          <div
+            className="uncertain-intention"
+            role="region"
+            aria-label="Confirmación con resultado no confirmado"
+          >
+            <h3>Confirmación pendiente de resolución</h3>
+            <dl>
+              <div>
+                <dt>Contexto</dt>
+                <dd>{uncertainConfirmation.request.context}</dd>
+              </div>
+              {uncertainConfirmation.request.items.map((item) => {
+                const product = products.find(
+                  (candidate) => candidate.id === item.productId,
+                );
+
+                return (
+                  <div key={item.productId}>
+                    <dt>{product?.operationalName ?? item.productId}</dt>
+                    <dd>Cantidad: {item.quantity}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+            <p>
+              El reintento usa exactamente este Contexto, estos items y la misma
+              identidad. No se reintentará automáticamente.
+            </p>
+            <div className="intention-actions">
+              <button
+                type="button"
+                onClick={() =>
+                  void submitFirstConfirmation(uncertainConfirmation)
+                }
+                disabled={isConfirming}
+              >
+                Reintentar misma Confirmación
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={discardUncertainConfirmation}
+                disabled={isConfirming}
+              >
+                Descartar intención incierta
+              </button>
+            </div>
+          </div>
+        )}
 
         {composition.length === 0 && <p>La Composición está vacía.</p>}
         {composition.length > 0 && (
@@ -421,6 +635,7 @@ function App() {
                             <button
                               type="button"
                               onClick={() => increaseQuantity(entry.productId)}
+                              disabled={isCompositionLocked}
                               aria-label={`Aumentar cantidad de ${product.operationalName}`}
                             >
                               +1
@@ -429,6 +644,7 @@ function App() {
                               className="secondary-button"
                               type="button"
                               onClick={() => decreaseQuantity(entry.productId)}
+                              disabled={isCompositionLocked}
                               aria-label={`Disminuir cantidad de ${product.operationalName}`}
                             >
                               −1
@@ -439,6 +655,7 @@ function App() {
                               onClick={() =>
                                 removeFromComposition(entry.productId)
                               }
+                              disabled={isCompositionLocked}
                               aria-label={`Retirar ${product.operationalName} de la composición`}
                             >
                               Retirar
@@ -454,6 +671,69 @@ function App() {
           </>
         )}
       </section>
+
+      {confirmedOrder && (
+        <section
+          className="panel confirmed-order"
+          aria-labelledby="confirmed-order-title"
+        >
+          <h2 id="confirmed-order-title">Pedido recién creado</h2>
+          <dl className="confirmation-summary">
+            <div>
+              <dt>Contexto confirmado</dt>
+              <dd>{confirmedOrder.context}</dd>
+            </div>
+            <div>
+              <dt>Referencia operacional</dt>
+              <dd>{confirmedOrder.operationalReference}</dd>
+            </div>
+            <div>
+              <dt>Primera Incorporación</dt>
+              <dd>{confirmedOrder.firstIncorporation.id}</dd>
+            </div>
+            <div>
+              <dt>Momento de Confirmación</dt>
+              <dd>
+                <time dateTime={confirmedOrder.firstIncorporation.confirmedAt}>
+                  {new Date(
+                    confirmedOrder.firstIncorporation.confirmedAt,
+                  ).toLocaleString()}
+                </time>
+              </dd>
+            </div>
+          </dl>
+          <p className="applied-price-note">
+            El Precio aplicado es la Condición histórica confirmada por el
+            backend; no es el precio vigente informativo del Catálogo.
+          </p>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Producto</th>
+                  <th scope="col">Cantidad confirmada</th>
+                  <th scope="col">Precio aplicado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {confirmedOrder.firstIncorporation.items.map((item) => {
+                  const product = products.find(
+                    (candidate) => candidate.id === item.productId,
+                  );
+
+                  return (
+                    <tr key={item.productId}>
+                      <td>{product?.operationalName ?? item.productId}</td>
+                      <td>{item.quantity}</td>
+                      <td>{item.appliedPrice}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.tsx";
 import type { Product } from "./catalog/catalogClient.ts";
+import type { FirstConfirmationResponse } from "./orderOperations/orderOperationsClient.ts";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -63,6 +64,54 @@ function creationRequestAt(callIndex: number) {
     body: JSON.parse(String(requestInit?.body)) as Record<string, unknown>,
     idempotencyKey: new Headers(requestInit?.headers).get("Idempotency-Key"),
   };
+}
+
+function confirmationResponse(
+  listedProduct: Product,
+  overrides?: Partial<FirstConfirmationResponse>,
+): FirstConfirmationResponse {
+  return {
+    operationalReference: "01990f3e-5e90-7000-8000-000000000001",
+    context: "Mesa 7",
+    firstIncorporation: {
+      id: "01990f3e-5e90-7000-8000-000000000002",
+      confirmedAt: "2026-08-29T14:30:00Z",
+      items: [
+        {
+          productId: listedProduct.id,
+          quantity: 2,
+          appliedPrice: "10.50",
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+function confirmationRequestAt(callIndex: number) {
+  const [url, requestInit] = fetchMock.mock.calls[callIndex]!;
+
+  return {
+    url,
+    method: requestInit?.method,
+    body: JSON.parse(String(requestInit?.body)) as Record<string, unknown>,
+    idempotencyKey: new Headers(requestInit?.headers).get("Idempotency-Key"),
+  };
+}
+
+async function prepareConfirmation(
+  user: ReturnType<typeof userEvent.setup>,
+  listedProduct: Product,
+  quantity = 1,
+) {
+  await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+  const addButton = screen.getByRole("button", {
+    name: `Agregar ${listedProduct.operationalName} a la composición`,
+  });
+
+  for (let count = 0; count < quantity; count += 1) {
+    await user.click(addButton);
+  }
 }
 
 describe("Catálogo mínimo operativo", () => {
@@ -498,5 +547,273 @@ describe("Composición efímera", () => {
     expect(quantity).toHaveTextContent(/^2$/);
     expect(Number.isInteger(Number(quantity.textContent))).toBe(true);
     expect(Number(quantity.textContent)).toBeGreaterThan(0);
+  });
+});
+
+describe("Primera Confirmación autoritativa", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  function compositionRegion() {
+    return screen.getByRole("region", { name: "Composición" });
+  }
+
+  it("solo habilita Confirmar con Contexto no vacío y Composición no vacía", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    const confirmButton = screen.getByRole("button", {
+      name: "Confirmar Composición",
+    });
+
+    expect(confirmButton).toBeDisabled();
+    await user.type(screen.getByLabelText("Contexto"), "   ");
+    await user.click(
+      screen.getByRole("button", {
+        name: `Agregar ${listedProduct.operationalName} a la composición`,
+      }),
+    );
+    expect(confirmButton).toBeDisabled();
+
+    await user.clear(screen.getByLabelText("Contexto"));
+    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    expect(confirmButton).toBeEnabled();
+  });
+
+  it("envía solo Contexto, ProductId y quantity con Idempotency-Key UUID v4", async () => {
+    const listedProduct = product({ price: "99.99" });
+    const user = await renderWithLoadedList([listedProduct]);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(confirmationResponse(listedProduct), { status: 201 }),
+    );
+
+    await prepareConfirmation(user, listedProduct, 2);
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Composición" }),
+    );
+    await screen.findByText(
+      "Primera Confirmación realizada. Se creó el Pedido.",
+    );
+
+    const request = confirmationRequestAt(1);
+    expect(request.url).toBe("/api/order-operations/first-confirmations");
+    expect(request.method).toBe("POST");
+    expect(request.body).toEqual({
+      context: "Mesa 7",
+      items: [{ productId: listedProduct.id, quantity: 2 }],
+    });
+    expect(request.idempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(JSON.stringify(request.body)).not.toMatch(
+      /operationalName|price|isAvailable|requiresPreparation/,
+    );
+  });
+
+  it("muestra el Pedido creado y usa quantity y appliedPrice del response", async () => {
+    const listedProduct = product({ price: "99.99" });
+    const confirmed = confirmationResponse(listedProduct);
+    const user = await renderWithLoadedList([listedProduct]);
+    fetchMock.mockResolvedValueOnce(jsonResponse(confirmed, { status: 201 }));
+
+    await prepareConfirmation(user, listedProduct, 2);
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Composición" }),
+    );
+
+    const summary = await screen.findByRole("region", {
+      name: "Pedido recién creado",
+    });
+    expect(summary).toHaveTextContent(confirmed.operationalReference);
+    expect(summary).toHaveTextContent(confirmed.context);
+    expect(summary).toHaveTextContent(confirmed.firstIncorporation.id);
+    expect(within(summary).getByRole("time")).toHaveAttribute(
+      "datetime",
+      confirmed.firstIncorporation.confirmedAt,
+    );
+    expect(summary).toHaveTextContent("2");
+    expect(summary).toHaveTextContent("10.50");
+    expect(summary).not.toHaveTextContent("99.99");
+    expect(
+      within(compositionRegion()).getByText("La Composición está vacía."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reintentar misma Confirmación" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("resuelve un Problem Details, conserva la Composición y usa una key nueva después", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    fetchMock.mockResolvedValueOnce(
+      problemResponse(
+        {
+          status: 409,
+          code: "order_operations.first_confirmation.product_unavailable",
+          productId: listedProduct.id,
+        },
+        409,
+      ),
+    );
+
+    await prepareConfirmation(user, listedProduct);
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Composición" }),
+    );
+    expect(await screen.findByText(/ya no está disponible/)).toHaveTextContent(
+      listedProduct.operationalName,
+    );
+    const rejectedRequest = confirmationRequestAt(1);
+    expect(
+      within(compositionRegion()).getByLabelText(
+        `Cantidad de ${listedProduct.operationalName}`,
+      ),
+    ).toHaveTextContent("1");
+
+    fetchMock.mockResolvedValueOnce(
+      problemResponse(
+        {
+          status: 409,
+          code: "order_operations.first_confirmation.product_unavailable",
+        },
+        409,
+      ),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Composición" }),
+    );
+    await screen.findByText(
+      "Un Producto de la Composición ya no está disponible.",
+    );
+
+    expect(confirmationRequestAt(2).idempotencyKey).not.toBe(
+      rejectedRequest.idempotencyKey,
+    );
+  });
+
+  it("conserva el snapshot incierto, no reintenta y bloquea toda su edición", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    await prepareConfirmation(user, listedProduct, 2);
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Composición" }),
+    );
+
+    const uncertain = await screen.findByRole("region", {
+      name: "Confirmación con resultado no confirmado",
+    });
+    expect(uncertain).toHaveTextContent("Mesa 7");
+    expect(uncertain).toHaveTextContent("Cantidad: 2");
+    expect(screen.getByLabelText("Contexto")).toBeDisabled();
+    expect(
+      screen.getByRole("button", {
+        name: `Agregar ${listedProduct.operationalName} a la composición`,
+      }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", {
+        name: `Aumentar cantidad de ${listedProduct.operationalName}`,
+      }),
+    ).toBeDisabled();
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reintenta manualmente el mismo snapshot y key y limpia al tener éxito", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    await prepareConfirmation(user, listedProduct, 2);
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Composición" }),
+    );
+    await screen.findByText(/no sabemos si el Pedido fue creado/);
+    const uncertainRequest = confirmationRequestAt(1);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(confirmationResponse(listedProduct), { status: 201 }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Reintentar misma Confirmación" }),
+    );
+    await screen.findByRole("region", { name: "Pedido recién creado" });
+
+    expect(confirmationRequestAt(2)).toEqual(uncertainRequest);
+    expect(
+      within(compositionRegion()).getByText("La Composición está vacía."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reintentar misma Confirmación" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("descarta la intención incierta, advierte y crea una key nueva después", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    await prepareConfirmation(user, listedProduct);
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Composición" }),
+    );
+    await screen.findByText(/no sabemos si el Pedido fue creado/);
+    const uncertainRequest = confirmationRequestAt(1);
+
+    await user.click(
+      screen.getByRole("button", { name: "Descartar intención incierta" }),
+    );
+    expect(
+      screen.getByText(/El resultado previo sigue sin confirmarse/),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Contexto")).toBeEnabled();
+    expect(
+      screen.getByRole("button", {
+        name: `Aumentar cantidad de ${listedProduct.operationalName}`,
+      }),
+    ).toBeEnabled();
+
+    fetchMock.mockResolvedValueOnce(
+      problemResponse(
+        {
+          status: 409,
+          code: "order_operations.first_confirmation.product_not_current",
+        },
+        409,
+      ),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Composición" }),
+    );
+    await screen.findByText(/ya no está vigente/);
+
+    expect(confirmationRequestAt(2).idempotencyKey).not.toBe(
+      uncertainRequest.idempotencyKey,
+    );
+  });
+
+  it("presenta la nueva Composición como una operación nueva", async () => {
+    const listedProduct = product();
+    const user = await renderWithLoadedList([listedProduct]);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(confirmationResponse(listedProduct), { status: 201 }),
+    );
+
+    await prepareConfirmation(user, listedProduct, 2);
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Composición" }),
+    );
+    await screen.findByRole("region", { name: "Pedido recién creado" });
+
+    expect(
+      within(compositionRegion()).getByText(
+        /operación nueva e independiente del Pedido recién creado/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Agregar al Pedido/i)).not.toBeInTheDocument();
   });
 });

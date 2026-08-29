@@ -213,6 +213,55 @@ button:focus-visible {
   color: #52606d;
 }
 
+.confirmation-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.confirmation-form label,
+.confirmation-form label:first-of-type,
+.confirmation-form label:last-of-type {
+  grid-column: 1;
+}
+
+.confirmation-form button {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.new-operation-note {
+  margin: 1rem 0 0;
+  border-left: 4px solid #315f8f;
+  padding-left: 0.75rem;
+  color: #344054;
+}
+
+.confirmation-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1.25rem 0 0;
+}
+
+.confirmation-summary dt {
+  color: #52606d;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.confirmation-summary dd {
+  overflow-wrap: anywhere;
+  margin: 0.2rem 0 0;
+}
+
+.applied-price-note {
+  margin: 1.25rem 0 0;
+  border-radius: 0.35rem;
+  padding: 0.75rem;
+  color: #24553a;
+  background: #edf8f1;
+  font-weight: 600;
+}
+
 .composition-actions {
   display: flex;
   flex-wrap: wrap;
@@ -250,5 +299,14 @@ th {
   form label:first-of-type,
   form label:last-of-type {
     grid-column: 1;
+  }
+
+  .confirmation-form button {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .confirmation-summary {
+    grid-template-columns: 1fr;
   }
 }
