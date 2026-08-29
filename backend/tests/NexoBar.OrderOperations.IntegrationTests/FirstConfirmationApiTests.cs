@@ -69,7 +69,8 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var confirmed = await ReadConfirmationAsync(response, cancellationToken);
-        AssertUuidVersion(confirmed.OperationalReference, 7);
+        var orderId = Guid.Parse(confirmed.OperationalReference);
+        AssertUuidVersion(orderId, 7);
         Assert.Equal("Mesa 7", confirmed.Context);
         AssertUuidVersion(confirmed.FirstIncorporation.Id, 7);
         Assert.Equal(TimeSpan.Zero, confirmed.FirstIncorporation.ConfirmedAt.Offset);
@@ -79,7 +80,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         Assert.Equal(product.Price, item.AppliedPrice);
 
         var snapshot = await fixture.ReadSnapshotAsync(cancellationToken);
-        Assert.Equal(confirmed.OperationalReference, snapshot.Order.Id);
+        Assert.Equal(orderId, snapshot.Order.Id);
         Assert.Equal("Mesa 7", snapshot.Order.Context);
         Assert.Equal(confirmed.FirstIncorporation.Id, snapshot.Incorporation.Id);
         Assert.Equal(1, snapshot.Incorporation.Ordinal);
@@ -641,6 +642,10 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
             schemas.GetProperty(nameof(ConfirmedItemResponse))
                 .GetProperty("properties").GetProperty("appliedPrice"),
             "string");
+        var operationalReferenceSchema = schemas.GetProperty(nameof(FirstConfirmationResponse))
+            .GetProperty("properties").GetProperty("operationalReference");
+        AssertSchemaType(operationalReferenceSchema, "string");
+        Assert.False(operationalReferenceSchema.TryGetProperty("format", out _));
         var requestItemProperties = schemas.GetProperty(nameof(FirstConfirmationItemRequest))
             .GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray();
         Assert.Equal(new[] { "productId", "quantity" }, requestItemProperties);

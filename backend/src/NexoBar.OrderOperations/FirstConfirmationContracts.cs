@@ -14,7 +14,7 @@ internal sealed record FirstConfirmationItemRequest(
     [property: Required, JsonRequired] int Quantity);
 
 internal sealed record FirstConfirmationResponse(
-    Guid OperationalReference,
+    string OperationalReference,
     string Context,
     FirstIncorporationResponse FirstIncorporation);
 

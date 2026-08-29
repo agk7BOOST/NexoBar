@@ -129,7 +129,7 @@ internal sealed class FirstConfirmationService(
 
         return FirstConfirmationResult.Confirmed(
             new FirstConfirmationResponse(
-                orderId,
+                orderId.ToString("D"),
                 intent.Context,
                 new FirstIncorporationResponse(
                     incorporationId,
@@ -169,7 +169,7 @@ internal sealed class FirstConfirmationService(
             .ToArray();
 
         return new FirstConfirmationResponse(
-            header.OrderId,
+            header.OrderId.ToString("D"),
             header.ConfirmedContext,
             new FirstIncorporationResponse(
                 header.IncorporationId,

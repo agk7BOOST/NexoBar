@@ -27,6 +27,7 @@ public static class OrderOperationsModule
                     "__ef_migrations_history",
                     "order_operations")));
         services.AddScoped<FirstConfirmationService>();
+        services.AddScoped<OrderQueryService>();
 
         return services;
     }
@@ -44,7 +45,41 @@ public static class OrderOperationsModule
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
+        endpoints.MapGet(
+                "/api/order-operations/orders/{operationalReference}",
+                FindOrderAsync)
+            .WithName("GetOrderByOperationalReference")
+            .WithTags("OrderOperations")
+            .Produces<OrderQueryResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return endpoints;
+    }
+
+    private static async Task<IResult> FindOrderAsync(
+        string operationalReference,
+        OrderQueryService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(operationalReference, out var orderId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid operational reference",
+                "The supplied operational reference is structurally invalid.",
+                "order_operations.order.operational_reference_invalid");
+        }
+
+        var order = await service.FindAsync(orderId, cancellationToken);
+
+        return order is null
+            ? Problem(
+                StatusCodes.Status404NotFound,
+                "Order not found",
+                "No Order exists with the supplied operational reference.",
+                "order_operations.order.not_found")
+            : Results.Ok(order);
     }
 
     private static async Task<IResult> ConfirmFirstAsync(
