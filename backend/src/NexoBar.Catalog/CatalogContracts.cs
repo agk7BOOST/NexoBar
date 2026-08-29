@@ -16,3 +16,12 @@ internal sealed record ProductResponse(
     bool IsActive,
     bool IsAvailable,
     bool RequiresPreparation);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record ChangeProductPriceRequest(
+    string ExpectedCurrentPrice,
+    string NewPrice);
+
+internal sealed record ProductPriceResponse(
+    Guid ProductId,
+    string Price);

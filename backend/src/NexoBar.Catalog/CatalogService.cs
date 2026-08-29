@@ -8,6 +8,7 @@ namespace NexoBar.Catalog;
 internal sealed class CatalogService(CatalogDbContext dbContext)
 {
     private const long ProductCreationLockNamespace = 0x434154414C4F4700;
+    private const long ProductPriceChangeLockNamespace = 0x5052494345434800;
 
     internal async Task<CreateProductResult> CreateProductAsync(
         Guid idempotencyKey,
@@ -95,6 +96,103 @@ internal sealed class CatalogService(CatalogDbContext dbContext)
         return products.Select(Map).ToArray();
     }
 
+    internal async Task<ChangeProductPriceResult> ChangeProductPriceAsync(
+        Guid idempotencyKey,
+        Guid productId,
+        ChangeProductPriceRequest request,
+        CancellationToken cancellationToken)
+    {
+        var validation = ValidatePriceChange(request);
+        if (validation.Error is not null)
+        {
+            return validation.Error;
+        }
+
+        var intent = validation.Intent!;
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            cancellationToken);
+
+        var lockKey = CreateTransactionLockKey(
+            idempotencyKey,
+            ProductPriceChangeLockNamespace);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
+
+        var existingCommand = await dbContext.ProductPriceChangeCommands
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                command => command.IdempotencyKey == idempotencyKey,
+                cancellationToken);
+
+        if (existingCommand is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+
+            return existingCommand.Matches(
+                productId,
+                intent.ExpectedCurrentPrice,
+                intent.NewPrice)
+                ? ChangeProductPriceResult.Changed(Map(existingCommand))
+                : ChangeProductPriceResult.IdempotencyConflict();
+        }
+
+        var affectedRows = await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE catalog.products
+            SET price = {intent.NewPrice}
+            WHERE id = {productId}
+              AND is_active
+              AND price = {intent.ExpectedCurrentPrice}
+            """,
+            cancellationToken);
+
+        if (affectedRows == 0)
+        {
+            var product = await dbContext.Database
+                .SqlQuery<PriceChangeDiagnostic>(
+                    $"""
+                    SELECT is_active AS "IsActive",
+                           price AS "Price"
+                    FROM catalog.products
+                    WHERE id = {productId}
+                    FOR UPDATE
+                    """)
+                .AsNoTracking()
+                .SingleOrDefaultAsync(cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+
+            if (product is null)
+            {
+                return ChangeProductPriceResult.NotFound();
+            }
+
+            if (!product.IsActive)
+            {
+                return ChangeProductPriceResult.NotCurrent();
+            }
+
+            return ChangeProductPriceResult.PriceConcurrencyConflict(
+                product.Price.ToString(CultureInfo.InvariantCulture));
+        }
+
+        dbContext.ProductPriceChangeCommands.Add(new ProductPriceChangeCommand(
+            idempotencyKey,
+            productId,
+            intent.ExpectedCurrentPrice,
+            intent.NewPrice));
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return ChangeProductPriceResult.Changed(
+            new ProductPriceResponse(
+                productId,
+                intent.NewPrice.ToString(CultureInfo.InvariantCulture)));
+    }
+
     internal async Task<ProductResponse?> FindActiveProductAsync(
         Guid id,
         CancellationToken cancellationToken)
@@ -157,12 +255,55 @@ internal sealed class CatalogService(CatalogDbContext dbContext)
                 RequiresPreparation: false));
     }
 
+    private static PriceChangeValidation ValidatePriceChange(ChangeProductPriceRequest request)
+    {
+        if (!TryParsePrice(request.ExpectedCurrentPrice, out var expectedCurrentPrice))
+        {
+            return PriceChangeValidation.Invalid(ChangeProductPriceResult.Invalid(
+                "expectedCurrentPrice",
+                "expectedCurrentPrice must be a decimal string using '.' as the decimal separator."));
+        }
+
+        if (!TryParsePrice(request.NewPrice, out var newPrice))
+        {
+            return PriceChangeValidation.Invalid(ChangeProductPriceResult.Invalid(
+                "newPrice",
+                "newPrice must be a decimal string using '.' as the decimal separator."));
+        }
+
+        if (newPrice < 0)
+        {
+            return PriceChangeValidation.Invalid(ChangeProductPriceResult.Invalid(
+                "newPrice",
+                "newPrice must be greater than or equal to zero."));
+        }
+
+        return PriceChangeValidation.Valid(
+            new ValidatedPriceChangeIntent(expectedCurrentPrice, newPrice));
+    }
+
+    private static bool TryParsePrice(string? value, out decimal price)
+    {
+        const NumberStyles allowedPriceStyles =
+            NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint;
+
+        price = default;
+        return value is not null && decimal.TryParse(
+            value,
+            allowedPriceStyles,
+            CultureInfo.InvariantCulture,
+            out price);
+    }
+
     private static long CreateTransactionLockKey(Guid idempotencyKey)
+        => CreateTransactionLockKey(idempotencyKey, ProductCreationLockNamespace);
+
+    private static long CreateTransactionLockKey(Guid idempotencyKey, long lockNamespace)
     {
         Span<byte> bytes = stackalloc byte[16];
         idempotencyKey.TryWriteBytes(bytes, bigEndian: true, out _);
 
-        return ProductCreationLockNamespace ^
+        return lockNamespace ^
             BinaryPrimitives.ReadInt64BigEndian(bytes[..8]) ^
             BinaryPrimitives.ReadInt64BigEndian(bytes[8..]);
     }
@@ -184,6 +325,64 @@ internal sealed class CatalogService(CatalogDbContext dbContext)
             command.ResultIsActive,
             command.ResultIsAvailable,
             command.IntentRequiresPreparation);
+
+    private static ProductPriceResponse Map(ProductPriceChangeCommand command) =>
+        new(
+            command.ProductId,
+            command.ResultPrice.ToString(CultureInfo.InvariantCulture));
+}
+
+internal sealed record PriceChangeValidation(
+    ValidatedPriceChangeIntent? Intent,
+    ChangeProductPriceResult? Error)
+{
+    internal static PriceChangeValidation Valid(ValidatedPriceChangeIntent intent) =>
+        new(intent, null);
+
+    internal static PriceChangeValidation Invalid(ChangeProductPriceResult error) =>
+        new(null, error);
+}
+
+internal sealed record ValidatedPriceChangeIntent(
+    decimal ExpectedCurrentPrice,
+    decimal NewPrice);
+
+internal sealed record PriceChangeDiagnostic(bool IsActive, decimal Price);
+
+internal sealed record ChangeProductPriceResult(
+    ChangeProductPriceOutcome Outcome,
+    ProductPriceResponse? Product,
+    string? InvalidField,
+    string? Error,
+    string? CurrentPrice)
+{
+    internal static ChangeProductPriceResult Changed(ProductPriceResponse product) =>
+        new(ChangeProductPriceOutcome.Changed, product, null, null, null);
+
+    internal static ChangeProductPriceResult Invalid(string field, string error) =>
+        new(ChangeProductPriceOutcome.Invalid, null, field, error, null);
+
+    internal static ChangeProductPriceResult NotFound() =>
+        new(ChangeProductPriceOutcome.NotFound, null, null, null, null);
+
+    internal static ChangeProductPriceResult NotCurrent() =>
+        new(ChangeProductPriceOutcome.NotCurrent, null, null, null, null);
+
+    internal static ChangeProductPriceResult PriceConcurrencyConflict(string currentPrice) =>
+        new(ChangeProductPriceOutcome.PriceConcurrencyConflict, null, null, null, currentPrice);
+
+    internal static ChangeProductPriceResult IdempotencyConflict() =>
+        new(ChangeProductPriceOutcome.IdempotencyConflict, null, null, null, null);
+}
+
+internal enum ChangeProductPriceOutcome
+{
+    Changed,
+    Invalid,
+    NotFound,
+    NotCurrent,
+    PriceConcurrencyConflict,
+    IdempotencyConflict
 }
 
 internal sealed record ProductValidation(

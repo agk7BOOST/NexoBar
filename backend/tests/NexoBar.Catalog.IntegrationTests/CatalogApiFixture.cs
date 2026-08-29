@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -34,8 +35,90 @@ public sealed class CatalogApiFixture : IAsyncLifetime
         await using var scope = application!.Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
         await dbContext.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE catalog.product_creation_commands, catalog.products",
+            """
+            TRUNCATE TABLE
+                catalog.product_price_change_commands,
+                catalog.product_creation_commands,
+                catalog.products
+            """,
             cancellationToken);
+    }
+
+    internal async Task<ProductResponse> CreateProductAsync(
+        string name,
+        string price,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/catalog/products")
+        {
+            Content = JsonContent.Create(new CreateProductRequest(name, price, false))
+        };
+        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
+
+        using var response = await Client.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return Assert.IsType<ProductResponse>(
+            await response.Content.ReadFromJsonAsync<ProductResponse>(cancellationToken));
+    }
+
+    internal async Task SetProductActiveAsync(
+        Guid productId,
+        bool isActive,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE catalog.products SET is_active = {isActive} WHERE id = {productId}",
+            cancellationToken);
+    }
+
+    internal async Task<(decimal Price, int Commands)> ReadPriceChangeStateAsync(
+        Guid productId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+        var price = await dbContext.Products
+            .Where(product => product.Id == productId)
+            .Select(product => product.Price)
+            .SingleAsync(cancellationToken);
+        var commands = await dbContext.ProductPriceChangeCommands
+            .CountAsync(cancellationToken);
+        return (price, commands);
+    }
+
+    internal async Task SetPriceChangeCommandFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+        var sql = enabled
+            ? """
+              CREATE OR REPLACE FUNCTION catalog.fail_product_price_change_command()
+              RETURNS trigger LANGUAGE plpgsql AS $$
+              BEGIN
+                  RAISE EXCEPTION 'controlled product price change command failure';
+              END;
+              $$;
+              CREATE TRIGGER fail_product_price_change_command
+              BEFORE INSERT ON catalog.product_price_change_commands
+              FOR EACH ROW EXECUTE FUNCTION catalog.fail_product_price_change_command();
+              """
+            : """
+              DROP TRIGGER IF EXISTS fail_product_price_change_command
+                  ON catalog.product_price_change_commands;
+              DROP FUNCTION IF EXISTS catalog.fail_product_price_change_command();
+              """;
+        await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+    }
+
+    internal async Task<bool> HasPendingModelChangesAsync()
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return scope.ServiceProvider.GetRequiredService<CatalogDbContext>()
+            .Database.HasPendingModelChanges();
     }
 
     public async Task RestartApplicationAsync(CancellationToken cancellationToken)

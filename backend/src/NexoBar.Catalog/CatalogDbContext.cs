@@ -10,11 +10,69 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
     internal DbSet<ProductCreationCommand> ProductCreationCommands =>
         Set<ProductCreationCommand>();
 
+    internal DbSet<ProductPriceChangeCommand> ProductPriceChangeCommands =>
+        Set<ProductPriceChangeCommand>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("catalog");
         modelBuilder.ApplyConfiguration(new ProductConfiguration());
         modelBuilder.ApplyConfiguration(new ProductCreationCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new ProductPriceChangeCommandConfiguration());
+    }
+
+    private sealed class ProductPriceChangeCommandConfiguration :
+        IEntityTypeConfiguration<ProductPriceChangeCommand>
+    {
+        public void Configure(EntityTypeBuilder<ProductPriceChangeCommand> builder)
+        {
+            builder.ToTable(
+                "product_price_change_commands",
+                tableBuilder =>
+                {
+                    tableBuilder.HasCheckConstraint(
+                        "CK_catalog_product_price_change_commands_intent_new_price_non_negative",
+                        "intent_new_price >= 0");
+                    tableBuilder.HasCheckConstraint(
+                        "CK_catalog_product_price_change_commands_result_price_non_negative",
+                        "result_price >= 0");
+                    tableBuilder.HasCheckConstraint(
+                        "CK_catalog_product_price_change_commands_result_matches_intent",
+                        "result_price = intent_new_price");
+                });
+
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_catalog_product_price_change_commands");
+
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key")
+                .ValueGeneratedNever();
+
+            builder.Property(command => command.ProductId)
+                .HasColumnName("product_id")
+                .ValueGeneratedNever();
+
+            builder.Property(command => command.IntentExpectedCurrentPrice)
+                .HasColumnName("intent_expected_current_price")
+                .HasColumnType("numeric")
+                .IsRequired();
+
+            builder.Property(command => command.IntentNewPrice)
+                .HasColumnName("intent_new_price")
+                .HasColumnType("numeric")
+                .IsRequired();
+
+            builder.Property(command => command.ResultPrice)
+                .HasColumnName("result_price")
+                .HasColumnType("numeric")
+                .IsRequired();
+
+            builder.HasOne<Product>()
+                .WithMany()
+                .HasForeignKey(command => command.ProductId)
+                .HasConstraintName("FK_catalog_product_price_change_commands_products")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
     }
 
     private sealed class ProductConfiguration : IEntityTypeConfiguration<Product>

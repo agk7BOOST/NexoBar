@@ -50,6 +50,7 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 order_operations.incorporation_contents,
                 order_operations.incorporations,
                 order_operations.orders,
+                catalog.product_price_change_commands,
                 catalog.product_creation_commands,
                 catalog.products
             """,
@@ -175,6 +176,48 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 services.RemoveAll<IOrderConfirmationCatalog>();
                 services.AddScoped(_ => replacement);
             }));
+
+    internal WebApplicationFactory<Program> CreateApplicationWithCatalogDecorator(
+        Func<IServiceProvider, IOrderConfirmationCatalog> factory) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IOrderConfirmationCatalog>();
+                services.AddScoped(factory);
+            }));
+
+    internal async Task<bool> WaitForPriceUpdateLockAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        var deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_stat_activity
+                    WHERE datname = current_database()
+                      AND pid <> pg_backend_pid()
+                      AND state = 'active'
+                      AND wait_event_type = 'Lock'
+                      AND query LIKE 'UPDATE catalog.products%')
+                """;
+            if (Assert.IsType<bool>(await command.ExecuteScalarAsync(cancellationToken)))
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
+        }
+
+        return false;
+    }
 
     public async ValueTask DisposeAsync()
     {

@@ -605,6 +605,103 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
     }
 
     [Fact]
+    public async Task Later_real_price_change_preserves_original_applied_price()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(cancellationToken);
+        var product = await fixture.CreateProductAsync("Agua", "10", cancellationToken);
+
+        using var confirmation = await PostFirstConfirmationAsync(
+            Request("Mesa 7", (product.Id, 1)),
+            NewIdempotencyKey(),
+            cancellationToken);
+        using var priceChange = await PostPriceChangeAsync(
+            fixture.Client,
+            product.Id,
+            "10",
+            "12",
+            cancellationToken);
+
+        Assert.Equal(HttpStatusCode.Created, confirmation.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, priceChange.StatusCode);
+        var confirmed = await ReadConfirmationAsync(confirmation, cancellationToken);
+        Assert.Equal("10", Assert.Single(confirmed.FirstIncorporation.Items).AppliedPrice);
+        Assert.Equal(10m, Assert.Single(
+            (await fixture.ReadSnapshotAsync(cancellationToken)).Contents).AppliedPrice);
+    }
+
+    [Fact]
+    public async Task For_share_blocks_real_price_update_until_confirmation_commits()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(cancellationToken);
+        var product = await fixture.CreateProductAsync("Agua", "10", cancellationToken);
+        var lockAcquired = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseConfirmation = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var application = fixture.CreateApplicationWithCatalogDecorator(
+            services => new BlockingCatalogDecorator(
+                new OrderConfirmationCatalog(
+                    services.GetRequiredService<CatalogDbContext>()),
+                lockAcquired,
+                releaseConfirmation));
+        using var client = application.CreateClient();
+
+        var confirmationTask = PostFirstConfirmationAsync(
+            Request("Mesa 7", (product.Id, 1)),
+            NewIdempotencyKey(),
+            cancellationToken,
+            client);
+        try
+        {
+            await lockAcquired.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+
+            var priceChangeTask = PostPriceChangeAsync(
+                client,
+                product.Id,
+                "10",
+                "12",
+                cancellationToken);
+
+            Assert.True(
+                await fixture.WaitForPriceUpdateLockAsync(
+                    TimeSpan.FromSeconds(10),
+                    cancellationToken),
+                "PostgreSQL did not report the Product price UPDATE waiting on a lock.");
+
+            releaseConfirmation.TrySetResult();
+
+            using var confirmation = await confirmationTask.WaitAsync(
+                TimeSpan.FromSeconds(10),
+                cancellationToken);
+            using var priceChange = await priceChangeTask.WaitAsync(
+                TimeSpan.FromSeconds(10),
+                cancellationToken);
+            Assert.Equal(HttpStatusCode.Created, confirmation.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, priceChange.StatusCode);
+            var confirmed = await ReadConfirmationAsync(confirmation, cancellationToken);
+            Assert.Equal("10", Assert.Single(confirmed.FirstIncorporation.Items).AppliedPrice);
+
+            using var currentProductResponse = await client.GetAsync(
+                $"/api/catalog/products/{product.Id}",
+                cancellationToken).WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            currentProductResponse.EnsureSuccessStatusCode();
+            var currentProduct = await currentProductResponse.Content
+                .ReadFromJsonAsync<ProductResponse>(cancellationToken);
+            Assert.NotNull(currentProduct);
+            Assert.Equal("12", currentProduct.Price);
+            Assert.Equal(10m, Assert.Single(
+                (await fixture.ReadSnapshotAsync(cancellationToken)).Contents).AppliedPrice);
+        }
+        finally
+        {
+            releaseConfirmation.TrySetResult();
+        }
+    }
+
+    [Fact]
     public async Task Model_has_no_pending_changes()
     {
         Assert.False(await fixture.HasPendingModelChangesAsync());
@@ -674,6 +771,25 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         }
 
         return await (client ?? fixture.Client).SendAsync(message, cancellationToken);
+    }
+
+    private static async Task<HttpResponseMessage> PostPriceChangeAsync(
+        HttpClient client,
+        Guid productId,
+        string expectedCurrentPrice,
+        string newPrice,
+        CancellationToken cancellationToken)
+    {
+        using var message = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/catalog/products/{productId}/price-changes")
+        {
+            Content = JsonContent.Create(new ChangeProductPriceRequest(
+                expectedCurrentPrice,
+                newPrice))
+        };
+        message.Headers.Add("Idempotency-Key", NewIdempotencyKey());
+        return await client.SendAsync(message, cancellationToken);
     }
 
     private Task<HttpResponseMessage> PostRawAsync(
@@ -798,5 +914,25 @@ internal sealed class UnexpectedCatalogCapability : IOrderConfirmationCatalog
         WasCalled = true;
         throw new InvalidOperationException(
             "Catalog must not be called for a structurally invalid request.");
+    }
+}
+
+internal sealed class BlockingCatalogDecorator(
+    IOrderConfirmationCatalog inner,
+    TaskCompletionSource lockAcquired,
+    TaskCompletionSource release) : IOrderConfirmationCatalog
+{
+    public async Task<IReadOnlyList<OrderConfirmationCatalogProduct>> ReadProductsAsync(
+        IReadOnlyCollection<Guid> productIds,
+        DbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var products = await inner.ReadProductsAsync(
+            productIds,
+            transaction,
+            cancellationToken);
+        lockAcquired.TrySetResult();
+        await release.Task.WaitAsync(cancellationToken);
+        return products;
     }
 }

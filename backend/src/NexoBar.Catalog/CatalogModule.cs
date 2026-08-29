@@ -53,7 +53,119 @@ public static class CatalogModule
             .Produces<ProductResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        group.MapPost("/{productId:guid}/price-changes", ChangeProductPriceAsync)
+            .WithName("ChangeCatalogProductPrice")
+            .Accepts<ChangeProductPriceRequest>("application/json")
+            .Produces<ProductPriceResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         return endpoints;
+    }
+
+    private static async Task<IResult> ChangeProductPriceAsync(
+        Guid productId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        ChangeProductPriceRequest request,
+        CatalogService catalog,
+        CancellationToken cancellationToken)
+    {
+        if (idempotencyKey is null)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Idempotency-Key is required",
+                "Product price change requires an Idempotency-Key containing a UUID v4.",
+                "catalog.product.idempotency_key_required");
+        }
+
+        if (!Guid.TryParse(idempotencyKey, out var commandId) || !IsUuidVersion4(commandId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Idempotency-Key",
+                "Idempotency-Key must contain a UUID v4.",
+                "catalog.product.idempotency_key_invalid");
+        }
+
+        var result = await catalog.ChangeProductPriceAsync(
+            commandId,
+            productId,
+            request,
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            ChangeProductPriceOutcome.Changed => Results.Ok(result.Product),
+            ChangeProductPriceOutcome.Invalid => Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid product price change intention",
+                result.Error!,
+                "catalog.product.price_change_invalid",
+                field: result.InvalidField),
+            ChangeProductPriceOutcome.NotFound => Problem(
+                StatusCodes.Status404NotFound,
+                "Product not found",
+                "No Product exists with the supplied identifier.",
+                "catalog.product.not_found",
+                productId),
+            ChangeProductPriceOutcome.NotCurrent => Problem(
+                StatusCodes.Status409Conflict,
+                "Product is not current",
+                "The Product exists but is not active.",
+                "catalog.product.not_current",
+                productId),
+            ChangeProductPriceOutcome.PriceConcurrencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Product price changed concurrently",
+                "The current Product price does not match expectedCurrentPrice.",
+                "catalog.product.price_concurrency_conflict",
+                productId,
+                currentPrice: result.CurrentPrice),
+            ChangeProductPriceOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                "The supplied Idempotency-Key identifies an incompatible Product price change.",
+                "catalog.product.idempotency_key_conflict"),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static IResult Problem(
+        int statusCode,
+        string title,
+        string detail,
+        string code,
+        Guid? productId = null,
+        string? field = null,
+        string? currentPrice = null)
+    {
+        var extensions = new Dictionary<string, object?>
+        {
+            ["code"] = code
+        };
+
+        if (productId is not null)
+        {
+            extensions["productId"] = productId;
+        }
+
+        if (field is not null)
+        {
+            extensions["field"] = field;
+        }
+
+        if (currentPrice is not null)
+        {
+            extensions["currentPrice"] = currentPrice;
+        }
+
+        return Results.Problem(
+            statusCode: statusCode,
+            title: title,
+            detail: detail,
+            extensions: extensions);
     }
 
     private static async Task<IResult> CreateProductAsync(
