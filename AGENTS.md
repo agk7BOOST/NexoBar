@@ -6,7 +6,7 @@ Este repositorio implementa NexoBar.
 
 Codex trabaja sobre un producto cuyo comportamiento funcional, modelo conceptual, UX, requisitos no funcionales y arquitectura ya fueron definidos fuera del repositorio mediante Sources normativas del Project.
 
-Este archivo es contexto operacional para trabajar en el repositorio. No reemplaza esas Sources ni autoriza a inventar decisiones ausentes.
+Este archivo es contexto operacional para trabajar en el repositorio. `docs/engineering-handoff.md` es el baseline tecnico versionado y materializado del repositorio. Ambos permanecen subordinados a las Sources normativas y a las decisiones posteriores aprobadas; no las reemplazan ni autorizan a inventar decisiones ausentes.
 
 ## Autoridad y decisiones
 
@@ -32,6 +32,7 @@ Este archivo es contexto operacional para trabajar en el repositorio. No reempla
 - Cada modulo es propietario de su Estado y no modifica directamente el Estado propiedad de otro modulo.
 - La colaboracion entre modulos ocurre mediante capacidades explicitas dentro del proceso.
 - No introduzcas dependencias ciclicas entre modulos.
+- No introduzcas un `Shared`/`Common` generico preventivo.
 - PostgreSQL es la base relacional transaccional primaria compartida.
 - Estado vigente e Historia semantica son conceptos distintos; cuando sean consecuencias inseparables deben confirmarse atomicamente.
 - No es CQRS ni Event Sourcing.
@@ -58,7 +59,7 @@ Preserva siempre estas diferencias:
 ## Persistencia y contratos
 
 - EF Core 10 + Npgsql es la estrategia de persistencia predeterminada.
-- Cada modulo superior posee su propio DbContext y mapping sobre la base PostgreSQL compartida.
+- Cada modulo que persista Estado posee su propio DbContext y mapping sobre la base PostgreSQL compartida.
 - No introduzcas Repository Pattern generico ni lazy loading por defecto.
 - SQL explicito puede utilizarse cuando una invariante, concurrencia o rendimiento lo justifique.
 - Las migraciones son explicitas, versionadas y revisables; la aplicacion productiva no migra silenciosamente la base al arrancar.

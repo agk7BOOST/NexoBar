@@ -2,158 +2,114 @@
 
 ## 1. Propósito y autoridad
 
-- Este documento registra el baseline técnico aprobado para pasar de arquitectura a implementación.
-- No reemplaza la Especificación Funcional, el Modelo Conceptual, UX, RNF, Arquitectura ni Adendas.
-- Ante una discrepancia, prevalece la fuente normativa aplicable.
-- Las decisiones posteriores o Adendas solo sustituyen la parte concreta que modifican.
-- Los documentos históricos no son autoridad.
-- Lo explícitamente OPEN, PAR o provisional sigue abierto salvo decisión posterior aplicable.
+- Este documento es el baseline técnico actual, versionado y materializado del repositorio.
+- No reemplaza las Sources normativas de comportamiento funcional, modelo conceptual, UX, RNF o arquitectura. Ante una discrepancia prevalece la Source aplicable.
+- Las decisiones posteriores aprobadas o Adendas sustituyen únicamente el asunto concreto que modifican. Lo explícitamente abierto, parametrizado o provisional continúa abierto.
 
-## 2. Plataforma y repositorio
+## 2. Plataforma, repositorio y módulos
 
-- Monorepo Git único.
-- Backend: C# sobre .NET 10 LTS y ASP.NET Core 10.
-- Frontend: React 19, TypeScript y Vite 8.
-- npm como package manager.
-- Toolchains declarados en el repositorio.
-- Desarrollo híbrido reproducible: backend y frontend pueden ejecutarse localmente; la infraestructura local se proporciona con contenedores.
-- Docker no es requisito para toda edición cotidiana.
-- No se usa Nx, Turborepo ni otro orquestador de monorepo.
+- Monorepo Git con backend y frontend como unidades técnicas separadas.
+- Backend autoritativo: C# sobre .NET 10 LTS y ASP.NET Core 10. Frontend: React 19, TypeScript estricto y Vite 8.
+- El backend es un monolito modular y una unidad principal de despliegue. `NexoBar.Host` es el composition root.
+- `Catalog` y `OrderOperations` están implementados. `Inventory`, `IdentitiesAndCapabilities` y `OperationalConfiguration` están presentes como límites, todavía sin implementación funcional.
+- La única dependencia modular productiva actual es `OrderOperations -> Catalog`.
+- Cada módulo conserva la propiedad de su Estado y colabora mediante capacidades explícitas. No hay ciclos ni un `Shared`/`Common` genérico.
 
-## 3. Backend modular
+## 3. Persistencia
 
-- Una sola aplicación backend principal y una unidad principal de despliegue.
-- Un proyecto host ASP.NET Core.
-- Un proyecto/assembly por cada módulo superior:
-  - `NexoBar.OrderOperations`
-  - `NexoBar.Catalog`
-  - `NexoBar.Inventory`
-  - `NexoBar.IdentitiesAndCapabilities`
-  - `NexoBar.OperationalConfiguration`
-- Implementación interna por defecto y superficie pública mínima.
-- No se crean proyectos por capa ni un `Shared`/`Common` genérico preventivo.
-- No hay dependencias cíclicas entre módulos.
-- La frontera Pedido/Cumplimiento - Preparación permanece dentro de `OrderOperations`.
+- Una instancia/base PostgreSQL compartida es la persistencia relacional transaccional primaria. EF Core 10 y Npgsql son la estrategia predeterminada.
+- Cada módulo que persiste Estado posee su propio `DbContext`: `CatalogDbContext` mapea el schema `catalog` y `OrderOperationsDbContext` mapea `order_operations`. Cada schema mantiene su propio historial de migraciones.
+- Las migraciones son explícitas, versionadas y revisables. El Host productivo no ejecuta auto-migrate durante el startup.
+- Dinero y cantidades exactas usan `numeric`/`decimal`, nunca coma flotante binaria como representación autoritativa; cuando aplica, su representación HTTP es un decimal string estable.
+- Las identidades persistentes principales materializadas usan UUID v7. `Idempotency-Key` usa UUID v4.
+- Los timestamps operacionales autoritativos los asigna el backend y se persisten en UTC.
+- Estado actual e Historia semántica son conceptos distintos y se confirman atómicamente cuando son consecuencias inseparables. La solución no es CQRS ni Event Sourcing.
+- SQL explícito puede usarse cuando una invariante, concurrencia o rendimiento lo justifique. No se usan Repository Pattern genérico ni lazy loading por defecto.
 
-## 4. Persistencia y datos
+### Invariante de configuración
 
-- PostgreSQL es la base relacional transaccional primaria compartida.
-- EF Core 10 y Npgsql son la estrategia de persistencia predeterminada.
-- Cada módulo superior posee su propio `DbContext`, mapping y evolución física.
-- Compartir base no autoriza modificar directamente el Estado de otro módulo.
-- Puede usarse SQL explícito cuando concurrencia, invariantes o rendimiento lo justifiquen.
-- No se usan Repository Pattern genérico ni lazy loading por defecto.
-- Las migraciones EF Core son explícitas, versionadas, revisables y probadas. La aplicación productiva no migra silenciosamente la base al arrancar.
-- Estado vigente e Historia semántica son distintos y deben confirmarse atómicamente cuando sean consecuencias inseparables.
-- Esto no es CQRS ni Event Sourcing.
+Las connection strings modulares de `Catalog` y `OrderOperations` DEBEN apuntar a la misma instancia y base PostgreSQL. La colaboración transaccional existente depende de ello. Actualmente es una invariante de configuración documentada, no una validación automatizada.
 
-## 5. Contratos y comandos
+## 4. Colaboración `OrderOperations -> Catalog`
 
-- HTTPS y JSON son la frontera ordinaria.
-- Las consultas pueden orientarse a recursos.
-- Las mutaciones representan intenciones o comandos explícitos, no reemplazo CRUD genérico del Estado autoritativo.
-- ASP.NET Core Minimal APIs es la base de endpoints.
-- Los handlers HTTP son delgados; las reglas de negocio permanecen dentro del módulo correspondiente.
-- Problem Details es la estructura base de errores.
-- OpenAPI describe el contrato técnico implementado, no el significado funcional.
-- No hay versionado explícito de API mientras frontend y backend propios evolucionen coordinadamente y no exista una necesidad real.
+- `IOrderConfirmationCatalog` es la capacidad pública mínima actual. `Catalog` conserva la propiedad de su Estado; `OrderOperations` no accede a `CatalogDbContext` ni a tablas `catalog.*`.
+- La Primera Confirmación comparte una única `DbTransaction` PostgreSQL. `Catalog` reutiliza esa conexión y transacción para su lectura autoritativa, y estabiliza los `Products` mediante `FOR SHARE` hasta commit o rollback.
+- Exponer `DbTransaction` en esa interfaz es una excepción técnica deliberada por atomicidad y estabilización; no establece un patrón genérico para todas las colaboraciones entre módulos.
 
-## 6. Idempotencia y resultado incierto
+## 5. Idempotencia y resultado incierto
 
-- Todo comando externo que pueda producir significado operacional persistente usa por defecto identidad de comando.
-- `Idempotency-Key` contiene un UUID v4 generado en el cliente antes del primer envío.
-- Un reintento de la misma intención reutiliza exactamente la misma identidad.
-- Identidad, efecto, Estado e Historia inseparables se vinculan dentro de la misma frontera transaccional.
-- Repetir una identidad confirmada con la misma intención no crea un segundo efecto.
-- Reutilizar la misma identidad para una intención distinta debe rechazarse.
-- Un fallo de comunicación posterior al envío no se interpreta automáticamente como fracaso.
-- No hay retry ciego universal para mutaciones.
+- Los comandos materializados reciben un `Idempotency-Key` UUID v4 y mantienen persistencia durable por comando.
+- Cada comando/módulo toma un advisory transaction lock local. Efecto e idempotencia se confirman dentro de la misma transacción.
+- Misma key y misma intención produce replay; misma key e intención incompatible produce conflicto.
+- Ante resultado incierto se reintenta con la misma key. No existe blind retry para mutaciones.
+- `Catalog` y Primera Confirmación tienen canonicalización propia de su intención; no debe uniformarse sin una decisión explícita.
+- La duplicación local actual es deliberada. No existe infraestructura `Shared` de idempotencia.
 
-## 7. Identificadores, exactitud y tiempo
+## 6. Contratos técnicos materializados
 
-- Los conceptos persistentes principales que necesiten identidad técnica estable usan por defecto UUID v7 generado por el backend. Esto no implica que todo concepto reciba UUID propio.
-- UUID no es fuente autoritativa de orden funcional.
-- Dinero y cantidades exactas usan `decimal` en C# y `numeric` en PostgreSQL.
-- Precisión, escala y redondeo se resuelven just-in-time.
-- Dinero y cantidades decimales exactas viajan por JSON mediante representación decimal textual estable.
-- Los instantes operacionales autoritativos son asignados por el backend y persistidos en UTC, usando `DateTimeOffset`/`timestamptz` como base.
-- Un timestamp no reemplaza mecanismos de concurrencia, revisión o coordinación.
-- `PAR-TIME-01` permanece sin resolver.
+- HTTP ordinario usa HTTPS y JSON; ASP.NET Core Minimal APIs implementa endpoints con handlers delgados.
+- Problem Details es la estructura común de errores e incluye códigos estables. OpenAPI describe el contrato técnico implementado, no sustituye su significado normativo.
+- Las mutaciones expresan intenciones operacionales específicas, no reemplazos CRUD genéricos del Estado autoritativo.
+- `operationalReference` es opaca en HTTP y OpenAPI, aunque actualmente derive internamente del Order ID.
+- El lookup de Order se reconstruye exclusivamente desde `OrderOperations`; `Catalog` no reconstruye condiciones históricas.
+- Las propiedades JSON autoritativas no reconocidas se rechazan en los comandos donde esta regla está materializada.
 
-## 8. Testing y calidad
+## 7. Testing y verificación
 
-- Backend: xUnit.net v3 para unit tests.
-- Integración contra PostgreSQL real mediante Testcontainers cuando corresponda.
-- PostgreSQL no se sustituye por SQLite/in-memory para validar comportamiento dependiente de transacciones, locking o concurrencia.
-- Frontend: Vitest y React Testing Library.
-- E2E críticos: Playwright, en cantidad reducida.
-- No se fija un porcentaje arbitrario de coverage ni un mocking framework obligatorio inicialmente.
-- TypeScript estricto.
-- Nullable reference types habilitados en backend.
-- Los warnings del código NexoBar se tratan como errores salvo excepción localizada y justificada.
-- ESLint y Prettier en frontend.
-- Verificación global mediante `scripts/verify.cmd` y `scripts/verify.sh`; las suites de tests se incorporarán a esos wrappers cuando existan.
-- Existe una segunda capa E2E del vertical slice con Playwright sobre Chromium y PostgreSQL efímero aislado; no reutiliza la base de `compose.yaml`.
-- La verificación ordinaria no ejecuta E2E. Para incluirla se usa `scripts\verify.cmd --e2e` en Windows o `./scripts/verify.sh --e2e` en Unix.
-- La ejecución E2E requiere Docker operativo y Chromium de Playwright instalado. La preparación inicial del navegador se realiza desde `frontend` con `npm exec playwright install chromium`.
-- Las migraciones E2E se aplican explícitamente mediante `NexoBar.E2E.DatabaseSetup` antes de iniciar la aplicación.
-- Los E2E deben ejecutarse para cambios del vertical slice y antes de considerar cerrado I4.
+Existen tres capas:
 
-## 9. Configuración y secretos
+- backend: suites de integración xUnit con PostgreSQL real mediante Testcontainers;
+- frontend: Vitest y React Testing Library;
+- recorrido integrado real: Playwright sobre Chromium.
 
-- La configuración técnica y de infraestructura no se confunde con la Configuración Operacional del dominio.
-- ASP.NET Core usa prioritariamente configuración nativa y Options tipadas y validadas.
-- Entornos iniciales: Development, Testing y Production.
-- Los secretos reales nunca se versionan ni se hornean en artefactos.
-- Las credenciales conocidas se permiten solo para infraestructura local descartable y explícitamente no productiva.
-- El frontend no contiene secretos.
-- El entorno no cambia silenciosamente reglas funcionales.
+`scripts/verify.cmd` y `scripts/verify.sh` ejecutan la verificación ordinaria. Esta verificación requiere Docker porque las suites backend usan Testcontainers. La opción `--e2e` añade PostgreSQL efímero aislado, backend, Vite y Chromium; no usa la base persistente de `compose.yaml`.
 
-## 10. Infraestructura local
+`NexoBar.E2E.DatabaseSetup` aplica explícitamente las migraciones del entorno E2E y comprueba pending model changes. Chromium se instala manualmente desde `frontend`:
 
-- PostgreSQL local se ejecuta con Docker Compose.
-- El `compose.yaml` actual define el entorno de desarrollo aceptado.
-- PostgreSQL local no equivale a la topología productiva.
-- Producción continúa requiriendo runtime cloud gestionado y PostgreSQL gestionado conforme a Arquitectura; el proveedor y la configuración concreta siguen pendientes.
+```text
+npm exec playwright install chromium
+```
 
-## 11. Protocolo Codex -> revisión -> commit
+Se ejecuta `--e2e` cuando un cambio afecta el recorrido vertical integrado, contratos entre frontend y backend, el harness, o antes de aceptar un slice que atraviesa navegador, backend y persistencia. No se exige para todo cambio mecánico o local cubierto por la verificación ordinaria.
 
-- `AGENTS.md` es el contexto operacional persistente de Codex.
-- Cada tarea debe tener objetivo, contexto aplicable, alcance, criterios verificables y condiciones de detención.
-- Codex puede inspeccionar, modificar dentro del alcance y ejecutar verificaciones no destructivas sin pedir permiso por cada acción.
-- Debe detenerse si necesita inventar o resolver una decisión funcional, conceptual, UX, RNF o arquitectónica no aprobada.
-- No añade dependencias sustanciales ni amplía el alcance silenciosamente.
-- No modifica pruebas normativas solo para acomodar una implementación incorrecta.
-- No hace commit, push ni operaciones Git destructivas salvo instrucción explícita.
-- El working tree contiene el candidato; el commit representa un baseline revisado y aceptado.
-- Al terminar una tarea reporta cambios, verificaciones, resultado y bloqueos o riesgos.
+```text
+scripts\verify.cmd
+scripts\verify.cmd --e2e
+./scripts/verify.sh
+./scripts/verify.sh --e2e
+```
 
-## 12. Cuestiones conscientemente diferidas
+## 8. Tooling y prerrequisitos
 
-Siguen abiertas para resolución just-in-time, entre otras:
+- .NET SDK `10.0.400`, con roll-forward deshabilitado.
+- Node.js `22.13.1` y npm `10.9.2`.
+- `package-lock.json` es autoritativo para dependencias frontend y la instalación reproducible usa `npm ci`.
+- Docker es necesario para las suites de integración. Chromium de Playwright es necesario solo para `--e2e`.
+- E2E requiere libres los puertos técnicos `5028` y `5173`; el harness falla si están ocupados y no mata ni reutiliza procesos ajenos.
 
-- modelo físico concreto del dominio;
-- tablas, columnas, índices y constraints;
-- precisión, escala y redondeo;
-- locking concreto de Pedido;
-- revisión concreta de Inventario;
-- almacenamiento, fingerprint y retención de idempotencia;
-- autenticación y transporte de sesión;
-- recuperación de acceso;
-- autorización concreta por consulta;
-- contrato SSE;
-- router y gestión de estado remoto del frontend;
-- librerías de formularios/UI;
-- generación o no de cliente TypeScript desde OpenAPI;
-- proveedor cloud y packaging productivo;
-- observabilidad productiva;
-- backup/PITR concreto;
-- retención;
-- OPEN, PAR e HYP que las Sources mantengan vigentes.
+## 9. `InternalsVisibleTo`
 
-## 13. Regla para decisiones futuras
+`InternalsVisibleTo` existe únicamente para consumidores técnicos/test específicos: las suites de integración y `NexoBar.E2E.DatabaseSetup`. No es un mecanismo normal de colaboración productiva entre módulos.
 
-- Las decisiones técnicas se resuelven progresivamente, en el momento mínimo necesario.
-- No se hace BDUF del dominio técnico.
-- Una nueva tecnología, patrón o complejidad requiere un driver concreto.
-- Si la implementación revela una cuestión que cambia comportamiento funcional, conceptual, UX, RNF o arquitectura, no se resuelve en código: se eleva nuevamente al nivel correspondiente del Project y, si afecta una Source base cerrada, se utiliza el mecanismo de Adendas establecido.
+## 10. Development y migraciones
+
+- `compose.yaml` proporciona un PostgreSQL local descartable para Development; no representa la topología productiva.
+- Las migraciones permanecen explícitas y el Host no las aplica automáticamente.
+- Fuera de integración y E2E, el flujo técnico general para provisionar y aplicar migraciones aún no está estandarizado como tooling del repositorio. Deberá resolverse cuando exista un driver real de onboarding o deployment.
+- `NexoBar.E2E.DatabaseSetup` es parte del harness E2E, no una herramienta general de Development.
+
+## 11. Deuda consciente
+
+- La igualdad del destino de las connection strings modulares no se valida automáticamente.
+- Falta un test conductual de contención `FOR SHARE`, relevante antes de introducir mutaciones concurrentes de `Product`.
+- `App.tsx` es un hotspot de workflows y deberá separarse por responsabilidades antes de ampliar nuevamente esa pantalla.
+- La validación runtime o generación de contratos TypeScript sigue diferida.
+
+Estas observaciones son deuda técnica conocida; no incluyen funcionalidades deliberadamente diferidas.
+
+## 12. Protocolo de trabajo
+
+- `AGENTS.md` contiene el contexto operacional persistente para Codex. Ante una decisión no resuelta o una contradicción normativa se detiene la parte afectada y se reporta.
+- Los cambios permanecen limitados al objetivo de la tarea y se verifican en proporción al riesgo. No se agregan dependencias, alcance o refactors adyacentes sin autorización.
+- No se modifican pruebas para acomodar una implementación incorrecta.
+- Commit, push y operaciones Git destructivas requieren instrucción explícita.
