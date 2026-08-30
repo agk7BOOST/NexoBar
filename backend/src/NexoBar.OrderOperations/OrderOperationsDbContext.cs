@@ -14,6 +14,10 @@ internal sealed class OrderOperationsDbContext(
         Set<FirstConfirmationCommand>();
     internal DbSet<FirstConfirmationCommandContent> FirstConfirmationCommandContents =>
         Set<FirstConfirmationCommandContent>();
+    internal DbSet<SubsequentConfirmationCommand> SubsequentConfirmationCommands =>
+        Set<SubsequentConfirmationCommand>();
+    internal DbSet<SubsequentConfirmationCommandContent>
+        SubsequentConfirmationCommandContents => Set<SubsequentConfirmationCommandContent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -24,6 +28,8 @@ internal sealed class OrderOperationsDbContext(
         modelBuilder.ApplyConfiguration(new ConfirmationHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new FirstConfirmationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new FirstConfirmationCommandContentConfiguration());
+        modelBuilder.ApplyConfiguration(new SubsequentConfirmationCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new SubsequentConfirmationCommandContentConfiguration());
     }
 
     private sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
@@ -188,6 +194,67 @@ internal sealed class OrderOperationsDbContext(
                 .HasForeignKey(content => content.IdempotencyKey)
                 .HasConstraintName(
                     "FK_order_operations_first_confirmation_command_contents_commands")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class SubsequentConfirmationCommandConfiguration :
+        IEntityTypeConfiguration<SubsequentConfirmationCommand>
+    {
+        public void Configure(EntityTypeBuilder<SubsequentConfirmationCommand> builder)
+        {
+            builder.ToTable("subsequent_confirmation_commands");
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_order_operations_subsequent_confirmation_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.IntentOrderId)
+                .HasColumnName("intent_order_id").ValueGeneratedNever();
+            builder.Property(command => command.ResultIncorporationId)
+                .HasColumnName("result_incorporation_id").ValueGeneratedNever();
+            builder.HasIndex(command => command.IntentOrderId)
+                .HasDatabaseName(
+                    "IX_order_operations_subsequent_confirmation_commands_intent_order");
+            builder.HasIndex(command => command.ResultIncorporationId)
+                .HasDatabaseName(
+                    "UX_order_operations_subsequent_confirmation_commands_result_incorporation")
+                .IsUnique();
+            builder.HasOne<Order>().WithMany()
+                .HasForeignKey(command => command.IntentOrderId)
+                .HasConstraintName(
+                    "FK_order_operations_subsequent_confirmation_commands_orders")
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<Incorporation>().WithMany()
+                .HasForeignKey(command => command.ResultIncorporationId)
+                .HasConstraintName(
+                    "FK_order_operations_subsequent_confirmation_commands_incorporations")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class SubsequentConfirmationCommandContentConfiguration :
+        IEntityTypeConfiguration<SubsequentConfirmationCommandContent>
+    {
+        public void Configure(EntityTypeBuilder<SubsequentConfirmationCommandContent> builder)
+        {
+            builder.ToTable(
+                "subsequent_confirmation_command_contents",
+                table => table.HasCheckConstraint(
+                    "CK_order_operations_subsequent_confirmation_command_contents_quantity_positive",
+                    "quantity > 0"));
+            builder.HasKey(content => new { content.IdempotencyKey, content.ProductId })
+                .HasName(
+                    "PK_order_operations_subsequent_confirmation_command_contents");
+            builder.Property(content => content.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(content => content.ProductId)
+                .HasColumnName("product_id").ValueGeneratedNever();
+            builder.Property(content => content.Quantity)
+                .HasColumnName("quantity").IsRequired();
+            builder.HasOne<SubsequentConfirmationCommand>().WithMany()
+                .HasForeignKey(content => content.IdempotencyKey)
+                .HasConstraintName(
+                    "FK_order_operations_subsequent_confirmation_command_contents_commands")
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }

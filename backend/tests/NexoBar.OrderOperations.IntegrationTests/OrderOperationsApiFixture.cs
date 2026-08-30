@@ -44,6 +44,8 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                order_operations.subsequent_confirmation_command_contents,
+                order_operations.subsequent_confirmation_commands,
                 order_operations.first_confirmation_command_contents,
                 order_operations.first_confirmation_commands,
                 order_operations.confirmation_history,
@@ -151,6 +153,87 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 """,
                 cancellationToken);
         }
+    }
+
+    internal async Task SetSubsequentCommandFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+
+        if (enabled)
+        {
+            await dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE OR REPLACE FUNCTION order_operations.fail_subsequent_command()
+                RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    RAISE EXCEPTION 'controlled subsequent command failure';
+                END;
+                $$;
+                CREATE TRIGGER fail_subsequent_command
+                BEFORE INSERT ON order_operations.subsequent_confirmation_commands
+                FOR EACH ROW EXECUTE FUNCTION order_operations.fail_subsequent_command();
+                """,
+                cancellationToken);
+        }
+        else
+        {
+            await dbContext.Database.ExecuteSqlRawAsync(
+                """
+                DROP TRIGGER IF EXISTS fail_subsequent_command
+                    ON order_operations.subsequent_confirmation_commands;
+                DROP FUNCTION IF EXISTS order_operations.fail_subsequent_command();
+                """,
+                cancellationToken);
+        }
+    }
+
+    internal async Task<SubsequentPersistenceCounts> CountSubsequentEffectsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        return new SubsequentPersistenceCounts(
+            await dbContext.Incorporations.CountAsync(cancellationToken),
+            await dbContext.IncorporationContents.CountAsync(cancellationToken),
+            await dbContext.ConfirmationHistory.CountAsync(cancellationToken),
+            await dbContext.SubsequentConfirmationCommands.CountAsync(cancellationToken),
+            await dbContext.SubsequentConfirmationCommandContents.CountAsync(cancellationToken));
+    }
+
+    internal async Task<bool> WaitForOrderRowLockWaitersAsync(
+        int minimumWaiters,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        var deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT count(*)
+                FROM pg_stat_activity
+                WHERE datname = current_database()
+                  AND pid <> pg_backend_pid()
+                  AND wait_event_type = 'Lock'
+                  AND query LIKE '%FROM order_operations.orders%FOR UPDATE%'
+                """;
+            var count = Assert.IsType<long>(await command.ExecuteScalarAsync(cancellationToken));
+            if (count >= minimumWaiters)
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
+        }
+
+        return false;
     }
 
     internal async Task<bool> HasPendingModelChangesAsync()
@@ -272,6 +355,13 @@ internal sealed record OrderOperationsSnapshot(
     IReadOnlyList<IncorporationContent> Contents,
     ConfirmationHistory History,
     FirstConfirmationCommand Command);
+
+internal sealed record SubsequentPersistenceCounts(
+    int Incorporations,
+    int Contents,
+    int History,
+    int Commands,
+    int CommandContents);
 
 [CollectionDefinition(Name)]
 public sealed class OrderOperationsApiCollection :

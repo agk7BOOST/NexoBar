@@ -27,6 +27,7 @@ public static class OrderOperationsModule
                     "__ef_migrations_history",
                     "order_operations")));
         services.AddScoped<FirstConfirmationService>();
+        services.AddScoped<SubsequentConfirmationService>();
         services.AddScoped<OrderQueryService>();
 
         return services;
@@ -54,7 +55,116 @@ public static class OrderOperationsModule
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        endpoints.MapPost(
+                "/api/order-operations/orders/{operationalReference}/confirmations",
+                ConfirmSubsequentAsync)
+            .WithName("ConfirmSubsequentOrderIncorporation")
+            .WithTags("OrderOperations")
+            .Accepts<SubsequentConfirmationRequest>("application/json")
+            .Produces<SubsequentConfirmationResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         return endpoints;
+    }
+
+    private static async Task<IResult> ConfirmSubsequentAsync(
+        string operationalReference,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        SubsequentConfirmationRequest request,
+        SubsequentConfirmationService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(operationalReference, out var orderId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid operational reference",
+                "The supplied operational reference is structurally invalid.",
+                "order_operations.order.operational_reference_invalid");
+        }
+
+        if (idempotencyKey is null)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Idempotency-Key is required",
+                "Subsequent Confirmation requires an Idempotency-Key containing a UUID v4.",
+                "order_operations.subsequent_confirmation.idempotency_key_required");
+        }
+
+        if (!Guid.TryParse(idempotencyKey, out var commandId) || !IsUuidVersion4(commandId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Idempotency-Key",
+                "Idempotency-Key must contain a UUID v4.",
+                "order_operations.subsequent_confirmation.idempotency_key_invalid");
+        }
+
+        var result = await service.ConfirmAsync(
+            commandId,
+            orderId,
+            request,
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            SubsequentConfirmationOutcome.Confirmed => Results.Json(
+                result.Response,
+                statusCode: StatusCodes.Status201Created),
+            SubsequentConfirmationOutcome.CompositionEmpty => Problem(
+                StatusCodes.Status400BadRequest,
+                "Composition is empty",
+                "Confirmation requires at least one item.",
+                "order_operations.first_confirmation.composition_empty"),
+            SubsequentConfirmationOutcome.RequestInvalid => Results.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid Confirmation request",
+                detail: "Every item must contain a non-empty ProductId."),
+            SubsequentConfirmationOutcome.QuantityInvalid => Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid quantity",
+                "Every quantity must be a positive integer in increment I3.",
+                "order_operations.first_confirmation.quantity_invalid",
+                result.ProductId),
+            SubsequentConfirmationOutcome.DuplicateProduct => Problem(
+                StatusCodes.Status400BadRequest,
+                "Duplicate product",
+                "A Product may appear only once in a Confirmation.",
+                "order_operations.first_confirmation.duplicate_product",
+                result.ProductId),
+            SubsequentConfirmationOutcome.OrderNotFound => Problem(
+                StatusCodes.Status404NotFound,
+                "Order not found",
+                "No Order exists with the supplied operational reference.",
+                "order_operations.order.not_found"),
+            SubsequentConfirmationOutcome.ProductNotCurrent => Problem(
+                StatusCodes.Status409Conflict,
+                "Product is not current",
+                "The Product does not exist or is not active.",
+                "order_operations.first_confirmation.product_not_current",
+                result.ProductId),
+            SubsequentConfirmationOutcome.ProductUnavailable => Problem(
+                StatusCodes.Status409Conflict,
+                "Product is unavailable",
+                "The Product is not currently available.",
+                "order_operations.first_confirmation.product_unavailable",
+                result.ProductId),
+            SubsequentConfirmationOutcome.RequiresPreparationNotSupported => Problem(
+                StatusCodes.Status409Conflict,
+                "Product requires preparation",
+                "Products requiring preparation are not supported in increment I3.",
+                "order_operations.first_confirmation.requires_preparation_not_supported",
+                result.ProductId),
+            SubsequentConfirmationOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                "The supplied Idempotency-Key identifies an incompatible subsequent Confirmation.",
+                "order_operations.subsequent_confirmation.idempotency_key_conflict"),
+            _ => throw new UnreachableException()
+        };
     }
 
     private static async Task<IResult> FindOrderAsync(
