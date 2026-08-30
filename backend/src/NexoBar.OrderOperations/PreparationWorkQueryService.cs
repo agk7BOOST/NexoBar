@@ -10,6 +10,9 @@ internal sealed class PreparationWorkQueryService(OrderOperationsDbContext dbCon
     {
         var persisted = await (
             from work in dbContext.PreparationWork.AsNoTracking()
+            join content in dbContext.IncorporationContents.AsNoTracking()
+                on new { work.IncorporationId, work.ContentOrdinal }
+                equals new { content.IncorporationId, content.ContentOrdinal }
             join incorporation in dbContext.Incorporations.AsNoTracking()
                 on work.IncorporationId equals incorporation.Id
             join order in dbContext.Orders.AsNoTracking()
@@ -19,7 +22,7 @@ internal sealed class PreparationWorkQueryService(OrderOperationsDbContext dbCon
             where work.PreparationResponsibilityId == preparationResponsibilityId
             orderby history.OccurredAt,
                 work.IncorporationId,
-                work.ProductId,
+                work.ContentOrdinal,
                 work.Id
             select new
             {
@@ -29,7 +32,7 @@ internal sealed class PreparationWorkQueryService(OrderOperationsDbContext dbCon
                 order.Context,
                 IncorporationId = incorporation.Id,
                 IncorporationOrdinal = incorporation.Ordinal,
-                work.ProductId,
+                content.ProductId,
                 work.TotalQuantity,
                 work.PendingQuantity,
                 work.InPreparationQuantity,

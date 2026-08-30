@@ -36,17 +36,20 @@ internal sealed class IncorporationContent
 
     internal IncorporationContent(
         Guid incorporationId,
+        int contentOrdinal,
         Guid productId,
         int quantity,
         decimal appliedPrice)
     {
         IncorporationId = incorporationId;
+        ContentOrdinal = contentOrdinal;
         ProductId = productId;
         Quantity = quantity;
         AppliedPrice = appliedPrice;
     }
 
     internal Guid IncorporationId { get; private set; }
+    internal int ContentOrdinal { get; private set; }
     internal Guid ProductId { get; private set; }
     internal int Quantity { get; private set; }
     internal decimal AppliedPrice { get; private set; }
@@ -59,13 +62,13 @@ internal sealed class PreparationWork
     internal PreparationWork(
         Guid id,
         Guid incorporationId,
-        Guid productId,
+        int contentOrdinal,
         Guid preparationResponsibilityId,
         int totalQuantity)
     {
         Id = id;
         IncorporationId = incorporationId;
-        ProductId = productId;
+        ContentOrdinal = contentOrdinal;
         PreparationResponsibilityId = preparationResponsibilityId;
         TotalQuantity = totalQuantity;
         PendingQuantity = totalQuantity;
@@ -75,7 +78,7 @@ internal sealed class PreparationWork
 
     internal Guid Id { get; private set; }
     internal Guid IncorporationId { get; private set; }
-    internal Guid ProductId { get; private set; }
+    internal int ContentOrdinal { get; private set; }
     internal Guid PreparationResponsibilityId { get; private set; }
     internal int TotalQuantity { get; private set; }
     internal int PendingQuantity { get; private set; }
@@ -130,15 +133,18 @@ internal sealed class FirstConfirmationCommandContent
 
     internal FirstConfirmationCommandContent(
         Guid idempotencyKey,
+        int lineOrdinal,
         Guid productId,
         int quantity)
     {
         IdempotencyKey = idempotencyKey;
+        LineOrdinal = lineOrdinal;
         ProductId = productId;
         Quantity = quantity;
     }
 
     internal Guid IdempotencyKey { get; private set; }
+    internal int LineOrdinal { get; private set; }
     internal Guid ProductId { get; private set; }
     internal int Quantity { get; private set; }
 }

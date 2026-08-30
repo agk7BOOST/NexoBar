@@ -41,7 +41,8 @@ internal sealed class OrderQueryService(OrderOperationsDbContext dbContext)
             : await dbContext.IncorporationContents
                 .AsNoTracking()
                 .Where(content => incorporationIds.Contains(content.IncorporationId))
-                .OrderBy(content => content.ProductId)
+                .OrderBy(content => content.IncorporationId)
+                .ThenBy(content => content.ContentOrdinal)
                 .ToArrayAsync(cancellationToken);
         var contentsByIncorporation = persistedContents
             .GroupBy(content => content.IncorporationId)

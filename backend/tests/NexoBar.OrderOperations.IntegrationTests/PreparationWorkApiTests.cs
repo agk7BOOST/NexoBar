@@ -365,7 +365,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
                 InsertWorkAsync(
                     Guid.CreateVersion7(),
                     first.FirstIncorporation.Id,
-                    product.Id,
+                    1,
                     responsibility,
                     quantities.Total,
                     quantities.Pending,
@@ -379,7 +379,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
             InsertWorkAsync(
                 Guid.CreateVersion7(),
                 Guid.CreateVersion7(),
-                product.Id,
+                1,
                 responsibility,
                 1,
                 1,
@@ -391,7 +391,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         await InsertWorkAsync(
             Guid.CreateVersion7(),
             first.FirstIncorporation.Id,
-            product.Id,
+            1,
             responsibility,
             1,
             1,
@@ -402,7 +402,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
             InsertWorkAsync(
                 Guid.CreateVersion7(),
                 first.FirstIncorporation.Id,
-                product.Id,
+                1,
                 responsibility,
                 1,
                 1,
@@ -445,7 +445,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
     private async Task InsertWorkAsync(
         Guid id,
         Guid incorporationId,
-        Guid productId,
+        int contentOrdinal,
         Guid responsibilityId,
         int total,
         int pending,
@@ -459,15 +459,15 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         command.CommandText =
             """
             INSERT INTO order_operations.preparation_work
-                (id, incorporation_id, product_id, preparation_responsibility_id,
+                (id, incorporation_id, content_ordinal, preparation_responsibility_id,
                  total_quantity, pending_quantity, in_preparation_quantity, ready_quantity)
             VALUES
-                (@id, @incorporationId, @productId, @responsibilityId,
+                (@id, @incorporationId, @contentOrdinal, @responsibilityId,
                  @total, @pending, @preparing, @ready)
             """;
         command.Parameters.AddWithValue("id", id);
         command.Parameters.AddWithValue("incorporationId", incorporationId);
-        command.Parameters.AddWithValue("productId", productId);
+        command.Parameters.AddWithValue("contentOrdinal", contentOrdinal);
         command.Parameters.AddWithValue("responsibilityId", responsibilityId);
         command.Parameters.AddWithValue("total", total);
         command.Parameters.AddWithValue("pending", pending);
@@ -570,7 +570,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
     }
 
     private static void AssertWork(
-        PreparationWork work,
+        PreparationWorkSnapshot work,
         Guid incorporationId,
         Guid responsibilityId,
         int quantity)

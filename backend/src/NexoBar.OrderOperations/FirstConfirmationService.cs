@@ -44,7 +44,7 @@ internal sealed class FirstConfirmationService(
             var existingContents = await dbContext.FirstConfirmationCommandContents
                 .AsNoTracking()
                 .Where(content => content.IdempotencyKey == idempotencyKey)
-                .OrderBy(content => content.ProductId)
+                .OrderBy(content => content.LineOrdinal)
                 .ToArrayAsync(cancellationToken);
 
             if (!Matches(existingCommand, existingContents, intent))
@@ -101,12 +101,15 @@ internal sealed class FirstConfirmationService(
             incorporationId));
 
         var responseItems = new List<ConfirmedItemResponse>(intent.Items.Count);
-        foreach (var item in intent.Items)
+        for (var index = 0; index < intent.Items.Count; index++)
         {
+            var item = intent.Items[index];
+            var contentOrdinal = checked(index + 1);
             var product = productsById[item.ProductId];
             var creation = ConfirmedContentFactory
                 .CreateConfirmedContentAndPreparationWork(
                 incorporationId,
+                contentOrdinal,
                 item.ProductId,
                 item.Quantity,
                 product);
@@ -118,6 +121,7 @@ internal sealed class FirstConfirmationService(
             dbContext.FirstConfirmationCommandContents.Add(
                 new FirstConfirmationCommandContent(
                     idempotencyKey,
+                    contentOrdinal,
                     item.ProductId,
                     item.Quantity));
             responseItems.Add(new ConfirmedItemResponse(
@@ -161,7 +165,7 @@ internal sealed class FirstConfirmationService(
         var persistedItems = await dbContext.IncorporationContents
             .AsNoTracking()
             .Where(content => content.IncorporationId == incorporationId)
-            .OrderBy(content => content.ProductId)
+            .OrderBy(content => content.ContentOrdinal)
             .ToArrayAsync(cancellationToken);
         var items = persistedItems
             .Select(content => new ConfirmedItemResponse(

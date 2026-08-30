@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NexoBar.Catalog;
@@ -125,15 +127,27 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             cancellationToken);
     }
 
-    internal async Task<IReadOnlyList<PreparationWork>> ReadPreparationWorkAsync(
+    internal async Task<IReadOnlyList<PreparationWorkSnapshot>> ReadPreparationWorkAsync(
         CancellationToken cancellationToken)
     {
         await using var scope = application!.Services.CreateAsyncScope();
-        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
-            .PreparationWork.AsNoTracking()
-            .OrderBy(work => work.IncorporationId)
-            .ThenBy(work => work.ProductId)
-            .ToArrayAsync(cancellationToken);
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        return await (
+            from work in dbContext.PreparationWork.AsNoTracking()
+            join content in dbContext.IncorporationContents.AsNoTracking()
+                on new { work.IncorporationId, work.ContentOrdinal }
+                equals new { content.IncorporationId, content.ContentOrdinal }
+            orderby work.IncorporationId, work.ContentOrdinal
+            select new PreparationWorkSnapshot(
+                work.Id,
+                work.IncorporationId,
+                work.ContentOrdinal,
+                content.ProductId,
+                work.PreparationResponsibilityId,
+                work.TotalQuantity,
+                work.PendingQuantity,
+                work.InPreparationQuantity,
+                work.ReadyQuantity)).ToArrayAsync(cancellationToken);
     }
 
     internal async Task<int> CountPreparationWorkAsync(
@@ -321,6 +335,16 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             .Database.HasPendingModelChanges();
     }
 
+    internal async Task MigrateOrderOperationsAsync(
+        string targetMigration,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        await dbContext.GetService<IMigrator>()
+            .MigrateAsync(targetMigration, cancellationToken);
+    }
+
     internal async Task RestartApplicationAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -456,6 +480,17 @@ internal sealed record SubsequentPersistenceCounts(
     int History,
     int Commands,
     int CommandContents);
+
+internal sealed record PreparationWorkSnapshot(
+    Guid Id,
+    Guid IncorporationId,
+    int ContentOrdinal,
+    Guid ProductId,
+    Guid PreparationResponsibilityId,
+    int TotalQuantity,
+    int PendingQuantity,
+    int InPreparationQuantity,
+    int ReadyQuantity);
 
 [CollectionDefinition(Name)]
 public sealed class OrderOperationsApiCollection :

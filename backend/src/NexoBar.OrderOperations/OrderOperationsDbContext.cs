@@ -62,8 +62,8 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("id").ValueGeneratedNever();
             builder.Property(work => work.IncorporationId)
                 .HasColumnName("incorporation_id").ValueGeneratedNever();
-            builder.Property(work => work.ProductId)
-                .HasColumnName("product_id").ValueGeneratedNever();
+            builder.Property(work => work.ContentOrdinal)
+                .HasColumnName("content_ordinal").ValueGeneratedNever();
             builder.Property(work => work.PreparationResponsibilityId)
                 .HasColumnName("preparation_responsibility_id").ValueGeneratedNever();
             builder.Property(work => work.TotalQuantity)
@@ -74,7 +74,7 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("in_preparation_quantity").IsRequired();
             builder.Property(work => work.ReadyQuantity)
                 .HasColumnName("ready_quantity").IsRequired();
-            builder.HasIndex(work => new { work.IncorporationId, work.ProductId })
+            builder.HasIndex(work => new { work.IncorporationId, work.ContentOrdinal })
                 .HasDatabaseName("UX_order_operations_preparation_work_content")
                 .IsUnique();
             builder.HasIndex(work => work.PreparationResponsibilityId)
@@ -82,7 +82,7 @@ internal sealed class OrderOperationsDbContext(
                     "IX_order_operations_preparation_work_responsibility");
             builder.HasOne<IncorporationContent>().WithOne()
                 .HasForeignKey<PreparationWork>(
-                    work => new { work.IncorporationId, work.ProductId })
+                    work => new { work.IncorporationId, work.ContentOrdinal })
                 .HasConstraintName("FK_order_operations_preparation_work_content")
                 .OnDelete(DeleteBehavior.Restrict);
         }
@@ -150,17 +150,34 @@ internal sealed class OrderOperationsDbContext(
                     table.HasCheckConstraint(
                         "CK_order_operations_incorporation_contents_price_non_negative",
                         "applied_price >= 0");
+                    table.HasCheckConstraint(
+                        "CK_order_operations_incorporation_contents_ordinal_positive",
+                        "content_ordinal > 0");
                 });
-            builder.HasKey(content => new { content.IncorporationId, content.ProductId })
+            builder.HasKey(content => new
+            {
+                content.IncorporationId,
+                content.ContentOrdinal
+            })
                 .HasName("PK_order_operations_incorporation_contents");
             builder.Property(content => content.IncorporationId)
                 .HasColumnName("incorporation_id").ValueGeneratedNever();
+            builder.Property(content => content.ContentOrdinal)
+                .HasColumnName("content_ordinal").ValueGeneratedNever();
             builder.Property(content => content.ProductId)
                 .HasColumnName("product_id").ValueGeneratedNever();
             builder.Property(content => content.Quantity)
                 .HasColumnName("quantity").IsRequired();
             builder.Property(content => content.AppliedPrice)
                 .HasColumnName("applied_price").HasColumnType("numeric").IsRequired();
+            builder.HasIndex(content => new
+            {
+                content.IncorporationId,
+                content.ProductId
+            })
+                .HasDatabaseName(
+                    "UX_order_operations_incorporation_contents_product")
+                .IsUnique();
             builder.HasOne<Incorporation>().WithMany()
                 .HasForeignKey(content => content.IncorporationId)
                 .HasConstraintName("FK_order_operations_incorporation_contents_incorporations")
@@ -235,17 +252,37 @@ internal sealed class OrderOperationsDbContext(
         {
             builder.ToTable(
                 "first_confirmation_command_contents",
-                table => table.HasCheckConstraint(
-                    "CK_order_operations_first_confirmation_command_contents_quantity_positive",
-                    "quantity > 0"));
-            builder.HasKey(content => new { content.IdempotencyKey, content.ProductId })
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_order_operations_first_confirmation_command_contents_quantity_positive",
+                        "quantity > 0");
+                    table.HasCheckConstraint(
+                        "CK_order_operations_first_command_contents_ordinal_positive",
+                        "line_ordinal > 0");
+                });
+            builder.HasKey(content => new
+            {
+                content.IdempotencyKey,
+                content.LineOrdinal
+            })
                 .HasName("PK_order_operations_first_confirmation_command_contents");
             builder.Property(content => content.IdempotencyKey)
                 .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(content => content.LineOrdinal)
+                .HasColumnName("line_ordinal").ValueGeneratedNever();
             builder.Property(content => content.ProductId)
                 .HasColumnName("product_id").ValueGeneratedNever();
             builder.Property(content => content.Quantity)
                 .HasColumnName("quantity").IsRequired();
+            builder.HasIndex(content => new
+            {
+                content.IdempotencyKey,
+                content.ProductId
+            })
+                .HasDatabaseName(
+                    "UX_order_operations_first_command_contents_product")
+                .IsUnique();
             builder.HasOne<FirstConfirmationCommand>().WithMany()
                 .HasForeignKey(content => content.IdempotencyKey)
                 .HasConstraintName(
@@ -295,18 +332,38 @@ internal sealed class OrderOperationsDbContext(
         {
             builder.ToTable(
                 "subsequent_confirmation_command_contents",
-                table => table.HasCheckConstraint(
-                    "CK_order_operations_subsequent_confirmation_command_contents_quantity_positive",
-                    "quantity > 0"));
-            builder.HasKey(content => new { content.IdempotencyKey, content.ProductId })
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_order_operations_subsequent_confirmation_command_contents_quantity_positive",
+                        "quantity > 0");
+                    table.HasCheckConstraint(
+                        "CK_order_operations_subseq_command_contents_ordinal_positive",
+                        "line_ordinal > 0");
+                });
+            builder.HasKey(content => new
+            {
+                content.IdempotencyKey,
+                content.LineOrdinal
+            })
                 .HasName(
                     "PK_order_operations_subsequent_confirmation_command_contents");
             builder.Property(content => content.IdempotencyKey)
                 .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(content => content.LineOrdinal)
+                .HasColumnName("line_ordinal").ValueGeneratedNever();
             builder.Property(content => content.ProductId)
                 .HasColumnName("product_id").ValueGeneratedNever();
             builder.Property(content => content.Quantity)
                 .HasColumnName("quantity").IsRequired();
+            builder.HasIndex(content => new
+            {
+                content.IdempotencyKey,
+                content.ProductId
+            })
+                .HasDatabaseName(
+                    "UX_order_operations_subsequent_command_contents_product")
+                .IsUnique();
             builder.HasOne<SubsequentConfirmationCommand>().WithMany()
                 .HasForeignKey(content => content.IdempotencyKey)
                 .HasConstraintName(

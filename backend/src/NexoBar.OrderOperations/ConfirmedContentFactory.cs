@@ -6,12 +6,14 @@ internal static class ConfirmedContentFactory
 {
     internal static ConfirmedContentCreation CreateConfirmedContentAndPreparationWork(
         Guid incorporationId,
+        int contentOrdinal,
         Guid productId,
         int quantity,
         OrderConfirmationCatalogProduct product)
     {
         var content = new IncorporationContent(
             incorporationId,
+            contentOrdinal,
             productId,
             quantity,
             product.Price);
@@ -33,7 +35,7 @@ internal static class ConfirmedContentFactory
         var work = new PreparationWork(
             Guid.CreateVersion7(),
             incorporationId,
-            productId,
+            contentOrdinal,
             responsibilityId,
             quantity);
         return new ConfirmedContentCreation(content, work);

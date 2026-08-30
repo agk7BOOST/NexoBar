@@ -150,12 +150,12 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
 
         using var confirmation = await PostSubsequentAsync(
             first.OperationalReference,
-            Request((water.Id, 2), (soda.Id, 3)),
+            Request((soda.Id, 3), (water.Id, 2)),
             key,
             cancellationToken);
         using var replay = await PostSubsequentAsync(
             first.OperationalReference,
-            Request((soda.Id, 3), (water.Id, 2)),
+            Request((water.Id, 2), (soda.Id, 3)),
             key,
             cancellationToken);
 
@@ -164,6 +164,29 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
             await replay.Content.ReadAsStringAsync(cancellationToken));
         Assert.Equal(new SubsequentPersistenceCounts(2, 3, 2, 1, 2),
             await fixture.CountSubsequentEffectsAsync(cancellationToken));
+
+        await using var scope = fixture.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        var resultIncorporationId = await dbContext.SubsequentConfirmationCommands
+            .AsNoTracking()
+            .Where(command => command.IdempotencyKey == Guid.Parse(key))
+            .Select(command => command.ResultIncorporationId)
+            .SingleAsync(cancellationToken);
+        var contents = await dbContext.IncorporationContents.AsNoTracking()
+            .Where(content => content.IncorporationId == resultIncorporationId)
+            .OrderBy(content => content.ContentOrdinal)
+            .ToArrayAsync(cancellationToken);
+        var commandLines = await dbContext.SubsequentConfirmationCommandContents
+            .AsNoTracking()
+            .OrderBy(content => content.LineOrdinal)
+            .ToArrayAsync(cancellationToken);
+        var canonicalProducts = new[] { water.Id, soda.Id }
+            .OrderBy(productId => productId)
+            .ToArray();
+        Assert.Equal([1, 2], contents.Select(content => content.ContentOrdinal).ToArray());
+        Assert.Equal(canonicalProducts, contents.Select(content => content.ProductId).ToArray());
+        Assert.Equal([1, 2], commandLines.Select(line => line.LineOrdinal).ToArray());
+        Assert.Equal(canonicalProducts, commandLines.Select(line => line.ProductId).ToArray());
     }
 
     [Fact]
