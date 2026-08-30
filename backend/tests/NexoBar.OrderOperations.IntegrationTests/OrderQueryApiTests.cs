@@ -67,6 +67,7 @@ public sealed class OrderQueryApiTests(OrderOperationsApiFixture fixture)
         Assert.Equal(product.Id, item.ProductId);
         Assert.Equal(2, item.Quantity);
         Assert.Equal("10.50", item.AppliedPrice);
+        Assert.Null(item.Instruction);
     }
 
     [Fact]
@@ -161,6 +162,10 @@ public sealed class OrderQueryApiTests(OrderOperationsApiFixture fixture)
         AssertSchemaType(
             schemas.GetProperty(nameof(ConfirmedItemResponse))
                 .GetProperty("properties").GetProperty("appliedPrice"),
+            "string");
+        AssertSchemaType(
+            schemas.GetProperty(nameof(ConfirmedItemResponse))
+                .GetProperty("properties").GetProperty("instruction"),
             "string");
     }
 

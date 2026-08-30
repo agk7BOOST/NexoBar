@@ -138,11 +138,11 @@ public static class OrderOperationsModule
                 "Every quantity must be a positive integer in increment I3.",
                 "order_operations.first_confirmation.quantity_invalid",
                 result.ProductId),
-            SubsequentConfirmationOutcome.DuplicateProduct => Problem(
+            SubsequentConfirmationOutcome.DuplicateLine => Problem(
                 StatusCodes.Status400BadRequest,
-                "Duplicate product",
-                "A Product may appear only once in a Confirmation.",
-                "order_operations.first_confirmation.duplicate_product",
+                "Duplicate confirmed line",
+                "A Product and canonical Instruction pair may appear only once in a Confirmation.",
+                "order_operations.confirmation.duplicate_line",
                 result.ProductId),
             SubsequentConfirmationOutcome.OrderNotFound => Problem(
                 StatusCodes.Status404NotFound,
@@ -160,6 +160,12 @@ public static class OrderOperationsModule
                 "Product is unavailable",
                 "The Product is not currently available.",
                 "order_operations.first_confirmation.product_unavailable",
+                result.ProductId),
+            SubsequentConfirmationOutcome.InstructionRequiresPreparation => Problem(
+                StatusCodes.Status409Conflict,
+                "Instruction requires preparation",
+                "A non-prepared Product cannot be confirmed with an Instruction.",
+                "order_operations.confirmation.instruction_requires_preparation",
                 result.ProductId),
             SubsequentConfirmationOutcome.IdempotencyConflict => Problem(
                 StatusCodes.Status409Conflict,
@@ -273,11 +279,11 @@ public static class OrderOperationsModule
                 "Every quantity must be a positive integer in increment I3.",
                 "order_operations.first_confirmation.quantity_invalid",
                 result.ProductId),
-            FirstConfirmationOutcome.DuplicateProduct => Problem(
+            FirstConfirmationOutcome.DuplicateLine => Problem(
                 StatusCodes.Status400BadRequest,
-                "Duplicate product",
-                "A Product may appear only once in a First Confirmation.",
-                "order_operations.first_confirmation.duplicate_product",
+                "Duplicate confirmed line",
+                "A Product and canonical Instruction pair may appear only once in a Confirmation.",
+                "order_operations.confirmation.duplicate_line",
                 result.ProductId),
             FirstConfirmationOutcome.ProductNotCurrent => Problem(
                 StatusCodes.Status409Conflict,
@@ -290,6 +296,12 @@ public static class OrderOperationsModule
                 "Product is unavailable",
                 "The Product is not currently available.",
                 "order_operations.first_confirmation.product_unavailable",
+                result.ProductId),
+            FirstConfirmationOutcome.InstructionRequiresPreparation => Problem(
+                StatusCodes.Status409Conflict,
+                "Instruction requires preparation",
+                "A non-prepared Product cannot be confirmed with an Instruction.",
+                "order_operations.confirmation.instruction_requires_preparation",
                 result.ProductId),
             FirstConfirmationOutcome.IdempotencyConflict => Problem(
                 StatusCodes.Status409Conflict,

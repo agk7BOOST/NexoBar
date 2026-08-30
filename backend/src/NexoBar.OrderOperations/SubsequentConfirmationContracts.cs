@@ -10,7 +10,8 @@ internal sealed record SubsequentConfirmationRequest(
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record SubsequentConfirmationItemRequest(
     [property: Required, JsonRequired] Guid ProductId,
-    [property: Required, JsonRequired] int Quantity);
+    [property: Required, JsonRequired] int Quantity,
+    string? Instruction = null);
 
 internal sealed record SubsequentConfirmationResponse(
     string OperationalReference,

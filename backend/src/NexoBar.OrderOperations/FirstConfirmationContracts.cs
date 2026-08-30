@@ -11,7 +11,8 @@ internal sealed record FirstConfirmationRequest(
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record FirstConfirmationItemRequest(
     [property: Required, JsonRequired] Guid ProductId,
-    [property: Required, JsonRequired] int Quantity);
+    [property: Required, JsonRequired] int Quantity,
+    string? Instruction = null);
 
 internal sealed record FirstConfirmationResponse(
     string OperationalReference,
@@ -26,4 +27,5 @@ internal sealed record FirstIncorporationResponse(
 internal sealed record ConfirmedItemResponse(
     Guid ProductId,
     int Quantity,
-    string AppliedPrice);
+    string AppliedPrice,
+    string? Instruction);

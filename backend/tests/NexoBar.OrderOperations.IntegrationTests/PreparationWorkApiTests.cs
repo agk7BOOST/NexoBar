@@ -440,6 +440,13 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         Assert.Equal("string", operationalReference.GetProperty("type").GetString());
         Assert.False(operationalReference.TryGetProperty("format", out _));
         Assert.True(schema.GetProperty("properties").TryGetProperty("context", out _));
+        Assert.True(schema.GetProperty("properties").TryGetProperty(
+            "instruction",
+            out var instruction));
+        Assert.Contains(
+            "string",
+            instruction.GetProperty("type").EnumerateArray()
+                .Select(value => value.GetString()));
     }
 
     private async Task InsertWorkAsync(

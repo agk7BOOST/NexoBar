@@ -7,19 +7,26 @@ internal static class ConfirmedContentFactory
     internal static ConfirmedContentCreation CreateConfirmedContentAndPreparationWork(
         Guid incorporationId,
         int contentOrdinal,
-        Guid productId,
         int quantity,
+        string? instruction,
         OrderConfirmationCatalogProduct product)
     {
         var content = new IncorporationContent(
             incorporationId,
             contentOrdinal,
-            productId,
+            product.ProductId,
             quantity,
-            product.Price);
+            product.Price,
+            instruction);
 
         if (!product.RequiresPreparation)
         {
+            if (instruction is not null)
+            {
+                throw new InvalidOperationException(
+                    "A non-prepared confirmed Content cannot have an Instruction.");
+            }
+
             if (product.PreparationResponsibilityId is not null)
             {
                 throw new InvalidOperationException(

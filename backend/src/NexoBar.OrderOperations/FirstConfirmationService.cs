@@ -61,7 +61,7 @@ internal sealed class FirstConfirmationService(
         }
 
         var catalogProducts = await catalog.ReadProductsAsync(
-            intent.Items.Select(item => item.ProductId).ToArray(),
+            intent.Items.Select(item => item.ProductId).Distinct().ToArray(),
             transaction.GetDbTransaction(),
             cancellationToken);
         var productsById = catalogProducts.ToDictionary(product => product.ProductId);
@@ -79,6 +79,11 @@ internal sealed class FirstConfirmationService(
                 return FirstConfirmationResult.ProductUnavailable(item.ProductId);
             }
 
+            if (!product.RequiresPreparation && item.Instruction is not null)
+            {
+                return FirstConfirmationResult.InstructionRequiresPreparation(
+                    item.ProductId);
+            }
         }
 
         var orderId = Guid.CreateVersion7();
@@ -110,8 +115,8 @@ internal sealed class FirstConfirmationService(
                 .CreateConfirmedContentAndPreparationWork(
                 incorporationId,
                 contentOrdinal,
-                item.ProductId,
                 item.Quantity,
+                item.Instruction,
                 product);
             dbContext.IncorporationContents.Add(creation.Content);
             if (creation.PreparationWork is not null)
@@ -123,11 +128,13 @@ internal sealed class FirstConfirmationService(
                     idempotencyKey,
                     contentOrdinal,
                     item.ProductId,
-                    item.Quantity));
+                    item.Quantity,
+                    item.Instruction));
             responseItems.Add(new ConfirmedItemResponse(
                 item.ProductId,
                 item.Quantity,
-                product.Price.ToString(CultureInfo.InvariantCulture)));
+                product.Price.ToString(CultureInfo.InvariantCulture),
+                item.Instruction));
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -171,7 +178,8 @@ internal sealed class FirstConfirmationService(
             .Select(content => new ConfirmedItemResponse(
                 content.ProductId,
                 content.Quantity,
-                content.AppliedPrice.ToString(CultureInfo.InvariantCulture)))
+                content.AppliedPrice.ToString(CultureInfo.InvariantCulture),
+                content.Instruction))
             .ToArray();
 
         return new FirstConfirmationResponse(
@@ -214,21 +222,25 @@ internal sealed class FirstConfirmationService(
 
             items.Add(new ValidatedFirstConfirmationItem(
                 item.ProductId,
-                item.Quantity));
+                item.Quantity,
+                ConfirmationInstruction.Canonicalize(item.Instruction)));
         }
 
-        var duplicateProduct = items
-            .GroupBy(item => item.ProductId)
+        var duplicateLine = items
+            .GroupBy(item => (item.ProductId, item.Instruction))
             .FirstOrDefault(group => group.Count() > 1);
-        if (duplicateProduct is not null)
+        if (duplicateLine is not null)
         {
             return FirstConfirmationValidation.Invalid(
-                FirstConfirmationResult.DuplicateProduct(duplicateProduct.Key));
+                FirstConfirmationResult.DuplicateLine(duplicateLine.Key.ProductId));
         }
 
         return FirstConfirmationValidation.Valid(new ValidatedFirstConfirmationIntent(
             request.Context.Trim(),
-            items.OrderBy(item => item.ProductId).ToArray()));
+            items.OrderBy(item => item.ProductId)
+                .ThenBy(item => item.Instruction is null ? 0 : 1)
+                .ThenBy(item => item.Instruction, StringComparer.Ordinal)
+                .ToArray()));
     }
 
     private static bool Matches(
@@ -239,7 +251,11 @@ internal sealed class FirstConfirmationService(
         contents.Count == intent.Items.Count &&
         contents.Zip(intent.Items).All(pair =>
             pair.First.ProductId == pair.Second.ProductId &&
-            pair.First.Quantity == pair.Second.Quantity);
+            pair.First.Quantity == pair.Second.Quantity &&
+            string.Equals(
+                pair.First.Instruction,
+                pair.Second.Instruction,
+                StringComparison.Ordinal));
 
     private static long CreateTransactionLockKey(Guid idempotencyKey)
     {
@@ -267,7 +283,10 @@ internal sealed record ValidatedFirstConfirmationIntent(
     string Context,
     IReadOnlyList<ValidatedFirstConfirmationItem> Items);
 
-internal sealed record ValidatedFirstConfirmationItem(Guid ProductId, int Quantity);
+internal sealed record ValidatedFirstConfirmationItem(
+    Guid ProductId,
+    int Quantity,
+    string? Instruction);
 
 internal sealed record FirstConfirmationResult(
     FirstConfirmationOutcome Outcome,
@@ -289,14 +308,18 @@ internal sealed record FirstConfirmationResult(
     internal static FirstConfirmationResult QuantityInvalid(Guid productId) =>
         new(FirstConfirmationOutcome.QuantityInvalid, null, productId);
 
-    internal static FirstConfirmationResult DuplicateProduct(Guid productId) =>
-        new(FirstConfirmationOutcome.DuplicateProduct, null, productId);
+    internal static FirstConfirmationResult DuplicateLine(Guid productId) =>
+        new(FirstConfirmationOutcome.DuplicateLine, null, productId);
 
     internal static FirstConfirmationResult ProductNotCurrent(Guid productId) =>
         new(FirstConfirmationOutcome.ProductNotCurrent, null, productId);
 
     internal static FirstConfirmationResult ProductUnavailable(Guid productId) =>
         new(FirstConfirmationOutcome.ProductUnavailable, null, productId);
+
+    internal static FirstConfirmationResult InstructionRequiresPreparation(
+        Guid productId) =>
+        new(FirstConfirmationOutcome.InstructionRequiresPreparation, null, productId);
 
     internal static FirstConfirmationResult IdempotencyConflict() =>
         new(FirstConfirmationOutcome.IdempotencyConflict, null, null);
@@ -309,8 +332,9 @@ internal enum FirstConfirmationOutcome
     CompositionEmpty,
     RequestInvalid,
     QuantityInvalid,
-    DuplicateProduct,
+    DuplicateLine,
     ProductNotCurrent,
     ProductUnavailable,
+    InstructionRequiresPreparation,
     IdempotencyConflict
 }

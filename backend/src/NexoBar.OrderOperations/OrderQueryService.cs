@@ -50,7 +50,8 @@ internal sealed class OrderQueryService(OrderOperationsDbContext dbContext)
                 .Select(content => new ConfirmedItemResponse(
                     content.ProductId,
                     content.Quantity,
-                    content.AppliedPrice.ToString(CultureInfo.InvariantCulture)))
+                    content.AppliedPrice.ToString(CultureInfo.InvariantCulture),
+                    content.Instruction))
                 .ToArray());
 
         var incorporations = incorporationHeaders

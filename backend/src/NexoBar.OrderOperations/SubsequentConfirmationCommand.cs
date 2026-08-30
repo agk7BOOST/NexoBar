@@ -27,16 +27,19 @@ internal sealed class SubsequentConfirmationCommandContent
         Guid idempotencyKey,
         int lineOrdinal,
         Guid productId,
-        int quantity)
+        int quantity,
+        string? instruction)
     {
         IdempotencyKey = idempotencyKey;
         LineOrdinal = lineOrdinal;
         ProductId = productId;
         Quantity = quantity;
+        Instruction = instruction;
     }
 
     internal Guid IdempotencyKey { get; private set; }
     internal int LineOrdinal { get; private set; }
     internal Guid ProductId { get; private set; }
     internal int Quantity { get; private set; }
+    internal string? Instruction { get; private set; }
 }

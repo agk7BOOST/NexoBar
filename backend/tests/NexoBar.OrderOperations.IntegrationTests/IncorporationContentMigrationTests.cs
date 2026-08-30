@@ -14,6 +14,8 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
     private const string PreviousMigration = "20260830150000_AddPreparationWork";
     private const string CurrentMigration =
         "20260830210000_ReidentifyIncorporationContent";
+    private const string LatestMigration =
+        "20260830230000_AddConfirmationInstructions";
 
     private static readonly Guid OrderId =
         Guid.Parse("01910000-0000-7000-8000-000000000001");
@@ -48,21 +50,22 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
             await SeedPreviousSchemaAsync(token);
 
             await fixture.MigrateOrderOperationsAsync(CurrentMigration, token);
-
-            await AssertMigratedDataAsync(token);
             await AssertPhysicalStructureAsync(token);
+            await fixture.MigrateOrderOperationsAsync(LatestMigration, token);
+            await AssertMigratedDataAsync(token);
 
             await fixture.MigrateOrderOperationsAsync(PreviousMigration, token);
             await AssertRevertedStructureAndDataAsync(token);
 
             await fixture.MigrateOrderOperationsAsync(CurrentMigration, token);
+            await fixture.MigrateOrderOperationsAsync(LatestMigration, token);
 
             await AssertMigratedDataAsync(token);
             await AssertReplayAndQueriesAsync(token);
         }
         finally
         {
-            await fixture.MigrateOrderOperationsAsync(CurrentMigration, token);
+            await fixture.MigrateOrderOperationsAsync(LatestMigration, token);
             await fixture.ResetAsync(token);
         }
     }

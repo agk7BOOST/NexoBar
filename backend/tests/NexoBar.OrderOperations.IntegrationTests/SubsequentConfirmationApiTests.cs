@@ -519,7 +519,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
             (Request((product.Id, 0)), "order_operations.first_confirmation.quantity_invalid"),
             (Request((product.Id, -1)), "order_operations.first_confirmation.quantity_invalid"),
             (Request((product.Id, 1), (product.Id, 2)),
-                "order_operations.first_confirmation.duplicate_product")
+                "order_operations.confirmation.duplicate_line")
         };
 
         foreach (var (request, code) in cases)
@@ -787,7 +787,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
                 .GetProperty("properties").EnumerateObject()
                 .Select(property => property.Name).ToArray());
         Assert.Equal(
-            new[] { "productId", "quantity" },
+            new[] { "productId", "quantity", "instruction" },
             schemas.GetProperty(nameof(SubsequentConfirmationItemRequest))
                 .GetProperty("properties").EnumerateObject()
                 .Select(property => property.Name).ToArray());
@@ -798,6 +798,14 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         AssertSchemaType(
             schemas.GetProperty(nameof(ConfirmedItemResponse))
                 .GetProperty("properties").GetProperty("appliedPrice"),
+            "string");
+        AssertSchemaType(
+            schemas.GetProperty(nameof(SubsequentConfirmationItemRequest))
+                .GetProperty("properties").GetProperty("instruction"),
+            "string");
+        AssertSchemaType(
+            schemas.GetProperty(nameof(ConfirmedItemResponse))
+                .GetProperty("properties").GetProperty("instruction"),
             "string");
     }
 

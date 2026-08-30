@@ -39,13 +39,15 @@ internal sealed class IncorporationContent
         int contentOrdinal,
         Guid productId,
         int quantity,
-        decimal appliedPrice)
+        decimal appliedPrice,
+        string? instruction)
     {
         IncorporationId = incorporationId;
         ContentOrdinal = contentOrdinal;
         ProductId = productId;
         Quantity = quantity;
         AppliedPrice = appliedPrice;
+        Instruction = instruction;
     }
 
     internal Guid IncorporationId { get; private set; }
@@ -53,6 +55,7 @@ internal sealed class IncorporationContent
     internal Guid ProductId { get; private set; }
     internal int Quantity { get; private set; }
     internal decimal AppliedPrice { get; private set; }
+    internal string? Instruction { get; private set; }
 }
 
 internal sealed class PreparationWork
@@ -135,16 +138,19 @@ internal sealed class FirstConfirmationCommandContent
         Guid idempotencyKey,
         int lineOrdinal,
         Guid productId,
-        int quantity)
+        int quantity,
+        string? instruction)
     {
         IdempotencyKey = idempotencyKey;
         LineOrdinal = lineOrdinal;
         ProductId = productId;
         Quantity = quantity;
+        Instruction = instruction;
     }
 
     internal Guid IdempotencyKey { get; private set; }
     internal int LineOrdinal { get; private set; }
     internal Guid ProductId { get; private set; }
     internal int Quantity { get; private set; }
+    internal string? Instruction { get; private set; }
 }

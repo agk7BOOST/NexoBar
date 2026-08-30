@@ -78,7 +78,7 @@ internal sealed class SubsequentConfirmationService(
         }
 
         var catalogProducts = await catalog.ReadProductsAsync(
-            intent.Items.Select(item => item.ProductId).ToArray(),
+            intent.Items.Select(item => item.ProductId).Distinct().ToArray(),
             transaction.GetDbTransaction(),
             cancellationToken);
         var productsById = catalogProducts.ToDictionary(product => product.ProductId);
@@ -96,6 +96,11 @@ internal sealed class SubsequentConfirmationService(
                 return SubsequentConfirmationResult.ProductUnavailable(item.ProductId);
             }
 
+            if (!product.RequiresPreparation && item.Instruction is not null)
+            {
+                return SubsequentConfirmationResult.InstructionRequiresPreparation(
+                    item.ProductId);
+            }
         }
 
         var currentMaximumOrdinal = await dbContext.Incorporations
@@ -135,8 +140,8 @@ internal sealed class SubsequentConfirmationService(
                 .CreateConfirmedContentAndPreparationWork(
                 incorporationId,
                 contentOrdinal,
-                item.ProductId,
                 item.Quantity,
+                item.Instruction,
                 product);
             dbContext.IncorporationContents.Add(creation.Content);
             if (creation.PreparationWork is not null)
@@ -148,11 +153,13 @@ internal sealed class SubsequentConfirmationService(
                     idempotencyKey,
                     contentOrdinal,
                     item.ProductId,
-                    item.Quantity));
+                    item.Quantity,
+                    item.Instruction));
             responseItems.Add(new ConfirmedItemResponse(
                 item.ProductId,
                 item.Quantity,
-                product.Price.ToString(CultureInfo.InvariantCulture)));
+                product.Price.ToString(CultureInfo.InvariantCulture),
+                item.Instruction));
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -194,7 +201,8 @@ internal sealed class SubsequentConfirmationService(
             .Select(content => new ConfirmedItemResponse(
                 content.ProductId,
                 content.Quantity,
-                content.AppliedPrice.ToString(CultureInfo.InvariantCulture)))
+                content.AppliedPrice.ToString(CultureInfo.InvariantCulture),
+                content.Instruction))
             .ToArray();
 
         return new SubsequentConfirmationResponse(
@@ -232,21 +240,25 @@ internal sealed class SubsequentConfirmationService(
 
             items.Add(new ValidatedSubsequentConfirmationItem(
                 item.ProductId,
-                item.Quantity));
+                item.Quantity,
+                ConfirmationInstruction.Canonicalize(item.Instruction)));
         }
 
-        var duplicateProduct = items
-            .GroupBy(item => item.ProductId)
+        var duplicateLine = items
+            .GroupBy(item => (item.ProductId, item.Instruction))
             .FirstOrDefault(group => group.Count() > 1);
-        if (duplicateProduct is not null)
+        if (duplicateLine is not null)
         {
             return SubsequentConfirmationValidation.Invalid(
-                SubsequentConfirmationResult.DuplicateProduct(duplicateProduct.Key));
+                SubsequentConfirmationResult.DuplicateLine(duplicateLine.Key.ProductId));
         }
 
         return SubsequentConfirmationValidation.Valid(
             new ValidatedSubsequentConfirmationIntent(
-                items.OrderBy(item => item.ProductId).ToArray()));
+                items.OrderBy(item => item.ProductId)
+                    .ThenBy(item => item.Instruction is null ? 0 : 1)
+                    .ThenBy(item => item.Instruction, StringComparer.Ordinal)
+                    .ToArray()));
     }
 
     private static bool Matches(
@@ -258,7 +270,11 @@ internal sealed class SubsequentConfirmationService(
         contents.Count == intent.Items.Count &&
         contents.Zip(intent.Items).All(pair =>
             pair.First.ProductId == pair.Second.ProductId &&
-            pair.First.Quantity == pair.Second.Quantity);
+            pair.First.Quantity == pair.Second.Quantity &&
+            string.Equals(
+                pair.First.Instruction,
+                pair.Second.Instruction,
+                StringComparison.Ordinal));
 
     private static long CreateTransactionLockKey(Guid idempotencyKey)
     {
@@ -285,7 +301,10 @@ internal sealed record SubsequentConfirmationValidation(
 internal sealed record ValidatedSubsequentConfirmationIntent(
     IReadOnlyList<ValidatedSubsequentConfirmationItem> Items);
 
-internal sealed record ValidatedSubsequentConfirmationItem(Guid ProductId, int Quantity);
+internal sealed record ValidatedSubsequentConfirmationItem(
+    Guid ProductId,
+    int Quantity,
+    string? Instruction);
 
 internal sealed record SubsequentConfirmationResult(
     SubsequentConfirmationOutcome Outcome,
@@ -305,8 +324,8 @@ internal sealed record SubsequentConfirmationResult(
     internal static SubsequentConfirmationResult QuantityInvalid(Guid productId) =>
         new(SubsequentConfirmationOutcome.QuantityInvalid, null, productId);
 
-    internal static SubsequentConfirmationResult DuplicateProduct(Guid productId) =>
-        new(SubsequentConfirmationOutcome.DuplicateProduct, null, productId);
+    internal static SubsequentConfirmationResult DuplicateLine(Guid productId) =>
+        new(SubsequentConfirmationOutcome.DuplicateLine, null, productId);
 
     internal static SubsequentConfirmationResult OrderNotFound() =>
         new(SubsequentConfirmationOutcome.OrderNotFound, null, null);
@@ -316,6 +335,10 @@ internal sealed record SubsequentConfirmationResult(
 
     internal static SubsequentConfirmationResult ProductUnavailable(Guid productId) =>
         new(SubsequentConfirmationOutcome.ProductUnavailable, null, productId);
+
+    internal static SubsequentConfirmationResult InstructionRequiresPreparation(
+        Guid productId) =>
+        new(SubsequentConfirmationOutcome.InstructionRequiresPreparation, null, productId);
 
     internal static SubsequentConfirmationResult IdempotencyConflict() =>
         new(SubsequentConfirmationOutcome.IdempotencyConflict, null, null);
@@ -327,9 +350,10 @@ internal enum SubsequentConfirmationOutcome
     CompositionEmpty,
     RequestInvalid,
     QuantityInvalid,
-    DuplicateProduct,
+    DuplicateLine,
     OrderNotFound,
     ProductNotCurrent,
     ProductUnavailable,
+    InstructionRequiresPreparation,
     IdempotencyConflict
 }

@@ -160,7 +160,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
     }
 
     [Fact]
-    public async Task Duplicate_product_is_rejected_without_effects()
+    public async Task Duplicate_canonical_line_is_rejected_without_effects()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(cancellationToken);
@@ -174,7 +174,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         await AssertProblemWithProductAsync(
             response,
             HttpStatusCode.BadRequest,
-            "order_operations.first_confirmation.duplicate_product",
+            "order_operations.confirmation.duplicate_line",
             productId,
             cancellationToken);
         Assert.Equal(PersistenceCounts.Empty, await fixture.CountEffectsAsync(cancellationToken));
@@ -762,12 +762,22 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         Assert.False(operationalReferenceSchema.TryGetProperty("format", out _));
         var requestItemProperties = schemas.GetProperty(nameof(FirstConfirmationItemRequest))
             .GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray();
-        Assert.Equal(new[] { "productId", "quantity" }, requestItemProperties);
+        Assert.Equal(new[] { "productId", "quantity", "instruction" },
+            requestItemProperties);
         var requiredItemProperties = schemas.GetProperty(nameof(FirstConfirmationItemRequest))
             .GetProperty("required").EnumerateArray()
             .Select(value => value.GetString()).ToArray();
         Assert.Contains("productId", requiredItemProperties);
         Assert.Contains("quantity", requiredItemProperties);
+        Assert.DoesNotContain("instruction", requiredItemProperties);
+        AssertSchemaType(
+            schemas.GetProperty(nameof(FirstConfirmationItemRequest))
+                .GetProperty("properties").GetProperty("instruction"),
+            "string");
+        AssertSchemaType(
+            schemas.GetProperty(nameof(ConfirmedItemResponse))
+                .GetProperty("properties").GetProperty("instruction"),
+            "string");
     }
 
     private async Task<HttpResponseMessage> PostFirstConfirmationAsync(

@@ -8,6 +8,7 @@ internal sealed record PreparationWorkResponse(
     Guid IncorporationId,
     int IncorporationOrdinal,
     Guid ProductId,
+    string? Instruction,
     int TotalQuantity,
     int PendingQuantity,
     int InPreparationQuantity,

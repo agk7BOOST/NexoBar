@@ -170,14 +170,8 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("quantity").IsRequired();
             builder.Property(content => content.AppliedPrice)
                 .HasColumnName("applied_price").HasColumnType("numeric").IsRequired();
-            builder.HasIndex(content => new
-            {
-                content.IncorporationId,
-                content.ProductId
-            })
-                .HasDatabaseName(
-                    "UX_order_operations_incorporation_contents_product")
-                .IsUnique();
+            builder.Property(content => content.Instruction)
+                .HasColumnName("instruction").HasColumnType("text");
             builder.HasOne<Incorporation>().WithMany()
                 .HasForeignKey(content => content.IncorporationId)
                 .HasConstraintName("FK_order_operations_incorporation_contents_incorporations")
@@ -275,14 +269,8 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("product_id").ValueGeneratedNever();
             builder.Property(content => content.Quantity)
                 .HasColumnName("quantity").IsRequired();
-            builder.HasIndex(content => new
-            {
-                content.IdempotencyKey,
-                content.ProductId
-            })
-                .HasDatabaseName(
-                    "UX_order_operations_first_command_contents_product")
-                .IsUnique();
+            builder.Property(content => content.Instruction)
+                .HasColumnName("instruction").HasColumnType("text");
             builder.HasOne<FirstConfirmationCommand>().WithMany()
                 .HasForeignKey(content => content.IdempotencyKey)
                 .HasConstraintName(
@@ -356,14 +344,8 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("product_id").ValueGeneratedNever();
             builder.Property(content => content.Quantity)
                 .HasColumnName("quantity").IsRequired();
-            builder.HasIndex(content => new
-            {
-                content.IdempotencyKey,
-                content.ProductId
-            })
-                .HasDatabaseName(
-                    "UX_order_operations_subsequent_command_contents_product")
-                .IsUnique();
+            builder.Property(content => content.Instruction)
+                .HasColumnName("instruction").HasColumnType("text");
             builder.HasOne<SubsequentConfirmationCommand>().WithMany()
                 .HasForeignKey(content => content.IdempotencyKey)
                 .HasConstraintName(
