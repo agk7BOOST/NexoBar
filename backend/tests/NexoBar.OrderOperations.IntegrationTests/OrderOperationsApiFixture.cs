@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NexoBar.Catalog;
+using NexoBar.OperationalConfiguration;
 using NexoBar.OrderOperations;
 using Testcontainers.PostgreSql;
 
@@ -48,6 +49,7 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 order_operations.subsequent_confirmation_commands,
                 order_operations.first_confirmation_command_contents,
                 order_operations.first_confirmation_commands,
+                order_operations.preparation_work,
                 order_operations.confirmation_history,
                 order_operations.incorporation_contents,
                 order_operations.incorporations,
@@ -92,6 +94,54 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             WHERE id = {productId}
             """,
             cancellationToken);
+    }
+
+    internal async Task SetProductPreparationAsync(
+        Guid productId,
+        Guid? preparationResponsibilityId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE catalog.products
+            SET requires_preparation = {preparationResponsibilityId is not null},
+                preparation_responsibility_id = {preparationResponsibilityId}
+            WHERE id = {productId}
+            """,
+            cancellationToken);
+    }
+
+    internal async Task SetOrderContextAsync(
+        Guid orderId,
+        string context,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE order_operations.orders SET context = {context} WHERE id = {orderId}",
+            cancellationToken);
+    }
+
+    internal async Task<IReadOnlyList<PreparationWork>> ReadPreparationWorkAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .PreparationWork.AsNoTracking()
+            .OrderBy(work => work.IncorporationId)
+            .ThenBy(work => work.ProductId)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    internal async Task<int> CountPreparationWorkAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .PreparationWork.CountAsync(cancellationToken);
     }
 
     internal async Task<PersistenceCounts> CountEffectsAsync(
@@ -154,6 +204,33 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 """,
                 cancellationToken);
         }
+    }
+
+    internal async Task SetPreparationWorkFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+
+        var sql = enabled
+            ? """
+              CREATE OR REPLACE FUNCTION order_operations.fail_preparation_work()
+              RETURNS trigger LANGUAGE plpgsql AS $$
+              BEGIN
+                  RAISE EXCEPTION 'controlled preparation work failure';
+              END;
+              $$;
+              CREATE TRIGGER fail_preparation_work
+              BEFORE INSERT ON order_operations.preparation_work
+              FOR EACH ROW EXECUTE FUNCTION order_operations.fail_preparation_work();
+              """
+            : """
+              DROP TRIGGER IF EXISTS fail_preparation_work
+                  ON order_operations.preparation_work;
+              DROP FUNCTION IF EXISTS order_operations.fail_preparation_work();
+              """;
+        await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
     }
 
     internal async Task SetSubsequentCommandFailureAsync(
@@ -268,6 +345,19 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             {
                 services.RemoveAll<IOrderConfirmationCatalog>();
                 services.AddScoped(factory);
+            }));
+
+    internal WebApplicationFactory<Program>
+        CreateApplicationWithCatalogDecoratorAndPreparationLookup(
+            Func<IServiceProvider, IOrderConfirmationCatalog> catalogFactory,
+            IPreparationResponsibilityLookup preparationLookup) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IOrderConfirmationCatalog>();
+                services.AddScoped(catalogFactory);
+                services.RemoveAll<IPreparationResponsibilityLookup>();
+                services.AddScoped(_ => preparationLookup);
             }));
 
     internal async Task<bool> WaitForPriceUpdateLockAsync(

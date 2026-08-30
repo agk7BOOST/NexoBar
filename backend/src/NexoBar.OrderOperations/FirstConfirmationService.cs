@@ -79,10 +79,6 @@ internal sealed class FirstConfirmationService(
                 return FirstConfirmationResult.ProductUnavailable(item.ProductId);
             }
 
-            if (product.RequiresPreparation)
-            {
-                return FirstConfirmationResult.RequiresPreparationNotSupported(item.ProductId);
-            }
         }
 
         var orderId = Guid.CreateVersion7();
@@ -107,12 +103,18 @@ internal sealed class FirstConfirmationService(
         var responseItems = new List<ConfirmedItemResponse>(intent.Items.Count);
         foreach (var item in intent.Items)
         {
-            var appliedPrice = productsById[item.ProductId].Price;
-            dbContext.IncorporationContents.Add(new IncorporationContent(
+            var product = productsById[item.ProductId];
+            var creation = ConfirmedContentFactory
+                .CreateConfirmedContentAndPreparationWork(
                 incorporationId,
                 item.ProductId,
                 item.Quantity,
-                appliedPrice));
+                product);
+            dbContext.IncorporationContents.Add(creation.Content);
+            if (creation.PreparationWork is not null)
+            {
+                dbContext.PreparationWork.Add(creation.PreparationWork);
+            }
             dbContext.FirstConfirmationCommandContents.Add(
                 new FirstConfirmationCommandContent(
                     idempotencyKey,
@@ -121,7 +123,7 @@ internal sealed class FirstConfirmationService(
             responseItems.Add(new ConfirmedItemResponse(
                 item.ProductId,
                 item.Quantity,
-                appliedPrice.ToString(CultureInfo.InvariantCulture)));
+                product.Price.ToString(CultureInfo.InvariantCulture)));
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -292,9 +294,6 @@ internal sealed record FirstConfirmationResult(
     internal static FirstConfirmationResult ProductUnavailable(Guid productId) =>
         new(FirstConfirmationOutcome.ProductUnavailable, null, productId);
 
-    internal static FirstConfirmationResult RequiresPreparationNotSupported(Guid productId) =>
-        new(FirstConfirmationOutcome.RequiresPreparationNotSupported, null, productId);
-
     internal static FirstConfirmationResult IdempotencyConflict() =>
         new(FirstConfirmationOutcome.IdempotencyConflict, null, null);
 }
@@ -309,6 +308,5 @@ internal enum FirstConfirmationOutcome
     DuplicateProduct,
     ProductNotCurrent,
     ProductUnavailable,
-    RequiresPreparationNotSupported,
     IdempotencyConflict
 }

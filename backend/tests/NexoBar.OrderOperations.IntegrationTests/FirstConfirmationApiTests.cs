@@ -92,6 +92,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         Assert.Equal(confirmed.FirstIncorporation.Id, snapshot.Command.ResultIncorporationId);
         Assert.Equal(new PersistenceCounts(1, 1, 1, 1, 1, 1),
             await fixture.CountEffectsAsync(cancellationToken));
+        Assert.Equal(0, await fixture.CountPreparationWorkAsync(cancellationToken));
     }
 
     [Theory]
@@ -244,16 +245,18 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
     }
 
     [Fact]
-    public async Task Product_requiring_preparation_is_rejected_without_effects()
+    public async Task Product_requiring_preparation_creates_work_in_active_transaction()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(cancellationToken);
         var productId = Guid.NewGuid();
+        var responsibilityId = Guid.CreateVersion7();
         var replacement = new FixedCatalogCapability(
             isActive: true,
             isAvailable: true,
             requiresPreparation: true,
-            price: 10m);
+            price: 10m,
+            preparationResponsibilityId: responsibilityId);
         await using var application = fixture.CreateApplicationWithCatalog(replacement);
         using var client = application.CreateClient();
 
@@ -263,14 +266,11 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
             cancellationToken,
             client);
 
-        await AssertProblemWithProductAsync(
-            response,
-            HttpStatusCode.Conflict,
-            "order_operations.first_confirmation.requires_preparation_not_supported",
-            productId,
-            cancellationToken);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.True(replacement.ObservedActiveTransaction);
-        Assert.Equal(PersistenceCounts.Empty, await fixture.CountEffectsAsync(cancellationToken));
+        var work = Assert.Single(await fixture.ReadPreparationWorkAsync(cancellationToken));
+        Assert.Equal(productId, work.ProductId);
+        Assert.Equal(responsibilityId, work.PreparationResponsibilityId);
     }
 
     [Fact]
@@ -876,7 +876,8 @@ internal sealed class FixedCatalogCapability(
     bool isActive,
     bool isAvailable,
     bool requiresPreparation,
-    decimal price) : IOrderConfirmationCatalog
+    decimal price,
+    Guid? preparationResponsibilityId = null) : IOrderConfirmationCatalog
 {
     internal bool ObservedActiveTransaction { get; private set; }
 
@@ -899,7 +900,7 @@ internal sealed class FixedCatalogCapability(
             isActive,
             isAvailable,
             requiresPreparation,
-            PreparationResponsibilityId: null)).ToArray();
+            preparationResponsibilityId)).ToArray();
     }
 }
 

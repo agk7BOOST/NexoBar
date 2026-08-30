@@ -52,6 +52,37 @@ internal sealed class IncorporationContent
     internal decimal AppliedPrice { get; private set; }
 }
 
+internal sealed class PreparationWork
+{
+    private PreparationWork() { }
+
+    internal PreparationWork(
+        Guid id,
+        Guid incorporationId,
+        Guid productId,
+        Guid preparationResponsibilityId,
+        int totalQuantity)
+    {
+        Id = id;
+        IncorporationId = incorporationId;
+        ProductId = productId;
+        PreparationResponsibilityId = preparationResponsibilityId;
+        TotalQuantity = totalQuantity;
+        PendingQuantity = totalQuantity;
+        InPreparationQuantity = 0;
+        ReadyQuantity = 0;
+    }
+
+    internal Guid Id { get; private set; }
+    internal Guid IncorporationId { get; private set; }
+    internal Guid ProductId { get; private set; }
+    internal Guid PreparationResponsibilityId { get; private set; }
+    internal int TotalQuantity { get; private set; }
+    internal int PendingQuantity { get; private set; }
+    internal int InPreparationQuantity { get; private set; }
+    internal int ReadyQuantity { get; private set; }
+}
+
 internal sealed class ConfirmationHistory
 {
     private ConfirmationHistory() { }

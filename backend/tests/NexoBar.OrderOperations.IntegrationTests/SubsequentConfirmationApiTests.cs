@@ -269,6 +269,11 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         await fixture.ResetAsync(cancellationToken);
         var product = await fixture.CreateProductAsync("Agua", "10", cancellationToken);
         var first = await CreateOrderAsync(product.Id, 1, "Mesa 7", cancellationToken);
+        var responsibilityId = Guid.CreateVersion7();
+        await fixture.SetProductPreparationAsync(
+            product.Id,
+            responsibilityId,
+            cancellationToken);
         var key = NewIdempotencyKey();
         var request = Request((product.Id, 2));
         using var confirmation = await PostSubsequentAsync(
@@ -288,6 +293,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         Assert.Equal(HttpStatusCode.Created, replay.StatusCode);
         Assert.Equal(originalBody, await replay.Content.ReadAsStringAsync(cancellationToken));
         Assert.False(unexpectedCatalog.WasCalled);
+        Assert.Equal(1, await fixture.CountPreparationWorkAsync(cancellationToken));
         Assert.Equal("10", Assert.Single(
             (await ReadSubsequentAsync(replay, cancellationToken)).Incorporation.Items).AppliedPrice);
     }
@@ -440,13 +446,19 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
     }
 
     [Fact]
-    public async Task Product_requiring_preparation_rolls_back_and_uses_active_transaction()
+    public async Task Product_requiring_preparation_creates_subsequent_work()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(cancellationToken);
         var product = await fixture.CreateProductAsync("Agua", "10", cancellationToken);
         var first = await CreateOrderAsync(product.Id, 1, "Mesa 7", cancellationToken);
-        var replacement = new FixedCatalogCapability(true, true, true, 10m);
+        var responsibilityId = Guid.CreateVersion7();
+        var replacement = new FixedCatalogCapability(
+            true,
+            true,
+            true,
+            10m,
+            responsibilityId);
         await using var application = fixture.CreateApplicationWithCatalog(replacement);
         using var client = application.CreateClient();
 
@@ -457,14 +469,17 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
             cancellationToken,
             client);
 
-        await AssertProblemAsync(
-            response,
-            HttpStatusCode.Conflict,
-            "order_operations.first_confirmation.requires_preparation_not_supported",
-            cancellationToken);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var confirmed = await ReadSubsequentAsync(response, cancellationToken);
         Assert.True(replacement.ObservedActiveTransaction);
-        Assert.Equal(new SubsequentPersistenceCounts(1, 1, 1, 0, 0),
-            await fixture.CountSubsequentEffectsAsync(cancellationToken));
+        var work = Assert.Single(await fixture.ReadPreparationWorkAsync(cancellationToken));
+        Assert.Equal(confirmed.Incorporation.Id, work.IncorporationId);
+        Assert.Equal(product.Id, work.ProductId);
+        Assert.Equal(responsibilityId, work.PreparationResponsibilityId);
+        Assert.Equal(1, work.TotalQuantity);
+        Assert.Equal(1, work.PendingQuantity);
+        Assert.Equal(0, work.InPreparationQuantity);
+        Assert.Equal(0, work.ReadyQuantity);
     }
 
     [Fact]

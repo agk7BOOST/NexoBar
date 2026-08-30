@@ -29,6 +29,7 @@ public static class OrderOperationsModule
         services.AddScoped<FirstConfirmationService>();
         services.AddScoped<SubsequentConfirmationService>();
         services.AddScoped<OrderQueryService>();
+        services.AddScoped<PreparationWorkQueryService>();
 
         return services;
     }
@@ -45,6 +46,14 @@ public static class OrderOperationsModule
             .Produces<FirstConfirmationResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapGet(
+                "/api/order-operations/preparation/work",
+                ListPreparationWorkAsync)
+            .WithName("ListPreparationWork")
+            .WithTags("OrderOperations")
+            .Produces<IReadOnlyList<PreparationWorkResponse>>()
+            .ProducesProblem(StatusCodes.Status400BadRequest);
 
         endpoints.MapGet(
                 "/api/order-operations/orders/{operationalReference}",
@@ -152,12 +161,6 @@ public static class OrderOperationsModule
                 "The Product is not currently available.",
                 "order_operations.first_confirmation.product_unavailable",
                 result.ProductId),
-            SubsequentConfirmationOutcome.RequiresPreparationNotSupported => Problem(
-                StatusCodes.Status409Conflict,
-                "Product requires preparation",
-                "Products requiring preparation are not supported in increment I3.",
-                "order_operations.first_confirmation.requires_preparation_not_supported",
-                result.ProductId),
             SubsequentConfirmationOutcome.IdempotencyConflict => Problem(
                 StatusCodes.Status409Conflict,
                 "Idempotency-Key was already used for another intention",
@@ -165,6 +168,33 @@ public static class OrderOperationsModule
                 "order_operations.subsequent_confirmation.idempotency_key_conflict"),
             _ => throw new UnreachableException()
         };
+    }
+
+    private static async Task<IResult> ListPreparationWorkAsync(
+        [FromQuery(Name = "preparationResponsibilityId"), Required]
+        string? preparationResponsibilityId,
+        PreparationWorkQueryService service,
+        CancellationToken cancellationToken)
+    {
+        if (preparationResponsibilityId is null)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Preparation Responsibility is required",
+                "Preparation work lookup requires a preparationResponsibilityId query parameter.",
+                "order_operations.preparation_work.responsibility_id_required");
+        }
+
+        if (!Guid.TryParse(preparationResponsibilityId, out var responsibilityId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Preparation Responsibility",
+                "preparationResponsibilityId must contain a UUID.",
+                "order_operations.preparation_work.responsibility_id_invalid");
+        }
+
+        return Results.Ok(await service.ListAsync(responsibilityId, cancellationToken));
     }
 
     private static async Task<IResult> FindOrderAsync(
@@ -260,12 +290,6 @@ public static class OrderOperationsModule
                 "Product is unavailable",
                 "The Product is not currently available.",
                 "order_operations.first_confirmation.product_unavailable",
-                result.ProductId),
-            FirstConfirmationOutcome.RequiresPreparationNotSupported => Problem(
-                StatusCodes.Status409Conflict,
-                "Product requires preparation",
-                "Products requiring preparation are not supported in increment I3.",
-                "order_operations.first_confirmation.requires_preparation_not_supported",
                 result.ProductId),
             FirstConfirmationOutcome.IdempotencyConflict => Problem(
                 StatusCodes.Status409Conflict,

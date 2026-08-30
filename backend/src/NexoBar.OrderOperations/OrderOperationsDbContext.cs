@@ -9,6 +9,7 @@ internal sealed class OrderOperationsDbContext(
     internal DbSet<Order> Orders => Set<Order>();
     internal DbSet<Incorporation> Incorporations => Set<Incorporation>();
     internal DbSet<IncorporationContent> IncorporationContents => Set<IncorporationContent>();
+    internal DbSet<PreparationWork> PreparationWork => Set<PreparationWork>();
     internal DbSet<ConfirmationHistory> ConfirmationHistory => Set<ConfirmationHistory>();
     internal DbSet<FirstConfirmationCommand> FirstConfirmationCommands =>
         Set<FirstConfirmationCommand>();
@@ -25,11 +26,66 @@ internal sealed class OrderOperationsDbContext(
         modelBuilder.ApplyConfiguration(new OrderConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationContentConfiguration());
+        modelBuilder.ApplyConfiguration(new PreparationWorkConfiguration());
         modelBuilder.ApplyConfiguration(new ConfirmationHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new FirstConfirmationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new FirstConfirmationCommandContentConfiguration());
         modelBuilder.ApplyConfiguration(new SubsequentConfirmationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new SubsequentConfirmationCommandContentConfiguration());
+    }
+
+    private sealed class PreparationWorkConfiguration :
+        IEntityTypeConfiguration<PreparationWork>
+    {
+        public void Configure(EntityTypeBuilder<PreparationWork> builder)
+        {
+            builder.ToTable(
+                "preparation_work",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_order_operations_preparation_work_total_positive",
+                        "total_quantity > 0");
+                    table.HasCheckConstraint(
+                        "CK_order_operations_preparation_work_quantities_non_negative",
+                        "pending_quantity >= 0 AND " +
+                        "in_preparation_quantity >= 0 AND ready_quantity >= 0");
+                    table.HasCheckConstraint(
+                        "CK_order_operations_preparation_work_quantities_balanced",
+                        "pending_quantity::bigint + " +
+                        "in_preparation_quantity::bigint + " +
+                        "ready_quantity::bigint = total_quantity::bigint");
+                });
+            builder.HasKey(work => work.Id)
+                .HasName("PK_order_operations_preparation_work");
+            builder.Property(work => work.Id)
+                .HasColumnName("id").ValueGeneratedNever();
+            builder.Property(work => work.IncorporationId)
+                .HasColumnName("incorporation_id").ValueGeneratedNever();
+            builder.Property(work => work.ProductId)
+                .HasColumnName("product_id").ValueGeneratedNever();
+            builder.Property(work => work.PreparationResponsibilityId)
+                .HasColumnName("preparation_responsibility_id").ValueGeneratedNever();
+            builder.Property(work => work.TotalQuantity)
+                .HasColumnName("total_quantity").IsRequired();
+            builder.Property(work => work.PendingQuantity)
+                .HasColumnName("pending_quantity").IsRequired();
+            builder.Property(work => work.InPreparationQuantity)
+                .HasColumnName("in_preparation_quantity").IsRequired();
+            builder.Property(work => work.ReadyQuantity)
+                .HasColumnName("ready_quantity").IsRequired();
+            builder.HasIndex(work => new { work.IncorporationId, work.ProductId })
+                .HasDatabaseName("UX_order_operations_preparation_work_content")
+                .IsUnique();
+            builder.HasIndex(work => work.PreparationResponsibilityId)
+                .HasDatabaseName(
+                    "IX_order_operations_preparation_work_responsibility");
+            builder.HasOne<IncorporationContent>().WithOne()
+                .HasForeignKey<PreparationWork>(
+                    work => new { work.IncorporationId, work.ProductId })
+                .HasConstraintName("FK_order_operations_preparation_work_content")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
     }
 
     private sealed class OrderConfiguration : IEntityTypeConfiguration<Order>

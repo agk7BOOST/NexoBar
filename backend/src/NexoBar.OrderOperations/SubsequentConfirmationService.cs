@@ -96,11 +96,6 @@ internal sealed class SubsequentConfirmationService(
                 return SubsequentConfirmationResult.ProductUnavailable(item.ProductId);
             }
 
-            if (product.RequiresPreparation)
-            {
-                return SubsequentConfirmationResult.RequiresPreparationNotSupported(
-                    item.ProductId);
-            }
         }
 
         var currentMaximumOrdinal = await dbContext.Incorporations
@@ -133,12 +128,18 @@ internal sealed class SubsequentConfirmationService(
         var responseItems = new List<ConfirmedItemResponse>(intent.Items.Count);
         foreach (var item in intent.Items)
         {
-            var appliedPrice = productsById[item.ProductId].Price;
-            dbContext.IncorporationContents.Add(new IncorporationContent(
+            var product = productsById[item.ProductId];
+            var creation = ConfirmedContentFactory
+                .CreateConfirmedContentAndPreparationWork(
                 incorporationId,
                 item.ProductId,
                 item.Quantity,
-                appliedPrice));
+                product);
+            dbContext.IncorporationContents.Add(creation.Content);
+            if (creation.PreparationWork is not null)
+            {
+                dbContext.PreparationWork.Add(creation.PreparationWork);
+            }
             dbContext.SubsequentConfirmationCommandContents.Add(
                 new SubsequentConfirmationCommandContent(
                     idempotencyKey,
@@ -147,7 +148,7 @@ internal sealed class SubsequentConfirmationService(
             responseItems.Add(new ConfirmedItemResponse(
                 item.ProductId,
                 item.Quantity,
-                appliedPrice.ToString(CultureInfo.InvariantCulture)));
+                product.Price.ToString(CultureInfo.InvariantCulture)));
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -312,10 +313,6 @@ internal sealed record SubsequentConfirmationResult(
     internal static SubsequentConfirmationResult ProductUnavailable(Guid productId) =>
         new(SubsequentConfirmationOutcome.ProductUnavailable, null, productId);
 
-    internal static SubsequentConfirmationResult RequiresPreparationNotSupported(
-        Guid productId) =>
-        new(SubsequentConfirmationOutcome.RequiresPreparationNotSupported, null, productId);
-
     internal static SubsequentConfirmationResult IdempotencyConflict() =>
         new(SubsequentConfirmationOutcome.IdempotencyConflict, null, null);
 }
@@ -330,6 +327,5 @@ internal enum SubsequentConfirmationOutcome
     OrderNotFound,
     ProductNotCurrent,
     ProductUnavailable,
-    RequiresPreparationNotSupported,
     IdempotencyConflict
 }
