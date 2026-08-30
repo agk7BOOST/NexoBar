@@ -898,7 +898,8 @@ internal sealed class FixedCatalogCapability(
             price,
             isActive,
             isAvailable,
-            requiresPreparation)).ToArray();
+            requiresPreparation,
+            PreparationResponsibilityId: null)).ToArray();
     }
 }
 

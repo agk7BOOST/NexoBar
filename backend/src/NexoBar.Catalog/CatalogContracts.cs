@@ -15,7 +15,8 @@ internal sealed record ProductResponse(
     string Price,
     bool IsActive,
     bool IsAvailable,
-    bool RequiresPreparation);
+    bool RequiresPreparation,
+    Guid? PreparationResponsibilityId);
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record ChangeProductPriceRequest(
@@ -25,3 +26,13 @@ internal sealed record ChangeProductPriceRequest(
 internal sealed record ProductPriceResponse(
     Guid ProductId,
     string Price);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record ChangeProductPreparationConfigurationRequest(
+    [property: JsonRequired] Guid? ExpectedCurrentPreparationResponsibilityId,
+    [property: JsonRequired] Guid? NewPreparationResponsibilityId);
+
+internal sealed record ProductPreparationConfigurationResponse(
+    Guid ProductId,
+    bool RequiresPreparation,
+    Guid? PreparationResponsibilityId);

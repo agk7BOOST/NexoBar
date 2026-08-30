@@ -29,4 +29,6 @@ internal sealed class Product
     internal bool IsAvailable { get; private set; }
 
     internal bool RequiresPreparation { get; private set; }
+
+    internal Guid? PreparationResponsibilityId { get; private set; }
 }

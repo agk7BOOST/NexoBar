@@ -61,7 +61,90 @@ public static class CatalogModule
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
+        group.MapPost(
+                "/{productId:guid}/preparation-configuration-changes",
+                ChangeProductPreparationConfigurationAsync)
+            .WithName("ChangeCatalogProductPreparationConfiguration")
+            .Accepts<ChangeProductPreparationConfigurationRequest>("application/json")
+            .Produces<ProductPreparationConfigurationResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         return endpoints;
+    }
+
+    private static async Task<IResult> ChangeProductPreparationConfigurationAsync(
+        Guid productId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        ChangeProductPreparationConfigurationRequest request,
+        CatalogService catalog,
+        CancellationToken cancellationToken)
+    {
+        if (idempotencyKey is null)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Idempotency-Key is required",
+                "Product preparation configuration change requires an Idempotency-Key containing a UUID v4.",
+                "catalog.product.preparation_configuration.idempotency_key_required");
+        }
+        if (!Guid.TryParse(idempotencyKey, out var commandId) ||
+            !IsUuidVersion4(commandId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Idempotency-Key",
+                "Idempotency-Key must contain a UUID v4.",
+                "catalog.product.preparation_configuration.idempotency_key_invalid");
+        }
+
+        var result = await catalog.ChangeProductPreparationConfigurationAsync(
+            commandId,
+            productId,
+            request,
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            ProductPreparationConfigurationChangeOutcome.Changed =>
+                Results.Ok(result.Configuration),
+            ProductPreparationConfigurationChangeOutcome.NotFound => Problem(
+                StatusCodes.Status404NotFound,
+                "Product not found",
+                "No Product exists with the supplied identifier.",
+                "catalog.product.not_found",
+                productId),
+            ProductPreparationConfigurationChangeOutcome.NotCurrent => Problem(
+                StatusCodes.Status409Conflict,
+                "Product is not current",
+                "The Product exists but is not active.",
+                "catalog.product.not_current",
+                productId),
+            ProductPreparationConfigurationChangeOutcome.ResponsibilityNotFound => Problem(
+                StatusCodes.Status409Conflict,
+                "Preparation Responsibility does not exist",
+                "The requested Preparation Responsibility does not exist.",
+                "catalog.product.preparation_responsibility_not_found",
+                productId,
+                preparationResponsibilityId:
+                    result.InvalidPreparationResponsibilityId),
+            ProductPreparationConfigurationChangeOutcome.ConcurrencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Product preparation configuration changed concurrently",
+                "The current Product preparation configuration does not match the expected Responsibility.",
+                "catalog.product.preparation_configuration_concurrency_conflict",
+                productId,
+                includeCurrentPreparationResponsibilityId: true,
+                currentPreparationResponsibilityId:
+                    result.CurrentPreparationResponsibilityId),
+            ProductPreparationConfigurationChangeOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                "The supplied Idempotency-Key identifies an incompatible Product preparation configuration change.",
+                "catalog.product.preparation_configuration.idempotency_key_conflict"),
+            _ => throw new UnreachableException()
+        };
     }
 
     private static async Task<IResult> ChangeProductPriceAsync(
@@ -139,7 +222,10 @@ public static class CatalogModule
         string code,
         Guid? productId = null,
         string? field = null,
-        string? currentPrice = null)
+        string? currentPrice = null,
+        Guid? preparationResponsibilityId = null,
+        bool includeCurrentPreparationResponsibilityId = false,
+        Guid? currentPreparationResponsibilityId = null)
     {
         var extensions = new Dictionary<string, object?>
         {
@@ -159,6 +245,18 @@ public static class CatalogModule
         if (currentPrice is not null)
         {
             extensions["currentPrice"] = currentPrice;
+        }
+
+        if (preparationResponsibilityId is not null)
+        {
+            extensions["preparationResponsibilityId"] =
+                preparationResponsibilityId;
+        }
+
+        if (includeCurrentPreparationResponsibilityId)
+        {
+            extensions["currentPreparationResponsibilityId"] =
+                currentPreparationResponsibilityId;
         }
 
         return Results.Problem(

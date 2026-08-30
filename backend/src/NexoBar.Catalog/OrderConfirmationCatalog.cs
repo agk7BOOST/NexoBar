@@ -17,7 +17,8 @@ public sealed record OrderConfirmationCatalogProduct(
     decimal Price,
     bool IsActive,
     bool IsAvailable,
-    bool RequiresPreparation);
+    bool RequiresPreparation,
+    Guid? PreparationResponsibilityId);
 
 internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext) :
     IOrderConfirmationCatalog
@@ -52,7 +53,8 @@ internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext) :
                        price,
                        is_active,
                        is_available,
-                       requires_preparation
+                       requires_preparation,
+                       preparation_responsibility_id
                 FROM catalog.products
                 WHERE id = ANY ({ids})
                 FOR SHARE
@@ -66,7 +68,8 @@ internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext) :
                 product.Price,
                 product.IsActive,
                 product.IsAvailable,
-                product.RequiresPreparation))
+                product.RequiresPreparation,
+                product.PreparationResponsibilityId))
             .ToArray();
     }
 }

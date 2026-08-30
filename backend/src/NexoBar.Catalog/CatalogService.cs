@@ -1,14 +1,19 @@
 using System.Buffers.Binary;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using NexoBar.OperationalConfiguration;
 using Npgsql;
 
 namespace NexoBar.Catalog;
 
-internal sealed class CatalogService(CatalogDbContext dbContext)
+internal sealed class CatalogService(
+    CatalogDbContext dbContext,
+    IPreparationResponsibilityLookup preparationResponsibilities)
 {
     private const long ProductCreationLockNamespace = 0x434154414C4F4700;
     private const long ProductPriceChangeLockNamespace = 0x5052494345434800;
+    private const long ProductPreparationConfigurationChangeLockNamespace =
+        0x5052455043464700;
 
     internal async Task<CreateProductResult> CreateProductAsync(
         Guid idempotencyKey,
@@ -206,6 +211,103 @@ internal sealed class CatalogService(CatalogDbContext dbContext)
         return product is null ? null : Map(product);
     }
 
+    internal async Task<ProductPreparationConfigurationChangeResult>
+        ChangeProductPreparationConfigurationAsync(
+            Guid idempotencyKey,
+            Guid productId,
+            ChangeProductPreparationConfigurationRequest request,
+            CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            cancellationToken);
+
+        var lockKey = CreateTransactionLockKey(
+            idempotencyKey,
+            ProductPreparationConfigurationChangeLockNamespace);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
+
+        var existingCommand = await dbContext
+            .ProductPreparationConfigurationChangeCommands
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                command => command.IdempotencyKey == idempotencyKey,
+                cancellationToken);
+
+        if (existingCommand is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return existingCommand.Matches(
+                productId,
+                request.ExpectedCurrentPreparationResponsibilityId,
+                request.NewPreparationResponsibilityId)
+                ? ProductPreparationConfigurationChangeResult.Changed(
+                    Map(existingCommand))
+                : ProductPreparationConfigurationChangeResult.IdempotencyConflict();
+        }
+
+        if (request.NewPreparationResponsibilityId is Guid responsibilityId &&
+            !await preparationResponsibilities.ExistsAsync(
+                responsibilityId,
+                cancellationToken))
+        {
+            return ProductPreparationConfigurationChangeResult
+                .ResponsibilityNotFound(responsibilityId);
+        }
+
+        var requiresPreparation = request.NewPreparationResponsibilityId is not null;
+        var affectedRows = await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE catalog.products
+            SET requires_preparation = {requiresPreparation},
+                preparation_responsibility_id = {request.NewPreparationResponsibilityId}
+            WHERE id = {productId}
+              AND is_active
+              AND preparation_responsibility_id IS NOT DISTINCT FROM
+                  {request.ExpectedCurrentPreparationResponsibilityId}
+            """,
+            cancellationToken);
+
+        if (affectedRows == 0)
+        {
+            var product = await dbContext.Database
+                .SqlQuery<PreparationConfigurationDiagnostic>(
+                    $"""
+                    SELECT is_active AS "IsActive",
+                           preparation_responsibility_id AS
+                               "PreparationResponsibilityId"
+                    FROM catalog.products
+                    WHERE id = {productId}
+                    FOR UPDATE
+                    """)
+                .AsNoTracking()
+                .SingleOrDefaultAsync(cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+            if (product is null)
+            {
+                return ProductPreparationConfigurationChangeResult.NotFound();
+            }
+            if (!product.IsActive)
+            {
+                return ProductPreparationConfigurationChangeResult.NotCurrent();
+            }
+            return ProductPreparationConfigurationChangeResult.ConcurrencyConflict(
+                product.PreparationResponsibilityId);
+        }
+
+        var command = new ProductPreparationConfigurationChangeCommand(
+            idempotencyKey,
+            productId,
+            request.ExpectedCurrentPreparationResponsibilityId,
+            request.NewPreparationResponsibilityId);
+        dbContext.ProductPreparationConfigurationChangeCommands.Add(command);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return ProductPreparationConfigurationChangeResult.Changed(Map(command));
+    }
+
     private static ProductValidation Validate(CreateProductRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.OperationalName))
@@ -315,7 +417,8 @@ internal sealed class CatalogService(CatalogDbContext dbContext)
             product.Price.ToString(CultureInfo.InvariantCulture),
             product.IsActive,
             product.IsAvailable,
-            product.RequiresPreparation);
+            product.RequiresPreparation,
+            product.PreparationResponsibilityId);
 
     private static ProductResponse Map(ProductCreationCommand command) =>
         new(
@@ -324,12 +427,73 @@ internal sealed class CatalogService(CatalogDbContext dbContext)
             command.IntentPrice.ToString(CultureInfo.InvariantCulture),
             command.ResultIsActive,
             command.ResultIsAvailable,
-            command.IntentRequiresPreparation);
+            command.IntentRequiresPreparation,
+            PreparationResponsibilityId: null);
 
     private static ProductPriceResponse Map(ProductPriceChangeCommand command) =>
         new(
             command.ProductId,
             command.ResultPrice.ToString(CultureInfo.InvariantCulture));
+
+    private static ProductPreparationConfigurationResponse Map(
+        ProductPreparationConfigurationChangeCommand command) =>
+        new(
+            command.ProductId,
+            command.ResultResponsibilityId is not null,
+            command.ResultResponsibilityId);
+}
+
+internal sealed record PreparationConfigurationDiagnostic(
+    bool IsActive,
+    Guid? PreparationResponsibilityId);
+
+internal sealed record ProductPreparationConfigurationChangeResult(
+    ProductPreparationConfigurationChangeOutcome Outcome,
+    ProductPreparationConfigurationResponse? Configuration,
+    Guid? CurrentPreparationResponsibilityId,
+    Guid? InvalidPreparationResponsibilityId)
+{
+    internal static ProductPreparationConfigurationChangeResult Changed(
+        ProductPreparationConfigurationResponse configuration) =>
+        new(
+            ProductPreparationConfigurationChangeOutcome.Changed,
+            configuration,
+            null,
+            null);
+    internal static ProductPreparationConfigurationChangeResult NotFound() =>
+        new(ProductPreparationConfigurationChangeOutcome.NotFound, null, null, null);
+    internal static ProductPreparationConfigurationChangeResult NotCurrent() =>
+        new(ProductPreparationConfigurationChangeOutcome.NotCurrent, null, null, null);
+    internal static ProductPreparationConfigurationChangeResult ResponsibilityNotFound(
+        Guid responsibilityId) =>
+        new(
+            ProductPreparationConfigurationChangeOutcome.ResponsibilityNotFound,
+            null,
+            null,
+            responsibilityId);
+    internal static ProductPreparationConfigurationChangeResult ConcurrencyConflict(
+        Guid? currentResponsibilityId) =>
+        new(
+            ProductPreparationConfigurationChangeOutcome.ConcurrencyConflict,
+            null,
+            currentResponsibilityId,
+            null);
+    internal static ProductPreparationConfigurationChangeResult IdempotencyConflict() =>
+        new(
+            ProductPreparationConfigurationChangeOutcome.IdempotencyConflict,
+            null,
+            null,
+            null);
+}
+
+internal enum ProductPreparationConfigurationChangeOutcome
+{
+    Changed,
+    NotFound,
+    NotCurrent,
+    ResponsibilityNotFound,
+    ConcurrencyConflict,
+    IdempotencyConflict
 }
 
 internal sealed record PriceChangeValidation(

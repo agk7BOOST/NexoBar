@@ -36,6 +36,7 @@ export default defineConfig({
         ASPNETCORE_ENVIRONMENT: "Testing",
         ASPNETCORE_URLS: "http://127.0.0.1:5028",
         ConnectionStrings__Catalog: connectionString,
+        ConnectionStrings__OperationalConfiguration: connectionString,
         ConnectionStrings__OrderOperations: connectionString,
       },
     },

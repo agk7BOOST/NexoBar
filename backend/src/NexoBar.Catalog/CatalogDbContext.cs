@@ -13,12 +13,18 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
     internal DbSet<ProductPriceChangeCommand> ProductPriceChangeCommands =>
         Set<ProductPriceChangeCommand>();
 
+    internal DbSet<ProductPreparationConfigurationChangeCommand>
+        ProductPreparationConfigurationChangeCommands =>
+            Set<ProductPreparationConfigurationChangeCommand>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("catalog");
         modelBuilder.ApplyConfiguration(new ProductConfiguration());
         modelBuilder.ApplyConfiguration(new ProductCreationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new ProductPriceChangeCommandConfiguration());
+        modelBuilder.ApplyConfiguration(
+            new ProductPreparationConfigurationChangeCommandConfiguration());
     }
 
     private sealed class ProductPriceChangeCommandConfiguration :
@@ -84,8 +90,11 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
                 tableBuilder =>
                 {
                     tableBuilder.HasCheckConstraint(
-                        "CK_catalog_products_requires_preparation_i1",
-                        "requires_preparation = false");
+                        "CK_catalog_products_preparation_configuration_coherent",
+                        "(requires_preparation = false AND " +
+                        "preparation_responsibility_id IS NULL) OR " +
+                        "(requires_preparation = true AND " +
+                        "preparation_responsibility_id IS NOT NULL)");
                     tableBuilder.HasCheckConstraint(
                         "CK_catalog_products_price_non_negative",
                         "price >= 0");
@@ -125,10 +134,53 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
                 .HasColumnName("requires_preparation")
                 .IsRequired();
 
+            builder.Property(product => product.PreparationResponsibilityId)
+                .HasColumnName("preparation_responsibility_id")
+                .ValueGeneratedNever();
+
             builder.HasIndex(product => product.NormalizedOperationalName)
                 .HasDatabaseName("UX_catalog_products_active_normalized_operational_name")
                 .IsUnique()
                 .HasFilter("is_active");
+        }
+    }
+
+    private sealed class ProductPreparationConfigurationChangeCommandConfiguration :
+        IEntityTypeConfiguration<ProductPreparationConfigurationChangeCommand>
+    {
+        public void Configure(
+            EntityTypeBuilder<ProductPreparationConfigurationChangeCommand> builder)
+        {
+            builder.ToTable(
+                "product_preparation_configuration_change_commands",
+                table => table.HasCheckConstraint(
+                    "CK_catalog_product_prep_config_cmd_result_matches_intent",
+                    "result_responsibility_id IS NOT DISTINCT FROM " +
+                    "intent_new_responsibility_id"));
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName(
+                    "PK_catalog_product_preparation_configuration_change_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ProductId)
+                .HasColumnName("product_id").ValueGeneratedNever();
+            builder.Property(command => command.IntentExpectedResponsibilityId)
+                .HasColumnName("intent_expected_responsibility_id")
+                .ValueGeneratedNever();
+            builder.Property(command => command.IntentNewResponsibilityId)
+                .HasColumnName("intent_new_responsibility_id")
+                .ValueGeneratedNever();
+            builder.Property(command => command.ResultResponsibilityId)
+                .HasColumnName("result_responsibility_id")
+                .ValueGeneratedNever();
+            builder.HasIndex(command => command.ProductId)
+                .HasDatabaseName(
+                    "IX_catalog_product_prep_config_cmd_product");
+            builder.HasOne<Product>().WithMany()
+                .HasForeignKey(command => command.ProductId)
+                .HasConstraintName(
+                    "FK_catalog_product_prep_config_cmd_products")
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 

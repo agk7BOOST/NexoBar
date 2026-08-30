@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\NexoBar.Catalog\NexoBar.Catalog.csproj" />
     <ProjectReference Include="..\..\src\NexoBar.Host\NexoBar.Host.csproj" />
+    <ProjectReference Include="..\..\src\NexoBar.OperationalConfiguration\NexoBar.OperationalConfiguration.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

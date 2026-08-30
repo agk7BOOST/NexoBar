@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Diagnostics;
 using NexoBar.Catalog;
+using NexoBar.OperationalConfiguration;
 using NexoBar.OrderOperations;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
+builder.Services.AddOperationalConfiguration(builder.Configuration);
 builder.Services.AddCatalog(builder.Configuration);
 builder.Services.AddOrderOperations(builder.Configuration);
 
@@ -19,6 +21,7 @@ app.UseExceptionHandler(new ExceptionHandlerOptions
             : StatusCodes.Status500InternalServerError
 });
 app.MapOpenApi();
+app.MapOperationalConfigurationEndpoints();
 app.MapCatalogEndpoints();
 app.MapOrderOperationsEndpoints();
 

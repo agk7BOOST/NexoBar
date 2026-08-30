@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NexoBar.Catalog;
+using NexoBar.OperationalConfiguration;
 using NexoBar.OrderOperations;
 
 const string ConnectionStringEnvironmentVariable =
@@ -23,24 +24,30 @@ try
         .AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:Catalog"] = connectionString,
+            ["ConnectionStrings:OperationalConfiguration"] = connectionString,
             ["ConnectionStrings:OrderOperations"] = connectionString
         })
         .Build();
 
     var services = new ServiceCollection();
+    services.AddOperationalConfiguration(configuration);
     services.AddCatalog(configuration);
     services.AddOrderOperations(configuration);
 
     await using var serviceProvider = services.BuildServiceProvider();
     await using var scope = serviceProvider.CreateAsyncScope();
     var catalog = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+    var operationalConfiguration = scope.ServiceProvider
+        .GetRequiredService<OperationalConfigurationDbContext>();
     var orderOperations = scope.ServiceProvider
         .GetRequiredService<OrderOperationsDbContext>();
 
+    await operationalConfiguration.Database.MigrateAsync();
     await catalog.Database.MigrateAsync();
     await orderOperations.Database.MigrateAsync();
 
-    if (catalog.Database.HasPendingModelChanges() ||
+    if (operationalConfiguration.Database.HasPendingModelChanges() ||
+        catalog.Database.HasPendingModelChanges() ||
         orderOperations.Database.HasPendingModelChanges())
     {
         Console.Error.WriteLine(

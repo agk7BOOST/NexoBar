@@ -52,6 +52,7 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 order_operations.incorporation_contents,
                 order_operations.incorporations,
                 order_operations.orders,
+                catalog.product_preparation_configuration_change_commands,
                 catalog.product_price_change_commands,
                 catalog.product_creation_commands,
                 catalog.products
@@ -327,6 +328,9 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             {
                 builder.UseSetting(
                     "ConnectionStrings:Catalog",
+                    postgres.GetConnectionString());
+                builder.UseSetting(
+                    "ConnectionStrings:OperationalConfiguration",
                     postgres.GetConnectionString());
                 builder.UseSetting(
                     "ConnectionStrings:OrderOperations",

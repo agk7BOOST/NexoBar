@@ -6,6 +6,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\NexoBar.OperationalConfiguration\NexoBar.OperationalConfiguration.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="NexoBar.E2E.DatabaseSetup" />
     <InternalsVisibleTo Include="NexoBar.Catalog.IntegrationTests" />
     <InternalsVisibleTo Include="NexoBar.OrderOperations.IntegrationTests" />

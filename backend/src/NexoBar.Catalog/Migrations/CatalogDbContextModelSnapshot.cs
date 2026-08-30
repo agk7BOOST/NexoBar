@@ -53,6 +53,10 @@ namespace NexoBar.Catalog.Migrations
                         .HasColumnType("numeric")
                         .HasColumnName("price");
 
+                    b.Property<Guid?>("PreparationResponsibilityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("preparation_responsibility_id");
+
                     b.Property<bool>("RequiresPreparation")
                         .HasColumnType("boolean")
                         .HasColumnName("requires_preparation");
@@ -69,7 +73,7 @@ namespace NexoBar.Catalog.Migrations
                         {
                             t.HasCheckConstraint("CK_catalog_products_price_non_negative", "price >= 0");
 
-                            t.HasCheckConstraint("CK_catalog_products_requires_preparation_i1", "requires_preparation = false");
+                            t.HasCheckConstraint("CK_catalog_products_preparation_configuration_coherent", "(requires_preparation = false AND preparation_responsibility_id IS NULL) OR (requires_preparation = true AND preparation_responsibility_id IS NOT NULL)");
                         });
                 });
 
@@ -119,6 +123,40 @@ namespace NexoBar.Catalog.Migrations
                         });
                 });
 
+            modelBuilder.Entity("NexoBar.Catalog.ProductPreparationConfigurationChangeCommand", b =>
+                {
+                    b.Property<Guid>("IdempotencyKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<Guid?>("IntentExpectedResponsibilityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("intent_expected_responsibility_id");
+
+                    b.Property<Guid?>("IntentNewResponsibilityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("intent_new_responsibility_id");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<Guid?>("ResultResponsibilityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("result_responsibility_id");
+
+                    b.HasKey("IdempotencyKey")
+                        .HasName("PK_catalog_product_preparation_configuration_change_commands");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("IX_catalog_product_prep_config_cmd_product");
+
+                    b.ToTable("product_preparation_configuration_change_commands", "catalog", t =>
+                        {
+                            t.HasCheckConstraint("CK_catalog_product_prep_config_cmd_result_matches_intent", "result_responsibility_id IS NOT DISTINCT FROM intent_new_responsibility_id");
+                        });
+                });
+
             modelBuilder.Entity("NexoBar.Catalog.ProductPriceChangeCommand", b =>
                 {
                     b.Property<Guid>("IdempotencyKey")
@@ -154,6 +192,16 @@ namespace NexoBar.Catalog.Migrations
 
                             t.HasCheckConstraint("CK_catalog_product_price_change_commands_result_price_non_negative", "result_price >= 0");
                         });
+                });
+
+            modelBuilder.Entity("NexoBar.Catalog.ProductPreparationConfigurationChangeCommand", b =>
+                {
+                    b.HasOne("NexoBar.Catalog.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_catalog_product_prep_config_cmd_products");
                 });
 
             modelBuilder.Entity("NexoBar.Catalog.ProductCreationCommand", b =>
