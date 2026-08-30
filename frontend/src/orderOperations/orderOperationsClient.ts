@@ -1,6 +1,7 @@
 export interface FirstConfirmationItemRequest {
   productId: string;
   quantity: number;
+  instruction: string | null;
 }
 
 export interface FirstConfirmationRequest {
@@ -12,6 +13,7 @@ export interface ConfirmedItem {
   productId: string;
   quantity: number;
   appliedPrice: string;
+  instruction: string | null;
 }
 
 export interface FirstIncorporation {
@@ -29,6 +31,7 @@ export interface FirstConfirmationResponse {
 export interface SubsequentConfirmationItemRequest {
   productId: string;
   quantity: number;
+  instruction: string | null;
 }
 
 export interface SubsequentConfirmationRequest {
@@ -51,6 +54,7 @@ export interface OrderItem {
   productId: string;
   quantity: number;
   appliedPrice: string;
+  instruction: string | null;
 }
 
 export interface OrderIncorporation {

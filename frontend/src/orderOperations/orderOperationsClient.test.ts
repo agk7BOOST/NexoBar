@@ -25,7 +25,14 @@ describe("confirmFirst", () => {
       firstIncorporation: {
         id: "incorporation-1",
         confirmedAt: "2026-08-29T14:30:00Z",
-        items: [{ productId: "product-1", quantity: 2, appliedPrice: "10.50" }],
+        items: [
+          {
+            productId: "product-1",
+            quantity: 2,
+            appliedPrice: "10.50",
+            instruction: "sin hielo",
+          },
+        ],
       },
     };
     fetchMock.mockResolvedValueOnce(
@@ -39,7 +46,14 @@ describe("confirmFirst", () => {
       confirmFirst(
         {
           context: "Mesa 7",
-          items: [{ productId: "product-1", quantity: 2 }],
+          items: [
+            {
+              productId: "product-1",
+              quantity: 2,
+              instruction: "sin hielo",
+            },
+            { productId: "product-2", quantity: 1, instruction: null },
+          ],
         },
         "first-confirmation-key",
       ),
@@ -53,7 +67,10 @@ describe("confirmFirst", () => {
     expect(headers.get("Idempotency-Key")).toBe("first-confirmation-key");
     expect(JSON.parse(String(init?.body))).toEqual({
       context: "Mesa 7",
-      items: [{ productId: "product-1", quantity: 2 }],
+      items: [
+        { productId: "product-1", quantity: 2, instruction: "sin hielo" },
+        { productId: "product-2", quantity: 1, instruction: null },
+      ],
     });
     expect(String(init?.body)).not.toMatch(
       /price|name|availability|requiresPreparation/i,
@@ -76,7 +93,10 @@ describe("confirmFirst", () => {
     );
 
     const error = await confirmFirst(
-      { context: "Mesa 7", items: [{ productId: "product-1", quantity: 1 }] },
+      {
+        context: "Mesa 7",
+        items: [{ productId: "product-1", quantity: 1, instruction: null }],
+      },
       "key",
     ).catch((caught: unknown) => caught);
 
@@ -93,7 +113,10 @@ describe("confirmFirst", () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 
     const error = await confirmFirst(
-      { context: "Mesa 7", items: [{ productId: "product-1", quantity: 1 }] },
+      {
+        context: "Mesa 7",
+        items: [{ productId: "product-1", quantity: 1, instruction: null }],
+      },
       "key",
     ).catch((caught: unknown) => caught);
 
@@ -122,6 +145,7 @@ describe("getOrder", () => {
               productId: "product-1",
               quantity: 2,
               appliedPrice: "10.50",
+              instruction: null,
             },
           ],
         },
@@ -157,7 +181,14 @@ describe("confirmSubsequent", () => {
         id: "incorporation-2",
         ordinal: 2,
         confirmedAt: "2026-08-29T16:00:00Z",
-        items: [{ productId: "product-1", quantity: 2, appliedPrice: "12.00" }],
+        items: [
+          {
+            productId: "product-1",
+            quantity: 2,
+            appliedPrice: "12.00",
+            instruction: "sin hielo",
+          },
+        ],
       },
     };
     fetchMock.mockResolvedValueOnce(
@@ -170,7 +201,16 @@ describe("confirmSubsequent", () => {
     await expect(
       confirmSubsequent(
         "reference with/slash",
-        { items: [{ productId: "product-1", quantity: 2 }] },
+        {
+          items: [
+            {
+              productId: "product-1",
+              quantity: 2,
+              instruction: "sin hielo",
+            },
+            { productId: "product-2", quantity: 1, instruction: null },
+          ],
+        },
         "same-key",
       ),
     ).resolves.toEqual(response);
@@ -182,7 +222,10 @@ describe("confirmSubsequent", () => {
     expect(init?.method).toBe("POST");
     expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("same-key");
     expect(JSON.parse(String(init?.body))).toEqual({
-      items: [{ productId: "product-1", quantity: 2 }],
+      items: [
+        { productId: "product-1", quantity: 2, instruction: "sin hielo" },
+        { productId: "product-2", quantity: 1, instruction: null },
+      ],
     });
     expect(String(init?.body)).not.toMatch(
       /context|price|name|availability|requiresPreparation/i,

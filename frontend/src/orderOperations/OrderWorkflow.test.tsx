@@ -42,13 +42,28 @@ const soda: Product = {
   price: "12.00",
 };
 
+const burger: Product = {
+  ...water,
+  id: "product-burger",
+  operationalName: "Hamburguesa",
+  price: "18.00",
+  requiresPreparation: true,
+};
+
 const firstResponse: FirstConfirmationResponse = {
   operationalReference: "order-created",
   context: "Mesa 7",
   firstIncorporation: {
     id: "incorporation-1",
     confirmedAt: "2026-08-29T14:30:00Z",
-    items: [{ productId: water.id, quantity: 2, appliedPrice: "10.00" }],
+    items: [
+      {
+        productId: water.id,
+        quantity: 2,
+        appliedPrice: "10.00",
+        instruction: null,
+      },
+    ],
   },
 };
 
@@ -58,7 +73,14 @@ const subsequentResponse: SubsequentConfirmationResponse = {
     id: "incorporation-2",
     ordinal: 2,
     confirmedAt: "2026-08-29T15:00:00Z",
-    items: [{ productId: water.id, quantity: 2, appliedPrice: "12.00" }],
+    items: [
+      {
+        productId: water.id,
+        quantity: 2,
+        appliedPrice: "12.00",
+        instruction: null,
+      },
+    ],
   },
 };
 
@@ -79,7 +101,7 @@ function Harness({
 
   return (
     <OrderWorkflow
-      products={[water, soda]}
+      products={[water, soda, burger]}
       activeOperationalReference={activeReference}
       requestedTarget={requestedTarget}
       onActivateOrder={(reference) => {
@@ -127,7 +149,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
 
     await user.click(
       within(composition).getByRole("button", {
-        name: "Disminuir cantidad de Agua",
+        name: "Disminuir cantidad de Agua, línea 1",
       }),
     );
     expect(
@@ -135,12 +157,109 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     ).toHaveTextContent("1");
     await user.click(
       within(composition).getByRole("button", {
-        name: "Disminuir cantidad de Agua",
+        name: "Disminuir cantidad de Agua, línea 1",
       }),
     );
     expect(
       within(composition).getByText("La Composición está vacía."),
     ).toBeInTheDocument();
+  });
+
+  it("agrega normal sobre la línea sin instrucción y crea otra línea editable enfocada", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await addProduct(user, burger, "Composición inicial", 2);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar otra línea de Hamburguesa a Composición inicial",
+      }),
+    );
+
+    const secondInstruction = screen.getByLabelText(
+      "Instrucción para Hamburguesa, línea 2",
+    );
+    expect(secondInstruction).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/líneas duplicadas/);
+
+    await user.type(secondInstruction, "sin cebolla");
+    await addProduct(user, burger, "Composición inicial");
+
+    const normalLine = screen.getByRole("row", {
+      name: "Hamburguesa, línea de Composición 1, sin instrucción",
+    });
+    const instructedLine = screen.getByRole("row", {
+      name: "Hamburguesa, línea de Composición 2, sin cebolla",
+    });
+    expect(
+      within(normalLine).getByLabelText("Cantidad de Hamburguesa"),
+    ).toHaveTextContent("3");
+    expect(
+      within(instructedLine).getByLabelText("Cantidad de Hamburguesa"),
+    ).toHaveTextContent("1");
+  });
+
+  it("opera cantidad y retiro por draftLineId sin afectar otra línea del Product", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await addProduct(user, burger, "Composición inicial");
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar otra línea de Hamburguesa a Composición inicial",
+      }),
+    );
+    await user.type(
+      screen.getByLabelText("Instrucción para Hamburguesa, línea 2"),
+      "sin tomate",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Aumentar cantidad de Hamburguesa, línea 2",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Retirar Hamburguesa, línea 1, de la composición",
+      }),
+    );
+
+    const remainingLine = screen.getByRole("row", {
+      name: "Hamburguesa, línea de Composición 1, sin tomate",
+    });
+    expect(
+      within(remainingLine).getByLabelText("Cantidad de Hamburguesa"),
+    ).toHaveTextContent("2");
+    expect(
+      screen.queryByPlaceholderText("Sin instrucción", { exact: true }),
+    ).toHaveValue("sin tomate");
+  });
+
+  it("permite colisión durante edición y bloquea localmente duplicados canonical", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await addProduct(user, burger, "Composición inicial");
+    await user.type(
+      screen.getByLabelText("Instrucción para Hamburguesa, línea 1"),
+      "sin cebolla",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar otra línea de Hamburguesa a Composición inicial",
+      }),
+    );
+    await user.type(
+      screen.getByLabelText("Instrucción para Hamburguesa, línea 2"),
+      "  sin cebolla  ",
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/líneas duplicadas/);
+    expect(
+      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+    ).toBeDisabled();
+    expect(confirmFirstMock).not.toHaveBeenCalled();
   });
 
   it("aumenta y retira entradas sin producir Confirmaciones", async () => {
@@ -149,12 +268,14 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     await addProduct(user, water, "Composición inicial");
 
     await user.click(
-      screen.getByRole("button", { name: "Aumentar cantidad de Agua" }),
+      screen.getByRole("button", {
+        name: "Aumentar cantidad de Agua, línea 1",
+      }),
     );
     expect(screen.getByLabelText("Cantidad de Agua")).toHaveTextContent("2");
     await user.click(
       screen.getByRole("button", {
-        name: "Retirar Agua de la composición",
+        name: "Retirar Agua, línea 1, de la composición",
       }),
     );
 
@@ -217,7 +338,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const [request, key] = confirmFirstMock.mock.calls[0]!;
     expect(request).toEqual({
       context: "Mesa 7",
-      items: [{ productId: water.id, quantity: 2 }],
+      items: [{ productId: water.id, quantity: 2, instruction: null }],
     });
     expect(key).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
@@ -227,6 +348,87 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
     expect(screen.queryByLabelText("Contexto")).not.toBeInTheDocument();
   });
+
+  it("envía líneas homogéneas con instruction canonical y nunca draftLineId", async () => {
+    confirmFirstMock.mockResolvedValueOnce(firstResponse);
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.type(screen.getByLabelText("Contexto"), "Mesa 8");
+    await addProduct(user, burger, "Composición inicial");
+    await user.type(
+      screen.getByLabelText("Instrucción para Hamburguesa, línea 1"),
+      "   ",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar otra línea de Hamburguesa a Composición inicial",
+      }),
+    );
+    await user.type(
+      screen.getByLabelText("Instrucción para Hamburguesa, línea 2"),
+      "  SIN  cebolla!  ",
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+    );
+
+    const [request] = confirmFirstMock.mock.calls[0]!;
+    expect(request).toEqual({
+      context: "Mesa 8",
+      items: [
+        { productId: burger.id, quantity: 1, instruction: null },
+        {
+          productId: burger.id,
+          quantity: 1,
+          instruction: "SIN  cebolla!",
+        },
+      ],
+    });
+    expect(JSON.stringify(request)).not.toContain("draftLineId");
+  });
+
+  it.each([
+    [
+      "order_operations.confirmation.instruction_requires_preparation",
+      /solo puede confirmarse para un Producto que requiere preparación/,
+    ],
+    ["order_operations.confirmation.duplicate_line", /misma instrucción/],
+  ])(
+    "trata %s como conflicto conocido, conserva edición y usa una key nueva",
+    async (code, expectedMessage) => {
+      const problem = new OrderOperationsProblemError({
+        status: 409,
+        code,
+        productId: burger.id,
+      });
+      confirmFirstMock
+        .mockRejectedValueOnce(problem)
+        .mockRejectedValueOnce(problem);
+      const user = userEvent.setup();
+      render(<Harness />);
+      await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+      await addProduct(user, burger, "Composición inicial");
+      const instruction = screen.getByLabelText(
+        "Instrucción para Hamburguesa, línea 1",
+      );
+      await user.type(instruction, "sin cebolla");
+
+      await user.click(
+        screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+      );
+      expect(await screen.findByText(expectedMessage)).toBeInTheDocument();
+      expect(instruction).toBeEnabled();
+      expect(instruction).toHaveValue("sin cebolla");
+      const firstKey = confirmFirstMock.mock.calls[0]?.[1];
+
+      await user.click(
+        screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+      );
+      await vi.waitFor(() => expect(confirmFirstMock).toHaveBeenCalledTimes(2));
+      expect(confirmFirstMock.mock.calls[1]?.[1]).not.toBe(firstKey);
+    },
+  );
 
   it("conserva y bloquea el snapshot incierto de Primera Confirmación", async () => {
     confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
@@ -283,6 +485,38 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("congela instruction canonical en incertidumbre First y reintenta request/key exactos", async () => {
+    confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await addProduct(user, burger, "Composición inicial");
+    const instruction = screen.getByLabelText(
+      "Instrucción para Hamburguesa, línea 1",
+    );
+    await user.type(instruction, "  sin cebolla  ");
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+    );
+
+    const uncertain = await screen.findByRole("region", {
+      name: "Primera Confirmación con resultado no confirmado",
+    });
+    expect(uncertain).toHaveTextContent("Instrucción: sin cebolla");
+    expect(instruction).toBeDisabled();
+    const firstCall = confirmFirstMock.mock.calls[0];
+    expect(firstCall?.[0].items[0]?.instruction).toBe("sin cebolla");
+
+    confirmFirstMock.mockResolvedValueOnce(firstResponse);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Reintentar misma Primera Confirmación",
+      }),
+    );
+    await screen.findByRole("heading", { name: "Nueva Composición" });
+    expect(confirmFirstMock.mock.calls[1]).toEqual(firstCall);
+  });
+
   it("discard de Primera Confirmación incierta conserva el borrador y genera una key nueva", async () => {
     confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
     const user = userEvent.setup();
@@ -312,6 +546,46 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       screen.getByRole("button", { name: "Confirmar Primera Composición" }),
     );
     await screen.findByText(/ya no está vigente/);
+    expect(confirmFirstMock.mock.calls[1]?.[1]).not.toBe(firstKey);
+  });
+
+  it("discard First desbloquea instruction y la próxima intención usa el texto editado", async () => {
+    confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await addProduct(user, burger, "Composición inicial");
+    const instruction = screen.getByLabelText(
+      "Instrucción para Hamburguesa, línea 1",
+    );
+    await user.type(instruction, "sin cebolla");
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+    );
+    await screen.findByRole("region", {
+      name: "Primera Confirmación con resultado no confirmado",
+    });
+    const firstKey = confirmFirstMock.mock.calls[0]?.[1];
+
+    await user.click(
+      screen.getByRole("button", { name: "Descartar intención incierta" }),
+    );
+    expect(instruction).toBeEnabled();
+    await user.clear(instruction);
+    await user.type(instruction, "sin tomate");
+    confirmFirstMock.mockRejectedValueOnce(
+      new OrderOperationsProblemError({
+        code: "order_operations.first_confirmation.product_not_current",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+    );
+    await screen.findByText(/ya no está vigente/);
+
+    expect(confirmFirstMock.mock.calls[1]?.[0].items[0]?.instruction).toBe(
+      "sin tomate",
+    );
     expect(confirmFirstMock.mock.calls[1]?.[1]).not.toBe(firstKey);
   });
 
@@ -361,8 +635,8 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     expect(reference).toBe("order-active");
     expect(request).toEqual({
       items: [
-        { productId: soda.id, quantity: 1 },
-        { productId: water.id, quantity: 2 },
+        { productId: soda.id, quantity: 1, instruction: null },
+        { productId: water.id, quantity: 2, instruction: null },
       ],
     });
     expect(JSON.stringify(request)).not.toMatch(
@@ -376,13 +650,78 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
   });
 
+  it("envía Subsequent exacta con múltiples líneas e instructions canonical", async () => {
+    confirmSubsequentMock.mockResolvedValueOnce(subsequentResponse);
+    const user = userEvent.setup();
+    render(<Harness initialReference="order-active" />);
+    await addProduct(user, burger, "Nueva Composición", 2);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar otra línea de Hamburguesa a Nueva Composición",
+      }),
+    );
+    await user.type(
+      screen.getByLabelText("Instrucción para Hamburguesa, línea 2"),
+      "  sin tomate  ",
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
+    );
+    await screen.findByText("Nueva Incorporación confirmada correctamente.");
+
+    expect(confirmSubsequentMock.mock.calls[0]?.[0]).toBe("order-active");
+    expect(confirmSubsequentMock.mock.calls[0]?.[1]).toEqual({
+      items: [
+        { productId: burger.id, quantity: 2, instruction: null },
+        { productId: burger.id, quantity: 1, instruction: "sin tomate" },
+      ],
+    });
+    expect(
+      JSON.stringify(confirmSubsequentMock.mock.calls[0]?.[1]),
+    ).not.toContain("draftLineId");
+  });
+
+  it("un conflicto conocido Subsequent conserva lines editables y no deja incertidumbre", async () => {
+    confirmSubsequentMock.mockRejectedValueOnce(
+      new OrderOperationsProblemError({
+        status: 409,
+        code: "order_operations.confirmation.instruction_requires_preparation",
+        productId: water.id,
+      }),
+    );
+    const user = userEvent.setup();
+    render(<Harness initialReference="order-active" />);
+    await addProduct(user, water, "Nueva Composición");
+    const instruction = screen.getByLabelText("Instrucción para Agua, línea 1");
+    await user.type(instruction, "con hielo");
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
+    );
+
+    expect(
+      await screen.findByText(/solo puede confirmarse para un Producto/),
+    ).toBeInTheDocument();
+    expect(instruction).toBeEnabled();
+    expect(instruction).toHaveValue("con hielo");
+    expect(
+      screen.queryByRole("region", {
+        name: "Confirmación posterior con resultado no confirmado",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
   it("congela reference/items/key, bloquea edición/destino y reintenta igual", async () => {
     confirmSubsequentMock.mockRejectedValueOnce(
       new OrderOperationsNetworkError(),
     );
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" />);
-    await addProduct(user, water, "Nueva Composición", 2);
+    await addProduct(user, burger, "Nueva Composición", 2);
+    const instruction = screen.getByLabelText(
+      "Instrucción para Hamburguesa, línea 1",
+    );
+    await user.type(instruction, "  sin cebolla  ");
     await user.click(
       screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
     );
@@ -392,12 +731,16 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     });
     expect(uncertain).toHaveTextContent("order-active");
     expect(uncertain).toHaveTextContent("Cantidad: 2");
+    expect(uncertain).toHaveTextContent("Instrucción: sin cebolla");
+    expect(instruction).toBeDisabled();
     expect(
       screen.getByRole("button", {
-        name: "Agregar Agua a Nueva Composición",
+        name: "Agregar Hamburguesa a Nueva Composición",
       }),
     ).toBeDisabled();
     const firstCall = confirmSubsequentMock.mock.calls[0];
+    expect(firstCall?.[0]).toBe("order-active");
+    expect(firstCall?.[1].items[0]?.instruction).toBe("sin cebolla");
 
     await user.click(
       screen.getByRole("button", { name: "Iniciar nuevo Pedido" }),
@@ -427,7 +770,11 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     );
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" />);
-    await addProduct(user, water, "Nueva Composición");
+    await addProduct(user, burger, "Nueva Composición");
+    const instruction = screen.getByLabelText(
+      "Instrucción para Hamburguesa, línea 1",
+    );
+    await user.type(instruction, "sin cebolla");
     await user.click(
       screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
     );
@@ -439,9 +786,12 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     await user.click(
       screen.getByRole("button", { name: "Descartar intención incierta" }),
     );
+    expect(instruction).toBeEnabled();
+    await user.clear(instruction);
+    await user.type(instruction, "sin tomate");
     expect(
       screen.getByRole("button", {
-        name: "Aumentar cantidad de Agua",
+        name: "Aumentar cantidad de Hamburguesa, línea 1",
       }),
     ).toBeEnabled();
 
@@ -454,6 +804,9 @@ describe("OrderWorkflow - Confirmación posterior", () => {
       screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
     );
     await screen.findByText(/ya no está vigente/);
+    expect(confirmSubsequentMock.mock.calls[1]?.[1].items[0]?.instruction).toBe(
+      "sin tomate",
+    );
     expect(confirmSubsequentMock.mock.calls[1]?.[2]).not.toBe(firstKey);
   });
 });

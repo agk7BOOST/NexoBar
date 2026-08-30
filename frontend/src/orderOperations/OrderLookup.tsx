@@ -184,6 +184,7 @@ export function OrderLookup({
                       <th scope="col">Producto (nombre actual)</th>
                       <th scope="col">Cantidad</th>
                       <th scope="col">Precio aplicado histórico</th>
+                      <th scope="col">Instrucción confirmada</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -193,10 +194,16 @@ export function OrderLookup({
                       );
 
                       return (
-                        <tr key={item.productId}>
+                        <tr
+                          key={`${item.productId}:${item.instruction ?? ""}`}
+                          aria-label={`${product?.operationalName ?? item.productId}, cantidad ${item.quantity}, ${item.instruction ?? "sin instrucción"}`}
+                        >
                           <td>{product?.operationalName ?? item.productId}</td>
                           <td>{item.quantity}</td>
                           <td>{item.appliedPrice}</td>
+                          <td className="confirmed-instruction">
+                            {item.instruction ?? "Sin instrucción"}
+                          </td>
                         </tr>
                       );
                     })}

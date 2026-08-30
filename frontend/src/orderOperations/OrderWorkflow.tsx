@@ -1,5 +1,11 @@
 import { type FormEvent, useEffect, useState } from "react";
 import type { Product } from "../catalog/catalogClient.ts";
+import { canonicalizeConfirmationInstruction } from "./confirmationInstruction.ts";
+import {
+  hasDuplicateCompositionLines,
+  type CompositionLine,
+} from "./composition.ts";
+import { CompositionLineEditor } from "./CompositionLineEditor.tsx";
 import {
   confirmFirst,
   confirmSubsequent,
@@ -14,11 +20,6 @@ type Notice =
   | { kind: "success"; message: string }
   | { kind: "functional-error"; message: string }
   | { kind: "uncertain"; message: string };
-
-interface CompositionEntry {
-  productId: string;
-  quantity: number;
-}
 
 interface FirstConfirmationIntention {
   request: FirstConfirmationRequest;
@@ -68,8 +69,10 @@ function confirmationErrorMessage(
       return "Agregá al menos un Producto a la Composición.";
     case "order_operations.first_confirmation.quantity_invalid":
       return `Cada cantidad debe ser un entero positivo.${productLabel}`;
-    case "order_operations.first_confirmation.duplicate_product":
-      return `Un Producto no puede aparecer más de una vez en la Confirmación.${productLabel}`;
+    case "order_operations.confirmation.duplicate_line":
+      return `Dos líneas del mismo Producto tienen la misma instrucción. Combiná sus cantidades o cambiá una instrucción.${productLabel}`;
+    case "order_operations.confirmation.instruction_requires_preparation":
+      return `La instrucción solo puede confirmarse para un Producto que requiere preparación. Editá o quitá la instrucción antes de reintentar.${productLabel}`;
     case "order_operations.first_confirmation.product_not_current":
       return `Un Producto de la Composición ya no está vigente.${productLabel}`;
     case "order_operations.first_confirmation.product_unavailable":
@@ -98,7 +101,7 @@ export function OrderWorkflow({
   onStartNewOrder,
   onOrderChanged,
 }: OrderWorkflowProps) {
-  const [composition, setComposition] = useState<CompositionEntry[]>([]);
+  const [composition, setComposition] = useState<CompositionLine[]>([]);
   const [context, setContext] = useState("");
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmationNotice, setConfirmationNotice] = useState<Notice | null>(
@@ -113,6 +116,7 @@ export function OrderWorkflow({
   const [destinationMessage, setDestinationMessage] = useState<string | null>(
     null,
   );
+  const [draftLineToFocus, setDraftLineToFocus] = useState<string | null>(null);
 
   const hasUncertainIntention =
     uncertainFirst !== null || uncertainSubsequent !== null;
@@ -145,46 +149,86 @@ export function OrderWorkflow({
     }
 
     setComposition((current) => {
-      const existing = current.find((entry) => entry.productId === product.id);
+      const existing = current.find(
+        (line) =>
+          line.productId === product.id &&
+          canonicalizeConfirmationInstruction(line.instruction) === null,
+      );
       if (existing === undefined) {
-        return [...current, { productId: product.id, quantity: 1 }];
+        return [
+          ...current,
+          {
+            draftLineId: crypto.randomUUID(),
+            productId: product.id,
+            quantity: 1,
+            instruction: "",
+          },
+        ];
       }
 
-      return current.map((entry) =>
-        entry.productId === product.id
-          ? { ...entry, quantity: entry.quantity + 1 }
-          : entry,
+      return current.map((line) =>
+        line.draftLineId === existing.draftLineId
+          ? { ...line, quantity: line.quantity + 1 }
+          : line,
       );
     });
   }
 
-  function increaseQuantity(productId: string) {
+  function addAnotherLine(product: Product) {
+    if (!product.isAvailable || isCompositionLocked) {
+      return;
+    }
+
+    const draftLineId = crypto.randomUUID();
+    setDraftLineToFocus(draftLineId);
+    setComposition((current) => [
+      ...current,
+      {
+        draftLineId,
+        productId: product.id,
+        quantity: 1,
+        instruction: "",
+      },
+    ]);
+    setConfirmationNotice(null);
+  }
+
+  function increaseQuantity(draftLineId: string) {
     setComposition((current) =>
-      current.map((entry) =>
-        entry.productId === productId
-          ? { ...entry, quantity: entry.quantity + 1 }
-          : entry,
+      current.map((line) =>
+        line.draftLineId === draftLineId
+          ? { ...line, quantity: line.quantity + 1 }
+          : line,
       ),
     );
   }
 
-  function decreaseQuantity(productId: string) {
+  function decreaseQuantity(draftLineId: string) {
     setComposition((current) =>
-      current.flatMap((entry) => {
-        if (entry.productId !== productId) {
-          return [entry];
+      current.flatMap((line) => {
+        if (line.draftLineId !== draftLineId) {
+          return [line];
         }
 
-        return entry.quantity === 1
+        return line.quantity === 1
           ? []
-          : [{ ...entry, quantity: entry.quantity - 1 }];
+          : [{ ...line, quantity: line.quantity - 1 }];
       }),
     );
   }
 
-  function removeFromComposition(productId: string) {
+  function changeInstruction(draftLineId: string, instruction: string) {
     setComposition((current) =>
-      current.filter((entry) => entry.productId !== productId),
+      current.map((line) =>
+        line.draftLineId === draftLineId ? { ...line, instruction } : line,
+      ),
+    );
+    setConfirmationNotice(null);
+  }
+
+  function removeFromComposition(draftLineId: string) {
+    setComposition((current) =>
+      current.filter((line) => line.draftLineId !== draftLineId),
     );
   }
 
@@ -275,9 +319,19 @@ export function OrderWorkflow({
       return;
     }
 
-    const items = composition.map(({ productId, quantity }) => ({
+    if (hasDuplicateCompositionLines(composition)) {
+      setConfirmationNotice({
+        kind: "functional-error",
+        message:
+          "Hay líneas duplicadas para un mismo Producto e instrucción. Combiná sus cantidades o cambiá una instrucción.",
+      });
+      return;
+    }
+
+    const items = composition.map(({ productId, quantity, instruction }) => ({
       productId,
       quantity,
+      instruction: canonicalizeConfirmationInstruction(instruction),
     }));
 
     if (activeOperationalReference === null) {
@@ -366,6 +420,7 @@ export function OrderWorkflow({
   const canConfirm =
     composition.length > 0 &&
     !isCompositionLocked &&
+    !hasDuplicateCompositionLines(composition) &&
     (isSubsequent || context.trim().length > 0);
   const modeLabel = isSubsequent ? "Nueva Composición" : "Composición inicial";
   const requestedDestinationMessage =
@@ -453,15 +508,26 @@ export function OrderWorkflow({
                       {product.isAvailable ? "Disponible" : "No disponible"}
                     </td>
                     <td>
-                      <button
-                        className="catalog-add-button"
-                        type="button"
-                        onClick={() => addToComposition(product)}
-                        disabled={!product.isAvailable || isCompositionLocked}
-                        aria-label={`Agregar ${product.operationalName} a ${modeLabel}`}
-                      >
-                        Agregar
-                      </button>
+                      <div className="composition-actions">
+                        <button
+                          className="catalog-add-button"
+                          type="button"
+                          onClick={() => addToComposition(product)}
+                          disabled={!product.isAvailable || isCompositionLocked}
+                          aria-label={`Agregar ${product.operationalName} a ${modeLabel}`}
+                        >
+                          Agregar
+                        </button>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => addAnotherLine(product)}
+                          disabled={!product.isAvailable || isCompositionLocked}
+                          aria-label={`Agregar otra línea de ${product.operationalName} a ${modeLabel}`}
+                        >
+                          Agregar otra línea
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -502,6 +568,13 @@ export function OrderWorkflow({
           role="status"
         >
           {confirmationNotice.message}
+        </p>
+      )}
+
+      {hasDuplicateCompositionLines(composition) && (
+        <p className="notice notice--functional-error" role="alert">
+          Hay líneas duplicadas para un mismo Producto e instrucción. Combiná
+          sus cantidades o cambiá una instrucción antes de confirmar.
         </p>
       )}
 
@@ -589,11 +662,12 @@ export function OrderWorkflow({
                   <th scope="col">Nombre</th>
                   <th scope="col">Precio vigente informativo</th>
                   <th scope="col">Cantidad</th>
+                  <th scope="col">Instrucción opcional</th>
                   <th scope="col">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {composition.map((entry) => {
+                {composition.map((entry, index) => {
                   const product = products.find(
                     (candidate) => candidate.id === entry.productId,
                   );
@@ -602,46 +676,23 @@ export function OrderWorkflow({
                     return null;
                   }
 
+                  const lineNumber = index + 1;
+
                   return (
-                    <tr key={entry.productId}>
-                      <td>{product.operationalName}</td>
-                      <td>{product.price}</td>
-                      <td aria-label={`Cantidad de ${product.operationalName}`}>
-                        {entry.quantity}
-                      </td>
-                      <td>
-                        <div className="composition-actions">
-                          <button
-                            type="button"
-                            onClick={() => increaseQuantity(entry.productId)}
-                            disabled={isCompositionLocked}
-                            aria-label={`Aumentar cantidad de ${product.operationalName}`}
-                          >
-                            +1
-                          </button>
-                          <button
-                            className="secondary-button"
-                            type="button"
-                            onClick={() => decreaseQuantity(entry.productId)}
-                            disabled={isCompositionLocked}
-                            aria-label={`Disminuir cantidad de ${product.operationalName}`}
-                          >
-                            −1
-                          </button>
-                          <button
-                            className="secondary-button"
-                            type="button"
-                            onClick={() =>
-                              removeFromComposition(entry.productId)
-                            }
-                            disabled={isCompositionLocked}
-                            aria-label={`Retirar ${product.operationalName} de la composición`}
-                          >
-                            Retirar
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <CompositionLineEditor
+                      key={entry.draftLineId}
+                      line={entry}
+                      lineNumber={lineNumber}
+                      product={product}
+                      isLocked={isCompositionLocked}
+                      shouldFocusInstruction={
+                        draftLineToFocus === entry.draftLineId
+                      }
+                      onInstructionChange={changeInstruction}
+                      onIncrease={increaseQuantity}
+                      onDecrease={decreaseQuantity}
+                      onRemove={removeFromComposition}
+                    />
                   );
                 })}
               </tbody>
@@ -655,7 +706,11 @@ export function OrderWorkflow({
 
 interface ConfirmationSnapshotProps {
   context?: string;
-  items: { productId: string; quantity: number }[];
+  items: {
+    productId: string;
+    quantity: number;
+    instruction: string | null;
+  }[];
   products: Product[];
 }
 
@@ -679,9 +734,12 @@ function ConfirmationSnapshot({
           );
 
           return (
-            <div key={item.productId}>
+            <div key={`${item.productId}:${item.instruction ?? ""}`}>
               <dt>{product?.operationalName ?? item.productId}</dt>
-              <dd>Cantidad: {item.quantity}</dd>
+              <dd>
+                Cantidad: {item.quantity}. Instrucción:{" "}
+                {item.instruction ?? "Sin instrucción"}
+              </dd>
             </div>
           );
         })}

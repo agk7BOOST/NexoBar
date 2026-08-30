@@ -42,11 +42,13 @@ const order: OrderResponse = {
           productId: currentProduct.id,
           quantity: 2,
           appliedPrice: "10.50",
+          instruction: "sin hielo",
         },
         {
           productId: "product-not-in-current-catalog",
           quantity: 1,
           appliedPrice: "7.25",
+          instruction: null,
         },
       ],
     },
@@ -124,6 +126,8 @@ describe("OrderLookup", () => {
     expect(incorporation).toHaveTextContent("2026-08-29T14:30:00Z");
     expect(incorporation).toHaveTextContent("2");
     expect(incorporation).toHaveTextContent("10.50");
+    expect(incorporation).toHaveTextContent("sin hielo");
+    expect(incorporation).toHaveTextContent("Sin instrucción");
   });
 
   it("usa el nombre actual solo como etiqueta, conserva appliedPrice histórico y cae a productId", async () => {
@@ -144,6 +148,46 @@ describe("OrderLookup", () => {
       /Catálogo actual y no constituye Historia/,
     );
     expect(result).toHaveTextContent(/condición histórica confirmada/);
+  });
+
+  it("distingue líneas del mismo Product por cantidad e instruction", async () => {
+    getOrderMock.mockResolvedValueOnce({
+      ...order,
+      incorporations: [
+        {
+          ...order.incorporations[0]!,
+          items: [
+            {
+              productId: currentProduct.id,
+              quantity: 1,
+              appliedPrice: "10.50",
+              instruction: null,
+            },
+            {
+              productId: currentProduct.id,
+              quantity: 2,
+              appliedPrice: "10.50",
+              instruction: "sin hielo",
+            },
+          ],
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderLookup([currentProduct]);
+
+    await search(user, "order-reference");
+
+    expect(
+      await screen.findByRole("row", {
+        name: "Agua tónica actual, cantidad 1, sin instrucción",
+      }),
+    ).toHaveTextContent("Sin instrucción");
+    expect(
+      screen.getByRole("row", {
+        name: "Agua tónica actual, cantidad 2, sin hielo",
+      }),
+    ).toHaveTextContent("sin hielo");
   });
 
   it("muestra Pedido no encontrado, limpia el resultado y conserva la Referencia", async () => {
