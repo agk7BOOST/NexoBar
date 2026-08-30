@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { Product } from "../catalog/catalogClient.ts";
 import {
   getOrder,
@@ -8,8 +8,16 @@ import {
   type OrderResponse,
 } from "./orderOperationsClient.ts";
 
+export interface RequestedOrderLookup {
+  operationalReference: string;
+  sequence: number;
+}
+
 interface OrderLookupProps {
   products: Product[];
+  requestedLookup?: RequestedOrderLookup;
+  activeOperationalReference: string | null;
+  onContinueOrder: (operationalReference: string) => void;
 }
 
 function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
@@ -24,20 +32,24 @@ function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
   return "No se pudo consultar el Pedido. Revisá la Referencia e intentá nuevamente.";
 }
 
-export function OrderLookup({ products }: OrderLookupProps) {
+export function OrderLookup({
+  products,
+  requestedLookup,
+  activeOperationalReference,
+  onContinueOrder,
+}: OrderLookupProps) {
   const [operationalReference, setOperationalReference] = useState("");
   const [order, setOrder] = useState<OrderResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const lookup = useCallback(async (reference: string) => {
     setIsLoading(true);
     setOrder(null);
     setErrorMessage(null);
 
     try {
-      setOrder(await getOrder(operationalReference));
+      setOrder(await getOrder(reference));
     } catch (error) {
       if (error instanceof OrderOperationsProblemError) {
         setErrorMessage(lookupErrorMessage(error.problem));
@@ -51,7 +63,27 @@ export function OrderLookup({ products }: OrderLookupProps) {
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (requestedLookup === undefined) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void lookup(requestedLookup.operationalReference);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [lookup, requestedLookup]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await lookup(operationalReference);
   }
+
+  const isDisplayedOrderActive =
+    order !== null && order.operationalReference === activeOperationalReference;
 
   return (
     <section className="panel" aria-labelledby="order-lookup-title">
@@ -82,7 +114,9 @@ export function OrderLookup({ products }: OrderLookupProps) {
         <div
           className="order-lookup-result"
           role="region"
-          aria-label="Pedido consultado"
+          aria-label={
+            isDisplayedOrderActive ? "Pedido activo" : "Pedido consultado"
+          }
         >
           <dl className="confirmation-summary">
             <div>
@@ -94,6 +128,19 @@ export function OrderLookup({ products }: OrderLookupProps) {
               <dd>{order.context}</dd>
             </div>
           </dl>
+
+          {isDisplayedOrderActive ? (
+            <p className="active-order-indicator" role="status">
+              Este Pedido está activo para una nueva Incorporación.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onContinueOrder(order.operationalReference)}
+            >
+              Continuar este Pedido
+            </button>
+          )}
 
           <p className="current-catalog-name-note">
             El nombre de Producto es una etiqueta del Catálogo actual y no

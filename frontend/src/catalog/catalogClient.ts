@@ -13,6 +13,16 @@ export interface Product {
   requiresPreparation: boolean;
 }
 
+export interface ChangeProductPriceRequest {
+  expectedCurrentPrice: string;
+  newPrice: string;
+}
+
+export interface ChangeProductPriceResponse {
+  productId: string;
+  price: string;
+}
+
 export interface ProblemDetails {
   type?: string;
   title?: string;
@@ -21,6 +31,8 @@ export interface ProblemDetails {
   instance?: string;
   code?: string;
   field?: string;
+  productId?: string;
+  currentPrice?: string;
 }
 
 export class CatalogProblemError extends Error {
@@ -89,4 +101,28 @@ export async function createProduct(
   }
 
   return (await response.json()) as Product;
+}
+
+export async function changeProductPrice(
+  productId: string,
+  request: ChangeProductPriceRequest,
+  idempotencyKey: string,
+): Promise<ChangeProductPriceResponse> {
+  const response = await send(
+    `/api/catalog/products/${encodeURIComponent(productId)}/price-changes`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+
+  if (!response.ok) {
+    throw new CatalogProblemError(await readProblem(response));
+  }
+
+  return (await response.json()) as ChangeProductPriceResponse;
 }

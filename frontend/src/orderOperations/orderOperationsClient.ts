@@ -26,6 +26,27 @@ export interface FirstConfirmationResponse {
   firstIncorporation: FirstIncorporation;
 }
 
+export interface SubsequentConfirmationItemRequest {
+  productId: string;
+  quantity: number;
+}
+
+export interface SubsequentConfirmationRequest {
+  items: SubsequentConfirmationItemRequest[];
+}
+
+export interface SubsequentIncorporation {
+  id: string;
+  ordinal: number;
+  confirmedAt: string;
+  items: ConfirmedItem[];
+}
+
+export interface SubsequentConfirmationResponse {
+  operationalReference: string;
+  incorporation: SubsequentIncorporation;
+}
+
 export interface OrderItem {
   productId: string;
   quantity: number;
@@ -67,10 +88,7 @@ export class OrderOperationsProblemError extends Error {
 
 export class OrderOperationsNetworkError extends Error {
   constructor(options?: ErrorOptions) {
-    super(
-      "The First Confirmation request did not receive a response.",
-      options,
-    );
+    super("The Order Operations request did not receive a response.", options);
     this.name = "OrderOperationsNetworkError";
   }
 }
@@ -118,6 +136,36 @@ export async function confirmFirst(
   }
 
   return (await response.json()) as FirstConfirmationResponse;
+}
+
+export async function confirmSubsequent(
+  operationalReference: string,
+  request: SubsequentConfirmationRequest,
+  idempotencyKey: string,
+): Promise<SubsequentConfirmationResponse> {
+  let response: Response;
+
+  try {
+    response = await fetch(
+      `/api/order-operations/orders/${encodeURIComponent(operationalReference)}/confirmations`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify(request),
+      },
+    );
+  } catch (error) {
+    throw new OrderOperationsNetworkError({ cause: error });
+  }
+
+  if (!response.ok) {
+    throw new OrderOperationsProblemError(await readProblem(response));
+  }
+
+  return (await response.json()) as SubsequentConfirmationResponse;
 }
 
 export async function getOrder(

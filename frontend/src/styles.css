@@ -228,6 +228,85 @@ button:focus-visible {
   grid-row: 2;
 }
 
+.confirmation-form--subsequent {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.product-selector {
+  margin-top: 1.25rem;
+  border-top: 1px solid #d9e0e7;
+  padding-top: 1.25rem;
+}
+
+.product-selector h3 {
+  margin: 0;
+}
+
+.active-order-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  margin-top: 1rem;
+  border-left: 4px solid #27834f;
+  padding: 0.75rem;
+  background: #edf8f1;
+}
+
+.active-order-summary strong {
+  overflow-wrap: anywhere;
+}
+
+.active-order-summary button {
+  margin-left: auto;
+}
+
+.destination-change {
+  margin-top: 1rem;
+  border-left: 4px solid #b7791f;
+  padding: 0.75rem;
+  background: #fff8e7;
+}
+
+.destination-change p {
+  margin: 0 0 0.75rem;
+}
+
+.price-change-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1fr);
+  border-top: 1px solid #d9e0e7;
+  padding-top: 1.25rem;
+}
+
+.price-change-form > div:not(.intention-actions) {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.price-change-form label,
+.price-change-form label:first-of-type,
+.price-change-form label:last-of-type {
+  grid-column: 3;
+}
+
+.price-change-form .intention-actions {
+  grid-column: 1 / -1;
+}
+
+.field-label {
+  color: #52606d;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.active-order-indicator {
+  margin: 1rem 0 0;
+  border-left: 4px solid #27834f;
+  padding: 0.75rem;
+  background: #edf8f1;
+}
+
 .order-lookup-form {
   grid-template-columns: minmax(0, 1fr) auto;
 }
@@ -338,6 +417,25 @@ th {
   .confirmation-form button {
     grid-column: 1;
     grid-row: auto;
+  }
+
+  .confirmation-form--subsequent {
+    justify-content: stretch;
+  }
+
+  .confirmation-form--subsequent button {
+    width: 100%;
+  }
+
+  .price-change-form {
+    grid-template-columns: 1fr;
+  }
+
+  .price-change-form label,
+  .price-change-form label:first-of-type,
+  .price-change-form label:last-of-type,
+  .price-change-form .intention-actions {
+    grid-column: 1;
   }
 
   .order-lookup-form button {

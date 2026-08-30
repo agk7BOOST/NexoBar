@@ -63,13 +63,34 @@ async function search(
   await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
 }
 
+function renderLookup(
+  products: Product[] = [],
+  options?: {
+    activeOperationalReference?: string | null;
+    onContinueOrder?: (reference: string) => void;
+    requestedLookup?: {
+      operationalReference: string;
+      sequence: number;
+    };
+  },
+) {
+  return render(
+    <OrderLookup
+      products={products}
+      activeOperationalReference={options?.activeOperationalReference ?? null}
+      onContinueOrder={options?.onContinueOrder ?? (() => undefined)}
+      requestedLookup={options?.requestedLookup}
+    />,
+  );
+}
+
 describe("OrderLookup", () => {
   beforeEach(() => {
     getOrderMock.mockReset();
   });
 
   it("renderiza el campo etiquetado y el botón", () => {
-    render(<OrderLookup products={[]} />);
+    renderLookup();
 
     expect(screen.getByLabelText("Referencia operacional")).toBeInTheDocument();
     expect(
@@ -80,7 +101,7 @@ describe("OrderLookup", () => {
   it("consulta con el texto exacto y presenta el Pedido completo", async () => {
     getOrderMock.mockResolvedValueOnce(order);
     const user = userEvent.setup();
-    render(<OrderLookup products={[currentProduct]} />);
+    renderLookup([currentProduct]);
 
     const enteredReference = "referencia opaca no UUID";
     await search(user, enteredReference);
@@ -108,7 +129,7 @@ describe("OrderLookup", () => {
   it("usa el nombre actual solo como etiqueta, conserva appliedPrice histórico y cae a productId", async () => {
     getOrderMock.mockResolvedValueOnce(order);
     const user = userEvent.setup();
-    render(<OrderLookup products={[currentProduct]} />);
+    renderLookup([currentProduct]);
 
     await search(user, "order-reference");
 
@@ -128,7 +149,7 @@ describe("OrderLookup", () => {
   it("muestra Pedido no encontrado, limpia el resultado y conserva la Referencia", async () => {
     getOrderMock.mockResolvedValueOnce(order);
     const user = userEvent.setup();
-    render(<OrderLookup products={[]} />);
+    renderLookup();
     await search(user, "existing-reference");
     await screen.findByRole("region", { name: "Pedido consultado" });
 
@@ -161,7 +182,7 @@ describe("OrderLookup", () => {
       }),
     );
     const user = userEvent.setup();
-    render(<OrderLookup products={[]} />);
+    renderLookup();
 
     await search(user, "esto no es un UUID");
 
@@ -174,7 +195,7 @@ describe("OrderLookup", () => {
   it("muestra un fallo de comunicación y no conserva un resultado anterior", async () => {
     getOrderMock.mockResolvedValueOnce(order);
     const user = userEvent.setup();
-    render(<OrderLookup products={[]} />);
+    renderLookup();
     await search(user, "existing-reference");
     await screen.findByRole("region", { name: "Pedido consultado" });
 
@@ -192,7 +213,7 @@ describe("OrderLookup", () => {
   it("muestra loading y deshabilita el botón durante la búsqueda", async () => {
     getOrderMock.mockReturnValueOnce(new Promise(() => undefined));
     const user = userEvent.setup();
-    render(<OrderLookup products={[]} />);
+    renderLookup();
 
     await user.type(
       screen.getByLabelText("Referencia operacional"),
@@ -201,5 +222,71 @@ describe("OrderLookup", () => {
     await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
 
     expect(screen.getByRole("button", { name: "Buscando…" })).toBeDisabled();
+  });
+
+  it("un lookup manual no activa y el botón Continuar entrega la referencia", async () => {
+    getOrderMock.mockResolvedValueOnce(order);
+    const onContinueOrder = vi.fn();
+    const user = userEvent.setup();
+    renderLookup([], { onContinueOrder });
+
+    await search(user, "manual-reference");
+    const result = await screen.findByRole("region", {
+      name: "Pedido consultado",
+    });
+    expect(onContinueOrder).not.toHaveBeenCalled();
+
+    await within(result)
+      .getByRole("button", { name: "Continuar este Pedido" })
+      .click();
+    expect(onContinueOrder).toHaveBeenCalledWith(order.operationalReference);
+  });
+
+  it("requestedLookup consulta externamente y otro sequence refresca la misma referencia", async () => {
+    getOrderMock.mockResolvedValue(order);
+    const { rerender } = renderLookup([], {
+      requestedLookup: {
+        operationalReference: "external-reference",
+        sequence: 1,
+      },
+    });
+
+    await screen.findByRole("region", { name: "Pedido consultado" });
+    expect(getOrderMock).toHaveBeenCalledTimes(1);
+    expect(getOrderMock).toHaveBeenLastCalledWith("external-reference");
+
+    rerender(
+      <OrderLookup
+        products={[]}
+        requestedLookup={{
+          operationalReference: "external-reference",
+          sequence: 2,
+        }}
+        activeOperationalReference={null}
+        onContinueOrder={() => undefined}
+      />,
+    );
+
+    await vi.waitFor(() => expect(getOrderMock).toHaveBeenCalledTimes(2));
+    expect(getOrderMock).toHaveBeenLastCalledWith("external-reference");
+  });
+
+  it("marca el Pedido activo y omite la acción redundante", async () => {
+    getOrderMock.mockResolvedValueOnce(order);
+    renderLookup([], {
+      activeOperationalReference: order.operationalReference,
+      requestedLookup: {
+        operationalReference: order.operationalReference,
+        sequence: 1,
+      },
+    });
+
+    const result = await screen.findByRole("region", { name: "Pedido activo" });
+    expect(result).toHaveTextContent(
+      "Este Pedido está activo para una nueva Incorporación.",
+    );
+    expect(
+      within(result).queryByRole("button", { name: "Continuar este Pedido" }),
+    ).not.toBeInTheDocument();
   });
 });
