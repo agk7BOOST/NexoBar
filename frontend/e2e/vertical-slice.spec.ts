@@ -1,11 +1,55 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-function definitionValue(container: Locator, label: string): Locator {
-  return container
-    .getByText(label, { exact: true })
-    .locator("..")
-    .locator("dd");
+function rowForProduct(
+  container: Locator,
+  page: Page,
+  productName: string,
+): Locator {
+  return container.getByRole("row").filter({
+    has: page.getByRole("cell", { name: productName, exact: true }),
+  });
+}
+
+function compositionRowForProduct(
+  composition: Locator,
+  page: Page,
+  productName: string,
+): Locator {
+  return composition.getByRole("row").filter({
+    has: page.getByRole("cell", {
+      name: `Cantidad de ${productName}`,
+      exact: true,
+    }),
+  });
+}
+
+async function readActiveOperationalReference(
+  composition: Locator,
+): Promise<string> {
+  const label = "Referencia del Pedido activo";
+  const action = "Iniciar nuevo Pedido";
+  const activeOrderSummary = composition.getByRole("status").filter({
+    hasText: label,
+  });
+
+  await expect(activeOrderSummary).toBeVisible();
+
+  const summaryLines = (await activeOrderSummary.innerText())
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const labelIndex = summaryLines.indexOf(label);
+  const actionIndex = summaryLines.indexOf(action);
+  const operationalReference = summaryLines
+    .slice(labelIndex + 1, actionIndex === -1 ? undefined : actionIndex)
+    .join("\n")
+    .trim();
+
+  expect(labelIndex).toBeGreaterThanOrEqual(0);
+  expect(operationalReference).not.toBe("");
+
+  return operationalReference;
 }
 
 async function createConfirmedOrder(page: Page): Promise<{
@@ -16,100 +60,198 @@ async function createConfirmedOrder(page: Page): Promise<{
 
   await page.goto("/");
   await page.getByLabel("Nombre operacional").fill(productName);
-  await page.getByLabel("Precio").fill("10.50");
+  await page.getByLabel("Precio", { exact: true }).fill("10");
   await page.getByRole("button", { name: "Crear producto" }).click();
 
   const products = page.getByRole("region", { name: "Productos vigentes" });
-  await expect(products.getByText(productName, { exact: true })).toBeVisible();
+  const productRow = rowForProduct(products, page, productName);
+  await expect(productRow).toBeVisible();
+  await expect(
+    productRow.getByRole("cell", { name: "10", exact: true }),
+  ).toBeVisible();
 
-  const addButton = page.getByRole("button", {
-    name: `Agregar ${productName} a la composición`,
+  const initialComposition = page.getByRole("region", {
+    name: "Composición inicial",
+  });
+  const addButton = initialComposition.getByRole("button", {
+    name: `Agregar ${productName} a Composición inicial`,
   });
   await addButton.click();
   await addButton.click();
 
-  const composition = page.getByRole("region", { name: "Composición" });
+  const compositionRow = compositionRowForProduct(
+    initialComposition,
+    page,
+    productName,
+  );
   await expect(
-    composition.getByRole("cell", {
+    compositionRow.getByRole("cell", {
       name: `Cantidad de ${productName}`,
       exact: true,
     }),
   ).toHaveText("2");
-  await page.getByLabel("Contexto").fill("Mesa 7");
-  await page.getByRole("button", { name: "Confirmar Composición" }).click();
+  await initialComposition.getByLabel("Contexto").fill("Mesa 7");
+  await initialComposition
+    .getByRole("button", { name: "Confirmar Primera Composición" })
+    .click();
 
-  const createdOrder = page.getByRole("region", {
-    name: "Pedido recién creado",
+  const subsequentComposition = page.getByRole("region", {
+    name: "Nueva Composición",
   });
-  await expect(createdOrder).toBeVisible();
-  await expect(definitionValue(createdOrder, "Contexto confirmado")).toHaveText(
-    "Mesa 7",
-  );
-  await expect(
-    definitionValue(createdOrder, "Primera Incorporación"),
-  ).toHaveText(/\S+/);
+  await expect(subsequentComposition).toBeVisible();
 
-  const operationalReference = await definitionValue(
-    createdOrder,
-    "Referencia operacional",
-  ).innerText();
-  expect(operationalReference).not.toBe("");
+  const activeOrder = page.getByRole("region", { name: "Pedido activo" });
+  await expect(activeOrder).toBeVisible();
 
-  const createdItem = createdOrder.getByRole("row").filter({
-    has: page.getByRole("cell", { name: productName, exact: true }),
-  });
-  await expect(createdItem).toContainText(productName);
-  await expect(createdItem.locator("td").nth(1)).toHaveText("2");
-  await expect(createdItem.locator("td").nth(2)).toHaveText("10.50");
-
-  return { productName, operationalReference };
-}
-
-async function lookupOrder(page: Page, operationalReference: string) {
-  await page.getByLabel("Referencia operacional").fill(operationalReference);
-  await page.getByRole("button", { name: "Buscar Pedido" }).click();
-  return page.getByRole("region", { name: "Pedido consultado" });
-}
-
-test("crea y confirma un Pedido y luego lo consulta por su Referencia", async ({
-  page,
-}) => {
-  const { productName, operationalReference } =
-    await createConfirmedOrder(page);
-  const consultedOrder = await lookupOrder(page, operationalReference);
-
-  await expect(consultedOrder).toBeVisible();
-  await expect(
-    definitionValue(consultedOrder, "Referencia operacional"),
-  ).toHaveText(operationalReference);
-  await expect(definitionValue(consultedOrder, "Contexto actual")).toHaveText(
-    "Mesa 7",
-  );
-
-  const incorporation = consultedOrder.getByRole("article", {
+  const incorporation1 = activeOrder.getByRole("article", {
     name: "Incorporación 1",
   });
-  await expect(definitionValue(incorporation, "Ordinal")).toHaveText("1");
-  await expect(incorporation.getByRole("time")).toHaveText(/\S+/);
-  await expect(incorporation.getByRole("time")).toHaveAttribute(
+  await expect(incorporation1).toBeVisible();
+
+  const operationalReference = await readActiveOperationalReference(
+    subsequentComposition,
+  );
+  await expect(
+    activeOrder.getByText(operationalReference, { exact: true }),
+  ).toBeVisible();
+  await expect(activeOrder.getByText("Mesa 7", { exact: true })).toBeVisible();
+
+  const firstItem = rowForProduct(incorporation1, page, productName);
+  await expect(firstItem).toBeVisible();
+  await expect(
+    firstItem.getByRole("cell", { name: "2", exact: true }),
+  ).toBeVisible();
+  await expect(
+    firstItem.getByRole("cell", { name: "10", exact: true }),
+  ).toBeVisible();
+  await expect(incorporation1.getByRole("time")).toHaveAttribute(
     "datetime",
     /\S+/,
   );
 
-  const consultedItem = incorporation.getByRole("row").filter({
-    has: page.getByRole("cell", { name: productName, exact: true }),
+  return { productName, operationalReference };
+}
+
+async function lookupActiveOrder(page: Page, operationalReference: string) {
+  await page.getByLabel("Referencia operacional").fill(operationalReference);
+  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  return page.getByRole("region", { name: "Pedido activo" });
+}
+
+test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Pedido", async ({
+  page,
+}) => {
+  const { productName, operationalReference } =
+    await createConfirmedOrder(page);
+
+  const products = page.getByRole("region", { name: "Productos vigentes" });
+  const productRow = rowForProduct(products, page, productName);
+  await productRow
+    .getByRole("button", { name: `Cambiar precio de ${productName}` })
+    .click();
+
+  const priceChangeForm = page.getByRole("form", {
+    name: `Cambiar precio de ${productName}`,
   });
-  await expect(consultedItem).toContainText(productName);
-  await expect(consultedItem.locator("td").nth(1)).toHaveText("2");
-  await expect(consultedItem.locator("td").nth(2)).toHaveText("10.50");
+  await priceChangeForm.getByLabel("Nuevo precio").fill("12");
+  await priceChangeForm
+    .getByRole("button", { name: "Confirmar cambio de Precio" })
+    .click();
+
+  await expect(
+    productRow.getByRole("cell", { name: "12", exact: true }),
+  ).toBeVisible();
+
+  const subsequentComposition = page.getByRole("region", {
+    name: "Nueva Composición",
+  });
+  await expect(subsequentComposition).toBeVisible();
+  await expect(
+    subsequentComposition.getByText(operationalReference, { exact: true }),
+  ).toBeVisible();
+
+  const availableProducts = subsequentComposition.getByRole("region", {
+    name: "Productos para la Composición",
+  });
+  const availableProductRow = rowForProduct(
+    availableProducts,
+    page,
+    productName,
+  );
+  await expect(
+    availableProductRow.getByRole("cell", { name: "12", exact: true }),
+  ).toBeVisible();
+  await subsequentComposition
+    .getByRole("button", {
+      name: `Agregar ${productName} a Nueva Composición`,
+    })
+    .click();
+
+  const subsequentCompositionRow = compositionRowForProduct(
+    subsequentComposition,
+    page,
+    productName,
+  );
+  await expect(
+    subsequentCompositionRow.getByRole("cell", {
+      name: `Cantidad de ${productName}`,
+      exact: true,
+    }),
+  ).toHaveText("1");
+  await expect(
+    subsequentCompositionRow.getByRole("cell", {
+      name: "12",
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  await subsequentComposition
+    .getByRole("button", { name: "Confirmar nueva Incorporación" })
+    .click();
+
+  const activeOrder = page.getByRole("region", { name: "Pedido activo" });
+  const incorporation2 = activeOrder.getByRole("article", {
+    name: "Incorporación 2",
+  });
+  await expect(incorporation2).toBeVisible();
+
+  const incorporation1 = activeOrder.getByRole("article", {
+    name: "Incorporación 1",
+  });
+  const firstItem = rowForProduct(incorporation1, page, productName);
+  await expect(firstItem).toBeVisible();
+  await expect(
+    firstItem.getByRole("cell", { name: "2", exact: true }),
+  ).toBeVisible();
+  await expect(
+    firstItem.getByRole("cell", { name: "10", exact: true }),
+  ).toBeVisible();
+
+  const secondItem = rowForProduct(incorporation2, page, productName);
+  await expect(secondItem).toBeVisible();
+  await expect(
+    secondItem.getByRole("cell", { name: "1", exact: true }),
+  ).toBeVisible();
+  await expect(
+    secondItem.getByRole("cell", { name: "12", exact: true }),
+  ).toBeVisible();
+  await expect(
+    activeOrder.getByText(operationalReference, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    subsequentComposition.getByText(operationalReference, { exact: true }),
+  ).toBeVisible();
 });
 
 test("informa un Pedido inexistente sin conservar el resultado previo", async ({
   page,
 }) => {
   const { operationalReference } = await createConfirmedOrder(page);
-  const priorResult = await lookupOrder(page, operationalReference);
+  const priorResult = await lookupActiveOrder(page, operationalReference);
   await expect(priorResult).toBeVisible();
+  await expect(
+    priorResult.getByText(operationalReference, { exact: true }),
+  ).toBeVisible();
 
   const missingReference = "00000000-0000-0000-0000-000000000001";
   const referenceInput = page.getByLabel("Referencia operacional");
@@ -122,5 +264,18 @@ test("informa un Pedido inexistente sin conservar el resultado previo", async ({
     }),
   ).toBeVisible();
   await expect(priorResult).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Pedido consultado" }),
+  ).toHaveCount(0);
   await expect(referenceInput).toHaveValue(missingReference);
+
+  const subsequentComposition = page.getByRole("region", {
+    name: "Nueva Composición",
+  });
+  await expect(
+    subsequentComposition.getByText(operationalReference, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    subsequentComposition.getByText(missingReference, { exact: true }),
+  ).toHaveCount(0);
 });
