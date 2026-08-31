@@ -445,6 +445,9 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                     "ConnectionStrings:Catalog",
                     postgres.GetConnectionString());
                 builder.UseSetting(
+                    "ConnectionStrings:IdentitiesAndCapabilities",
+                    postgres.GetConnectionString());
+                builder.UseSetting(
                     "ConnectionStrings:OperationalConfiguration",
                     postgres.GetConnectionString());
                 builder.UseSetting(

@@ -121,6 +121,8 @@ public sealed class OperationalConfigurationApiFixture : IAsyncLifetime
                 var connectionString = postgres.GetConnectionString();
                 builder.UseSetting("ConnectionStrings:Catalog", connectionString);
                 builder.UseSetting(
+                    "ConnectionStrings:IdentitiesAndCapabilities", connectionString);
+                builder.UseSetting(
                     "ConnectionStrings:OperationalConfiguration", connectionString);
                 builder.UseSetting("ConnectionStrings:OrderOperations", connectionString);
             });

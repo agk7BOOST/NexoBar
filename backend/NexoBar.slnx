@@ -10,6 +10,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/NexoBar.Catalog.IntegrationTests/NexoBar.Catalog.IntegrationTests.csproj" />
     <Project Path="tests/NexoBar.E2E.DatabaseSetup/NexoBar.E2E.DatabaseSetup.csproj" />
+    <Project Path="tests/NexoBar.IdentitiesAndCapabilities.IntegrationTests/NexoBar.IdentitiesAndCapabilities.IntegrationTests.csproj" />
     <Project Path="tests/NexoBar.OrderOperations.IntegrationTests/NexoBar.OrderOperations.IntegrationTests.csproj" />
     <Project Path="tests/NexoBar.OperationalConfiguration.IntegrationTests/NexoBar.OperationalConfiguration.IntegrationTests.csproj" />
   </Folder>
