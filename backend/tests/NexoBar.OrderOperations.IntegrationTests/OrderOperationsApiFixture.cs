@@ -532,6 +532,33 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         }
     }
 
+    internal async Task SetPreparationHistoryFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+
+        var sql = enabled
+            ? """
+              CREATE OR REPLACE FUNCTION order_operations.fail_preparation_history()
+              RETURNS trigger LANGUAGE plpgsql AS $$
+              BEGIN
+                  RAISE EXCEPTION 'controlled preparation history failure';
+              END;
+              $$;
+              CREATE TRIGGER fail_preparation_history
+              BEFORE INSERT ON order_operations.preparation_history
+              FOR EACH ROW EXECUTE FUNCTION order_operations.fail_preparation_history();
+              """
+            : """
+              DROP TRIGGER IF EXISTS fail_preparation_history
+                  ON order_operations.preparation_history;
+              DROP FUNCTION IF EXISTS order_operations.fail_preparation_history();
+              """;
+        await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+    }
+
     internal async Task<SubsequentPersistenceCounts> CountSubsequentEffectsAsync(
         CancellationToken cancellationToken)
     {

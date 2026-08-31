@@ -31,7 +31,7 @@ public static class OrderOperationsModule
         services.AddScoped<SubsequentConfirmationService>();
         services.AddScoped<OrderQueryService>();
         services.AddScoped<PreparationWorkQueryService>();
-        services.AddScoped<PreparationStartService>();
+        services.AddScoped<PreparationProgressService>();
 
         return services;
     }
@@ -75,6 +75,20 @@ public static class OrderOperationsModule
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
+        endpoints.MapPost(
+                "/api/order-operations/preparation/work/{workId}/ready",
+                MarkPreparationQuantityReadyAsync)
+            .WithName("MarkPreparationQuantityReady")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Accepts<MarkPreparationQuantityReadyRequest>("application/json")
+            .Produces<MarkPreparationQuantityReadyResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         endpoints.MapGet(
                 "/api/order-operations/orders/{operationalReference}",
                 FindOrderAsync)
@@ -104,7 +118,7 @@ public static class OrderOperationsModule
         StartPreparationQuantityRequest request,
         HttpContext httpContext,
         IAntiforgery antiforgery,
-        PreparationStartService service,
+        PreparationProgressService service,
         CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(workId, out var parsedWorkId))
@@ -155,33 +169,34 @@ public static class OrderOperationsModule
             cancellationToken);
         return result.Outcome switch
         {
-            PreparationStartOutcome.Started => Results.Ok(result.Response),
-            PreparationStartOutcome.Unauthenticated => Problem(
+            PreparationProgressOutcome.Succeeded => Results.Ok(
+                ToStartResponse(result.Response!)),
+            PreparationProgressOutcome.Unauthenticated => Problem(
                 StatusCodes.Status401Unauthorized,
                 "Invalid session",
                 "The current session is invalid or expired.",
                 "identities_and_capabilities.invalid_session"),
-            PreparationStartOutcome.Forbidden => Problem(
+            PreparationProgressOutcome.Forbidden => Problem(
                 StatusCodes.Status403Forbidden,
                 "Preparation access forbidden",
                 "The current Identity is not authorized for Preparation.",
                 "order_operations.preparation.forbidden"),
-            PreparationStartOutcome.WorkNotFound => Problem(
+            PreparationProgressOutcome.WorkNotFound => Problem(
                 StatusCodes.Status404NotFound,
                 "Preparation Work not found",
                 "No accessible Preparation Work exists with the supplied identifier.",
                 "order_operations.preparation_work.not_found"),
-            PreparationStartOutcome.QuantityInvalid => Problem(
+            PreparationProgressOutcome.QuantityInvalid => Problem(
                 StatusCodes.Status400BadRequest,
                 "Invalid quantity",
                 "quantity must be a positive integer.",
                 "order_operations.preparation_start.quantity_invalid"),
-            PreparationStartOutcome.PendingQuantityInsufficient => Problem(
+            PreparationProgressOutcome.AvailableQuantityInsufficient => Problem(
                 StatusCodes.Status409Conflict,
                 "Pending quantity is insufficient",
                 "The requested quantity is greater than the Work quantity currently Pending.",
                 "order_operations.preparation_start.pending_quantity_insufficient"),
-            PreparationStartOutcome.IdempotencyConflict => Problem(
+            PreparationProgressOutcome.IdempotencyConflict => Problem(
                 StatusCodes.Status409Conflict,
                 "Idempotency-Key was already used for another intention",
                 "The supplied Idempotency-Key identifies an incompatible Preparation command.",
@@ -189,6 +204,121 @@ public static class OrderOperationsModule
             _ => throw new UnreachableException()
         };
     }
+
+    private static async Task<IResult> MarkPreparationQuantityReadyAsync(
+        string workId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        MarkPreparationQuantityReadyRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        PreparationProgressService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(workId, out var parsedWorkId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Preparation Work",
+                "workId must contain a UUID.",
+                "order_operations.preparation_ready.work_id_invalid");
+        }
+
+        if (idempotencyKey is null)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Idempotency-Key is required",
+                "Marking Preparation Ready requires an Idempotency-Key containing a UUID v4.",
+                "order_operations.preparation_ready.idempotency_key_required");
+        }
+
+        if (!Guid.TryParse(idempotencyKey, out var commandId) ||
+            !IsUuidVersion4(commandId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Idempotency-Key",
+                "Idempotency-Key must contain a UUID v4.",
+                "order_operations.preparation_ready.idempotency_key_invalid");
+        }
+
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Antiforgery validation failed",
+                "A valid antiforgery cookie and request token are required.",
+                "order_operations.preparation_ready.antiforgery_invalid");
+        }
+
+        var result = await service.MarkReadyAsync(
+            commandId,
+            parsedWorkId,
+            request.Quantity,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            PreparationProgressOutcome.Succeeded => Results.Ok(
+                ToReadyResponse(result.Response!)),
+            PreparationProgressOutcome.Unauthenticated => Problem(
+                StatusCodes.Status401Unauthorized,
+                "Invalid session",
+                "The current session is invalid or expired.",
+                "identities_and_capabilities.invalid_session"),
+            PreparationProgressOutcome.Forbidden => Problem(
+                StatusCodes.Status403Forbidden,
+                "Preparation access forbidden",
+                "The current Identity is not authorized for Preparation.",
+                "order_operations.preparation.forbidden"),
+            PreparationProgressOutcome.WorkNotFound => Problem(
+                StatusCodes.Status404NotFound,
+                "Preparation Work not found",
+                "No accessible Preparation Work exists with the supplied identifier.",
+                "order_operations.preparation_work.not_found"),
+            PreparationProgressOutcome.QuantityInvalid => Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid quantity",
+                "quantity must be a positive integer.",
+                "order_operations.preparation_ready.quantity_invalid"),
+            PreparationProgressOutcome.AvailableQuantityInsufficient => Problem(
+                StatusCodes.Status409Conflict,
+                "In-Preparation quantity is insufficient",
+                "The requested quantity is greater than the Work quantity currently In Preparation.",
+                "order_operations.preparation_ready.in_preparation_quantity_insufficient"),
+            PreparationProgressOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                "The supplied Idempotency-Key identifies an incompatible Preparation command.",
+                "order_operations.preparation_ready.idempotency_key_conflict"),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static StartPreparationQuantityResponse ToStartResponse(
+        PreparationCommandResult result) =>
+        new(
+            result.WorkId,
+            result.HistoryId,
+            result.OccurredAt,
+            result.TotalQuantity,
+            result.PendingQuantity,
+            result.InPreparationQuantity,
+            result.ReadyQuantity);
+
+    private static MarkPreparationQuantityReadyResponse ToReadyResponse(
+        PreparationCommandResult result) =>
+        new(
+            result.WorkId,
+            result.HistoryId,
+            result.OccurredAt,
+            result.TotalQuantity,
+            result.PendingQuantity,
+            result.InPreparationQuantity,
+            result.ReadyQuantity);
 
     private static async Task<IResult> ConfirmSubsequentAsync(
         string operationalReference,

@@ -104,6 +104,23 @@ internal sealed class PreparationWork
         InPreparationQuantity += quantity;
         return PreparationStartTransition.Started;
     }
+
+    internal PreparationReadyTransition MarkReady(int quantity)
+    {
+        if (quantity <= 0)
+        {
+            return PreparationReadyTransition.QuantityInvalid;
+        }
+
+        if (InPreparationQuantity < quantity)
+        {
+            return PreparationReadyTransition.InPreparationQuantityInsufficient;
+        }
+
+        InPreparationQuantity -= quantity;
+        ReadyQuantity += quantity;
+        return PreparationReadyTransition.MarkedReady;
+    }
 }
 
 internal enum PreparationStartTransition
@@ -111,6 +128,13 @@ internal enum PreparationStartTransition
     Started,
     QuantityInvalid,
     PendingQuantityInsufficient
+}
+
+internal enum PreparationReadyTransition
+{
+    MarkedReady,
+    QuantityInvalid,
+    InPreparationQuantityInsufficient
 }
 
 internal sealed class ConfirmationHistory

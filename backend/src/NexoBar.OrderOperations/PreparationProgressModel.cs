@@ -3,12 +3,14 @@ namespace NexoBar.OrderOperations;
 internal sealed class PreparationHistory
 {
     internal const string QuantityStartedEventKind = "PreparationQuantityStarted";
+    internal const string QuantityReadyEventKind = "PreparationQuantityReady";
 
     private PreparationHistory() { }
 
-    internal PreparationHistory(
+    private PreparationHistory(
         Guid id,
         Guid workId,
+        string eventKind,
         int quantity,
         Guid actorIdentityId,
         DateTimeOffset occurredAt,
@@ -19,7 +21,7 @@ internal sealed class PreparationHistory
     {
         Id = id;
         WorkId = workId;
-        EventKind = QuantityStartedEventKind;
+        EventKind = eventKind;
         Quantity = quantity;
         ActorIdentityId = actorIdentityId;
         OccurredAt = occurredAt;
@@ -28,6 +30,58 @@ internal sealed class PreparationHistory
         ResultingInPreparationQuantity = resultingInPreparationQuantity;
         ResultingReadyQuantity = resultingReadyQuantity;
     }
+
+    internal static PreparationHistory QuantityStarted(
+        Guid id,
+        Guid workId,
+        int quantity,
+        Guid actorIdentityId,
+        DateTimeOffset occurredAt,
+        PreparationCommandResult result) =>
+        Create(
+            id,
+            workId,
+            QuantityStartedEventKind,
+            quantity,
+            actorIdentityId,
+            occurredAt,
+            result);
+
+    internal static PreparationHistory QuantityReady(
+        Guid id,
+        Guid workId,
+        int quantity,
+        Guid actorIdentityId,
+        DateTimeOffset occurredAt,
+        PreparationCommandResult result) =>
+        Create(
+            id,
+            workId,
+            QuantityReadyEventKind,
+            quantity,
+            actorIdentityId,
+            occurredAt,
+            result);
+
+    private static PreparationHistory Create(
+        Guid id,
+        Guid workId,
+        string eventKind,
+        int quantity,
+        Guid actorIdentityId,
+        DateTimeOffset occurredAt,
+        PreparationCommandResult result) =>
+        new(
+            id,
+            workId,
+            eventKind,
+            quantity,
+            actorIdentityId,
+            occurredAt,
+            result.TotalQuantity,
+            result.PendingQuantity,
+            result.InPreparationQuantity,
+            result.ReadyQuantity);
 
     internal Guid Id { get; private set; }
     internal Guid WorkId { get; private set; }
@@ -44,19 +98,22 @@ internal sealed class PreparationHistory
 internal sealed class PreparationCommand
 {
     internal const string StartQuantityCommandKind = "StartPreparationQuantity";
+    internal const string MarkQuantityReadyCommandKind =
+        "MarkPreparationQuantityReady";
 
     private PreparationCommand() { }
 
-    internal PreparationCommand(
+    private PreparationCommand(
         Guid idempotencyKey,
         Guid actorIdentityId,
+        string commandKind,
         Guid workId,
         int quantity,
-        StartPreparationQuantityResponse result)
+        PreparationCommandResult result)
     {
         IdempotencyKey = idempotencyKey;
         ActorIdentityId = actorIdentityId;
-        CommandKind = StartQuantityCommandKind;
+        CommandKind = commandKind;
         WorkId = workId;
         Quantity = quantity;
         ResultHistoryId = result.HistoryId;
@@ -66,6 +123,34 @@ internal sealed class PreparationCommand
         ResultInPreparationQuantity = result.InPreparationQuantity;
         ResultReadyQuantity = result.ReadyQuantity;
     }
+
+    internal static PreparationCommand StartQuantity(
+        Guid idempotencyKey,
+        Guid actorIdentityId,
+        Guid workId,
+        int quantity,
+        PreparationCommandResult result) =>
+        new(
+            idempotencyKey,
+            actorIdentityId,
+            StartQuantityCommandKind,
+            workId,
+            quantity,
+            result);
+
+    internal static PreparationCommand MarkQuantityReady(
+        Guid idempotencyKey,
+        Guid actorIdentityId,
+        Guid workId,
+        int quantity,
+        PreparationCommandResult result) =>
+        new(
+            idempotencyKey,
+            actorIdentityId,
+            MarkQuantityReadyCommandKind,
+            workId,
+            quantity,
+            result);
 
     internal Guid IdempotencyKey { get; private set; }
     internal Guid ActorIdentityId { get; private set; }
@@ -89,7 +174,7 @@ internal sealed class PreparationCommand
         WorkId == workId &&
         Quantity == quantity;
 
-    internal StartPreparationQuantityResponse ToStartResponse() => new(
+    internal PreparationCommandResult ToResult() => new(
         WorkId,
         ResultHistoryId,
         ResultOccurredAt,
@@ -98,3 +183,12 @@ internal sealed class PreparationCommand
         ResultInPreparationQuantity,
         ResultReadyQuantity);
 }
+
+internal sealed record PreparationCommandResult(
+    Guid WorkId,
+    Guid HistoryId,
+    DateTimeOffset OccurredAt,
+    int TotalQuantity,
+    int PendingQuantity,
+    int InPreparationQuantity,
+    int ReadyQuantity);
