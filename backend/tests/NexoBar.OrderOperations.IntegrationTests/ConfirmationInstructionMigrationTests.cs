@@ -15,7 +15,7 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
     private const string CurrentMigration =
         "20260830230000_AddConfirmationInstructions";
     private const string LatestMigration =
-        "20260831063910_AddPreparationStart";
+        "20260831171256_AddDeliveryState";
 
     [Fact]
     public async Task Migration_preserves_I3A_data_replay_queries_and_has_safe_down()
@@ -105,7 +105,7 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
 
             await fixture.MigrateOrderOperationsAsync(PreviousMigration, token);
             await AssertInstructionColumnsAsync(expected: false, token);
-            await fixture.MigrateOrderOperationsAsync(CurrentMigration, token);
+            await fixture.MigrateOrderOperationsAsync(LatestMigration, token);
 
             using var newConfirmation = await PostSubsequentAsync(
                 orderId,

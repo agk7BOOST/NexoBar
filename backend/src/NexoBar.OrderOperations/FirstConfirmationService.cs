@@ -112,7 +112,7 @@ internal sealed class FirstConfirmationService(
             var contentOrdinal = checked(index + 1);
             var product = productsById[item.ProductId];
             var creation = ConfirmedContentFactory
-                .CreateConfirmedContentAndPreparationWork(
+                .CreateConfirmedContent(
                 incorporationId,
                 contentOrdinal,
                 item.Quantity,
@@ -123,6 +123,7 @@ internal sealed class FirstConfirmationService(
             {
                 dbContext.PreparationWork.Add(creation.PreparationWork);
             }
+            dbContext.DeliveryStates.Add(creation.DeliveryState);
             dbContext.FirstConfirmationCommandContents.Add(
                 new FirstConfirmationCommandContent(
                     idempotencyKey,

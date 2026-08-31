@@ -52,6 +52,7 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                order_operations.delivery_states,
                 order_operations.preparation_commands,
                 order_operations.preparation_history,
                 order_operations.subsequent_confirmation_command_contents,
@@ -352,6 +353,33 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             .PreparationWork.CountAsync(cancellationToken);
     }
 
+    internal async Task<IReadOnlyList<DeliveryStateSnapshot>> ReadDeliveryStatesAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        return await (
+            from state in dbContext.DeliveryStates.AsNoTracking()
+            join content in dbContext.IncorporationContents.AsNoTracking()
+                on new { state.IncorporationId, state.ContentOrdinal }
+                equals new { content.IncorporationId, content.ContentOrdinal }
+            orderby state.IncorporationId, state.ContentOrdinal
+            select new DeliveryStateSnapshot(
+                state.IncorporationId,
+                state.ContentOrdinal,
+                content.ProductId,
+                content.Instruction,
+                state.DeliveredQuantity)).ToArrayAsync(cancellationToken);
+    }
+
+    internal async Task<int> CountDeliveryStatesAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .DeliveryStates.CountAsync(cancellationToken);
+    }
+
     internal async Task<IReadOnlyList<PreparationHistory>> ReadPreparationHistoryAsync(
         CancellationToken cancellationToken)
     {
@@ -458,6 +486,33 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
               DROP TRIGGER IF EXISTS fail_preparation_work
                   ON order_operations.preparation_work;
               DROP FUNCTION IF EXISTS order_operations.fail_preparation_work();
+              """;
+        await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+    }
+
+    internal async Task SetDeliveryStateFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+
+        var sql = enabled
+            ? """
+              CREATE OR REPLACE FUNCTION order_operations.fail_delivery_state()
+              RETURNS trigger LANGUAGE plpgsql AS $$
+              BEGIN
+                  RAISE EXCEPTION 'controlled delivery state failure';
+              END;
+              $$;
+              CREATE TRIGGER fail_delivery_state
+              BEFORE INSERT ON order_operations.delivery_states
+              FOR EACH ROW EXECUTE FUNCTION order_operations.fail_delivery_state();
+              """
+            : """
+              DROP TRIGGER IF EXISTS fail_delivery_state
+                  ON order_operations.delivery_states;
+              DROP FUNCTION IF EXISTS order_operations.fail_delivery_state();
               """;
         await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
     }
@@ -843,6 +898,13 @@ internal sealed record PreparationWorkSnapshot(
     int PendingQuantity,
     int InPreparationQuantity,
     int ReadyQuantity);
+
+internal sealed record DeliveryStateSnapshot(
+    Guid IncorporationId,
+    int ContentOrdinal,
+    Guid ProductId,
+    string? Instruction,
+    int DeliveredQuantity);
 
 internal sealed record PreparationActor(
     Guid IdentityId,

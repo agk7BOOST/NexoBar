@@ -4,7 +4,7 @@ namespace NexoBar.OrderOperations;
 
 internal static class ConfirmedContentFactory
 {
-    internal static ConfirmedContentCreation CreateConfirmedContentAndPreparationWork(
+    internal static ConfirmedContentCreation CreateConfirmedContent(
         Guid incorporationId,
         int contentOrdinal,
         int quantity,
@@ -18,6 +18,7 @@ internal static class ConfirmedContentFactory
             quantity,
             product.Price,
             instruction);
+        var deliveryState = new DeliveryState(incorporationId, contentOrdinal);
 
         if (!product.RequiresPreparation)
         {
@@ -33,7 +34,7 @@ internal static class ConfirmedContentFactory
                     "A Product that does not require preparation cannot have a Preparation Responsibility.");
             }
 
-            return new ConfirmedContentCreation(content, null);
+            return new ConfirmedContentCreation(content, null, deliveryState);
         }
 
         var responsibilityId = product.PreparationResponsibilityId
@@ -45,10 +46,11 @@ internal static class ConfirmedContentFactory
             contentOrdinal,
             responsibilityId,
             quantity);
-        return new ConfirmedContentCreation(content, work);
+        return new ConfirmedContentCreation(content, work, deliveryState);
     }
 }
 
 internal sealed record ConfirmedContentCreation(
     IncorporationContent Content,
-    PreparationWork? PreparationWork);
+    PreparationWork? PreparationWork,
+    DeliveryState DeliveryState);

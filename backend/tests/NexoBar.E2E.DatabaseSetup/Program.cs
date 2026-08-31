@@ -147,6 +147,9 @@ try
             2,
             bar.Id,
             1));
+    orderOperations.DeliveryStates.AddRange(
+        new DeliveryState(incorporation.Id, 1),
+        new DeliveryState(incorporation.Id, 2));
     orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
         Guid.CreateVersion7(),
         incorporation.Id,

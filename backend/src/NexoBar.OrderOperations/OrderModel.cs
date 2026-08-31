@@ -58,6 +58,22 @@ internal sealed class IncorporationContent
     internal string? Instruction { get; private set; }
 }
 
+internal sealed class DeliveryState
+{
+    private DeliveryState() { }
+
+    internal DeliveryState(Guid incorporationId, int contentOrdinal)
+    {
+        IncorporationId = incorporationId;
+        ContentOrdinal = contentOrdinal;
+        DeliveredQuantity = 0;
+    }
+
+    internal Guid IncorporationId { get; private set; }
+    internal int ContentOrdinal { get; private set; }
+    internal int DeliveredQuantity { get; private set; }
+}
+
 internal sealed class PreparationWork
 {
     private PreparationWork() { }

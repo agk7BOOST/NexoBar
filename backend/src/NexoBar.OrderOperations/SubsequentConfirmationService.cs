@@ -137,7 +137,7 @@ internal sealed class SubsequentConfirmationService(
             var contentOrdinal = checked(index + 1);
             var product = productsById[item.ProductId];
             var creation = ConfirmedContentFactory
-                .CreateConfirmedContentAndPreparationWork(
+                .CreateConfirmedContent(
                 incorporationId,
                 contentOrdinal,
                 item.Quantity,
@@ -148,6 +148,7 @@ internal sealed class SubsequentConfirmationService(
             {
                 dbContext.PreparationWork.Add(creation.PreparationWork);
             }
+            dbContext.DeliveryStates.Add(creation.DeliveryState);
             dbContext.SubsequentConfirmationCommandContents.Add(
                 new SubsequentConfirmationCommandContent(
                     idempotencyKey,

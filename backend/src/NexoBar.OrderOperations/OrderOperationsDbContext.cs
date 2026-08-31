@@ -9,6 +9,7 @@ internal sealed class OrderOperationsDbContext(
     internal DbSet<Order> Orders => Set<Order>();
     internal DbSet<Incorporation> Incorporations => Set<Incorporation>();
     internal DbSet<IncorporationContent> IncorporationContents => Set<IncorporationContent>();
+    internal DbSet<DeliveryState> DeliveryStates => Set<DeliveryState>();
     internal DbSet<PreparationWork> PreparationWork => Set<PreparationWork>();
     internal DbSet<PreparationHistory> PreparationHistory => Set<PreparationHistory>();
     internal DbSet<PreparationCommand> PreparationCommands => Set<PreparationCommand>();
@@ -28,6 +29,7 @@ internal sealed class OrderOperationsDbContext(
         modelBuilder.ApplyConfiguration(new OrderConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationContentConfiguration());
+        modelBuilder.ApplyConfiguration(new DeliveryStateConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationWorkConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationCommandConfiguration());
@@ -36,6 +38,39 @@ internal sealed class OrderOperationsDbContext(
         modelBuilder.ApplyConfiguration(new FirstConfirmationCommandContentConfiguration());
         modelBuilder.ApplyConfiguration(new SubsequentConfirmationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new SubsequentConfirmationCommandContentConfiguration());
+    }
+
+    private sealed class DeliveryStateConfiguration :
+        IEntityTypeConfiguration<DeliveryState>
+    {
+        public void Configure(EntityTypeBuilder<DeliveryState> builder)
+        {
+            builder.ToTable(
+                "delivery_states",
+                table => table.HasCheckConstraint(
+                    "CK_order_operations_delivery_states_delivered_non_negative",
+                    "delivered_quantity >= 0"));
+            builder.HasKey(state => new
+            {
+                state.IncorporationId,
+                state.ContentOrdinal
+            })
+                .HasName("PK_order_operations_delivery_states");
+            builder.Property(state => state.IncorporationId)
+                .HasColumnName("incorporation_id").ValueGeneratedNever();
+            builder.Property(state => state.ContentOrdinal)
+                .HasColumnName("content_ordinal").ValueGeneratedNever();
+            builder.Property(state => state.DeliveredQuantity)
+                .HasColumnName("delivered_quantity").IsRequired();
+            builder.HasOne<IncorporationContent>().WithOne()
+                .HasForeignKey<DeliveryState>(state => new
+                {
+                    state.IncorporationId,
+                    state.ContentOrdinal
+                })
+                .HasConstraintName("FK_order_operations_delivery_states_content")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
     }
 
     private sealed class PreparationWorkConfiguration :
