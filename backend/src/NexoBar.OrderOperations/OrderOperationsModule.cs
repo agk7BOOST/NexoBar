@@ -30,6 +30,7 @@ public static class OrderOperationsModule
         services.AddScoped<FirstConfirmationService>();
         services.AddScoped<SubsequentConfirmationService>();
         services.AddScoped<OrderQueryService>();
+        services.AddScoped<OrderDeliveryQueryService>();
         services.AddScoped<PreparationWorkQueryService>();
         services.AddScoped<PreparationProgressService>();
 
@@ -97,6 +98,19 @@ public static class OrderOperationsModule
             .Produces<OrderQueryResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        endpoints.MapGet(
+                "/api/order-operations/orders/{operationalReference}/delivery",
+                FindOrderDeliveryAsync)
+            .WithName("GetOrderDeliveryByOperationalReference")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Produces<OrderDeliveryResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         endpoints.MapPost(
                 "/api/order-operations/orders/{operationalReference}/confirmations",
@@ -488,6 +502,53 @@ public static class OrderOperationsModule
                 "No Order exists with the supplied operational reference.",
                 "order_operations.order.not_found")
             : Results.Ok(order);
+    }
+
+    private static async Task<IResult> FindOrderDeliveryAsync(
+        string operationalReference,
+        OrderDeliveryQueryService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(operationalReference, out var orderId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid operational reference",
+                "The supplied operational reference is structurally invalid.",
+                "order_operations.order.operational_reference_invalid");
+        }
+
+        var result = await service.FindAsync(orderId, cancellationToken);
+        return result.Outcome switch
+        {
+            OrderDeliveryQueryOutcome.Succeeded => Results.Ok(result.Response),
+            OrderDeliveryQueryOutcome.Unauthenticated => Problem(
+                StatusCodes.Status401Unauthorized,
+                "Invalid session",
+                "The current session is invalid or expired.",
+                "identities_and_capabilities.invalid_session"),
+            OrderDeliveryQueryOutcome.Forbidden => Problem(
+                StatusCodes.Status403Forbidden,
+                "Delivery access forbidden",
+                "The current Identity is not authorized for Order Operations.",
+                "order_operations.delivery.forbidden"),
+            OrderDeliveryQueryOutcome.OrderNotFound => Problem(
+                StatusCodes.Status404NotFound,
+                "Order not found",
+                "No Order exists with the supplied operational reference.",
+                "order_operations.order.not_found"),
+            OrderDeliveryQueryOutcome.StateInconsistent => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Delivery state is inconsistent",
+                "The Order cannot be represented by the Delivery read model.",
+                "order_operations.delivery.state_inconsistent"),
+            OrderDeliveryQueryOutcome.ProductReferenceInconsistent => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Product reference is inconsistent",
+                "Delivery references a Product that Catalog cannot resolve.",
+                "order_operations.delivery.product_reference_inconsistent"),
+            _ => throw new UnreachableException()
+        };
     }
 
     private static async Task<IResult> ConfirmFirstAsync(

@@ -117,6 +117,64 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         return new PreparationActor(identity.Id, loginIdentifier, secret);
     }
 
+    internal async Task<PreparationActor> CreateDeliveryActorAsync(
+        bool hasOrderOperations,
+        bool hasPreparation,
+        Guid? enabledResponsibilityId,
+        CancellationToken cancellationToken)
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var loginIdentifier = $"delivery-{suffix}";
+        const string secret = "delivery-test-secret";
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        var identity = new Identity($"Entrega {suffix}", true);
+        dbContext.Identities.Add(identity);
+        if (hasOrderOperations)
+        {
+            dbContext.ResponsibilityAssignments.Add(new ResponsibilityAssignment(
+                identity.Id,
+                FunctionalResponsibility.OrderOperationsAndBasicClosure));
+        }
+
+        if (hasPreparation)
+        {
+            dbContext.ResponsibilityAssignments.Add(new ResponsibilityAssignment(
+                identity.Id,
+                FunctionalResponsibility.Preparation));
+        }
+
+        if (enabledResponsibilityId is { } responsibilityId)
+        {
+            dbContext.PreparationEnablements.Add(new PreparationEnablement(
+                identity.Id,
+                responsibilityId));
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+            .ProvisionAsync(
+                identity.Id,
+                loginIdentifier,
+                secret,
+                cancellationToken);
+        return new PreparationActor(identity.Id, loginIdentifier, secret);
+    }
+
+    internal async Task RevokeOrderOperationsAssignmentAsync(
+        Guid identityId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .ResponsibilityAssignments.Where(assignment =>
+                assignment.IdentityId == identityId &&
+                assignment.ResponsibilityCode ==
+                    FunctionalResponsibility.OrderOperationsAndBasicClosure)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
     internal async Task<HttpClient> LoginAsync(
         PreparationActor actor,
         CancellationToken cancellationToken,
