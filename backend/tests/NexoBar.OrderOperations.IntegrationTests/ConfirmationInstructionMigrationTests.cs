@@ -88,7 +88,12 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
                 await orderResponse.Content.ReadFromJsonAsync<OrderQueryResponse>(token));
             Assert.All(order.Incorporations.SelectMany(x => x.Items),
                 item => Assert.Null(item.Instruction));
-            using var preparationResponse = await fixture.Client.GetAsync(
+            var actor = await fixture.CreatePreparationActorAsync(
+                hasPreparation: true,
+                responsibility,
+                token);
+            using var preparationClient = await fixture.LoginAsync(actor, token);
+            using var preparationResponse = await preparationClient.GetAsync(
                 "/api/order-operations/preparation/work" +
                 $"?preparationResponsibilityId={responsibility:D}", token);
             var preparation = Assert.Single(Assert.IsType<PreparationWorkResponse[]>(

@@ -12,6 +12,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="NexoBar.E2E.DatabaseSetup" />
     <InternalsVisibleTo Include="NexoBar.IdentitiesAndCapabilities.IntegrationTests" />
+    <InternalsVisibleTo Include="NexoBar.OrderOperations.IntegrationTests" />
   </ItemGroup>
 
   <PropertyGroup>

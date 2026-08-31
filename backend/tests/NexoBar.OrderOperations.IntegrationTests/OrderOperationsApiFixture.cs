@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NexoBar.Catalog;
+using NexoBar.IdentitiesAndCapabilities;
 using NexoBar.OperationalConfiguration;
 using NexoBar.OrderOperations;
 using Testcontainers.PostgreSql;
@@ -34,6 +35,10 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         StartApplication();
 
         await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<OperationalConfigurationDbContext>()
+            .Database.MigrateAsync();
+        await scope.ServiceProvider.GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .Database.MigrateAsync();
         await scope.ServiceProvider.GetRequiredService<CatalogDbContext>()
             .Database.MigrateAsync();
         await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
@@ -59,9 +64,166 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 catalog.product_preparation_configuration_change_commands,
                 catalog.product_price_change_commands,
                 catalog.product_creation_commands,
-                catalog.products
+                catalog.products,
+                identities_and_capabilities.administrative_commands,
+                identities_and_capabilities.sessions,
+                identities_and_capabilities.local_credentials,
+                identities_and_capabilities.preparation_enablements,
+                identities_and_capabilities.responsibility_assignments,
+                identities_and_capabilities.identities,
+                operational_configuration.preparation_responsibility_creation_commands,
+                operational_configuration.preparation_responsibilities
             """,
             cancellationToken);
+    }
+
+    internal async Task<PreparationActor> CreatePreparationActorAsync(
+        bool hasPreparation,
+        Guid? enabledResponsibilityId,
+        CancellationToken cancellationToken)
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var loginIdentifier = $"preparer-{suffix}";
+        const string secret = "preparation-test-secret";
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        var identity = new Identity($"Preparador {suffix}", true);
+        dbContext.Identities.Add(identity);
+        if (hasPreparation)
+        {
+            dbContext.ResponsibilityAssignments.Add(new ResponsibilityAssignment(
+                identity.Id,
+                FunctionalResponsibility.Preparation));
+        }
+
+        if (enabledResponsibilityId is { } responsibilityId)
+        {
+            dbContext.PreparationEnablements.Add(new PreparationEnablement(
+                identity.Id,
+                responsibilityId));
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+            .ProvisionAsync(
+                identity.Id,
+                loginIdentifier,
+                secret,
+                cancellationToken);
+        return new PreparationActor(identity.Id, loginIdentifier, secret);
+    }
+
+    internal async Task<HttpClient> LoginAsync(
+        PreparationActor actor,
+        CancellationToken cancellationToken,
+        WebApplicationFactory<Program>? targetApplication = null)
+    {
+        var client = (targetApplication ?? application!).CreateClient();
+        using var antiforgery = await client.GetAsync(
+            "/api/security/antiforgery",
+            cancellationToken);
+        antiforgery.EnsureSuccessStatusCode();
+        using var document = await System.Text.Json.JsonDocument.ParseAsync(
+            await antiforgery.Content.ReadAsStreamAsync(cancellationToken),
+            cancellationToken: cancellationToken);
+        var requestToken = document.RootElement.GetProperty("requestToken").GetString();
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/api/identity-sessions")
+        {
+            Content = JsonContent.Create(new
+            {
+                loginIdentifier = actor.LoginIdentifier,
+                secret = actor.Secret
+            })
+        };
+        request.Headers.Add("X-NexoBar-CSRF", requestToken);
+        using var response = await client.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return client;
+    }
+
+    internal async Task SetIdentityActiveAsync(
+        Guid identityId,
+        bool isActive,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .Identities.Where(identity => identity.Id == identityId)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(identity => identity.IsActive, isActive),
+                cancellationToken);
+    }
+
+    internal async Task RevokePreparationAssignmentAsync(
+        Guid identityId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .ResponsibilityAssignments.Where(assignment =>
+                assignment.IdentityId == identityId &&
+                assignment.ResponsibilityCode == FunctionalResponsibility.Preparation)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    internal async Task RevokePreparationEnablementAsync(
+        Guid identityId,
+        Guid preparationResponsibilityId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .PreparationEnablements.Where(enablement =>
+                enablement.IdentityId == identityId &&
+                enablement.PreparationResponsibilityId == preparationResponsibilityId)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    internal async Task RevokeSessionsAsync(
+        Guid identityId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var now = DateTimeOffset.UtcNow;
+        await scope.ServiceProvider.GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .Sessions.Where(session =>
+                session.IdentityId == identityId && session.RevokedAt == null)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(session => session.RevokedAt, now),
+                cancellationToken);
+    }
+
+    internal async Task RenameProductAsync(
+        Guid productId,
+        string operationalName,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<CatalogDbContext>()
+            .Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE catalog.products SET operational_name = {operationalName} WHERE id = {productId}",
+                cancellationToken);
+    }
+
+    internal async Task ReplaceContentProductReferenceAsync(
+        Guid incorporationId,
+        int contentOrdinal,
+        Guid productId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE order_operations.incorporation_contents
+                SET product_id = {productId}
+                WHERE incorporation_id = {incorporationId}
+                  AND content_ordinal = {contentOrdinal}
+                """,
+                cancellationToken);
     }
 
     internal async Task<ProductResponse> CreateProductAsync(
@@ -79,6 +241,33 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         response.EnsureSuccessStatusCode();
         return Assert.IsType<ProductResponse>(
             await response.Content.ReadFromJsonAsync<ProductResponse>(cancellationToken));
+    }
+
+    internal async Task<(ProductResponse Product, FirstConfirmationResponse Confirmation)>
+        CreatePreparedWorkAsync(
+            Guid preparationResponsibilityId,
+            CancellationToken cancellationToken)
+    {
+        var product = await CreateProductAsync("Preparado", "7", cancellationToken);
+        await SetProductPreparationAsync(
+            product.Id,
+            preparationResponsibilityId,
+            cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/api/order-operations/first-confirmations")
+        {
+            Content = JsonContent.Create(new FirstConfirmationRequest(
+                "Mesa concurrente",
+                [new FirstConfirmationItemRequest(product.Id, 1)]))
+        };
+        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
+        using var response = await Client.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var confirmation = Assert.IsType<FirstConfirmationResponse>(
+            await response.Content.ReadFromJsonAsync<FirstConfirmationResponse>(
+                cancellationToken));
+        return (product, confirmation);
     }
 
     internal async Task SetProductStateAsync(
@@ -372,6 +561,15 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 services.AddScoped(factory);
             }));
 
+    internal WebApplicationFactory<Program> CreateApplicationWithProductLookupDecorator(
+        Func<IServiceProvider, IProductOperationalReferenceLookup> factory) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IProductOperationalReferenceLookup>();
+                services.AddScoped(factory);
+            }));
+
     internal WebApplicationFactory<Program>
         CreateApplicationWithCatalogDecoratorAndPreparationLookup(
             Func<IServiceProvider, IOrderConfirmationCatalog> catalogFactory,
@@ -418,6 +616,43 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         return false;
     }
 
+    internal async Task<bool> WaitForIdentityMutationLockAsync(
+        string tableName,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_stat_activity
+                    WHERE datname = current_database()
+                      AND pid <> pg_backend_pid()
+                      AND state = 'active'
+                      AND wait_event_type = 'Lock'
+                      AND query ILIKE @query_pattern)
+                """;
+            command.Parameters.AddWithValue(
+                "query_pattern",
+                $"%identities_and_capabilities.{tableName}%");
+            if (Assert.IsType<bool>(
+                    await command.ExecuteScalarAsync(cancellationToken)))
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
+        }
+
+        return false;
+    }
+
     public async ValueTask DisposeAsync()
     {
         Client.Dispose();
@@ -453,6 +688,13 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 builder.UseSetting(
                     "ConnectionStrings:OrderOperations",
                     postgres.GetConnectionString());
+                builder.UseSetting(
+                    "NexoBarSecurity:Cookies:SessionName",
+                    "nexobar-order-operations-session-test");
+                builder.UseSetting(
+                    "NexoBarSecurity:Cookies:AntiforgeryName",
+                    "nexobar-order-operations-antiforgery-test");
+                builder.UseSetting("NexoBarSecurity:Cookies:Secure", "false");
                 configure?.Invoke(builder);
             });
 
@@ -496,6 +738,11 @@ internal sealed record PreparationWorkSnapshot(
     int PendingQuantity,
     int InPreparationQuantity,
     int ReadyQuantity);
+
+internal sealed record PreparationActor(
+    Guid IdentityId,
+    string LoginIdentifier,
+    string Secret);
 
 [CollectionDefinition(Name)]
 public sealed class OrderOperationsApiCollection :

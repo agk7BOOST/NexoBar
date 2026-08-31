@@ -95,10 +95,13 @@ vi.mock("./orderOperations/OrderLookup.tsx", () => ({
   ),
 }));
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
+    status,
+    headers: {
+      "Content-Type":
+        status >= 400 ? "application/problem+json" : "application/json",
+    },
   });
 }
 
@@ -171,7 +174,7 @@ describe("App coordination", () => {
     );
 
     expect(await screen.findByText("Products: 2")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("Confirmación posterior incrementa sequence para refrescar el mismo Pedido", async () => {
@@ -189,5 +192,72 @@ describe("App coordination", () => {
       screen.getByText("Lookup solicitado: order-created"),
     ).toBeInTheDocument();
     expect(screen.getByText("Sequence: 2")).toBeInTheDocument();
+  });
+
+  it("initial current-session 401 shows login without hiding anonymous flows", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse([listedProduct]))
+      .mockResolvedValueOnce(
+        jsonResponse({ code: "authentication_required" }, 401),
+      );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Ingresar" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Catalog coordinado")).toBeInTheDocument();
+    expect(screen.getByLabelText("Workflow coordinado")).toBeInTheDocument();
+  });
+
+  it("shows current Identity and returns to login after protected 401", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse([listedProduct]))
+      .mockResolvedValueOnce(
+        jsonResponse({ identityId: "identity-1", operationalName: "Ana" }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse([
+          {
+            preparationResponsibilityId: "destination-1",
+            operationalName: "Cocina",
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(jsonResponse({ code: "invalid_session" }, 401));
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Ingresar" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Ana")).not.toBeInTheDocument();
+  });
+
+  it("keeps current Identity after protected 403", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse([listedProduct]))
+      .mockResolvedValueOnce(
+        jsonResponse({ identityId: "identity-1", operationalName: "Ana" }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse([
+          {
+            preparationResponsibilityId: "destination-1",
+            operationalName: "Cocina",
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(jsonResponse({ code: "forbidden" }, 403));
+
+    render(<App />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Esta Identity no tiene autorización para esa preparación.",
+    );
+    expect(screen.getByText("Ana")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Ingresar" }),
+    ).not.toBeInTheDocument();
   });
 });

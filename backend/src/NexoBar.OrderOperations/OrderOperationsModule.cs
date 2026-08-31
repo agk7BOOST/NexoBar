@@ -52,8 +52,12 @@ public static class OrderOperationsModule
                 ListPreparationWorkAsync)
             .WithName("ListPreparationWork")
             .WithTags("OrderOperations")
+            .RequireAuthorization()
             .Produces<IReadOnlyList<PreparationWorkResponse>>()
-            .ProducesProblem(StatusCodes.Status400BadRequest);
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         endpoints.MapGet(
                 "/api/order-operations/orders/{operationalReference}",
@@ -200,7 +204,27 @@ public static class OrderOperationsModule
                 "order_operations.preparation_work.responsibility_id_invalid");
         }
 
-        return Results.Ok(await service.ListAsync(responsibilityId, cancellationToken));
+        var result = await service.ListAsync(responsibilityId, cancellationToken);
+        return result.Outcome switch
+        {
+            PreparationWorkQueryOutcome.Succeeded => Results.Ok(result.Work),
+            PreparationWorkQueryOutcome.Unauthenticated => Problem(
+                StatusCodes.Status401Unauthorized,
+                "Invalid session",
+                "The current session is invalid or expired.",
+                "identities_and_capabilities.invalid_session"),
+            PreparationWorkQueryOutcome.Forbidden => Problem(
+                StatusCodes.Status403Forbidden,
+                "Preparation work access forbidden",
+                "The current Identity is not authorized for the requested Preparation destination.",
+                "order_operations.preparation.forbidden"),
+            PreparationWorkQueryOutcome.ProductReferenceInconsistent => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Product reference is inconsistent",
+                "Preparation Work references a Product that Catalog cannot resolve.",
+                "order_operations.preparation_work.product_reference_inconsistent"),
+            _ => throw new UnreachableException()
+        };
     }
 
     private static async Task<IResult> FindOrderAsync(

@@ -499,4 +499,11 @@ internal sealed class UnexpectedPreparationResponsibilityLookup :
         WasCalled = true;
         return Task.FromResult(true);
     }
+
+    public Task<IReadOnlyList<PreparationResponsibilityReference>> ReadByIdsAsync(
+        IReadOnlyCollection<Guid> responsibilityIds,
+        System.Data.Common.DbTransaction transaction,
+        CancellationToken cancellationToken) =>
+        throw new InvalidOperationException(
+            "Preparation Responsibility batch lookup was not expected.");
 }

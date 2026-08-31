@@ -9,6 +9,20 @@ import {
   OrderWorkflow,
   type OrderTargetRequest,
 } from "./orderOperations/OrderWorkflow.tsx";
+import { LoginPanel } from "./identity/LoginPanel.tsx";
+import { SessionBar } from "./identity/SessionBar.tsx";
+import {
+  discardAntiforgeryToken,
+  getCurrentIdentity,
+  SessionProblemError,
+  type CurrentIdentity,
+} from "./identity/sessionClient.ts";
+import { PreparationPanel } from "./preparation/PreparationPanel.tsx";
+
+type AuthState =
+  | { status: "loading" }
+  | { status: "unauthenticated" }
+  | { status: "authenticated"; identity: CurrentIdentity };
 
 function App() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -20,6 +34,7 @@ function App() {
   const [requestedLookup, setRequestedLookup] =
     useState<RequestedOrderLookup>();
   const [requestedTarget, setRequestedTarget] = useState<OrderTargetRequest>();
+  const [authState, setAuthState] = useState<AuthState>({ status: "loading" });
 
   const reloadProducts = useCallback(async () => {
     setIsLoading(true);
@@ -57,6 +72,30 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let isCurrent = true;
+    void getCurrentIdentity().then(
+      (identity) => {
+        if (isCurrent) setAuthState({ status: "authenticated", identity });
+      },
+      (error: unknown) => {
+        if (!isCurrent) return;
+        if (error instanceof SessionProblemError && error.status === 401) {
+          discardAntiforgeryToken();
+        }
+        setAuthState({ status: "unauthenticated" });
+      },
+    );
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  const returnToLogin = useCallback(() => {
+    discardAntiforgeryToken();
+    setAuthState({ status: "unauthenticated" });
+  }, []);
+
   function activateOrder(operationalReference: string) {
     setActiveOperationalReference(operationalReference);
     setRequestedTarget(undefined);
@@ -88,6 +127,24 @@ function App() {
         <h1>Catálogo de productos</h1>
         <p>Alta, consulta y operación con productos vigentes.</p>
       </header>
+
+      {authState.status === "loading" && <p>Cargando sesión…</p>}
+      {authState.status === "unauthenticated" && (
+        <LoginPanel
+          onAuthenticated={(identity) =>
+            setAuthState({ status: "authenticated", identity })
+          }
+        />
+      )}
+      {authState.status === "authenticated" && (
+        <>
+          <SessionBar
+            identity={authState.identity}
+            onLoggedOut={returnToLogin}
+          />
+          <PreparationPanel onUnauthorized={returnToLogin} />
+        </>
+      )}
 
       <CatalogPanel
         products={products}

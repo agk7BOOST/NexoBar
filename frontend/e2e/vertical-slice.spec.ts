@@ -279,3 +279,42 @@ test("informa un Pedido inexistente sin conservar el resultado previo", async ({
     subsequentComposition.getByText(missingReference, { exact: true }),
   ).toHaveCount(0);
 });
+
+test("preparador autenticado solo consulta Work de su destino habilitado", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Identificador de acceso").fill("preparador-e2e");
+  await page.getByLabel("Secreto").fill("preparation-e2e-secret");
+  await page.getByRole("button", { name: "Ingresar" }).click();
+
+  const identity = page.getByRole("region", { name: "Identity actual" });
+  await expect(
+    identity.getByText("Preparador E2E", { exact: true }),
+  ).toBeVisible();
+  const preparation = page.getByRole("region", { name: "Preparación" });
+  await expect(
+    preparation.getByText("Cocina E2E", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    preparation.getByRole("cell", {
+      name: "Papas E2E autorizadas",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(preparation.getByText("Sin sal", { exact: true })).toBeVisible();
+  await expect(
+    preparation.getByText("Trago E2E no autorizado", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    preparation.getByRole("button", { name: /Start|Ready|Listo/i }),
+  ).toHaveCount(0);
+
+  await identity
+    .getByRole("button", { name: "Cambiar persona / salir" })
+    .click();
+  await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
+  await expect(page.getByText("Preparador E2E", { exact: true })).toHaveCount(
+    0,
+  );
+});

@@ -78,7 +78,9 @@ public static class IdentitiesAndCapabilitiesModule
         services.AddScoped<SessionCookieManager>();
         services.AddScoped<IAuthenticatedContext, HttpAuthenticatedContext>();
         services.AddScoped<IAuthenticatedSessionStabilizer, AuthenticatedSessionStabilizer>();
+        services.AddScoped<IPreparationAuthorization, PreparationAuthorization>();
         services.AddScoped<IdentitySessionService>();
+        services.AddScoped<CurrentPreparationDestinationQueryService>();
         services.AddScoped<LocalCredentialProvisioner>();
         services.AddScoped<PreparationEnablementService>();
         services.AddScoped<IdentityAdministrationService>();
@@ -126,7 +128,47 @@ public static class IdentitiesAndCapabilitiesModule
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
+        endpoints.MapGet(
+                "/api/identity-sessions/current/preparation-destinations",
+                GetCurrentPreparationDestinationsAsync)
+            .RequireAuthorization()
+            .WithTags("Identity Sessions")
+            .WithName("GetCurrentPreparationDestinations")
+            .Produces<IReadOnlyList<CurrentPreparationDestinationResponse>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
         return endpoints;
+    }
+
+    private static async Task<IResult> GetCurrentPreparationDestinationsAsync(
+        CurrentPreparationDestinationQueryService destinations,
+        CancellationToken cancellationToken)
+    {
+        var result = await destinations.ListAsync(cancellationToken);
+        return result.Outcome switch
+        {
+            CurrentPreparationDestinationsOutcome.Succeeded =>
+                Results.Ok(result.Destinations),
+            CurrentPreparationDestinationsOutcome.Unauthenticated => Problem(
+                StatusCodes.Status401Unauthorized,
+                "Invalid session",
+                "The current session is invalid or expired.",
+                "identities_and_capabilities.invalid_session"),
+            CurrentPreparationDestinationsOutcome.Forbidden => Problem(
+                StatusCodes.Status403Forbidden,
+                "Preparation access forbidden",
+                "The current Identity is not authorized for Preparation.",
+                "identities_and_capabilities.preparation.forbidden"),
+            CurrentPreparationDestinationsOutcome.ReferenceInconsistent => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Preparation destination reference is inconsistent",
+                "An enabled Preparation destination could not be resolved.",
+                "identities_and_capabilities.preparation_destination.reference_inconsistent"),
+            _ => throw new InvalidOperationException(
+                "Unknown Preparation destinations outcome.")
+        };
     }
 
     private static IResult GetAntiforgeryToken(

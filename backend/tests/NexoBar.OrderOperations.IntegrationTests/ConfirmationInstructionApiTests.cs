@@ -67,6 +67,12 @@ public sealed class ConfirmationInstructionApiTests(OrderOperationsApiFixture fi
         await fixture.ResetAsync(token);
         var productId = Guid.CreateVersion7();
         var responsibilityId = Guid.CreateVersion7();
+        await using (var scope = fixture.Services.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+            dbContext.Products.Add(new Product(productId, "Papas", 10m));
+            await dbContext.SaveChangesAsync(token);
+        }
         var catalog = new RecordingCatalogCapability(
             new OrderConfirmationCatalogProduct(
                 productId, 10m, true, true, true, responsibilityId));
@@ -150,7 +156,12 @@ public sealed class ConfirmationInstructionApiTests(OrderOperationsApiFixture fi
             Assert.Single(order.Incorporations).Items
                 .Select(item => item.Instruction).ToArray());
 
-        using var workResponse = await fixture.Client.GetAsync(
+        var actor = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            responsibilityId,
+            token);
+        using var preparationClient = await fixture.LoginAsync(actor, token);
+        using var workResponse = await preparationClient.GetAsync(
             "/api/order-operations/preparation/work" +
             $"?preparationResponsibilityId={responsibilityId:D}", token);
         var queriedWork = Assert.IsType<PreparationWorkResponse[]>(

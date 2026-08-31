@@ -77,6 +77,15 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
+            INSERT INTO catalog.products
+                (id, operational_name, price, is_active, is_available,
+                 requires_preparation, preparation_responsibility_id)
+            VALUES
+                (@product_a, 'Producto A', 10, TRUE, TRUE, FALSE, NULL),
+                (@product_b, 'Producto B', 20, TRUE, TRUE, TRUE,
+                 @responsibility_id),
+                (@product_c, 'Producto C', 30, TRUE, TRUE, FALSE, NULL);
+
             INSERT INTO order_operations.orders (id, context)
             VALUES (@order_id, 'Mesa 7');
 
@@ -422,7 +431,12 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
             [ProductA, ProductC],
             order.Incorporations[1].Items.Select(item => item.ProductId).ToArray());
 
-        using var preparationResponse = await fixture.Client.GetAsync(
+        var actor = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            PreparationResponsibilityId,
+            token);
+        using var preparationClient = await fixture.LoginAsync(actor, token);
+        using var preparationResponse = await preparationClient.GetAsync(
             "/api/order-operations/preparation/work" +
             $"?preparationResponsibilityId={PreparationResponsibilityId:D}",
             token);

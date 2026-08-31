@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\NexoBar.Catalog\NexoBar.Catalog.csproj" />
+    <ProjectReference Include="..\NexoBar.IdentitiesAndCapabilities\NexoBar.IdentitiesAndCapabilities.csproj" />
   </ItemGroup>
 
   <ItemGroup>

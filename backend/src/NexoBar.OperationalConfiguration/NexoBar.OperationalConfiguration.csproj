@@ -10,6 +10,7 @@
     <InternalsVisibleTo Include="NexoBar.Catalog.IntegrationTests" />
     <InternalsVisibleTo Include="NexoBar.IdentitiesAndCapabilities.IntegrationTests" />
     <InternalsVisibleTo Include="NexoBar.OperationalConfiguration.IntegrationTests" />
+    <InternalsVisibleTo Include="NexoBar.OrderOperations.IntegrationTests" />
   </ItemGroup>
 
   <PropertyGroup>

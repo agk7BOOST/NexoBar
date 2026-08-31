@@ -168,8 +168,13 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         var first = await ReadFirstAsync(firstResponse, token);
         var orderId = Guid.Parse(first.OperationalReference);
         await fixture.SetOrderContextAsync(orderId, "Mesa vigente", token);
+        var actor = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            responsibility,
+            token);
+        using var preparationClient = await fixture.LoginAsync(actor, token);
 
-        using var query = await fixture.Client.GetAsync(
+        using var query = await preparationClient.GetAsync(
             $"/api/order-operations/preparation/work?preparationResponsibilityId={responsibility:D}",
             token);
         query.EnsureSuccessStatusCode();
@@ -205,7 +210,19 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
 
-        using var missing = await fixture.Client.GetAsync(
+        using var unauthenticated = await fixture.Client.GetAsync(
+            $"/api/order-operations/preparation/work?preparationResponsibilityId={Guid.CreateVersion7():D}",
+            token);
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
+
+        var enabledResponsibility = Guid.CreateVersion7();
+        var actor = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            enabledResponsibility,
+            token);
+        using var client = await fixture.LoginAsync(actor, token);
+
+        using var missing = await client.GetAsync(
             "/api/order-operations/preparation/work",
             token);
         await AssertProblemAsync(
@@ -213,7 +230,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
             "order_operations.preparation_work.responsibility_id_required",
             token);
 
-        using var malformed = await fixture.Client.GetAsync(
+        using var malformed = await client.GetAsync(
             "/api/order-operations/preparation/work?preparationResponsibilityId=not-a-uuid",
             token);
         await AssertProblemAsync(
@@ -221,12 +238,256 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
             "order_operations.preparation_work.responsibility_id_invalid",
             token);
 
-        using var unknown = await fixture.Client.GetAsync(
-            $"/api/order-operations/preparation/work?preparationResponsibilityId={Guid.CreateVersion7():D}",
+        using var unknown = await client.GetAsync(
+            $"/api/order-operations/preparation/work?preparationResponsibilityId={enabledResponsibility:D}",
             token);
         unknown.EnsureSuccessStatusCode();
         Assert.Empty(Assert.IsType<PreparationWorkResponse[]>(
             await unknown.Content.ReadFromJsonAsync<PreparationWorkResponse[]>(token)));
+    }
+
+    [Fact]
+    public async Task Preparation_query_distinguishes_authentication_from_exact_authorization()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var requested = Guid.CreateVersion7();
+        var other = Guid.CreateVersion7();
+
+        var noPreparation = await fixture.CreatePreparationActorAsync(
+            hasPreparation: false,
+            enabledResponsibilityId: null,
+            token);
+        using (var client = await fixture.LoginAsync(noPreparation, token))
+        using (var response = await client.GetAsync(WorkUrl(requested), token))
+        {
+            await AssertProblemAsync(
+                response,
+                HttpStatusCode.Forbidden,
+                "order_operations.preparation.forbidden",
+                token);
+        }
+
+        var noEnablement = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            enabledResponsibilityId: null,
+            token);
+        using (var client = await fixture.LoginAsync(noEnablement, token))
+        using (var response = await client.GetAsync(WorkUrl(requested), token))
+        {
+            await AssertProblemAsync(
+                response,
+                HttpStatusCode.Forbidden,
+                "order_operations.preparation.forbidden",
+                token);
+        }
+
+        var otherEnablement = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            other,
+            token);
+        using (var client = await fixture.LoginAsync(otherEnablement, token))
+        using (var response = await client.GetAsync(WorkUrl(requested), token))
+        {
+            await AssertProblemAsync(
+                response,
+                HttpStatusCode.Forbidden,
+                "order_operations.preparation.forbidden",
+                token);
+        }
+
+        var revoked = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            requested,
+            token);
+        using (var client = await fixture.LoginAsync(revoked, token))
+        {
+            await fixture.RevokeSessionsAsync(revoked.IdentityId, token);
+            using var response = await client.GetAsync(WorkUrl(requested), token);
+            await AssertProblemAsync(
+                response,
+                HttpStatusCode.Unauthorized,
+                "identities_and_capabilities.invalid_session",
+                token);
+        }
+
+        var inactive = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            requested,
+            token);
+        using (var client = await fixture.LoginAsync(inactive, token))
+        {
+            await fixture.SetIdentityActiveAsync(inactive.IdentityId, false, token);
+            using var response = await client.GetAsync(WorkUrl(requested), token);
+            await AssertProblemAsync(
+                response,
+                HttpStatusCode.Unauthorized,
+                "identities_and_capabilities.invalid_session",
+                token);
+        }
+    }
+
+    [Fact]
+    public async Task Preparation_query_uses_current_Product_name_without_changing_applied_data()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var responsibility = Guid.CreateVersion7();
+        var product = await fixture.CreateProductAsync("Papas", "5", token);
+        await fixture.SetProductPreparationAsync(product.Id, responsibility, token);
+        using var confirmation = await PostFirstAsync(
+            fixture.Client,
+            "Mesa 7",
+            Guid.NewGuid(),
+            token,
+            (product.Id, 2));
+        var confirmed = await ReadFirstAsync(confirmation, token);
+        var before = await fixture.ReadSnapshotAsync(token);
+        var actor = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            responsibility,
+            token);
+        using var client = await fixture.LoginAsync(actor, token);
+
+        using (var initial = await client.GetAsync(WorkUrl(responsibility), token))
+        {
+            initial.EnsureSuccessStatusCode();
+            var work = Assert.Single(Assert.IsType<PreparationWorkResponse[]>(
+                await initial.Content.ReadFromJsonAsync<PreparationWorkResponse[]>(token)));
+            Assert.Equal(product.Id, work.ProductId);
+            Assert.Equal("Papas", work.ProductOperationalName);
+        }
+
+        await fixture.RenameProductAsync(product.Id, "Papas especiales", token);
+
+        using var renamed = await client.GetAsync(WorkUrl(responsibility), token);
+        renamed.EnsureSuccessStatusCode();
+        var renamedWork = Assert.Single(Assert.IsType<PreparationWorkResponse[]>(
+            await renamed.Content.ReadFromJsonAsync<PreparationWorkResponse[]>(token)));
+        Assert.Equal(product.Id, renamedWork.ProductId);
+        Assert.Equal("Papas especiales", renamedWork.ProductOperationalName);
+        Assert.Equal(confirmed.FirstIncorporation.Id, renamedWork.IncorporationId);
+        var after = await fixture.ReadSnapshotAsync(token);
+        Assert.Equal(before.Contents.Single().ProductId, after.Contents.Single().ProductId);
+        Assert.Equal(before.Contents.Single().AppliedPrice, after.Contents.Single().AppliedPrice);
+        Assert.Equal(before.Contents.Single().Instruction, after.Contents.Single().Instruction);
+        Assert.Equal(
+            responsibility,
+            Assert.Single(await fixture.ReadPreparationWorkAsync(token))
+                .PreparationResponsibilityId);
+    }
+
+    [Fact]
+    public async Task Retired_Product_name_remains_resolvable_for_active_Work()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var responsibility = Guid.CreateVersion7();
+        var product = await fixture.CreateProductAsync("Pizza", "9", token);
+        await fixture.SetProductPreparationAsync(product.Id, responsibility, token);
+        using var confirmation = await PostFirstAsync(
+            fixture.Client,
+            "Mesa 3",
+            Guid.NewGuid(),
+            token,
+            (product.Id, 1));
+        await ReadFirstAsync(confirmation, token);
+        await fixture.SetProductStateAsync(
+            product.Id,
+            isActive: false,
+            isAvailable: false,
+            token);
+        var actor = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            responsibility,
+            token);
+        using var client = await fixture.LoginAsync(actor, token);
+
+        using var response = await client.GetAsync(WorkUrl(responsibility), token);
+
+        response.EnsureSuccessStatusCode();
+        var work = Assert.Single(Assert.IsType<PreparationWorkResponse[]>(
+            await response.Content.ReadFromJsonAsync<PreparationWorkResponse[]>(token)));
+        Assert.Equal(product.Id, work.ProductId);
+        Assert.Equal("Pizza", work.ProductOperationalName);
+    }
+
+    [Fact]
+    public async Task Product_name_lookup_is_batched_and_deduplicated_for_repeated_Product_Work()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var responsibility = Guid.CreateVersion7();
+        var product = await fixture.CreateProductAsync("Papas", "5", token);
+        await fixture.SetProductPreparationAsync(product.Id, responsibility, token);
+        using var firstResponse = await PostFirstAsync(
+            fixture.Client,
+            "Mesa 7",
+            Guid.NewGuid(),
+            token,
+            (product.Id, 1));
+        var first = await ReadFirstAsync(firstResponse, token);
+        using var subsequentResponse = await PostSubsequentAsync(
+            fixture.Client,
+            first.OperationalReference,
+            Guid.NewGuid(),
+            token,
+            (product.Id, 2));
+        await ReadSubsequentAsync(subsequentResponse, token);
+        var observation = new ProductLookupObservation();
+        await using var application = fixture.CreateApplicationWithProductLookupDecorator(
+            services => new ObservingProductOperationalReferenceLookup(
+                new ProductOperationalReferenceLookup(
+                    services.GetRequiredService<CatalogDbContext>()),
+                observation));
+        var actor = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            responsibility,
+            token);
+        using var client = await fixture.LoginAsync(actor, token, application);
+
+        using var response = await client.GetAsync(WorkUrl(responsibility), token);
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal(2, Assert.IsType<PreparationWorkResponse[]>(
+            await response.Content.ReadFromJsonAsync<PreparationWorkResponse[]>(token)).Length);
+        Assert.Equal(1, observation.CallCount);
+        Assert.Equal([product.Id], observation.RequestedProductIds);
+    }
+
+    [Fact]
+    public async Task Missing_referenced_Product_is_an_explicit_technical_inconsistency()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var responsibility = Guid.CreateVersion7();
+        var product = await fixture.CreateProductAsync("Papas", "5", token);
+        await fixture.SetProductPreparationAsync(product.Id, responsibility, token);
+        using var confirmation = await PostFirstAsync(
+            fixture.Client,
+            "Mesa 7",
+            Guid.NewGuid(),
+            token,
+            (product.Id, 1));
+        var confirmed = await ReadFirstAsync(confirmation, token);
+        await fixture.ReplaceContentProductReferenceAsync(
+            confirmed.FirstIncorporation.Id,
+            contentOrdinal: 1,
+            Guid.CreateVersion7(),
+            token);
+        var actor = await fixture.CreatePreparationActorAsync(
+            hasPreparation: true,
+            responsibility,
+            token);
+        using var client = await fixture.LoginAsync(actor, token);
+
+        using var response = await client.GetAsync(WorkUrl(responsibility), token);
+
+        await AssertProblemAsync(
+            response,
+            HttpStatusCode.InternalServerError,
+            "order_operations.preparation_work.product_reference_inconsistent",
+            token);
     }
 
     [Fact]
@@ -431,6 +692,9 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         Assert.True(parameter.GetProperty("required").GetBoolean());
         Assert.True(operation.GetProperty("responses").TryGetProperty("200", out _));
         Assert.True(operation.GetProperty("responses").TryGetProperty("400", out _));
+        Assert.True(operation.GetProperty("responses").TryGetProperty("401", out _));
+        Assert.True(operation.GetProperty("responses").TryGetProperty("403", out _));
+        Assert.True(operation.GetProperty("responses").TryGetProperty("500", out _));
 
         var schema = document.RootElement.GetProperty("components")
             .GetProperty("schemas")
@@ -440,6 +704,8 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         Assert.Equal("string", operationalReference.GetProperty("type").GetString());
         Assert.False(operationalReference.TryGetProperty("format", out _));
         Assert.True(schema.GetProperty("properties").TryGetProperty("context", out _));
+        Assert.True(schema.GetProperty("properties")
+            .TryGetProperty("productOperationalName", out _));
         Assert.True(schema.GetProperty("properties").TryGetProperty(
             "instruction",
             out var instruction));
@@ -576,6 +842,24 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         Assert.Equal(code, problem.RootElement.GetProperty("code").GetString());
     }
 
+    private static async Task AssertProblemAsync(
+        HttpResponseMessage response,
+        HttpStatusCode status,
+        string code,
+        CancellationToken token)
+    {
+        Assert.Equal(status, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var problem = await JsonDocument.ParseAsync(
+            await response.Content.ReadAsStreamAsync(token),
+            cancellationToken: token);
+        Assert.Equal(code, problem.RootElement.GetProperty("code").GetString());
+    }
+
+    private static string WorkUrl(Guid preparationResponsibilityId) =>
+        "/api/order-operations/preparation/work" +
+        $"?preparationResponsibilityId={preparationResponsibilityId:D}";
+
     private static void AssertWork(
         PreparationWorkSnapshot work,
         Guid incorporationId,
@@ -592,10 +876,39 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
     }
 }
 
+internal sealed class ProductLookupObservation
+{
+    internal int CallCount { get; set; }
+
+    internal Guid[] RequestedProductIds { get; set; } = [];
+}
+
+internal sealed class ObservingProductOperationalReferenceLookup(
+    IProductOperationalReferenceLookup inner,
+    ProductLookupObservation observation) : IProductOperationalReferenceLookup
+{
+    public Task<IReadOnlyList<ProductOperationalReference>> ReadByIdsAsync(
+        IReadOnlyCollection<Guid> productIds,
+        System.Data.Common.DbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        observation.CallCount++;
+        observation.RequestedProductIds = productIds.ToArray();
+        return inner.ReadByIdsAsync(productIds, transaction, cancellationToken);
+    }
+}
+
 internal sealed class ExistingPreparationResponsibilityLookup :
     IPreparationResponsibilityLookup
 {
     public Task<bool> ExistsAsync(
         Guid responsibilityId,
         CancellationToken cancellationToken) => Task.FromResult(true);
+
+    public Task<IReadOnlyList<PreparationResponsibilityReference>> ReadByIdsAsync(
+        IReadOnlyCollection<Guid> responsibilityIds,
+        System.Data.Common.DbTransaction transaction,
+        CancellationToken cancellationToken) =>
+        throw new InvalidOperationException(
+            "Preparation Responsibility batch lookup was not expected.");
 }

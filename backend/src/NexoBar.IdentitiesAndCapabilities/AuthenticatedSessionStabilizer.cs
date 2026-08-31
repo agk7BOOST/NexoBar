@@ -55,7 +55,7 @@ internal sealed class AuthenticatedSessionStabilizer(
                 ON identity_row.id = session_row.identity_id
             WHERE session_row.id = @session_id
               AND session_row.identity_id = @identity_id
-            FOR UPDATE OF session_row, identity_row
+            FOR SHARE OF session_row, identity_row
             """;
         AddParameter(command, "session_id", sessionId);
         AddParameter(command, "identity_id", identityId);

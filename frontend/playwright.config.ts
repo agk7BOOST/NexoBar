@@ -39,6 +39,9 @@ export default defineConfig({
         ConnectionStrings__IdentitiesAndCapabilities: connectionString,
         ConnectionStrings__OperationalConfiguration: connectionString,
         ConnectionStrings__OrderOperations: connectionString,
+        NexoBarSecurity__Cookies__SessionName: "nexobar-session-e2e",
+        NexoBarSecurity__Cookies__AntiforgeryName: "nexobar-antiforgery-e2e",
+        NexoBarSecurity__Cookies__Secure: "false",
       },
     },
     {

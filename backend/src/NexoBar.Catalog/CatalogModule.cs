@@ -28,6 +28,8 @@ public static class CatalogModule
                     "catalog")));
         services.AddScoped<CatalogService>();
         services.AddScoped<IOrderConfirmationCatalog, OrderConfirmationCatalog>();
+        services.AddScoped<IProductOperationalReferenceLookup,
+            ProductOperationalReferenceLookup>();
 
         return services;
     }
