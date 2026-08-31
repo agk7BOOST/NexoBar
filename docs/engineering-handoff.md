@@ -11,7 +11,7 @@
 - Monorepo Git con backend y frontend como unidades técnicas separadas.
 - Backend autoritativo: C# sobre .NET 10 LTS y ASP.NET Core 10. Frontend: React 19, TypeScript estricto y Vite 8.
 - El backend es un monolito modular y una unidad principal de despliegue. `NexoBar.Host` compone los módulos y es el composition root.
-- Los módulos superiores son `OrderOperations`, `Catalog`, `Inventory`, `IdentitiesAndCapabilities` y `OperationalConfiguration`. `Inventory` e `IdentitiesAndCapabilities` están presentes como límites, todavía sin implementación funcional.
+- Los módulos superiores son `OrderOperations`, `Catalog`, `Inventory`, `IdentitiesAndCapabilities` y `OperationalConfiguration`. `Inventory` permanece presente como límite sin implementación funcional; `IdentitiesAndCapabilities` ya posee Estado, sesiones, administración y capacidades públicas de autorización materializadas.
 - `OperationalConfiguration` ya es un módulo persistente y funcional en el alcance de `PreparationResponsibility`; no tiene todavía un lifecycle completo.
 - `Preparation` es una frontera interna de `OrderOperations`, no un módulo top-level.
 - Cada módulo conserva la propiedad de su Estado y colabora mediante capacidades explícitas. No hay ciclos ni un `Shared`/`Common` genérico.
@@ -19,16 +19,23 @@
 ### Dependencias modulares materializadas
 
 ```text
-OrderOperations
-    ↓
-Catalog
-    ↓
-OperationalConfiguration
+Host
+├─ OrderOperations
+├─ Catalog
+├─ OperationalConfiguration
+└─ IdentitiesAndCapabilities
+
+OrderOperations ──→ Catalog
+OrderOperations ──→ IdentitiesAndCapabilities
+Catalog ──────────→ OperationalConfiguration
+IdentitiesAndCapabilities ──→ OperationalConfiguration
 ```
 
 - `Catalog` consume una capacidad pública estrecha de `OperationalConfiguration` para validar la existencia de una `PreparationResponsibility`; no accede a su `DbContext`, schema ni tablas.
-- `OrderOperations` depende de `Catalog`, pero no depende directamente de `OperationalConfiguration` ni lo consulta durante una Confirmación.
-- No existen foreign keys cross-module. El Host compone las capacidades y sus implementaciones.
+- `OrderOperations` depende de `Catalog` y de capacidades públicas estrechas de `IdentitiesAndCapabilities`; no depende directamente de `OperationalConfiguration` ni lo consulta durante una Confirmación.
+- `IdentitiesAndCapabilities` consume una capacidad pública estrecha de `OperationalConfiguration` para resolver o validar destinos de Preparation.
+- No existen las dependencias inversas `OperationalConfiguration → IdentitiesAndCapabilities`, `Catalog → OrderOperations` ni `IdentitiesAndCapabilities → OrderOperations`.
+- No existen foreign keys ni accesos a `DbContext`, schema o tablas ajenos cross-module. El Host compone las capacidades y sus implementaciones.
 
 ## 3. Persistencia
 
@@ -36,7 +43,8 @@ OperationalConfiguration
 - Cada módulo que persiste Estado posee su propio `DbContext`, schema e historial de migraciones:
   - `CatalogDbContext` mapea `catalog`;
   - `OrderOperationsDbContext` mapea `order_operations`;
-  - `OperationalConfigurationDbContext` mapea `operational_configuration`.
+  - `OperationalConfigurationDbContext` mapea `operational_configuration`;
+  - `IdentitiesAndCapabilitiesDbContext` mapea `identities_and_capabilities`.
 - Las migraciones son explícitas, versionadas y revisables. El Host productivo no ejecuta auto-migrate durante el startup.
 - Dinero y cantidades exactas usan `numeric`/`decimal`, nunca coma flotante binaria como representación autoritativa; cuando aplica, su representación HTTP es un decimal string estable.
 - Las identidades persistentes principales materializadas usan UUID v7. `Idempotency-Key` usa UUID v4.
@@ -46,7 +54,7 @@ OperationalConfiguration
 
 ### Invariante de configuración
 
-Las connection strings modulares de `Catalog`, `OrderOperations` y `OperationalConfiguration` deben apuntar a la misma instancia y base PostgreSQL. La colaboración transaccional entre `OrderOperations` y `Catalog` depende de ello. Actualmente es una invariante de configuración documentada, no una validación automatizada.
+Las connection strings modulares de `Catalog`, `OrderOperations`, `OperationalConfiguration` e `IdentitiesAndCapabilities` deben apuntar a la misma instancia y base PostgreSQL. Las colaboraciones transaccionales entre módulos dependen de ello. Actualmente es una invariante de configuración documentada, no una validación automatizada.
 
 ## 4. OperationalConfiguration
 
@@ -69,7 +77,104 @@ La creación es un comando explícito con `Idempotency-Key` UUID v4, idempotenci
 
 No están materializados `IsActive`, retiro, reactivación, delete ni un lifecycle completo de `PreparationResponsibility`.
 
-## 5. Catalog y configuración de preparación
+## 5. Identities & Capabilities
+
+`IdentitiesAndCapabilities` posee `IdentitiesAndCapabilitiesDbContext`, el schema `identities_and_capabilities` y migration history propia. No adopta roles genéricos ni ASP.NET Identity completo.
+
+### Identity, responsabilidades y habilitaciones
+
+El Estado vigente de `Identity` contiene:
+
+- `Id` UUID v7;
+- `OperationalName` y `NormalizedOperationalName`;
+- `IsActive`.
+
+`OperationalName` no es unique. `FunctionalResponsibility` es un repertorio cerrado de siete códigos:
+
+```text
+OrderOperationsAndBasicClosure
+OperationalIntervention
+Preparation
+CatalogConfiguration
+InventoryOperation
+InventoryConfiguration
+GeneralConfiguration
+```
+
+`ResponsibilityAssignment` tiene PK compuesta `(IdentityId, ResponsibilityCode)`. `PreparationEnablement` tiene PK compuesta `(IdentityId, PreparationResponsibilityId)`; el destino es un UUID externo opaco, sin FK cross-module, y su vigencia se representa por existencia. La habilitación es independiente de la asignación `Preparation`: preparar o actuar sobre un destino requiere simultáneamente una Identity activa, `Responsibility.Preparation` y la `PreparationEnablement` exacta.
+
+### Credencial local
+
+`LocalCredential` está separada de `Identity` en una relación 1:1 (como máximo una credencial por Identity). Contiene `LoginIdentifier`, `NormalizedLoginIdentifier` unique y `SecretVerifier`; el locator no exige email. El login identifier aplica trim exterior y normalización invariant de case. El secret no se normaliza.
+
+`SecretVerifier` es un wrapper estrecho sobre `PasswordHasher<T>`, admite rehash cuando el verificador lo requiere y nunca persiste el secret crudo.
+
+### Sesiones opacas y política provisional
+
+`IdentitySession` contiene `Id` UUID v7, `IdentityId`, `TokenHash`, `CreatedAt`, `LastActivityAt`, `AbsoluteExpiresAt` y `RevokedAt` nullable. El token entregado al cliente usa 256 bits de RNG y Base64URL; solo se persiste su SHA-256, nunca el token crudo. Una Identity puede mantener varias sesiones.
+
+Logout revoca únicamente la sesión actual. Desactivar una Identity invalida su autoridad y revoca sus sesiones activas. Set/Replace Local Credential conserva la Identity y sus capacidades, y revoca todas las sesiones del target.
+
+La implementación usa como **hipótesis técnica provisional**, no como requisito normativo: inactividad máxima de 30 minutos, lifetime absoluto de 12 horas, expiración exacta cuando `now >= límite`, refresh throttled de `LastActivityAt` aproximadamente cada minuto y `AbsoluteExpiresAt` fijado al crear la sesión. `PAR-SEC-02` continúa abierto normativamente. El frontend no duplica timers; el backend es la autoridad de expiración.
+
+### Cookie, antiforgery y contratos de sesión
+
+En configuración production-like, la cookie de sesión es `__Host-nexobar-session`, `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`, sin `Domain` y sin `Max-Age`/`Expires`: es una session cookie. Development y tests usan nombre y configuración explícitos compatibles con HTTP local y no simulan el prefijo `__Host-` cuando `Secure=false`.
+
+`GET /api/security/antiforgery` es un endpoint técnico anónimo que entrega el request token para el header `X-NexoBar-CSRF`; no crea una sesión. El frontend conserva ese token solo en memoria. El session token nunca está disponible a JavaScript ni se guarda en `localStorage` o `sessionStorage`.
+
+Los contratos materializados son:
+
+- `POST /api/identity-sessions`: recibe `loginIdentifier` y `secret`, requiere antiforgery, responde un `401` genérico `invalid_credentials` cuando las credenciales no pueden usarse, revoca solo la sesión actual que ya estuviera representada por el cookie jar al reemplazarla, crea una sesión nueva y no afecta otras sesiones;
+- `GET /api/identity-sessions/current`: autenticado; devuelve solo `identityId` y `operationalName`, sin `sessionId`, capabilities ni token;
+- `DELETE /api/identity-sessions/current`: requiere antiforgery, revoca la sesión actual, limpia la cookie y devuelve `204`; es idempotente según la implementación actual;
+- `GET /api/security/antiforgery`: anónimo y puramente técnico.
+
+El pipeline de autenticación es:
+
+```text
+request
+→ cookie
+→ SHA-256
+→ lookup de IdentitySession
+→ RevokedAt
+→ expiración absoluta
+→ inactividad
+→ Identity.IsActive
+→ principal/contexto del request
+```
+
+`AuthenticatedContext` contiene únicamente `IdentityId` y `SessionId`. No hay responsibility claims, enablement claims, roles ni snapshots de capabilities en la sesión.
+
+### Estabilización transaccional de autorización
+
+Para operaciones que requieren autoridad estabilizada, el módulo caller abre una transacción PostgreSQL, `IdentitiesAndCapabilities` adopta su `DbTransaction`, revalida y bloquea selectivamente Session e Identity y, cuando corresponde, filas de capabilities; luego el caller ejecuta la consulta o mutación autorizada. Se usa `READ COMMITTED`, transacciones cortas y `FOR SHARE` en el Estado positivo materializado. No hay transacción distribuida.
+
+## 6. Administración de Identity
+
+El backend implementa intenciones específicas para Create Identity, Change Operational Name, Activate, Deactivate, Set/Replace Local Credential, Assign/Revoke Functional Responsibility y Grant/Revoke Preparation Enablement. No expone CRUD genérico ni Delete Identity.
+
+```text
+POST /api/identities
+POST /api/identities/{identityId}/change-operational-name
+POST /api/identities/{identityId}/activate
+POST /api/identities/{identityId}/deactivate
+POST /api/identities/{identityId}/credential
+POST /api/identities/{identityId}/responsibilities/{code}/assign
+POST /api/identities/{identityId}/responsibilities/{code}/revoke
+POST /api/identities/{identityId}/preparation-enablement/{responsibilityId}/grant
+POST /api/identities/{identityId}/preparation-enablement/{responsibilityId}/revoke
+```
+
+`GET /api/identities` requiere `GeneralConfiguration` y devuelve Estado de Identity, capabilities, enablements y login identifier; no devuelve verifier, tokens ni detalles de sesiones.
+
+La administración ordinaria debe preservar al menos un camino operacional vigente de `GeneralConfiguration`. La definición técnica actual del camino es: Identity activa + assignment `GeneralConfiguration` + `LocalCredential` utilizable. No requiere una sesión activa. Un advisory lock estable, transaction-scoped, serializa las mutaciones administrativas relevantes y evita carreras de revocación/desactivación que dejen cero caminos. Esto no implementa recovery extraordinario: `AD-SEC-01` continúa pendiente productivamente.
+
+Los comandos administrativos durables usan `Idempotency-Key` UUID v4 y persisten `ActorIdentityId`, command kind, fingerprint estructural y result payload. La misma combinación actor/key/intención hace replay; una key reutilizada con actor o intención diferentes produce conflicto. `SessionId` no es actor durable.
+
+El replay exige todavía una sesión actual válida y una Identity activa. Si el resultado ya fue confirmado, se reproduce antes de revalidar `GeneralConfiguration`: revocar una capability después del éxito no reinterpreta el efecto histórico de ese comando. Para una intención de credencial, la comparación durable guarda un verifier lento de la intención y usa el mismo verificador de secretos; no guarda el secret crudo ni un digest rápido sin salt. Estos registros técnicos de comandos no equivalen a Historia funcional.
+
+## 7. Catalog y configuración de preparación
 
 El Estado vigente de `Product` incluye `requiresPreparation` y `preparationResponsibilityId` nullable, con la invariante física y de aplicación:
 
@@ -97,7 +202,7 @@ El comando recibe `expectedCurrentPreparationResponsibilityId` y realiza un `UPD
 
 Price Change continúa siendo otro comando explícito de `Catalog`, no un `PATCH` genérico: recibe `expectedCurrentPrice`, ejecuta un `UPDATE` condicionado, responde `409 Conflict` ante una expectativa desactualizada, mantiene idempotencia durable local y no crea Price History ni reescribe `appliedPrice` históricos.
 
-## 6. Colaboración `OrderOperations -> Catalog` y concurrencia
+## 8. Colaboración `OrderOperations -> Catalog` y concurrencia
 
 - `IOrderConfirmationCatalog` es la capacidad pública mínima de Confirmación. `Catalog` conserva la propiedad de su Estado; `OrderOperations` no accede a `CatalogDbContext` ni a tablas `catalog.*`.
 - Su snapshot de `Product` incluye `ProductId`, `Price`, `IsActive`, `IsAvailable`, `RequiresPreparation` y `PreparationResponsibilityId`.
@@ -117,7 +222,7 @@ Una Confirmación deduplica los `ProductId`, estabiliza una sola vez cada `Produ
 
 Si el Product estabilizado tiene `RequiresPreparation = false` y una línea contiene `instruction != null`, la Confirmación responde `409 Conflict` con `order_operations.confirmation.instruction_requires_preparation` y no produce efectos. La instrucción no se descarta, no fuerza Preparation y no crea Work por sí sola. Si una Confirmación estabiliza primero un Product preparado y luego espera una configuración concurrente `true → false`, puede completar y su Work conserva el snapshot anterior; si `false` ya estaba aplicado al estabilizar, la Confirmación falla con ese `409`.
 
-## 7. Confirmaciones, Incorporations y nacimiento de Work
+## 9. Confirmaciones, Incorporations y nacimiento de Work
 
 La primera Confirmación crea el `Order` y su primera `Incorporation`; cada Confirmación posterior crea una nueva `Incorporation` del mismo `Order`. Ambas aceptan Products preparados.
 
@@ -182,7 +287,7 @@ advisory idempotency
 - No crea nuevos Work y no requiere `workId` en las tablas de comandos.
 - El nacimiento de Work no introduce una idempotencia adicional: queda cubierto por la idempotencia y transacción de la Confirmación que lo origina.
 
-## 8. PreparationWork y consulta
+## 10. PreparationWork y consulta autorizada
 
 `PreparationWork` es Estado operacional vigente poseído por `OrderOperations` y contiene:
 
@@ -208,14 +313,23 @@ GET /api/order-operations/preparation/work
     ?preparationResponsibilityId=...
 ```
 
-- El filtro por responsabilidad es obligatorio y opera exclusivamente sobre Estado poseído por `OrderOperations`; no consulta `OperationalConfiguration`.
-- Un UUID válido sin Work devuelve una lista vacía.
-- Cada respuesta incluye `workId`, `preparationResponsibilityId`, `operationalReference` opaca, `context` vigente, `incorporationId`, `incorporationOrdinal`, `productId`, `instruction` nullable, las cuatro cantidades y `confirmedAt`. `productId` e `instruction` proceden de `IncorporationContent`.
+- El parámetro `preparationResponsibilityId` es obligatorio y debe ser un UUID válido; ausencia o formato inválido responde `400`.
+- La consulta requiere una Session válida, una Identity activa, `Responsibility.Preparation` y la `PreparationEnablement` exacta. Authentication/Session/Identity no utilizable responde `401`; ausencia de Preparation o de la habilitación exacta responde un `403` común que no revela cuál falta.
+- La autorización consulta Estado vigente dentro de la misma transacción PostgreSQL física que la lectura de Work y usa `FOR SHARE` sobre el Estado positivo; no usa capability claims.
+- Una consulta autorizada sin Work devuelve `200 []`.
+- Cada respuesta incluye `workId`, `preparationResponsibilityId`, `operationalReference` opaca, `context` vigente, `incorporationId`, `incorporationOrdinal`, `productId`, `productOperationalName`, `instruction` nullable, las cuatro cantidades y `confirmedAt`. `productId` e `instruction` proceden de `IncorporationContent`.
 - `context` procede del `Order` actual. `confirmedAt` procede de la Confirmación que originó la `Incorporation`; no existe un `createdAt` artificial.
-- La respuesta no incorpora el nombre vigente del `Product`.
+- `ProductId` sigue siendo la identidad autoritativa. `productOperationalName` es presentación **actual/vigente** obtenida mediante una capacidad batch estrecha de `Catalog` que entrega solo `ProductId + OperationalName`; no es un snapshot de nombre en Confirmation o Work. Renombrar un Product cambia la presentación futura del Work activo, sin alterar `appliedPrice`, instruction, Preparation Responsibility, cantidades ni Historia. Los Products retirados continúan resolviéndose. Una referencia faltante es inconsistencia técnica y no cae a mostrar el UUID.
+- Esta decisión no agregó migración ni snapshot de nombre.
 - El lookup de `Order` permanece separado y no incorpora Work.
 
-## 9. Estado e Historia
+### Destinos de Preparation de la Identity actual
+
+`GET /api/identity-sessions/current/preparation-destinations` devuelve únicamente las habilitaciones de la Identity actual como `preparationResponsibilityId + operationalName`. Requiere autenticación, Identity activa y `Responsibility.Preparation`; Preparation sin habilitaciones devuelve `200 []`.
+
+La resolución de nombres usa un batch lookup estrecho de `OperationalConfiguration`; no concede lectura universal de ese módulo.
+
+## 11. Estado e Historia
 
 - `ConfirmationHistory` explica la Confirmación que originó el contenido y conserva `confirmedContext` histórico.
 - `ConfirmationHistory` y el `IncorporationContent` persistido explican conjuntamente la existencia de una instruction confirmada; no existe `InstructionAdded History`.
@@ -225,7 +339,7 @@ GET /api/order-operations/preparation/work
 - Tampoco está materializado Change Context.
 - Esta separación no constituye Event Sourcing.
 
-## 10. Idempotencia y resultado incierto
+## 12. Idempotencia y resultado incierto
 
 - Los comandos materializados reciben un `Idempotency-Key` UUID v4 y mantienen persistencia durable por comando.
 - Cada comando/módulo toma un advisory transaction lock local. Efecto e idempotencia se confirman dentro de la misma transacción.
@@ -239,7 +353,7 @@ Los contenidos durables de los comandos First y Subsequent tienen PK `(idempoten
 
 El matching de intención incluye `ProductId`, `Quantity` y canonical instruction, además del resto de la intención ya existente. La misma key con instruction diferente produce conflicto; whitespace o line endings equivalentes y distinto orden del array producen replay. El replay no reconsulta `Catalog`, no recrea Work y reproduce el estado persistido.
 
-## 11. Contratos técnicos materializados
+## 13. Contratos técnicos materializados
 
 - HTTP ordinario usa HTTPS y JSON; ASP.NET Core Minimal APIs implementa endpoints con handlers delgados.
 - Problem Details es la estructura común de errores e incluye códigos estables. OpenAPI describe el contrato técnico implementado, no sustituye su significado normativo.
@@ -248,9 +362,9 @@ El matching de intención incluye `ProductId`, `Quantity` y canonical instructio
 - El lookup de Order se reconstruye exclusivamente desde `OrderOperations`; `Catalog` no reconstruye condiciones históricas.
 - Las propiedades JSON autoritativas no reconocidas se rechazan en los comandos donde esta regla está materializada.
 
-Los items de request de First y Subsequent contienen `productId`, `quantity` e `instruction` optional/nullable. Los items de la respuesta confirmada contienen `productId`, `quantity`, `appliedPrice` e `instruction`; el lookup de Order devuelve también `instruction` nullable por item. La consulta de Preparation Work devuelve `instruction` nullable y obtiene tanto `productId` como instruction desde Content. Ningún contrato público expone `contentOrdinal` ni `draftLineId`.
+Los items de request de First y Subsequent contienen `productId`, `quantity` e `instruction` optional/nullable. Los items de la respuesta confirmada contienen `productId`, `quantity`, `appliedPrice` e `instruction`; el lookup de Order devuelve también `instruction` nullable por item. La consulta autorizada de Preparation Work devuelve `productOperationalName` vigente e `instruction` nullable, y obtiene `productId` e instruction desde Content. Ningún contrato público expone `contentOrdinal` ni `draftLineId`.
 
-## 12. Frontend materializado
+## 14. Frontend materializado
 
 - `App` coordina `CatalogPanel`, `OrderWorkflow` y `OrderLookup`; las responsabilidades de catálogo/Price Change, Pedido activo/Composición y consulta están separadas. Un `Order` consultado puede retomarse para una Composición posterior.
 - Los recursos se refrescan desde la autoridad: Price Change recarga `Catalog` y las Confirmaciones recargan el `Order`. El cliente no compone manualmente la Historia.
@@ -260,9 +374,12 @@ Los items de request de First y Subsequent contienen `productId`, `quantity` e `
 - Ante incertidumbre de First o Subsequent, el workflow congela exactamente la key, destination u order reference relevante, context donde corresponde, y cada `productId`, `quantity` e instruction canonical. Mientras existe incertidumbre no permite editar la Composición ni cambiar destination; retry reenvía el mismo request exacto con la misma key. Discard desbloquea y la próxima Confirmación usa una key nueva.
 - Un `409` conocido no se trata como incertidumbre: la Composición permanece editable y la siguiente intención usa una key nueva.
 - El lookup de Order muestra Product actual, quantity, `appliedPrice` histórico e instruction confirmada; cuando es null muestra “Sin instrucción”. Las líneas del mismo Product permanecen visualmente distinguibles.
-- No existen todavía `OperationalConfigurationPanel` productivo, `PreparationPanel`, UI de Work ni progreso de Preparation en frontend.
+- El Estado de autenticación es explícito: `loading`, `unauthenticated` o `authenticated(currentIdentity)`. Login envía `loginIdentifier + secret` con antiforgery, muestra el `401` genérico y limpia el secret al tener éxito. La barra de sesión muestra el `OperationalName` actual y permite logout/cambiar persona.
+- `PreparationPanel` carga los destinos habilitados por nombre: con cero informa que no hay destinos, con uno lo selecciona automáticamente y con varios presenta selector. Renderiza Work en solo lectura con nombre vigente del Product, instruction, contexto/referencia y cantidades/Estado. No implementa Start ni Ready.
+- Un `401` devuelve el frontend a `unauthenticated` y limpia el antiforgery token en memoria. Un `403` conserva la Identity autenticada y muestra la falla de autorización.
+- Todavía no existe `OperationalConfigurationPanel` productivo ni frontend administrativo completo.
 
-## 13. Testing y verificación
+## 15. Testing y verificación
 
 Existen tres capas:
 
@@ -272,11 +389,11 @@ Existen tres capas:
 
 `scripts/verify.cmd` y `scripts/verify.sh` ejecutan la verificación ordinaria. Esta verificación requiere Docker porque las suites backend usan Testcontainers. La opción `--e2e` añade PostgreSQL efímero aislado, backend, Vite y Chromium; no usa la base persistente de `compose.yaml`.
 
-El estado cerrado después de S3-I3 verifica backend 145/145, frontend 65/65 y Playwright 2/2. `HasPendingModelChanges` es false para los tres `DbContext` (3/3). Tanto `scripts\verify.cmd` como `scripts\verify.cmd --e2e` pasan. Los dos escenarios Playwright continúan siendo regresión general; todavía no se agregó un E2E específico de instruction.
+El estado cerrado después de S3-SEC-I4 verifica backend 217/217, frontend 80/80 y Playwright 3/3. `HasPendingModelChanges` es false para los cuatro `DbContext` (4/4). Tanto `scripts\verify.cmd` como `scripts\verify.cmd --e2e` pasan.
 
-El baseline integrado mantiene dos escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
+El baseline integrado mantiene tres escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. El nuevo escenario de seguridad provisiona un preparer mediante setup E2E, hace login, muestra su Identity y el destino habilitado por nombre, muestra Work autorizado, no muestra otro destino, hace logout y vuelve al login. Ese fixture no implica bootstrap productivo. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
 
-`NexoBar.E2E.DatabaseSetup` aplica explícitamente y verifica los tres `DbContext`: `OperationalConfigurationDbContext`, `CatalogDbContext` y `OrderOperationsDbContext`. `HasPendingModelChanges` debe ser `false` para los tres. Chromium se instala manualmente desde `frontend`:
+`NexoBar.E2E.DatabaseSetup` aplica explícitamente y verifica los cuatro `DbContext`: `OperationalConfigurationDbContext`, `CatalogDbContext`, `OrderOperationsDbContext` e `IdentitiesAndCapabilitiesDbContext`. `HasPendingModelChanges` debe ser `false` para los cuatro. Chromium se instala manualmente desde `frontend`:
 
 ```text
 npm exec playwright install chromium
@@ -291,7 +408,7 @@ scripts\verify.cmd --e2e
 ./scripts/verify.sh --e2e
 ```
 
-## 14. Tooling, Development y migraciones
+## 16. Tooling, Development y migraciones
 
 - .NET SDK `10.0.400`, con roll-forward deshabilitado.
 - Node.js `22.13.1` y npm `10.9.2`.
@@ -309,11 +426,11 @@ Las migraciones relevantes de S3-I3 son:
 
 Ambas tienen Designer completo, snapshots coherentes y `HasPendingModelChanges = false`. La segunda agrega `instruction` a Contents y a los contenidos durables de comandos, y elimina las uniques temporales por Product. Su `Down` protege los datos y falla explícitamente si ya existen duplicados incompatibles con el schema anterior; nunca fusiona ni elimina líneas silenciosamente.
 
-## 15. `InternalsVisibleTo`
+## 17. `InternalsVisibleTo`
 
 `InternalsVisibleTo` existe únicamente para consumidores técnicos/test específicos: las suites de integración y `NexoBar.E2E.DatabaseSetup`. No es un mecanismo normal de colaboración productiva entre módulos.
 
-## 16. Deuda consciente y fronteras no materializadas
+## 18. Deuda consciente y fronteras no materializadas
 
 Deuda técnica conocida:
 
@@ -323,28 +440,35 @@ Deuda técnica conocida:
 
 Fronteras todavía no materializadas, sin que esta enumeración diseñe su solución:
 
-- Identity y autorización, requeridas antes del progreso humano de Preparation;
+- retrofit de autenticación/autorización para endpoints todavía anónimos, según corresponda: Catalog, OperationalConfiguration, Confirmaciones, lookup de Order y otros endpoints funcionales actuales no pertenecientes a Preparation;
+- bootstrap productivo de Identity y credenciales;
+- implementación de recovery extraordinario (`AD-SEC-01`) y UX de recovery ordinario;
+- decisión normativa de parámetros de timeout (`PAR-SEC-02`) y política cuantitativa de brute-force/lockout;
+- frontend administrativo completo;
+- elegibilidad de Delete Identity y coordinación con Historia;
+- auditoría global de seguridad y consumo de autenticación en SSE;
 - comandos `Start` y `MarkReady`, progreso parcial y excepciones de Preparation;
+- profundidad de Historia administrativa según los OPEN-TRA aplicables;
 - Correcciones de Content o instruction;
 - edición de una instruction ya confirmada;
-- SSE;
-- frontend de Preparation.
+- SSE.
 
-`Quantity` en Content no implica identidad física individual. Actualmente solo la Confirmación origina Work automáticamente; Preparation no permite `Start`, `MarkReady`, progreso parcial ni excepciones. Las Correcciones de Content/instruction no están implementadas y la instruction confirmada no es editable. SSE permanece pendiente. Los dos Playwright existentes son regresión general y no cubren todavía un E2E específico de instruction.
+El checkpoint de seguridad requerido para acciones humanas de Preparation está cerrado, pero eso no significa que la seguridad global esté cerrada ni que todos los endpoints backend estén protegidos. `Quantity` en Content no implica identidad física individual. Actualmente solo la Confirmación origina Work automáticamente; Preparation no permite `Start`, `MarkReady`, progreso parcial ni excepciones. Las Correcciones de Content/instruction no están implementadas y la instruction confirmada no es editable. SSE permanece pendiente.
 
-## 17. Estado de S3-I3 y próximo checkpoint
+## 19. Estado de S3-SEC-I1..I4 y próximo checkpoint
 
-S3-I3 está materializado por completo:
+El checkpoint de Identity, autenticación y capabilities requerido antes del progreso humano de Preparation ya está materializado:
 
-- S3-I3A: reidentificación estructural de `IncorporationContent`;
-- S3-I3B: instruction backend y múltiples líneas homogéneas del mismo Product;
-- S3-I3C: Composición frontend con identidad efímera por línea e instruction.
+- `a6e6f1a feat: add identities and capabilities state`;
+- `74b941c feat: add opaque identity sessions`;
+- `66d0ab3 feat: add identity administration`;
+- `f82e0c7 feat: secure preparation work access`.
 
-**NEXT:** checkpoint de Identity & Capabilities / autorización antes de implementar acciones humanas de Preparation. Acciones como `Start` y `MarkReady` deberán ejecutarse en backend con una Identity activa, capability funcional de Preparation y habilitación para la `PreparationResponsibility` específica.
+S3-SEC-I1..I4 materializa Estado de Identity y capabilities, credencial y Session opacas, administración e invariante de `GeneralConfiguration`, autorización vigente de la lectura de Work, destinos habilitados, nombre vigente de Product y la superficie frontend mínima autenticada de Preparation.
 
-Este handoff no diseña todavía esa solución ni decide login UX, password scheme, role model, session transport, capability storage o Responsibility enablement storage. Esas decisiones corresponden al siguiente JIT Architecture.
+**NEXT:** diseño funcional de transiciones de progreso de Preparation. Este handoff no define todavía la semántica de Start, Ready, progreso parcial ni sus consecuencias de Estado e Historia.
 
-## 18. Protocolo de trabajo
+## 20. Protocolo de trabajo
 
 - `AGENTS.md` contiene el contexto operacional persistente para Codex. Ante una decisión no resuelta o una contradicción normativa se detiene la parte afectada y se reporta.
 - Los cambios permanecen limitados al objetivo de la tarea y se verifican en proporción al riesgo. No se agregan dependencias, alcance o refactors adyacentes sin autorización.
