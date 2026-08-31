@@ -54,6 +54,7 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                identities_and_capabilities.administrative_commands,
                 identities_and_capabilities.sessions,
                 identities_and_capabilities.local_credentials,
                 identities_and_capabilities.preparation_enablements,
@@ -295,6 +296,60 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
         return await scope.ServiceProvider
             .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
             .PreparationEnablements.CountAsync(cancellationToken);
+    }
+
+    internal async Task<int> CountAdministrativeCommandsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .AdministrativeCommands.CountAsync(cancellationToken);
+    }
+
+    internal async Task<CredentialSnapshot?> ReadCredentialAsync(
+        Guid identityId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .LocalCredentials.AsNoTracking()
+            .Where(credential => credential.IdentityId == identityId)
+            .Select(credential => new CredentialSnapshot(
+                credential.IdentityId,
+                credential.LoginIdentifier,
+                credential.NormalizedLoginIdentifier,
+                credential.SecretVerifier))
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    internal async Task<FunctionalResponsibility[]> ReadResponsibilitiesAsync(
+        Guid identityId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .ResponsibilityAssignments.AsNoTracking()
+            .Where(assignment => assignment.IdentityId == identityId)
+            .OrderBy(assignment => assignment.ResponsibilityCode)
+            .Select(assignment => assignment.ResponsibilityCode)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    internal async Task<Guid[]> ReadEnablementsAsync(
+        Guid identityId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .PreparationEnablements.AsNoTracking()
+            .Where(enablement => enablement.IdentityId == identityId)
+            .OrderBy(enablement => enablement.PreparationResponsibilityId)
+            .Select(enablement => enablement.PreparationResponsibilityId)
+            .ToArrayAsync(cancellationToken);
     }
 
     internal async Task RemoveIdentityAsync(

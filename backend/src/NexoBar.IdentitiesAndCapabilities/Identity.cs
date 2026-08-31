@@ -29,6 +29,23 @@ internal sealed class Identity
 
     internal bool IsActive { get; private set; }
 
+    internal void ChangeOperationalName(string operationalName)
+    {
+        var trimmed = operationalName?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            throw new ArgumentException(
+                "Operational name must contain non-whitespace text.",
+                nameof(operationalName));
+        }
+
+        OperationalName = trimmed;
+    }
+
+    internal void Activate() => IsActive = true;
+
+    internal void Deactivate() => IsActive = false;
+
     internal ICollection<ResponsibilityAssignment> ResponsibilityAssignments { get; } =
         new List<ResponsibilityAssignment>();
 

@@ -60,4 +60,34 @@ internal sealed class LocalCredential
 
         SecretVerifier = secretVerifier;
     }
+
+    internal void Replace(
+        string loginIdentifier,
+        string normalizedLoginIdentifier,
+        string secretVerifier)
+    {
+        if (string.IsNullOrWhiteSpace(loginIdentifier) ||
+            !string.Equals(loginIdentifier, loginIdentifier.Trim(), StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "Login identifier must contain trimmed non-whitespace text.",
+                nameof(loginIdentifier));
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedLoginIdentifier))
+        {
+            throw new ArgumentException(
+                "Normalized login identifier is required.",
+                nameof(normalizedLoginIdentifier));
+        }
+
+        if (string.IsNullOrWhiteSpace(secretVerifier))
+        {
+            throw new ArgumentException("Secret verifier is required.", nameof(secretVerifier));
+        }
+
+        LoginIdentifier = loginIdentifier;
+        NormalizedLoginIdentifier = normalizedLoginIdentifier;
+        SecretVerifier = secretVerifier;
+    }
 }

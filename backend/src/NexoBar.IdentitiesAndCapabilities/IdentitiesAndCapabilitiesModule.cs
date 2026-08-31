@@ -81,6 +81,7 @@ public static class IdentitiesAndCapabilitiesModule
         services.AddScoped<IdentitySessionService>();
         services.AddScoped<LocalCredentialProvisioner>();
         services.AddScoped<PreparationEnablementService>();
+        services.AddScoped<IdentityAdministrationService>();
 
         return services;
     }

@@ -26,6 +26,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapOpenApi();
 app.MapIdentitySessionEndpoints();
+app.MapIdentityAdministrationEndpoints();
 app.MapOperationalConfigurationEndpoints();
 app.MapCatalogEndpoints();
 app.MapOrderOperationsEndpoints();

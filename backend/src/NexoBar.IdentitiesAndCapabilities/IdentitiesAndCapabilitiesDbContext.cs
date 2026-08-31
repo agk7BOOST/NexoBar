@@ -18,6 +18,9 @@ internal sealed class IdentitiesAndCapabilitiesDbContext(
     internal DbSet<PreparationEnablement> PreparationEnablements =>
         Set<PreparationEnablement>();
 
+    internal DbSet<IdentityAdministrativeCommand> AdministrativeCommands =>
+        Set<IdentityAdministrativeCommand>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("identities_and_capabilities");
@@ -26,6 +29,67 @@ internal sealed class IdentitiesAndCapabilitiesDbContext(
         modelBuilder.ApplyConfiguration(new IdentitySessionConfiguration());
         modelBuilder.ApplyConfiguration(new ResponsibilityAssignmentConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationEnablementConfiguration());
+        modelBuilder.ApplyConfiguration(new IdentityAdministrativeCommandConfiguration());
+    }
+
+    private sealed class IdentityAdministrativeCommandConfiguration :
+        IEntityTypeConfiguration<IdentityAdministrativeCommand>
+    {
+        public void Configure(EntityTypeBuilder<IdentityAdministrativeCommand> builder)
+        {
+            builder.ToTable(
+                "administrative_commands",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_administrative_command_kind",
+                        "command_kind IN (" +
+                        "'CreateIdentity', " +
+                        "'ChangeOperationalName', " +
+                        "'ActivateIdentity', " +
+                        "'DeactivateIdentity', " +
+                        "'SetLocalCredential', " +
+                        "'AssignResponsibility', " +
+                        "'RevokeResponsibility', " +
+                        "'GrantPreparationEnablement', " +
+                        "'RevokePreparationEnablement')");
+                    table.HasCheckConstraint(
+                        "CK_administrative_command_secret_intent",
+                        "(command_kind = 'SetLocalCredential' AND " +
+                        "intent_secret_verifier IS NOT NULL) OR " +
+                        "(command_kind <> 'SetLocalCredential' AND " +
+                        "intent_secret_verifier IS NULL)");
+                });
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_administrative_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key")
+                .ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id")
+                .ValueGeneratedNever();
+            builder.Property(command => command.CommandKind)
+                .HasColumnName("command_kind")
+                .HasConversion<string>()
+                .HasColumnType("text")
+                .IsRequired();
+            builder.Property(command => command.IntentFingerprint)
+                .HasColumnName("intent_fingerprint")
+                .HasColumnType("bytea")
+                .IsRequired();
+            builder.Property(command => command.IntentSecretVerifier)
+                .HasColumnName("intent_secret_verifier")
+                .HasColumnType("text");
+            builder.Property(command => command.ResultPayload)
+                .HasColumnName("result_payload")
+                .HasColumnType("jsonb")
+                .IsRequired();
+            builder.HasOne<Identity>()
+                .WithMany()
+                .HasForeignKey(command => command.ActorIdentityId)
+                .HasConstraintName("FK_administrative_command_actor")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
     }
 
     private sealed class LocalCredentialConfiguration :
