@@ -22,7 +22,10 @@ app.UseExceptionHandler(new ExceptionHandlerOptions
             ? StatusCodes.Status400BadRequest
             : StatusCodes.Status500InternalServerError
 });
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapOpenApi();
+app.MapIdentitySessionEndpoints();
 app.MapOperationalConfigurationEndpoints();
 app.MapCatalogEndpoints();
 app.MapOrderOperationsEndpoints();
