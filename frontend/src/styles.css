@@ -156,6 +156,70 @@ form select,
   font-weight: 600;
 }
 
+.preparation-quantities {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(5.5rem, 1fr));
+  gap: 0.4rem 0.8rem;
+  margin: 0;
+}
+
+.preparation-quantities div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.preparation-quantities dt {
+  color: #52606d;
+}
+
+.preparation-quantities dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.fully-ready {
+  margin: 0.65rem 0 0;
+  color: #24553a;
+  font-weight: 700;
+}
+
+.preparation-actions {
+  min-width: 17rem;
+}
+
+.preparation-action {
+  grid-template-columns: minmax(6rem, 1fr) auto;
+  margin-top: 0;
+}
+
+.preparation-action + .preparation-action {
+  margin-top: 0.85rem;
+}
+
+.preparation-action label,
+.preparation-action label:first-of-type,
+.preparation-action label:last-of-type {
+  grid-column: 1 / -1;
+}
+
+.preparation-action button:disabled,
+.preparation-action input:disabled {
+  cursor: not-allowed;
+}
+
+.preparation-actions > p {
+  margin: 0.75rem 0 0;
+}
+
+.preparation-actions .notice {
+  margin-top: 0.75rem;
+}
+
+.preparation-actions .notice p {
+  margin: 0 0 0.65rem;
+}
+
 .technical-reference {
   color: #52606d;
   overflow-wrap: anywhere;

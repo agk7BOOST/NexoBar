@@ -46,7 +46,7 @@ async function requireSuccess(response: Response): Promise<void> {
   }
 }
 
-async function getAntiforgeryToken(): Promise<string> {
+export async function getAntiforgeryToken(): Promise<string> {
   if (requestToken !== null) {
     return requestToken;
   }

@@ -68,19 +68,30 @@ try
     await operationalConfiguration.SaveChangesAsync();
 
     var preparer = new Identity("Preparador E2E", true);
-    identitiesAndCapabilities.Identities.Add(preparer);
-    identitiesAndCapabilities.ResponsibilityAssignments.Add(
+    var secondPreparer = new Identity("Preparadora E2E B", true);
+    identitiesAndCapabilities.Identities.AddRange(preparer, secondPreparer);
+    identitiesAndCapabilities.ResponsibilityAssignments.AddRange(
         new ResponsibilityAssignment(
             preparer.Id,
+            FunctionalResponsibility.Preparation),
+        new ResponsibilityAssignment(
+            secondPreparer.Id,
             FunctionalResponsibility.Preparation));
-    identitiesAndCapabilities.PreparationEnablements.Add(
-        new PreparationEnablement(preparer.Id, kitchen.Id));
+    identitiesAndCapabilities.PreparationEnablements.AddRange(
+        new PreparationEnablement(preparer.Id, kitchen.Id),
+        new PreparationEnablement(secondPreparer.Id, kitchen.Id));
     await identitiesAndCapabilities.SaveChangesAsync();
     await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
         .ProvisionAsync(
             preparer.Id,
             "preparador-e2e",
             "preparation-e2e-secret",
+            CancellationToken.None);
+    await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+        .ProvisionAsync(
+            secondPreparer.Id,
+            "preparadora-b-e2e",
+            "preparation-b-e2e-secret",
             CancellationToken.None);
 
     var authorizedProduct = new Product(

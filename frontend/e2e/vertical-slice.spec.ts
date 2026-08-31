@@ -280,7 +280,7 @@ test("informa un Pedido inexistente sin conservar el resultado previo", async ({
   ).toHaveCount(0);
 });
 
-test("preparador autenticado solo consulta Work de su destino habilitado", async ({
+test("dos preparadores progresan cantidades parciales del mismo Work", async ({
   page,
 }) => {
   await page.goto("/");
@@ -296,19 +296,28 @@ test("preparador autenticado solo consulta Work de su destino habilitado", async
   await expect(
     preparation.getByText("Cocina E2E", { exact: true }),
   ).toBeVisible();
-  await expect(
-    preparation.getByRole("cell", {
-      name: "Papas E2E autorizadas",
-      exact: true,
-    }),
-  ).toBeVisible();
+  const preparationRow = preparation
+    .getByRole("row")
+    .filter({ hasText: "Papas E2E autorizadas" });
+  await expect(preparationRow).toBeVisible();
   await expect(preparation.getByText("Sin sal", { exact: true })).toBeVisible();
   await expect(
     preparation.getByText("Trago E2E no autorizado", { exact: true }),
   ).toHaveCount(0);
-  await expect(
-    preparation.getByRole("button", { name: /Start|Ready|Listo/i }),
-  ).toHaveCount(0);
+
+  const startQuantity = preparation.getByLabel(
+    "Cantidad a iniciar de Papas E2E autorizadas, incorporación 1, Mesa seguridad E2E, Sin sal",
+  );
+  await expect(startQuantity).toHaveValue("2");
+  await startQuantity.fill("1");
+  await preparation
+    .getByRole("button", {
+      name: "Iniciar Papas E2E autorizadas, incorporación 1, Mesa seguridad E2E, Sin sal",
+    })
+    .click();
+  await expect(preparationRow).toContainText("Pendiente1");
+  await expect(preparationRow).toContainText("En preparación1");
+  await expect(preparationRow).toContainText("Listo0");
 
   await identity
     .getByRole("button", { name: "Cambiar persona / salir" })
@@ -317,4 +326,33 @@ test("preparador autenticado solo consulta Work de su destino habilitado", async
   await expect(page.getByText("Preparador E2E", { exact: true })).toHaveCount(
     0,
   );
+
+  await page.getByLabel("Identificador de acceso").fill("preparadora-b-e2e");
+  await page.getByLabel("Secreto").fill("preparation-b-e2e-secret");
+  await page.getByRole("button", { name: "Ingresar" }).click();
+
+  const secondIdentity = page.getByRole("region", { name: "Identity actual" });
+  await expect(
+    secondIdentity.getByText("Preparadora E2E B", { exact: true }),
+  ).toBeVisible();
+  const secondPreparation = page.getByRole("region", { name: "Preparación" });
+  const secondPreparationRow = secondPreparation
+    .getByRole("row")
+    .filter({ hasText: "Papas E2E autorizadas" });
+  await expect(secondPreparationRow).toContainText("Pendiente1");
+  await expect(secondPreparationRow).toContainText("En preparación1");
+  const readyQuantity = secondPreparation.getByLabel(
+    "Cantidad a marcar lista de Papas E2E autorizadas, incorporación 1, Mesa seguridad E2E, Sin sal",
+  );
+  await expect(readyQuantity).toHaveValue("1");
+  await secondPreparation
+    .getByRole("button", {
+      name: "Marcar listo Papas E2E autorizadas, incorporación 1, Mesa seguridad E2E, Sin sal",
+    })
+    .click();
+
+  await expect(secondPreparationRow).toContainText("Pendiente1");
+  await expect(secondPreparationRow).toContainText("En preparación0");
+  await expect(secondPreparationRow).toContainText("Listo1");
+  await expect(secondPreparation.getByText(/Entreg/i)).toHaveCount(0);
 });
