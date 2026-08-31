@@ -354,6 +354,9 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("product_id").ValueGeneratedNever();
             builder.Property(content => content.Quantity)
                 .HasColumnName("quantity").IsRequired();
+            builder.Property(content => content.RequiresPreparationAtConfirmation)
+                .HasColumnName("requires_preparation_at_confirmation")
+                .IsRequired();
             builder.Property(content => content.AppliedPrice)
                 .HasColumnName("applied_price").HasColumnType("numeric").IsRequired();
             builder.Property(content => content.Instruction)

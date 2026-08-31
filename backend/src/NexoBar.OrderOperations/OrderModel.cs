@@ -39,6 +39,7 @@ internal sealed class IncorporationContent
         int contentOrdinal,
         Guid productId,
         int quantity,
+        bool requiresPreparationAtConfirmation,
         decimal appliedPrice,
         string? instruction)
     {
@@ -46,6 +47,7 @@ internal sealed class IncorporationContent
         ContentOrdinal = contentOrdinal;
         ProductId = productId;
         Quantity = quantity;
+        RequiresPreparationAtConfirmation = requiresPreparationAtConfirmation;
         AppliedPrice = appliedPrice;
         Instruction = instruction;
     }
@@ -54,6 +56,7 @@ internal sealed class IncorporationContent
     internal int ContentOrdinal { get; private set; }
     internal Guid ProductId { get; private set; }
     internal int Quantity { get; private set; }
+    internal bool RequiresPreparationAtConfirmation { get; private set; }
     internal decimal AppliedPrice { get; private set; }
     internal string? Instruction { get; private set; }
 }

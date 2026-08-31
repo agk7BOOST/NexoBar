@@ -125,6 +125,7 @@ try
             1,
             authorizedProduct.Id,
             2,
+            true,
             7m,
             "Sin sal"),
         new IncorporationContent(
@@ -132,6 +133,7 @@ try
             2,
             otherProduct.Id,
             1,
+            true,
             9m,
             null));
     orderOperations.PreparationWork.AddRange(

@@ -11,16 +11,18 @@ internal static class ConfirmedContentFactory
         string? instruction,
         OrderConfirmationCatalogProduct product)
     {
+        var requiresPreparationAtConfirmation = product.RequiresPreparation;
         var content = new IncorporationContent(
             incorporationId,
             contentOrdinal,
             product.ProductId,
             quantity,
+            requiresPreparationAtConfirmation,
             product.Price,
             instruction);
         var deliveryState = new DeliveryState(incorporationId, contentOrdinal);
 
-        if (!product.RequiresPreparation)
+        if (!requiresPreparationAtConfirmation)
         {
             if (instruction is not null)
             {

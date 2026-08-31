@@ -380,6 +380,26 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             .DeliveryStates.CountAsync(cancellationToken);
     }
 
+    internal async Task<IReadOnlyList<ConfirmedContentSnapshot>>
+        ReadConfirmedContentsAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        return await (
+            from content in dbContext.IncorporationContents.AsNoTracking()
+            join incorporation in dbContext.Incorporations.AsNoTracking()
+                on content.IncorporationId equals incorporation.Id
+            orderby incorporation.Ordinal, content.ContentOrdinal
+            select new ConfirmedContentSnapshot(
+                incorporation.OrderId,
+                incorporation.Id,
+                incorporation.Ordinal,
+                content.ContentOrdinal,
+                content.ProductId,
+                content.RequiresPreparationAtConfirmation))
+            .ToArrayAsync(cancellationToken);
+    }
+
     internal async Task<IReadOnlyList<PreparationHistory>> ReadPreparationHistoryAsync(
         CancellationToken cancellationToken)
     {
@@ -905,6 +925,14 @@ internal sealed record DeliveryStateSnapshot(
     Guid ProductId,
     string? Instruction,
     int DeliveredQuantity);
+
+internal sealed record ConfirmedContentSnapshot(
+    Guid OrderId,
+    Guid IncorporationId,
+    int IncorporationOrdinal,
+    int ContentOrdinal,
+    Guid ProductId,
+    bool RequiresPreparationAtConfirmation);
 
 internal sealed record PreparationActor(
     Guid IdentityId,
