@@ -10,6 +10,8 @@ internal sealed class OrderOperationsDbContext(
     internal DbSet<Incorporation> Incorporations => Set<Incorporation>();
     internal DbSet<IncorporationContent> IncorporationContents => Set<IncorporationContent>();
     internal DbSet<PreparationWork> PreparationWork => Set<PreparationWork>();
+    internal DbSet<PreparationHistory> PreparationHistory => Set<PreparationHistory>();
+    internal DbSet<PreparationCommand> PreparationCommands => Set<PreparationCommand>();
     internal DbSet<ConfirmationHistory> ConfirmationHistory => Set<ConfirmationHistory>();
     internal DbSet<FirstConfirmationCommand> FirstConfirmationCommands =>
         Set<FirstConfirmationCommand>();
@@ -27,6 +29,8 @@ internal sealed class OrderOperationsDbContext(
         modelBuilder.ApplyConfiguration(new IncorporationConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationContentConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationWorkConfiguration());
+        modelBuilder.ApplyConfiguration(new PreparationHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new PreparationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new ConfirmationHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new FirstConfirmationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new FirstConfirmationCommandContentConfiguration());
@@ -84,6 +88,153 @@ internal sealed class OrderOperationsDbContext(
                 .HasForeignKey<PreparationWork>(
                     work => new { work.IncorporationId, work.ContentOrdinal })
                 .HasConstraintName("FK_order_operations_preparation_work_content")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class PreparationHistoryConfiguration :
+        IEntityTypeConfiguration<PreparationHistory>
+    {
+        public void Configure(EntityTypeBuilder<PreparationHistory> builder)
+        {
+            builder.ToTable(
+                "preparation_history",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_preparation_history_event_kind_not_empty",
+                        "length(btrim(event_kind)) > 0");
+                    table.HasCheckConstraint(
+                        "CK_preparation_history_quantity_positive",
+                        "quantity > 0");
+                    table.HasCheckConstraint(
+                        "CK_preparation_history_result_total_positive",
+                        "resulting_total_quantity > 0");
+                    table.HasCheckConstraint(
+                        "CK_preparation_history_result_non_negative",
+                        "resulting_pending_quantity >= 0 AND " +
+                        "resulting_in_preparation_quantity >= 0 AND " +
+                        "resulting_ready_quantity >= 0");
+                    table.HasCheckConstraint(
+                        "CK_preparation_history_result_balanced",
+                        "resulting_pending_quantity::bigint + " +
+                        "resulting_in_preparation_quantity::bigint + " +
+                        "resulting_ready_quantity::bigint = " +
+                        "resulting_total_quantity::bigint");
+                });
+            builder.HasKey(history => history.Id)
+                .HasName("PK_order_operations_preparation_history");
+            builder.Property(history => history.Id)
+                .HasColumnName("id").ValueGeneratedNever();
+            builder.Property(history => history.WorkId)
+                .HasColumnName("work_id").ValueGeneratedNever();
+            builder.Property(history => history.EventKind)
+                .HasColumnName("event_kind").HasColumnType("text").IsRequired();
+            builder.Property(history => history.Quantity)
+                .HasColumnName("quantity").IsRequired();
+            builder.Property(history => history.ActorIdentityId)
+                .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(history => history.OccurredAt)
+                .HasColumnName("occurred_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.Property(history => history.ResultingTotalQuantity)
+                .HasColumnName("resulting_total_quantity").IsRequired();
+            builder.Property(history => history.ResultingPendingQuantity)
+                .HasColumnName("resulting_pending_quantity").IsRequired();
+            builder.Property(history => history.ResultingInPreparationQuantity)
+                .HasColumnName("resulting_in_preparation_quantity").IsRequired();
+            builder.Property(history => history.ResultingReadyQuantity)
+                .HasColumnName("resulting_ready_quantity").IsRequired();
+            builder.HasIndex(history => new
+            {
+                history.WorkId,
+                history.OccurredAt,
+                history.Id
+            })
+                .HasDatabaseName(
+                    "IX_order_operations_preparation_history_work_time_id");
+            builder.HasOne<PreparationWork>().WithMany()
+                .HasForeignKey(history => history.WorkId)
+                .HasConstraintName(
+                    "FK_order_operations_preparation_history_work")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class PreparationCommandConfiguration :
+        IEntityTypeConfiguration<PreparationCommand>
+    {
+        public void Configure(EntityTypeBuilder<PreparationCommand> builder)
+        {
+            builder.ToTable(
+                "preparation_commands",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_preparation_commands_kind_not_empty",
+                        "length(btrim(command_kind)) > 0");
+                    table.HasCheckConstraint(
+                        "CK_preparation_commands_quantity_positive",
+                        "quantity > 0");
+                    table.HasCheckConstraint(
+                        "CK_preparation_commands_result_total_positive",
+                        "result_total_quantity > 0");
+                    table.HasCheckConstraint(
+                        "CK_preparation_commands_result_non_negative",
+                        "result_pending_quantity >= 0 AND " +
+                        "result_in_preparation_quantity >= 0 AND " +
+                        "result_ready_quantity >= 0");
+                    table.HasCheckConstraint(
+                        "CK_preparation_commands_result_balanced",
+                        "result_pending_quantity::bigint + " +
+                        "result_in_preparation_quantity::bigint + " +
+                        "result_ready_quantity::bigint = " +
+                        "result_total_quantity::bigint");
+                });
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_order_operations_preparation_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(command => command.CommandKind)
+                .HasColumnName("command_kind").HasColumnType("text").IsRequired();
+            builder.Property(command => command.WorkId)
+                .HasColumnName("work_id").ValueGeneratedNever();
+            builder.Property(command => command.Quantity)
+                .HasColumnName("quantity").IsRequired();
+            builder.Property(command => command.ResultHistoryId)
+                .HasColumnName("result_history_id").ValueGeneratedNever();
+            builder.Property(command => command.ResultOccurredAt)
+                .HasColumnName("result_occurred_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.Property(command => command.ResultTotalQuantity)
+                .HasColumnName("result_total_quantity").IsRequired();
+            builder.Property(command => command.ResultPendingQuantity)
+                .HasColumnName("result_pending_quantity").IsRequired();
+            builder.Property(command => command.ResultInPreparationQuantity)
+                .HasColumnName("result_in_preparation_quantity").IsRequired();
+            builder.Property(command => command.ResultReadyQuantity)
+                .HasColumnName("result_ready_quantity").IsRequired();
+            builder.HasIndex(command => command.WorkId)
+                .HasDatabaseName(
+                    "IX_order_operations_preparation_commands_work");
+            builder.HasIndex(command => command.ResultHistoryId)
+                .HasDatabaseName(
+                    "UX_order_operations_preparation_commands_history")
+                .IsUnique();
+            builder.HasOne<PreparationWork>().WithMany()
+                .HasForeignKey(command => command.WorkId)
+                .HasConstraintName(
+                    "FK_order_operations_preparation_commands_work")
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<PreparationHistory>().WithOne()
+                .HasForeignKey<PreparationCommand>(
+                    command => command.ResultHistoryId)
+                .HasConstraintName(
+                    "FK_order_operations_preparation_commands_history")
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }

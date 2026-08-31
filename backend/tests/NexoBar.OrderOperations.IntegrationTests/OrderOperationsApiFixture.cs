@@ -52,6 +52,8 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                order_operations.preparation_commands,
+                order_operations.preparation_history,
                 order_operations.subsequent_confirmation_command_contents,
                 order_operations.subsequent_confirmation_commands,
                 order_operations.first_confirmation_command_contents,
@@ -246,9 +248,11 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
     internal async Task<(ProductResponse Product, FirstConfirmationResponse Confirmation)>
         CreatePreparedWorkAsync(
             Guid preparationResponsibilityId,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            int quantity = 1,
+            string productName = "Preparado")
     {
-        var product = await CreateProductAsync("Preparado", "7", cancellationToken);
+        var product = await CreateProductAsync(productName, "7", cancellationToken);
         await SetProductPreparationAsync(
             product.Id,
             preparationResponsibilityId,
@@ -259,7 +263,7 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         {
             Content = JsonContent.Create(new FirstConfirmationRequest(
                 "Mesa concurrente",
-                [new FirstConfirmationItemRequest(product.Id, 1)]))
+                [new FirstConfirmationItemRequest(product.Id, quantity)]))
         };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
         using var response = await Client.SendAsync(request, cancellationToken);
@@ -346,6 +350,27 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         await using var scope = application!.Services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
             .PreparationWork.CountAsync(cancellationToken);
+    }
+
+    internal async Task<IReadOnlyList<PreparationHistory>> ReadPreparationHistoryAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .PreparationHistory.AsNoTracking()
+            .OrderBy(history => history.OccurredAt)
+            .ThenBy(history => history.Id)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    internal async Task<IReadOnlyList<PreparationCommand>> ReadPreparationCommandsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .PreparationCommands.AsNoTracking()
+            .OrderBy(command => command.IdempotencyKey)
+            .ToArrayAsync(cancellationToken);
     }
 
     internal async Task<PersistenceCounts> CountEffectsAsync(
@@ -472,6 +497,41 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         }
     }
 
+    internal async Task SetPreparationCommandFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+
+        if (enabled)
+        {
+            await dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE OR REPLACE FUNCTION order_operations.fail_preparation_command()
+                RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    RAISE EXCEPTION 'controlled preparation command failure';
+                END;
+                $$;
+                CREATE TRIGGER fail_preparation_command
+                BEFORE INSERT ON order_operations.preparation_commands
+                FOR EACH ROW EXECUTE FUNCTION order_operations.fail_preparation_command();
+                """,
+                cancellationToken);
+        }
+        else
+        {
+            await dbContext.Database.ExecuteSqlRawAsync(
+                """
+                DROP TRIGGER IF EXISTS fail_preparation_command
+                    ON order_operations.preparation_commands;
+                DROP FUNCTION IF EXISTS order_operations.fail_preparation_command();
+                """,
+                cancellationToken);
+        }
+    }
+
     internal async Task<SubsequentPersistenceCounts> CountSubsequentEffectsAsync(
         CancellationToken cancellationToken)
     {
@@ -568,6 +628,24 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             {
                 services.RemoveAll<IProductOperationalReferenceLookup>();
                 services.AddScoped(factory);
+            }));
+
+    internal WebApplicationFactory<Program> CreateApplicationWithCapabilityDecorator(
+        Func<IServiceProvider, IPreparationCapabilityStabilizer> factory) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IPreparationCapabilityStabilizer>();
+                services.AddScoped(factory);
+            }));
+
+    internal WebApplicationFactory<Program> CreateApplicationWithTimeProvider(
+        TimeProvider timeProvider) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<TimeProvider>();
+                services.AddSingleton(timeProvider);
             }));
 
     internal WebApplicationFactory<Program>

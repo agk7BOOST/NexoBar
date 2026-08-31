@@ -18,6 +18,20 @@ public enum PreparationAuthorizationOutcome
     Forbidden
 }
 
+public interface IPreparationCapabilityStabilizer
+{
+    Task<bool> StabilizePreparationResponsibilityAsync(
+        Guid identityId,
+        DbTransaction transaction,
+        CancellationToken cancellationToken);
+
+    Task<bool> StabilizeExactEnablementAsync(
+        Guid identityId,
+        Guid preparationResponsibilityId,
+        DbTransaction transaction,
+        CancellationToken cancellationToken);
+}
+
 internal sealed class PreparationAuthorization(
     IAuthenticatedSessionStabilizer sessionStabilizer) : IPreparationAuthorization
 {
@@ -69,7 +83,7 @@ internal sealed class PreparationAuthorization(
         return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
-    private static async Task<bool> HasExactEnablementAsync(
+    internal static async Task<bool> HasExactEnablementAsync(
         Guid identityId,
         Guid preparationResponsibilityId,
         DbTransaction transaction,
@@ -115,4 +129,28 @@ internal sealed class PreparationAuthorization(
         parameter.Value = value;
         command.Parameters.Add(parameter);
     }
+}
+
+internal sealed class PreparationCapabilityStabilizer :
+    IPreparationCapabilityStabilizer
+{
+    public Task<bool> StabilizePreparationResponsibilityAsync(
+        Guid identityId,
+        DbTransaction transaction,
+        CancellationToken cancellationToken) =>
+        PreparationAuthorization.HasPreparationResponsibilityAsync(
+            identityId,
+            transaction,
+            cancellationToken);
+
+    public Task<bool> StabilizeExactEnablementAsync(
+        Guid identityId,
+        Guid preparationResponsibilityId,
+        DbTransaction transaction,
+        CancellationToken cancellationToken) =>
+        PreparationAuthorization.HasExactEnablementAsync(
+            identityId,
+            preparationResponsibilityId,
+            transaction,
+            cancellationToken);
 }

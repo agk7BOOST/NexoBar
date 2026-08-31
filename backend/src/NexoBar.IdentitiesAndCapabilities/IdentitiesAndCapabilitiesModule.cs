@@ -78,6 +78,8 @@ public static class IdentitiesAndCapabilitiesModule
         services.AddScoped<SessionCookieManager>();
         services.AddScoped<IAuthenticatedContext, HttpAuthenticatedContext>();
         services.AddScoped<IAuthenticatedSessionStabilizer, AuthenticatedSessionStabilizer>();
+        services.AddScoped<IPreparationCapabilityStabilizer,
+            PreparationCapabilityStabilizer>();
         services.AddScoped<IPreparationAuthorization, PreparationAuthorization>();
         services.AddScoped<IdentitySessionService>();
         services.AddScoped<CurrentPreparationDestinationQueryService>();

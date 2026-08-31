@@ -87,6 +87,30 @@ internal sealed class PreparationWork
     internal int PendingQuantity { get; private set; }
     internal int InPreparationQuantity { get; private set; }
     internal int ReadyQuantity { get; private set; }
+
+    internal PreparationStartTransition Start(int quantity)
+    {
+        if (quantity <= 0)
+        {
+            return PreparationStartTransition.QuantityInvalid;
+        }
+
+        if (PendingQuantity < quantity)
+        {
+            return PreparationStartTransition.PendingQuantityInsufficient;
+        }
+
+        PendingQuantity -= quantity;
+        InPreparationQuantity += quantity;
+        return PreparationStartTransition.Started;
+    }
+}
+
+internal enum PreparationStartTransition
+{
+    Started,
+    QuantityInvalid,
+    PendingQuantityInsufficient
 }
 
 internal sealed class ConfirmationHistory
