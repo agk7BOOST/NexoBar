@@ -46,7 +46,7 @@ IdentitiesAndCapabilities ──→ OperationalConfiguration
   - `OperationalConfigurationDbContext` mapea `operational_configuration`;
   - `IdentitiesAndCapabilitiesDbContext` mapea `identities_and_capabilities`.
 - Las migraciones son explícitas, versionadas y revisables. El Host productivo no ejecuta auto-migrate durante el startup.
-- Dinero y cantidades exactas usan `numeric`/`decimal`, nunca coma flotante binaria como representación autoritativa; cuando aplica, su representación HTTP es un decimal string estable.
+- Dinero y las cantidades exactas fraccionarias materializadas usan `numeric`/`decimal`, nunca coma flotante binaria como representación autoritativa; cuando aplica, su representación HTTP es un decimal string estable. Las cantidades actuales de `PreparationWork` son enteros exactos; las cantidades fraccionarias de Preparation permanecen abiertas.
 - Las identidades persistentes principales materializadas usan UUID v7. `Idempotency-Key` usa UUID v4.
 - Los timestamps operacionales autoritativos los asigna el backend y se persisten en UTC.
 - Estado vigente e Historia semántica son conceptos distintos y se confirman atómicamente cuando son consecuencias inseparables. La solución no es CQRS ni Event Sourcing.
@@ -287,7 +287,7 @@ advisory idempotency
 - No crea nuevos Work y no requiere `workId` en las tablas de comandos.
 - El nacimiento de Work no introduce una idempotencia adicional: queda cubierto por la idempotencia y transacción de la Confirmación que lo origina.
 
-## 10. PreparationWork y consulta autorizada
+## 10. PreparationWork, progreso y consulta autorizada
 
 `PreparationWork` es Estado operacional vigente poseído por `OrderOperations` y contiene:
 
@@ -304,7 +304,23 @@ Cada Work tiene PK por `Id` y una FK compuesta `(incorporation_id, content_ordin
 
 Una Confirmación puede crear varios Work para el mismo Product cuando pertenecen a Contents con instruction diferente. Cada Work conserva el snapshot de responsabilidad y las cantidades `total`, `pending`, `inPreparation` y `ready`. No existe `WorkCreated History`.
 
-Las cantidades iniciales son `total = confirmed quantity`, `pending = total`, `inPreparation = 0` y `ready = 0`. La base impone `total > 0`, cantidades de estado no negativas y `pending + inPreparation + ready = total`. El progreso ordinario futuro no deberá alterar el total; futuras Correcciones todavía no están materializadas, por lo que no se afirma que `TotalQuantity` sea eternamente inmutable.
+Las cantidades son actualmente enteros exactos. Las cantidades iniciales son `total = confirmed quantity`, `pending = total`, `inPreparation = 0` y `ready = 0`. El Estado autoritativo satisface:
+
+```text
+TotalQuantity > 0
+PendingQuantity >= 0
+InPreparationQuantity >= 0
+ReadyQuantity >= 0
+PendingQuantity + InPreparationQuantity + ReadyQuantity == TotalQuantity
+```
+
+No existe un `Status` persistido. Son derivaciones, no columnas:
+
+- completamente listo: `ReadyQuantity == TotalQuantity`;
+- hay trabajo activo: `InPreparationQuantity > 0`;
+- todavía queda preparación: `PendingQuantity + InPreparationQuantity > 0`.
+
+Un mismo Work puede contener simultáneamente porciones `Pending`, `InPreparation` y `Ready`; por ejemplo, `total = 5`, `pending = 1`, `inPreparation = 1`, `ready = 3` es válido. No existe identidad física por unidad ni sub-items individuales. Todas las cantidades de un Work comparten `IncorporationContent`, Product, instruction y el snapshot de `PreparationResponsibility`.
 
 La consulta materializada es:
 
@@ -329,13 +345,86 @@ GET /api/order-operations/preparation/work
 
 La resolución de nombres usa un batch lookup estrecho de `OperationalConfiguration`; no concede lectura universal de ese módulo.
 
+### Start parcial
+
+```text
+POST /api/order-operations/preparation/work/{workId}/start
+Intent: StartPreparationQuantity
+Body: { "quantity": integer }
+Headers: Idempotency-Key UUID v4 + antiforgery
+```
+
+Una intención nueva exige `quantity > 0`, `PendingQuantity >= quantity` y autorización vigente. Su transición es:
+
+```text
+PendingQuantity -= quantity
+InPreparationQuantity += quantity
+```
+
+No hay auto clipping, transición directa `Pending -> Ready`, ownership ni flag de Start del Work completo. Abrir o leer un Work no inicia ninguna cantidad.
+
+### Ready parcial
+
+```text
+POST /api/order-operations/preparation/work/{workId}/ready
+Intent: MarkPreparationQuantityReady
+Body: { "quantity": integer }
+Headers: Idempotency-Key UUID v4 + antiforgery
+```
+
+Una intención nueva exige `quantity > 0`, `InPreparationQuantity >= quantity` y autorización vigente. Su transición es:
+
+```text
+InPreparationQuantity -= quantity
+ReadyQuantity += quantity
+```
+
+Ready es parcial. Cuando `ReadyQuantity == TotalQuantity`, el Work está completamente listo por derivación; no se emite un evento adicional `WorkCompleted`. Ready no implica Delivered, Completed ni cierre del Order.
+
+### Autorización, actores y concurrencia
+
+No existe owner ni assignee de `PreparationWork`. Cualquier Identity actualmente autorizada para el destino puede actuar sobre cantidad elegible. Una intención nueva requiere Session válida, Identity activa, `Responsibility.Preparation` vigente y la `PreparationEnablement` exacta para `Work.PreparationResponsibilityId`. El actor procede de `AuthenticatedContext.IdentityId` y el destino se obtiene del Work; el cliente no aporta actor, destination ni capability. No se usan claims de capability.
+
+Por tanto, es válido que Identity A ejecute `Start(1)` e Identity B ejecute `Ready(1)` si ambas satisfacen la autorización vigente. La Historia conserva el actor de cada acción; quien inició una cantidad no necesita ser quien la marca Ready.
+
+Start y Ready comparten este patrón de transacción corta:
+
+```text
+BEGIN READ COMMITTED
+→ advisory transaction lock por Idempotency-Key
+→ estabilización de Session + Identity
+→ replay/conflicto de Preparation command
+→ Responsibility.Preparation FOR SHARE
+→ Work FOR UPDATE
+→ destination obtenido del Work
+→ exact PreparationEnablement FOR SHARE
+→ transición de dominio
+→ History
+→ command/result durable
+→ COMMIT
+```
+
+No hay locks de Work de larga duración, distributed lock, lock global de Preparation ni ownership claim. Dos preparadores pueden actuar concurrentemente sobre el mismo Work; `Work FOR UPDATE` serializa las mutaciones y cada intención se valida contra el Estado estabilizado. Con `Pending = 5`, dos `Start(2)` pueden confirmar secuencialmente. Con `Pending = 3`, solo uno confirma y el otro obtiene `409`; la segunda intención no se recorta. Se aplica el mismo criterio a Ready. Start y Ready concurrentes también se serializan coherentemente por Work.
+
+### Errores de progreso
+
+- `400`: key, body, `workId` o `quantity` inválidos;
+- `401`: Session no utilizable o Identity inactiva;
+- `403`: falta `Responsibility.Preparation`;
+- `404` indistinguible: Work inexistente o falta la `PreparationEnablement` exacta;
+- `409`: bucket fuente insuficiente, conflicto de idempotencia o transición no aplicable.
+
+El `404` no revela el destination ni permite distinguir pérdida de habilitación de Work inexistente.
+
 ## 11. Estado e Historia
 
 - `ConfirmationHistory` explica la Confirmación que originó el contenido y conserva `confirmedContext` histórico.
 - `ConfirmationHistory` y el `IncorporationContent` persistido explican conjuntamente la existencia de una instruction confirmada; no existe `InstructionAdded History`.
-- `PreparationWork` representa Estado operacional vigente.
+- `PreparationWork` representa Estado operacional vigente y no se reconstruye ordinariamente desde Historia.
 - La query de Preparation usa `Order.Context` vigente; no debe confundirse con `ConfirmationHistory.confirmedContext`.
-- Todavía no existen `PreparationWorkHistory` ni evento `WorkCreated`, porque aún no existe progreso humano materializado.
+- El progreso humano materializa Historia separada con los eventos `PreparationQuantityStarted` y `PreparationQuantityReady`. Cada registro conserva `HistoryId` UUID v7, `WorkId`, `Quantity`, `ActorIdentityId`, `OccurredAt` UTC y el resultado de las cuatro cantidades: `TotalQuantity`, `PendingQuantity`, `InPreparationQuantity` y `ReadyQuantity`.
+- No existen eventos `WorkCreated`, `Progress` genérico ni `WorkCompleted`. La Historia de Preparation no conserva `SessionId`, snapshot de nombre del Product ni duplicación de instruction.
+- No existe todavía query, API ni UI de Historia de Preparation.
 - Tampoco está materializado Change Context.
 - Esta separación no constituye Event Sourcing.
 
@@ -348,6 +437,14 @@ La resolución de nombres usa un batch lookup estrecho de `OperationalConfigurat
 - `Catalog`, `OperationalConfiguration`, Primera Confirmación y Confirmación posterior tienen infraestructura y canonicalización propias; no deben uniformarse sin una decisión explícita.
 - En una Confirmación posterior, la intención se define por `Order` e items canonicalizados; el orden del array no la altera.
 - La duplicación local actual es deliberada. No existe infraestructura `Shared` de idempotencia.
+
+Los comandos humanos de Preparation usan un namespace durable local de `OrderOperations`. La intención persistida contiene `IdempotencyKey` UUID v4, `ActorIdentityId`, `CommandKind`, `WorkId`, `Quantity` y un resultado estable. Los kinds actuales son `StartPreparationQuantity` y `MarkPreparationQuantityReady`.
+
+- mismo actor/key/kind/work/quantity produce replay;
+- la misma key con actor, kind, work o quantity incompatible produce `409`;
+- `SessionId` no es actor durable;
+- el replay exige Session válida e Identity activa, pero no vuelve a exigir la capability vigente cuando el efecto ya fue confirmado;
+- el replay no duplica Estado ni Historia y devuelve el resultado original persistido, no el Estado posterior actual del Work.
 
 Los contenidos durables de los comandos First y Subsequent tienen PK `(idempotency_key, line_ordinal)` y persisten `product_id`, `quantity` e `instruction` canonical. `lineOrdinal` es técnico y canonical: se deriva después de ordenar las líneas semánticas y no depende del orden HTTP.
 
@@ -375,8 +472,14 @@ Los items de request de First y Subsequent contienen `productId`, `quantity` e `
 - Un `409` conocido no se trata como incertidumbre: la Composición permanece editable y la siguiente intención usa una key nueva.
 - El lookup de Order muestra Product actual, quantity, `appliedPrice` histórico e instruction confirmada; cuando es null muestra “Sin instrucción”. Las líneas del mismo Product permanecen visualmente distinguibles.
 - El Estado de autenticación es explícito: `loading`, `unauthenticated` o `authenticated(currentIdentity)`. Login envía `loginIdentifier + secret` con antiforgery, muestra el `401` genérico y limpia el secret al tener éxito. La barra de sesión muestra el `OperationalName` actual y permite logout/cambiar persona.
-- `PreparationPanel` carga los destinos habilitados por nombre: con cero informa que no hay destinos, con uno lo selecciona automáticamente y con varios presenta selector. Renderiza Work en solo lectura con nombre vigente del Product, instruction, contexto/referencia y cantidades/Estado. No implementa Start ni Ready.
-- Un `401` devuelve el frontend a `unauthenticated` y limpia el antiforgery token en memoria. Un `403` conserva la Identity autenticada y muestra la falla de autorización.
+- `PreparationPanel` carga los destinos habilitados por nombre: con cero informa que no hay destinos, con uno lo selecciona automáticamente y con varios presenta selector. Muestra el `ProductOperationalName` vigente, context/reference, instruction y los contadores Total, Pending, En preparación y Ready; no presenta un Status único.
+- Cada Work con cantidad Pending ofrece un input integer de Start, inicialmente igual al Pending actual, y el botón “Iniciar”. Cada Work con cantidad InPreparation ofrece un input integer de Ready, inicialmente igual al InPreparation actual, y el botón “Marcar listo”. Ambas acciones admiten la totalidad o una parte del bucket elegible.
+- Cuando `ReadyQuantity == TotalQuantity`, el panel muestra “Todo listo”. No usa lenguaje de Delivery.
+- Cada Work admite como máximo una mutación frontend activa, en fase mínima `submitting` o `uncertain`; los demás Work siguen operables. Una intención nueva obtiene `crypto.randomUUID()` y congela kind, `WorkId`, quantity y key.
+- En `200`, aplica los contadores autoritativos del response, resuelve la intención y refresca después. No realiza mutación optimista.
+- Un `409` conocido limpia la intención, informa que cambió el Estado o que existe conflicto de idempotencia y refresca.
+- Ante network/timeout con resultado incierto no cambia cantidades locales: conserva exactamente key, body y endpoint, ofrece retry exacto y bloquea una segunda mutación sobre ese Work hasta resolver. No genera una key nueva durante el retry ni ofrece descarte ordinario.
+- Un `401` devuelve el frontend a `unauthenticated`, limpia antiforgery e intents y vuelve al login. Un `403` conserva la Identity autenticada y muestra la falla de autorización. Un `404` informa “trabajo ya no disponible” y refresca sin revelar una posible pérdida de enablement.
 - Todavía no existe `OperationalConfigurationPanel` productivo ni frontend administrativo completo.
 
 ## 15. Testing y verificación
@@ -389,9 +492,9 @@ Existen tres capas:
 
 `scripts/verify.cmd` y `scripts/verify.sh` ejecutan la verificación ordinaria. Esta verificación requiere Docker porque las suites backend usan Testcontainers. La opción `--e2e` añade PostgreSQL efímero aislado, backend, Vite y Chromium; no usa la base persistente de `compose.yaml`.
 
-El estado cerrado después de S3-SEC-I4 verifica backend 217/217, frontend 80/80 y Playwright 3/3. `HasPendingModelChanges` es false para los cuatro `DbContext` (4/4). Tanto `scripts\verify.cmd` como `scripts\verify.cmd --e2e` pasan.
+El último estado verificado después de S3-PRE-I4 es backend 302/302, frontend 95/95 y Playwright 3/3. `HasPendingModelChanges` es false para los cuatro `DbContext` (4/4). Tanto `scripts\verify.cmd` como `scripts\verify.cmd --e2e` pasan.
 
-El baseline integrado mantiene tres escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. El nuevo escenario de seguridad provisiona un preparer mediante setup E2E, hace login, muestra su Identity y el destino habilitado por nombre, muestra Work autorizado, no muestra otro destino, hace logout y vuelve al login. Ese fixture no implica bootstrap productivo. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
+El baseline integrado mantiene tres escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. El escenario de Preparation provisiona dos preparadores mediante setup E2E. Identity A hace login, ve su destination y Work autorizados, ejecuta Start parcial de 1 sobre 2 y hace logout; Identity B hace login sobre el mismo destination y marca Ready esa cantidad. El resultado visible es Pending 1, InPreparation 0 y Ready 1. Esto demuestra progreso parcial, operación multi-actor sin ownership, autorización real y contadores autoritativos del backend. El fixture no implica bootstrap productivo. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
 
 `NexoBar.E2E.DatabaseSetup` aplica explícitamente y verifica los cuatro `DbContext`: `OperationalConfigurationDbContext`, `CatalogDbContext`, `OrderOperationsDbContext` e `IdentitiesAndCapabilitiesDbContext`. `HasPendingModelChanges` debe ser `false` para los cuatro. Chromium se instala manualmente desde `frontend`:
 
@@ -426,6 +529,8 @@ Las migraciones relevantes de S3-I3 son:
 
 Ambas tienen Designer completo, snapshots coherentes y `HasPendingModelChanges = false`. La segunda agrega `instruction` a Contents y a los contenidos durables de comandos, y elimina las uniques temporales por Product. Su `Down` protege los datos y falla explícitamente si ya existen duplicados incompatibles con el schema anterior; nunca fusiona ni elimina líneas silenciosamente.
 
+Preparation Start agregó la migración `20260831063910_AddPreparationStart`, que materializa la Historia y los comandos durables de Preparation. Ready reutiliza ese modelo y no agregó una migración adicional.
+
 ## 17. `InternalsVisibleTo`
 
 `InternalsVisibleTo` existe únicamente para consumidores técnicos/test específicos: las suites de integración y `NexoBar.E2E.DatabaseSetup`. No es un mecanismo normal de colaboración productiva entre módulos.
@@ -437,6 +542,7 @@ Deuda técnica conocida:
 - la igualdad del destino de las connection strings modulares no se valida automáticamente;
 - la validación runtime o generación de contratos TypeScript sigue diferida;
 - el tooling general de migraciones para Development sigue pendiente.
+- un intent incierto de Preparation vive actualmente solo en memoria: reload o unmount puede perder su key. No hay persistencia en `localStorage` o `sessionStorage`, offline queue ni automatic background retry. El backend conserva idempotencia durable, pero el frontend no garantiza continuidad cross-reload del intent. Es deuda técnica/UX consciente, no una norma.
 
 Fronteras todavía no materializadas, sin que esta enumeración diseñe su solución:
 
@@ -447,15 +553,21 @@ Fronteras todavía no materializadas, sin que esta enumeración diseñe su soluc
 - frontend administrativo completo;
 - elegibilidad de Delete Identity y coordinación con Historia;
 - auditoría global de seguridad y consumo de autenticación en SSE;
-- comandos `Start` y `MarkReady`, progreso parcial y excepciones de Preparation;
+- Correction ordinaria sobre cantidad todavía Pending/elegible, conforme a reglas aún no definidas;
+- excepciones sobre Work iniciado y Correction de progreso: una Correction no debe reinterpretar silenciosamente cantidades InPreparation o Ready, y modificar trabajo ya iniciado requiere tratamiento excepcional;
+- Delivery, que tendrá Estado propio de cumplimiento: `Ready != Delivered` y Preparation no decrementa Ready al entregar; su modelo detallado no está definido ni implementado;
+- cantidades fraccionarias de Preparation;
+- persistencia cross-reload de intents inciertos de Preparation;
+- prioridad/SLA y owner/assignment de Preparation;
+- query/API/UI de Historia de Preparation;
 - profundidad de Historia administrativa según los OPEN-TRA aplicables;
 - Correcciones de Content o instruction;
 - edición de una instruction ya confirmada;
 - SSE.
 
-El checkpoint de seguridad requerido para acciones humanas de Preparation está cerrado, pero eso no significa que la seguridad global esté cerrada ni que todos los endpoints backend estén protegidos. `Quantity` en Content no implica identidad física individual. Actualmente solo la Confirmación origina Work automáticamente; Preparation no permite `Start`, `MarkReady`, progreso parcial ni excepciones. Las Correcciones de Content/instruction no están implementadas y la instruction confirmada no es editable. SSE permanece pendiente.
+El checkpoint de seguridad requerido para acciones humanas de Preparation está cerrado, pero eso no significa que la seguridad global esté cerrada ni que todos los endpoints backend estén protegidos. `Quantity` en Content no implica identidad física individual. La Correction no está implementada: conceptualmente, una futura Correction ordinaria puede actuar sobre cantidad todavía Pending/elegible según sus propias reglas, pero no debe reinterpretar silenciosamente InPreparation o Ready; no se diseña aquí su API. Delivery tampoco está implementada ni se detalla aquí. La instruction confirmada no es editable y SSE permanece pendiente.
 
-## 19. Estado de S3-SEC-I1..I4 y próximo checkpoint
+## 19. Estado de Slice 3
 
 El checkpoint de Identity, autenticación y capabilities requerido antes del progreso humano de Preparation ya está materializado:
 
@@ -466,7 +578,13 @@ El checkpoint de Identity, autenticación y capabilities requerido antes del pro
 
 S3-SEC-I1..I4 materializa Estado de Identity y capabilities, credencial y Session opacas, administración e invariante de `GeneralConfiguration`, autorización vigente de la lectura de Work, destinos habilitados, nombre vigente de Product y la superficie frontend mínima autenticada de Preparation.
 
-**NEXT:** diseño funcional de transiciones de progreso de Preparation. Este handoff no define todavía la semántica de Start, Ready, progreso parcial ni sus consecuencias de Estado e Historia.
+Los increments posteriores materializados son:
+
+- `311b255 feat: start preparation quantities`;
+- `25166d9 feat: mark preparation quantities ready`;
+- `c6072ce feat: add preparation progress frontend`.
+
+La Preparation mínima operativa ordinaria está materializada para nacimiento de Work, lectura segura, Start parcial, Ready parcial, operación multi-actor, Historia, idempotencia, acciones frontend y recorrido E2E. **Preparation mínima operativa del slice cerrada.** Esto no equivale a Preparation completa del MVP ni resuelve Correction, excepciones, Delivery, SSE, consulta de Historia u otros pendientes de la sección 18.
 
 ## 20. Protocolo de trabajo
 
