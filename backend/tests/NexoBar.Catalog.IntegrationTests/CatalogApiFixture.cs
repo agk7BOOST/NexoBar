@@ -275,6 +275,9 @@ public sealed class CatalogApiFixture : IAsyncLifetime
                     "ConnectionStrings:IdentitiesAndCapabilities",
                     postgres.GetConnectionString());
                 builder.UseSetting(
+                    "ConnectionStrings:Inventory",
+                    postgres.GetConnectionString());
+                builder.UseSetting(
                     "ConnectionStrings:OperationalConfiguration",
                     postgres.GetConnectionString());
                 builder.UseSetting(

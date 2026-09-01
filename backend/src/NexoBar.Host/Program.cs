@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics;
 using NexoBar.Catalog;
 using NexoBar.IdentitiesAndCapabilities;
+using NexoBar.Inventory;
 using NexoBar.OperationalConfiguration;
 using NexoBar.OrderOperations;
 
@@ -10,6 +11,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 builder.Services.AddOperationalConfiguration(builder.Configuration);
 builder.Services.AddIdentitiesAndCapabilities(builder.Configuration);
+builder.Services.AddInventory(builder.Configuration);
 builder.Services.AddCatalog(builder.Configuration);
 builder.Services.AddOrderOperations(builder.Configuration);
 
@@ -27,6 +29,7 @@ app.UseAuthorization();
 app.MapOpenApi();
 app.MapIdentitySessionEndpoints();
 app.MapIdentityAdministrationEndpoints();
+app.MapInventoryEndpoints();
 app.MapOperationalConfigurationEndpoints();
 app.MapCatalogEndpoints();
 app.MapOrderOperationsEndpoints();

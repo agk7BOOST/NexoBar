@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NexoBar.Catalog;
 using NexoBar.IdentitiesAndCapabilities;
+using NexoBar.Inventory;
 using NexoBar.OperationalConfiguration;
 using NexoBar.OrderOperations;
 
@@ -26,6 +27,7 @@ try
         {
             ["ConnectionStrings:Catalog"] = connectionString,
             ["ConnectionStrings:IdentitiesAndCapabilities"] = connectionString,
+            ["ConnectionStrings:Inventory"] = connectionString,
             ["ConnectionStrings:OperationalConfiguration"] = connectionString,
             ["ConnectionStrings:OrderOperations"] = connectionString
         })
@@ -34,6 +36,7 @@ try
     var services = new ServiceCollection();
     services.AddOperationalConfiguration(configuration);
     services.AddIdentitiesAndCapabilities(configuration);
+    services.AddInventory(configuration);
     services.AddCatalog(configuration);
     services.AddOrderOperations(configuration);
 
@@ -44,18 +47,24 @@ try
         .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
     var operationalConfiguration = scope.ServiceProvider
         .GetRequiredService<OperationalConfigurationDbContext>();
+    var inventory = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
     var orderOperations = scope.ServiceProvider
         .GetRequiredService<OrderOperationsDbContext>();
 
-    await operationalConfiguration.Database.MigrateAsync();
-    await identitiesAndCapabilities.Database.MigrateAsync();
-    await catalog.Database.MigrateAsync();
-    await orderOperations.Database.MigrateAsync();
+    DbContext[] modularContexts =
+    [
+        operationalConfiguration,
+        identitiesAndCapabilities,
+        catalog,
+        inventory,
+        orderOperations
+    ];
+    foreach (var context in modularContexts)
+    {
+        await context.Database.MigrateAsync();
+    }
 
-    if (identitiesAndCapabilities.Database.HasPendingModelChanges() ||
-        operationalConfiguration.Database.HasPendingModelChanges() ||
-        catalog.Database.HasPendingModelChanges() ||
-        orderOperations.Database.HasPendingModelChanges())
+    if (modularContexts.Any(context => context.Database.HasPendingModelChanges()))
     {
         Console.Error.WriteLine(
             "E2E database setup detected model changes without migrations.");
@@ -186,8 +195,8 @@ try
     await orderOperations.SaveChangesAsync();
 
     Console.WriteLine(
-        "E2E database migrations and Preparation security fixture applied; " +
-        "no pending model changes detected.");
+        $"E2E database migrations and security fixture applied; " +
+        $"pending models: {modularContexts.Length}/{modularContexts.Length} false.");
     return 0;
 }
 catch (Exception exception)

@@ -37,6 +37,7 @@ export default defineConfig({
         ASPNETCORE_URLS: "http://127.0.0.1:5028",
         ConnectionStrings__Catalog: connectionString,
         ConnectionStrings__IdentitiesAndCapabilities: connectionString,
+        ConnectionStrings__Inventory: connectionString,
         ConnectionStrings__OperationalConfiguration: connectionString,
         ConnectionStrings__OrderOperations: connectionString,
         NexoBarSecurity__Cookies__SessionName: "nexobar-session-e2e",

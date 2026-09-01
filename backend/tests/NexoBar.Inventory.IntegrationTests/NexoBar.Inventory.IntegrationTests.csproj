@@ -1,15 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <PackageReference Include="xunit.v3" Version="4.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\NexoBar.Catalog\NexoBar.Catalog.csproj" />
+    <ProjectReference Include="..\..\src\NexoBar.Host\NexoBar.Host.csproj" />
     <ProjectReference Include="..\..\src\NexoBar.IdentitiesAndCapabilities\NexoBar.IdentitiesAndCapabilities.csproj" />
     <ProjectReference Include="..\..\src\NexoBar.Inventory\NexoBar.Inventory.csproj" />
-    <ProjectReference Include="..\..\src\NexoBar.OperationalConfiguration\NexoBar.OperationalConfiguration.csproj" />
-    <ProjectReference Include="..\..\src\NexoBar.OrderOperations\NexoBar.OrderOperations.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -18,6 +18,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 

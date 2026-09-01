@@ -122,6 +122,7 @@ public sealed class OperationalConfigurationApiFixture : IAsyncLifetime
                 builder.UseSetting("ConnectionStrings:Catalog", connectionString);
                 builder.UseSetting(
                     "ConnectionStrings:IdentitiesAndCapabilities", connectionString);
+                builder.UseSetting("ConnectionStrings:Inventory", connectionString);
                 builder.UseSetting(
                     "ConnectionStrings:OperationalConfiguration", connectionString);
                 builder.UseSetting("ConnectionStrings:OrderOperations", connectionString);

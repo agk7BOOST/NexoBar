@@ -86,6 +86,7 @@ public static class IdentitiesAndCapabilitiesModule
             services.GetRequiredService<OrderOperationsAuthorization>());
         services.AddScoped<IOrderOperationsCapabilityStabilizer>(services =>
             services.GetRequiredService<OrderOperationsAuthorization>());
+        services.AddScoped<IInventoryAuthorization, InventoryAuthorization>();
         services.AddScoped<IdentitySessionService>();
         services.AddScoped<CurrentPreparationDestinationQueryService>();
         services.AddScoped<LocalCredentialProvisioner>();
