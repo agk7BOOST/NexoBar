@@ -69,14 +69,21 @@ try
 
     var preparer = new Identity("Preparador E2E", true);
     var secondPreparer = new Identity("Preparadora E2E B", true);
-    identitiesAndCapabilities.Identities.AddRange(preparer, secondPreparer);
+    var deliverer = new Identity("Delivery E2E", true);
+    identitiesAndCapabilities.Identities.AddRange(
+        preparer,
+        secondPreparer,
+        deliverer);
     identitiesAndCapabilities.ResponsibilityAssignments.AddRange(
         new ResponsibilityAssignment(
             preparer.Id,
             FunctionalResponsibility.Preparation),
         new ResponsibilityAssignment(
             secondPreparer.Id,
-            FunctionalResponsibility.Preparation));
+            FunctionalResponsibility.Preparation),
+        new ResponsibilityAssignment(
+            deliverer.Id,
+            FunctionalResponsibility.OrderOperationsAndBasicClosure));
     identitiesAndCapabilities.PreparationEnablements.AddRange(
         new PreparationEnablement(preparer.Id, kitchen.Id),
         new PreparationEnablement(secondPreparer.Id, kitchen.Id));
@@ -93,6 +100,12 @@ try
             "preparadora-b-e2e",
             "preparation-b-e2e-secret",
             CancellationToken.None);
+    await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+        .ProvisionAsync(
+            deliverer.Id,
+            "delivery-e2e",
+            "delivery-e2e-secret",
+            CancellationToken.None);
 
     var authorizedProduct = new Product(
         Guid.CreateVersion7(),
@@ -102,7 +115,11 @@ try
         Guid.CreateVersion7(),
         "Trago E2E no autorizado",
         9m);
-    catalog.Products.AddRange(authorizedProduct, otherProduct);
+    var directProduct = new Product(
+        Guid.CreateVersion7(),
+        "Bebida E2E directa",
+        5m);
+    catalog.Products.AddRange(authorizedProduct, otherProduct, directProduct);
     await catalog.SaveChangesAsync();
     await catalog.Database.ExecuteSqlInterpolatedAsync(
         $"""
@@ -135,6 +152,14 @@ try
             1,
             true,
             9m,
+            null),
+        new IncorporationContent(
+            incorporation.Id,
+            3,
+            directProduct.Id,
+            2,
+            false,
+            5m,
             null));
     orderOperations.PreparationWork.AddRange(
         new PreparationWork(
@@ -151,7 +176,8 @@ try
             1));
     orderOperations.DeliveryStates.AddRange(
         new DeliveryState(incorporation.Id, 1),
-        new DeliveryState(incorporation.Id, 2));
+        new DeliveryState(incorporation.Id, 2),
+        new DeliveryState(incorporation.Id, 3));
     orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
         Guid.CreateVersion7(),
         incorporation.Id,

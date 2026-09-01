@@ -18,6 +18,7 @@ interface OrderLookupProps {
   requestedLookup?: RequestedOrderLookup;
   activeOperationalReference: string | null;
   onContinueOrder: (operationalReference: string) => void;
+  onOpenDelivery?: (operationalReference: string) => void;
 }
 
 function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
@@ -37,6 +38,7 @@ export function OrderLookup({
   requestedLookup,
   activeOperationalReference,
   onContinueOrder,
+  onOpenDelivery,
 }: OrderLookupProps) {
   const [operationalReference, setOperationalReference] = useState("");
   const [order, setOrder] = useState<OrderResponse | null>(null);
@@ -139,6 +141,16 @@ export function OrderLookup({
               onClick={() => onContinueOrder(order.operationalReference)}
             >
               Continuar este Pedido
+            </button>
+          )}
+
+          {onOpenDelivery && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => onOpenDelivery(order.operationalReference)}
+            >
+              Abrir entrega de este Pedido
             </button>
           )}
 

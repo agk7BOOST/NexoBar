@@ -280,7 +280,7 @@ test("informa un Pedido inexistente sin conservar el resultado previo", async ({
   ).toHaveCount(0);
 });
 
-test("dos preparadores progresan cantidades parciales del mismo Work", async ({
+test("Preparation y Delivery operan cantidades parciales con Identities reales", async ({
   page,
 }) => {
   await page.goto("/");
@@ -355,4 +355,71 @@ test("dos preparadores progresan cantidades parciales del mismo Work", async ({
   await expect(secondPreparationRow).toContainText("En preparación0");
   await expect(secondPreparationRow).toContainText("Listo1");
   await expect(secondPreparation.getByText(/Entreg/i)).toHaveCount(0);
+
+  const operationalReference = (
+    await secondPreparationRow.locator(".technical-reference").innerText()
+  ).trim();
+  expect(operationalReference).not.toBe("");
+
+  await secondIdentity
+    .getByRole("button", { name: "Cambiar persona / salir" })
+    .click();
+  await page.getByLabel("Identificador de acceso").fill("delivery-e2e");
+  await page.getByLabel("Secreto").fill("delivery-e2e-secret");
+  await page.getByRole("button", { name: "Ingresar" }).click();
+
+  const deliveryIdentity = page.getByRole("region", {
+    name: "Identity actual",
+  });
+  await expect(
+    deliveryIdentity.getByText("Delivery E2E", { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Referencia operacional").fill(operationalReference);
+  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  await page
+    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .click();
+
+  const delivery = page.getByRole("region", {
+    name: `Entrega del Pedido ${operationalReference}`,
+  });
+  const preparedDelivery = delivery.getByRole("article", {
+    name: "Papas E2E autorizadas, Sin sal, incorporación 1",
+  });
+  await expect(preparedDelivery).toContainText("Ready1");
+  await expect(preparedDelivery).toContainText("Delivered0");
+  await expect(preparedDelivery).toContainText("Deliverable1");
+  await expect(preparedDelivery).toContainText("Remaining2");
+  const preparedDeliveryQuantity = preparedDelivery.getByLabel(
+    "Cantidad a entregar — Papas E2E autorizadas — Sin sal — incorporación 1",
+  );
+  await expect(preparedDeliveryQuantity).toHaveValue("1");
+  await preparedDelivery
+    .getByRole("button", {
+      name: "Entregar Papas E2E autorizadas, Sin sal, incorporación 1",
+    })
+    .click();
+  await expect(preparedDelivery).toContainText("Ready1");
+  await expect(preparedDelivery).toContainText("Delivered1");
+  await expect(preparedDelivery).toContainText("Deliverable0");
+  await expect(preparedDelivery).toContainText("Remaining1");
+
+  const directDelivery = delivery.getByRole("article", {
+    name: "Bebida E2E directa, sin instrucción, incorporación 1",
+  });
+  await expect(directDelivery).toContainText("Preparación no requerida");
+  await expect(directDelivery).toContainText("Deliverable2");
+  const directDeliveryQuantity = directDelivery.getByLabel(
+    "Cantidad a entregar — Bebida E2E directa — sin instrucción — incorporación 1",
+  );
+  await expect(directDeliveryQuantity).toHaveValue("2");
+  await directDeliveryQuantity.fill("1");
+  await directDelivery
+    .getByRole("button", {
+      name: "Entregar Bebida E2E directa, sin instrucción, incorporación 1",
+    })
+    .click();
+  await expect(directDelivery).toContainText("Delivered1");
+  await expect(directDelivery).toContainText("Deliverable1");
+  await expect(directDelivery).toContainText("Remaining1");
 });

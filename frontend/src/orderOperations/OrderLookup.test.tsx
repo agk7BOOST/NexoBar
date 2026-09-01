@@ -70,6 +70,7 @@ function renderLookup(
   options?: {
     activeOperationalReference?: string | null;
     onContinueOrder?: (reference: string) => void;
+    onOpenDelivery?: (reference: string) => void;
     requestedLookup?: {
       operationalReference: string;
       sequence: number;
@@ -81,6 +82,7 @@ function renderLookup(
       products={products}
       activeOperationalReference={options?.activeOperationalReference ?? null}
       onContinueOrder={options?.onContinueOrder ?? (() => undefined)}
+      onOpenDelivery={options?.onOpenDelivery}
       requestedLookup={options?.requestedLookup}
     />,
   );
@@ -313,6 +315,21 @@ describe("OrderLookup", () => {
 
     await vi.waitFor(() => expect(getOrderMock).toHaveBeenCalledTimes(2));
     expect(getOrderMock).toHaveBeenLastCalledWith("external-reference");
+  });
+
+  it("abre Delivery desde el Pedido ya consultado sin duplicar la búsqueda", async () => {
+    getOrderMock.mockResolvedValueOnce(order);
+    const onOpenDelivery = vi.fn();
+    const user = userEvent.setup();
+    renderLookup([], { onOpenDelivery });
+
+    await search(user, "manual-reference");
+    await user.click(
+      screen.getByRole("button", { name: "Abrir entrega de este Pedido" }),
+    );
+
+    expect(getOrderMock).toHaveBeenCalledTimes(1);
+    expect(onOpenDelivery).toHaveBeenCalledWith(order.operationalReference);
   });
 
   it("marca el Pedido activo y omite la acción redundante", async () => {

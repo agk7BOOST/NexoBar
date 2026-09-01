@@ -18,6 +18,7 @@ import {
   type CurrentIdentity,
 } from "./identity/sessionClient.ts";
 import { PreparationPanel } from "./preparation/PreparationPanel.tsx";
+import { DeliveryPanel } from "./delivery/DeliveryPanel.tsx";
 
 type AuthState =
   | { status: "loading" }
@@ -34,6 +35,8 @@ function App() {
   const [requestedLookup, setRequestedLookup] =
     useState<RequestedOrderLookup>();
   const [requestedTarget, setRequestedTarget] = useState<OrderTargetRequest>();
+  const [deliveryOperationalReference, setDeliveryOperationalReference] =
+    useState<string | null>(null);
   const [authState, setAuthState] = useState<AuthState>({ status: "loading" });
 
   const reloadProducts = useCallback(async () => {
@@ -167,7 +170,15 @@ function App() {
         requestedLookup={requestedLookup}
         activeOperationalReference={activeOperationalReference}
         onContinueOrder={requestContinueOrder}
+        onOpenDelivery={setDeliveryOperationalReference}
       />
+
+      {authState.status === "authenticated" && (
+        <DeliveryPanel
+          operationalReference={deliveryOperationalReference}
+          onUnauthorized={returnToLogin}
+        />
+      )}
     </main>
   );
 }
