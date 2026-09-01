@@ -75,6 +75,29 @@ internal sealed class DeliveryState
     internal Guid IncorporationId { get; private set; }
     internal int ContentOrdinal { get; private set; }
     internal int DeliveredQuantity { get; private set; }
+
+    internal DeliveryTransition Deliver(int quantity, int deliverableQuantity)
+    {
+        if (quantity <= 0)
+        {
+            return DeliveryTransition.QuantityInvalid;
+        }
+
+        if (quantity > deliverableQuantity)
+        {
+            return DeliveryTransition.DeliverableQuantityInsufficient;
+        }
+
+        DeliveredQuantity += quantity;
+        return DeliveryTransition.Delivered;
+    }
+}
+
+internal enum DeliveryTransition
+{
+    Delivered,
+    QuantityInvalid,
+    DeliverableQuantityInsufficient
 }
 
 internal sealed class PreparationWork

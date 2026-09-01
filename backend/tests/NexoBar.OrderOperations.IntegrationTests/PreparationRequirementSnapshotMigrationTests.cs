@@ -9,6 +9,7 @@ public sealed class PreparationRequirementSnapshotMigrationTests(
     private const string PreviousMigration = "20260831171256_AddDeliveryState";
     private const string CurrentMigration =
         "20260831202815_CapturePreparationRequirementAtConfirmation";
+    private const string LatestMigration = "20260831214404_AddDeliveryProgress";
 
     [Fact]
     public async Task Migration_backfills_by_exact_content_identity_and_has_no_default()
@@ -35,7 +36,7 @@ public sealed class PreparationRequirementSnapshotMigrationTests(
         }
         finally
         {
-            await fixture.MigrateOrderOperationsAsync(CurrentMigration, token);
+            await fixture.MigrateOrderOperationsAsync(LatestMigration, token);
             await fixture.ResetAsync(token);
         }
     }

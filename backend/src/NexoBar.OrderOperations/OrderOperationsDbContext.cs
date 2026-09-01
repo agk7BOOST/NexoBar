@@ -10,6 +10,8 @@ internal sealed class OrderOperationsDbContext(
     internal DbSet<Incorporation> Incorporations => Set<Incorporation>();
     internal DbSet<IncorporationContent> IncorporationContents => Set<IncorporationContent>();
     internal DbSet<DeliveryState> DeliveryStates => Set<DeliveryState>();
+    internal DbSet<DeliveryHistory> DeliveryHistory => Set<DeliveryHistory>();
+    internal DbSet<DeliveryCommand> DeliveryCommands => Set<DeliveryCommand>();
     internal DbSet<PreparationWork> PreparationWork => Set<PreparationWork>();
     internal DbSet<PreparationHistory> PreparationHistory => Set<PreparationHistory>();
     internal DbSet<PreparationCommand> PreparationCommands => Set<PreparationCommand>();
@@ -30,6 +32,8 @@ internal sealed class OrderOperationsDbContext(
         modelBuilder.ApplyConfiguration(new IncorporationConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationContentConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryStateConfiguration());
+        modelBuilder.ApplyConfiguration(new DeliveryHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new DeliveryCommandConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationWorkConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationCommandConfiguration());
@@ -69,6 +73,135 @@ internal sealed class OrderOperationsDbContext(
                     state.ContentOrdinal
                 })
                 .HasConstraintName("FK_order_operations_delivery_states_content")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class DeliveryHistoryConfiguration :
+        IEntityTypeConfiguration<DeliveryHistory>
+    {
+        public void Configure(EntityTypeBuilder<DeliveryHistory> builder)
+        {
+            builder.ToTable(
+                "delivery_history",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_delivery_history_event_kind_not_empty",
+                        "length(btrim(event_kind)) > 0");
+                    table.HasCheckConstraint(
+                        "CK_delivery_history_content_ordinal_positive",
+                        "content_ordinal > 0");
+                    table.HasCheckConstraint(
+                        "CK_delivery_history_quantity_positive",
+                        "quantity > 0");
+                    table.HasCheckConstraint(
+                        "CK_delivery_history_result_non_negative",
+                        "resulting_delivered_quantity >= 0");
+                });
+            builder.HasKey(history => history.Id)
+                .HasName("PK_order_operations_delivery_history");
+            builder.Property(history => history.Id)
+                .HasColumnName("id").ValueGeneratedNever();
+            builder.Property(history => history.IncorporationId)
+                .HasColumnName("incorporation_id").ValueGeneratedNever();
+            builder.Property(history => history.ContentOrdinal)
+                .HasColumnName("content_ordinal").ValueGeneratedNever();
+            builder.Property(history => history.EventKind)
+                .HasColumnName("event_kind").HasColumnType("text").IsRequired();
+            builder.Property(history => history.Quantity)
+                .HasColumnName("quantity").IsRequired();
+            builder.Property(history => history.ActorIdentityId)
+                .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(history => history.OccurredAt)
+                .HasColumnName("occurred_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.Property(history => history.ResultingDeliveredQuantity)
+                .HasColumnName("resulting_delivered_quantity").IsRequired();
+            builder.HasIndex(history => new
+            {
+                history.IncorporationId,
+                history.ContentOrdinal,
+                history.OccurredAt,
+                history.Id
+            })
+                .HasDatabaseName("IX_delivery_history_content_time_id");
+            builder.HasOne<IncorporationContent>().WithMany()
+                .HasForeignKey(history => new
+                {
+                    history.IncorporationId,
+                    history.ContentOrdinal
+                })
+                .HasConstraintName("FK_delivery_history_content")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class DeliveryCommandConfiguration :
+        IEntityTypeConfiguration<DeliveryCommand>
+    {
+        public void Configure(EntityTypeBuilder<DeliveryCommand> builder)
+        {
+            builder.ToTable(
+                "delivery_commands",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_delivery_commands_kind_not_empty",
+                        "length(btrim(command_kind)) > 0");
+                    table.HasCheckConstraint(
+                        "CK_delivery_commands_content_ordinal_positive",
+                        "content_ordinal > 0");
+                    table.HasCheckConstraint(
+                        "CK_delivery_commands_quantity_positive",
+                        "quantity > 0");
+                    table.HasCheckConstraint(
+                        "CK_delivery_commands_result_non_negative",
+                        "result_delivered_quantity >= 0");
+                });
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_order_operations_delivery_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(command => command.CommandKind)
+                .HasColumnName("command_kind").HasColumnType("text").IsRequired();
+            builder.Property(command => command.IncorporationId)
+                .HasColumnName("incorporation_id").ValueGeneratedNever();
+            builder.Property(command => command.ContentOrdinal)
+                .HasColumnName("content_ordinal").ValueGeneratedNever();
+            builder.Property(command => command.Quantity)
+                .HasColumnName("quantity").IsRequired();
+            builder.Property(command => command.ResultHistoryId)
+                .HasColumnName("result_history_id").ValueGeneratedNever();
+            builder.Property(command => command.ResultOccurredAt)
+                .HasColumnName("result_occurred_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.Property(command => command.ResultDeliveredQuantity)
+                .HasColumnName("result_delivered_quantity").IsRequired();
+            builder.HasIndex(command => new
+            {
+                command.IncorporationId,
+                command.ContentOrdinal
+            })
+                .HasDatabaseName("IX_delivery_commands_content");
+            builder.HasIndex(command => command.ResultHistoryId)
+                .HasDatabaseName("UX_delivery_commands_history")
+                .IsUnique();
+            builder.HasOne<IncorporationContent>().WithMany()
+                .HasForeignKey(command => new
+                {
+                    command.IncorporationId,
+                    command.ContentOrdinal
+                })
+                .HasConstraintName("FK_delivery_commands_content")
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<DeliveryHistory>().WithOne()
+                .HasForeignKey<DeliveryCommand>(command => command.ResultHistoryId)
+                .HasConstraintName("FK_delivery_commands_history")
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }

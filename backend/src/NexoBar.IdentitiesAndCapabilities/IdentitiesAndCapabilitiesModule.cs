@@ -81,8 +81,11 @@ public static class IdentitiesAndCapabilitiesModule
         services.AddScoped<IPreparationCapabilityStabilizer,
             PreparationCapabilityStabilizer>();
         services.AddScoped<IPreparationAuthorization, PreparationAuthorization>();
-        services.AddScoped<IOrderOperationsAuthorization,
-            OrderOperationsAuthorization>();
+        services.AddScoped<OrderOperationsAuthorization>();
+        services.AddScoped<IOrderOperationsAuthorization>(services =>
+            services.GetRequiredService<OrderOperationsAuthorization>());
+        services.AddScoped<IOrderOperationsCapabilityStabilizer>(services =>
+            services.GetRequiredService<OrderOperationsAuthorization>());
         services.AddScoped<IdentitySessionService>();
         services.AddScoped<CurrentPreparationDestinationQueryService>();
         services.AddScoped<LocalCredentialProvisioner>();

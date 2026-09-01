@@ -31,6 +31,7 @@ public static class OrderOperationsModule
         services.AddScoped<SubsequentConfirmationService>();
         services.AddScoped<OrderQueryService>();
         services.AddScoped<OrderDeliveryQueryService>();
+        services.AddScoped<DeliveryQuantityService>();
         services.AddScoped<PreparationWorkQueryService>();
         services.AddScoped<PreparationProgressService>();
 
@@ -89,6 +90,21 @@ public static class OrderOperationsModule
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapPost(
+                "/api/order-operations/incorporations/{incorporationId}/contents/{contentOrdinal}/deliver",
+                DeliverQuantityAsync)
+            .WithName("DeliverQuantity")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Accepts<DeliverQuantityRequest>("application/json")
+            .Produces<DeliverQuantityResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         endpoints.MapGet(
                 "/api/order-operations/orders/{operationalReference}",
@@ -312,6 +328,129 @@ public static class OrderOperationsModule
         };
     }
 
+    private static async Task<IResult> DeliverQuantityAsync(
+        string incorporationId,
+        string contentOrdinal,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        DeliverQuantityRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        DeliveryQuantityService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(incorporationId, out var parsedIncorporationId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Incorporation",
+                "incorporationId must contain a UUID.",
+                "order_operations.delivery.incorporation_id_invalid");
+        }
+
+        if (!int.TryParse(
+                contentOrdinal,
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var parsedContentOrdinal) ||
+            parsedContentOrdinal <= 0)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Content ordinal",
+                "contentOrdinal must be a positive integer.",
+                "order_operations.delivery.content_ordinal_invalid");
+        }
+
+        if (request.Quantity <= 0)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid quantity",
+                "quantity must be a positive integer.",
+                "order_operations.delivery.quantity_invalid");
+        }
+
+        if (idempotencyKey is null)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Idempotency-Key is required",
+                "Delivery requires an Idempotency-Key containing a UUID v4.",
+                "order_operations.delivery.idempotency_key_required");
+        }
+
+        if (!Guid.TryParse(idempotencyKey, out var commandId) ||
+            !IsUuidVersion4(commandId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Idempotency-Key",
+                "Idempotency-Key must contain a UUID v4.",
+                "order_operations.delivery.idempotency_key_invalid");
+        }
+
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Antiforgery validation failed",
+                "A valid antiforgery cookie and request token are required.",
+                "order_operations.delivery.antiforgery_invalid");
+        }
+
+        var result = await service.DeliverAsync(
+            commandId,
+            parsedIncorporationId,
+            parsedContentOrdinal,
+            request.Quantity,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            DeliveryQuantityOutcome.Succeeded => Results.Ok(
+                ToDeliveryResponse(result.Response!)),
+            DeliveryQuantityOutcome.Unauthenticated => Problem(
+                StatusCodes.Status401Unauthorized,
+                "Invalid session",
+                "The current session is invalid or expired.",
+                "identities_and_capabilities.invalid_session"),
+            DeliveryQuantityOutcome.Forbidden => Problem(
+                StatusCodes.Status403Forbidden,
+                "Delivery access forbidden",
+                "The current Identity is not authorized for Order Operations.",
+                "order_operations.delivery.forbidden"),
+            DeliveryQuantityOutcome.ContentNotFound => Problem(
+                StatusCodes.Status404NotFound,
+                "Incorporation Content not found",
+                "No Incorporation Content exists with the supplied target.",
+                "order_operations.delivery.content_not_found"),
+            DeliveryQuantityOutcome.QuantityInvalid => Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid quantity",
+                "quantity must be a positive integer.",
+                "order_operations.delivery.quantity_invalid"),
+            DeliveryQuantityOutcome.DeliverableQuantityInsufficient => Problem(
+                StatusCodes.Status409Conflict,
+                "Deliverable quantity is insufficient",
+                "The requested quantity is greater than the quantity currently deliverable.",
+                "order_operations.delivery.deliverable_quantity_insufficient"),
+            DeliveryQuantityOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                "The supplied Idempotency-Key identifies an incompatible Delivery command.",
+                "order_operations.delivery.idempotency_key_conflict"),
+            DeliveryQuantityOutcome.StateInconsistent => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Delivery state is inconsistent",
+                "The target Content cannot be mutated because its Delivery state is inconsistent.",
+                "order_operations.delivery.state_inconsistent"),
+            _ => throw new UnreachableException()
+        };
+    }
+
     private static StartPreparationQuantityResponse ToStartResponse(
         PreparationCommandResult result) =>
         new(
@@ -333,6 +472,15 @@ public static class OrderOperationsModule
             result.PendingQuantity,
             result.InPreparationQuantity,
             result.ReadyQuantity);
+
+    private static DeliverQuantityResponse ToDeliveryResponse(
+        DeliveryCommandResult result) =>
+        new(
+            result.IncorporationId,
+            result.ContentOrdinal,
+            result.HistoryId,
+            result.OccurredAt,
+            result.DeliveredQuantity);
 
     private static async Task<IResult> ConfirmSubsequentAsync(
         string operationalReference,

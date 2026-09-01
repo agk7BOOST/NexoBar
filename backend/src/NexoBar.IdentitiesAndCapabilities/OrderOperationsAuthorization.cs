@@ -10,6 +10,14 @@ public interface IOrderOperationsAuthorization
         CancellationToken cancellationToken);
 }
 
+public interface IOrderOperationsCapabilityStabilizer
+{
+    Task<bool> StabilizeResponsibilityAsync(
+        Guid identityId,
+        DbTransaction transaction,
+        CancellationToken cancellationToken);
+}
+
 public enum OrderOperationsAuthorizationOutcome
 {
     Authorized,
@@ -19,7 +27,8 @@ public enum OrderOperationsAuthorizationOutcome
 
 internal sealed class OrderOperationsAuthorization(
     IAuthenticatedSessionStabilizer sessionStabilizer) :
-    IOrderOperationsAuthorization
+    IOrderOperationsAuthorization,
+    IOrderOperationsCapabilityStabilizer
 {
     public async Task<OrderOperationsAuthorizationOutcome> AuthorizeAsync(
         DbTransaction transaction,
@@ -33,6 +42,19 @@ internal sealed class OrderOperationsAuthorization(
             return OrderOperationsAuthorizationOutcome.Unauthenticated;
         }
 
+        return await StabilizeResponsibilityAsync(
+                session.IdentityId,
+                transaction,
+                cancellationToken)
+            ? OrderOperationsAuthorizationOutcome.Authorized
+            : OrderOperationsAuthorizationOutcome.Forbidden;
+    }
+
+    public async Task<bool> StabilizeResponsibilityAsync(
+        Guid identityId,
+        DbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
         await using var command = CreateCommand(transaction);
         command.CommandText =
             """
@@ -42,11 +64,9 @@ internal sealed class OrderOperationsAuthorization(
               AND responsibility_code = 'OrderOperationsAndBasicClosure'
             FOR SHARE
             """;
-        AddParameter(command, "identity_id", session.IdentityId);
+        AddParameter(command, "identity_id", identityId);
 
-        return await command.ExecuteScalarAsync(cancellationToken) is not null
-            ? OrderOperationsAuthorizationOutcome.Authorized
-            : OrderOperationsAuthorizationOutcome.Forbidden;
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
     private static DbCommand CreateCommand(DbTransaction transaction)
