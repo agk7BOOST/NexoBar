@@ -28,6 +28,7 @@ public static class InventoryModule
                     "__ef_migrations_history",
                     "inventory")));
         services.AddScoped<InventoryService>();
+        services.AddScoped<InventoryCountService>();
         return services;
     }
 
@@ -44,6 +45,35 @@ public static class InventoryModule
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapPost(
+                "/api/inventory/items/{itemId}/counts",
+                RecordCountAsync)
+            .WithName("RecordInventoryCount")
+            .WithTags("Inventory")
+            .RequireAuthorization()
+            .Accepts<RecordInventoryCountRequest>("application/json")
+            .Produces<CountObservationResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapPost(
+                "/api/inventory/items/{itemId}/reconcile",
+                ReconcileCountAsync)
+            .WithName("ReconcileInventoryCount")
+            .WithTags("Inventory")
+            .RequireAuthorization()
+            .Accepts<ReconcileInventoryCountRequest>("application/json")
+            .Produces<ReconcileInventoryCountResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         endpoints.MapGet(
                 "/api/inventory/configuration/items",
@@ -163,6 +193,155 @@ public static class InventoryModule
             "inventory.configuration.forbidden");
     }
 
+    private static async Task<IResult> RecordCountAsync(
+        string itemId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        RecordInventoryCountRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        InventoryCountService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(itemId, out var inventoryItemId) ||
+            inventoryItemId == Guid.Empty)
+        {
+            return InvalidItemIdProblem();
+        }
+
+        if (!TryParseIdempotencyKey(idempotencyKey, out var commandId))
+        {
+            return IdempotencyKeyProblem(idempotencyKey);
+        }
+
+        if (!InventoryQuantity.TryParseObserved(
+                request.ObservedQuantity,
+                out var observedQuantity,
+                out _))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid observed quantity",
+                "observedQuantity must be a non-negative invariant decimal string with at most 16 integral and 12 fractional digits.",
+                "inventory.count.observed_quantity_invalid");
+        }
+
+        var antiforgeryProblem = await ValidateAntiforgeryAsync(
+            httpContext,
+            antiforgery,
+            "inventory.count.antiforgery_invalid");
+        if (antiforgeryProblem is not null)
+        {
+            return antiforgeryProblem;
+        }
+
+        var result = await service.RecordAsync(
+            commandId,
+            inventoryItemId,
+            observedQuantity,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            RecordInventoryCountOutcome.Recorded => Results.Created(
+                $"/api/inventory/items/{inventoryItemId}/counts/{result.Response!.CountObservationId}",
+                result.Response),
+            RecordInventoryCountOutcome.Unauthenticated => InvalidSessionProblem(),
+            RecordInventoryCountOutcome.Forbidden => InventoryOperationForbiddenProblem(),
+            RecordInventoryCountOutcome.ItemNotFound => Problem(
+                StatusCodes.Status404NotFound,
+                "Inventory Item not found",
+                "The requested Inventory Item does not exist.",
+                "inventory.item.not_found"),
+            RecordInventoryCountOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                "The supplied Idempotency-Key identifies an incompatible Inventory Count.",
+                "inventory.count.idempotency_key_conflict"),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> ReconcileCountAsync(
+        string itemId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        ReconcileInventoryCountRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        InventoryCountService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(itemId, out var inventoryItemId) ||
+            inventoryItemId == Guid.Empty)
+        {
+            return InvalidItemIdProblem();
+        }
+
+        if (!TryParseIdempotencyKey(idempotencyKey, out var commandId))
+        {
+            return IdempotencyKeyProblem(idempotencyKey);
+        }
+
+        if (request.CountObservationId == Guid.Empty)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Count Observation",
+                "countObservationId must contain a non-empty UUID.",
+                "inventory.reconciliation.count_observation_id_invalid");
+        }
+
+        var antiforgeryProblem = await ValidateAntiforgeryAsync(
+            httpContext,
+            antiforgery,
+            "inventory.reconciliation.antiforgery_invalid");
+        if (antiforgeryProblem is not null)
+        {
+            return antiforgeryProblem;
+        }
+
+        var result = await service.ReconcileAsync(
+            commandId,
+            inventoryItemId,
+            request.CountObservationId,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            ReconcileInventoryCountOutcome.Succeeded => Results.Ok(result.Response),
+            ReconcileInventoryCountOutcome.Unauthenticated => InvalidSessionProblem(),
+            ReconcileInventoryCountOutcome.Forbidden => InventoryOperationForbiddenProblem(),
+            ReconcileInventoryCountOutcome.ItemNotFound => Problem(
+                StatusCodes.Status404NotFound,
+                "Inventory Item not found",
+                "The requested Inventory Item does not exist.",
+                "inventory.item.not_found"),
+            ReconcileInventoryCountOutcome.ObservationNotFound => Problem(
+                StatusCodes.Status404NotFound,
+                "Count Observation not found",
+                "The Count Observation does not exist for the requested Inventory Item.",
+                "inventory.count_observation.not_found"),
+            ReconcileInventoryCountOutcome.CountInvalidated => Problem(
+                StatusCodes.Status409Conflict,
+                "Count invalidated",
+                "La existencia cambió después del conteo. Realiza una nueva verificación física.",
+                "inventory.reconciliation.count_invalidated"),
+            ReconcileInventoryCountOutcome.ConfigurationChanged => Problem(
+                StatusCodes.Status409Conflict,
+                "Observation invalidated by configuration change",
+                "The Inventory Item unit changed after the Count. Record a new physical Count.",
+                "inventory.reconciliation.observation_invalidated"),
+            ReconcileInventoryCountOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                "The supplied Idempotency-Key identifies an incompatible Inventory Reconciliation.",
+                "inventory.reconciliation.idempotency_key_conflict"),
+            ReconcileInventoryCountOutcome.RevisionOverflow => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Inventory revision is inconsistent",
+                "The Inventory Item movement revision cannot be advanced safely.",
+                "inventory.reconciliation.revision_overflow"),
+            _ => throw new UnreachableException()
+        };
+    }
+
     private static async Task<IResult> ListOperationalItemsAsync(
         InventoryService service,
         CancellationToken cancellationToken)
@@ -206,6 +385,56 @@ public static class InventoryModule
             title: title,
             detail: detail,
             extensions: new Dictionary<string, object?> { ["code"] = code });
+
+    private static bool TryParseIdempotencyKey(string? value, out Guid key) =>
+        Guid.TryParse(value, out key) && IsUuidVersion4(key);
+
+    private static IResult IdempotencyKeyProblem(string? value) =>
+        Problem(
+            StatusCodes.Status400BadRequest,
+            value is null ? "Idempotency-Key is required" : "Invalid Idempotency-Key",
+            "Idempotency-Key must contain a UUID v4.",
+            value is null
+                ? "inventory.idempotency_key_required"
+                : "inventory.idempotency_key_invalid");
+
+    private static async Task<IResult?> ValidateAntiforgeryAsync(
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        string code)
+    {
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+            return null;
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Antiforgery validation failed",
+                "A valid antiforgery cookie and request token are required.",
+                code);
+        }
+    }
+
+    private static IResult InvalidSessionProblem() => Problem(
+        StatusCodes.Status401Unauthorized,
+        "Invalid session",
+        "The current session is invalid or expired.",
+        "identities_and_capabilities.invalid_session");
+
+    private static IResult InventoryOperationForbiddenProblem() => Problem(
+        StatusCodes.Status403Forbidden,
+        "Inventory operation forbidden",
+        "The current Identity is not authorized to operate Inventory.",
+        "inventory.operation.forbidden");
+
+    private static IResult InvalidItemIdProblem() => Problem(
+        StatusCodes.Status400BadRequest,
+        "Invalid Inventory Item identifier",
+        "itemId must contain a non-empty UUID.",
+        "inventory.item.id_invalid");
 
     private static bool IsUuidVersion4(Guid value)
     {

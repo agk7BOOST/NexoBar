@@ -2,10 +2,12 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NexoBar.IdentitiesAndCapabilities;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -51,6 +53,10 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         command.CommandText =
             """
             TRUNCATE TABLE
+                inventory.movement_commands,
+                inventory.inventory_movements,
+                inventory.count_commands,
+                inventory.count_observations,
                 inventory.item_creation_commands,
                 inventory.inventory_items,
                 identities_and_capabilities.sessions,
@@ -93,7 +99,15 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         InventoryActor actor,
         CancellationToken cancellationToken)
     {
-        var antiforgery = await GetAntiforgeryTokenAsync(cancellationToken);
+        await LoginAsync(Client, actor, cancellationToken);
+    }
+
+    internal async Task LoginAsync(
+        HttpClient client,
+        InventoryActor actor,
+        CancellationToken cancellationToken)
+    {
+        var antiforgery = await GetAntiforgeryTokenAsync(client, cancellationToken);
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
             "/api/identity-sessions")
@@ -105,14 +119,19 @@ public sealed class InventoryApiFixture : IAsyncLifetime
             })
         };
         request.Headers.Add("X-NexoBar-CSRF", antiforgery);
-        using var response = await Client.SendAsync(request, cancellationToken);
+        using var response = await client.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 
     internal async Task<string> GetAntiforgeryTokenAsync(
+        CancellationToken cancellationToken) =>
+        await GetAntiforgeryTokenAsync(Client, cancellationToken);
+
+    internal static async Task<string> GetAntiforgeryTokenAsync(
+        HttpClient client,
         CancellationToken cancellationToken)
     {
-        using var response = await Client.GetAsync(
+        using var response = await client.GetAsync(
             "/api/security/antiforgery",
             cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -142,6 +161,78 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         return await Client.SendAsync(request, cancellationToken);
     }
 
+    internal async Task<HttpResponseMessage> PostCountAsync(
+        Guid itemId,
+        Guid key,
+        string? observedQuantity,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null)
+        => await PostCountAsync(
+            Client,
+            itemId,
+            key,
+            observedQuantity,
+            cancellationToken,
+            antiforgeryToken);
+
+    internal static async Task<HttpResponseMessage> PostCountAsync(
+        HttpClient client,
+        Guid itemId,
+        Guid key,
+        string? observedQuantity,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null)
+    {
+        antiforgeryToken ??= await GetAntiforgeryTokenAsync(
+            client,
+            cancellationToken);
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/inventory/items/{itemId:D}/counts")
+        {
+            Content = JsonContent.Create(new { observedQuantity })
+        };
+        request.Headers.Add("Idempotency-Key", key.ToString("D"));
+        request.Headers.Add("X-NexoBar-CSRF", antiforgeryToken);
+        return await client.SendAsync(request, cancellationToken);
+    }
+
+    internal async Task<HttpResponseMessage> PostReconcileAsync(
+        Guid itemId,
+        Guid key,
+        Guid countObservationId,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null)
+        => await PostReconcileAsync(
+            Client,
+            itemId,
+            key,
+            countObservationId,
+            cancellationToken,
+            antiforgeryToken);
+
+    internal static async Task<HttpResponseMessage> PostReconcileAsync(
+        HttpClient client,
+        Guid itemId,
+        Guid key,
+        Guid countObservationId,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null)
+    {
+        antiforgeryToken ??= await GetAntiforgeryTokenAsync(
+            client,
+            cancellationToken);
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/inventory/items/{itemId:D}/reconcile")
+        {
+            Content = JsonContent.Create(new { countObservationId })
+        };
+        request.Headers.Add("Idempotency-Key", key.ToString("D"));
+        request.Headers.Add("X-NexoBar-CSRF", antiforgeryToken);
+        return await client.SendAsync(request, cancellationToken);
+    }
+
     internal async Task<(int Items, int Commands)> CountInventoryAsync(
         CancellationToken cancellationToken)
     {
@@ -160,6 +251,37 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         return await scope.ServiceProvider.GetRequiredService<InventoryDbContext>()
             .InventoryItems.AsNoTracking()
             .SingleAsync(item => item.Id == itemId, cancellationToken);
+    }
+
+    internal async Task<IReadOnlyList<CountObservation>> ReadCountObservationsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<InventoryDbContext>()
+            .CountObservations.AsNoTracking().OrderBy(value => value.ObservedAt)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    internal async Task<IReadOnlyList<InventoryMovement>> ReadMovementsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<InventoryDbContext>()
+            .InventoryMovements.AsNoTracking()
+            .OrderBy(value => value.MovementRevision)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    internal async Task<(int Counts, int CountCommands, int Movements, int MovementCommands)>
+        ReadInventoryEffectCountsAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+        return (
+            await dbContext.CountObservations.CountAsync(cancellationToken),
+            await dbContext.InventoryCountCommands.CountAsync(cancellationToken),
+            await dbContext.InventoryMovements.CountAsync(cancellationToken),
+            await dbContext.InventoryMovementCommands.CountAsync(cancellationToken));
     }
 
     internal async Task<InventoryItem> AddItemAsync(
@@ -230,6 +352,45 @@ public sealed class InventoryApiFixture : IAsyncLifetime
             cancellationToken);
     }
 
+    internal async Task SetOperationalUnitAsync(
+        Guid itemId,
+        string operationalUnit,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE inventory.inventory_items SET operational_unit = {operationalUnit} WHERE id = {itemId}",
+            cancellationToken);
+    }
+
+    internal async Task SetCountCommandFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken) =>
+        await SetInsertFailureAsync(
+            "count_commands",
+            "fail_count_command",
+            enabled,
+            cancellationToken);
+
+    internal async Task SetMovementFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken) =>
+        await SetInsertFailureAsync(
+            "inventory_movements",
+            "fail_inventory_movement",
+            enabled,
+            cancellationToken);
+
+    internal async Task SetMovementCommandFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken) =>
+        await SetInsertFailureAsync(
+            "movement_commands",
+            "fail_movement_command",
+            enabled,
+            cancellationToken);
+
     internal async Task SetCommandFailureAsync(
         bool enabled,
         CancellationToken cancellationToken)
@@ -275,6 +436,77 @@ public sealed class InventoryApiFixture : IAsyncLifetime
 
     internal HttpClient CreateAnonymousClient() => application!.CreateClient();
 
+    internal WebApplicationFactory<Program> CreateApplicationWithAuthorization(
+        Func<IServiceProvider, IInventoryAuthorization> factory) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IInventoryAuthorization>();
+                services.AddScoped(factory);
+            }));
+
+    internal async Task<bool> WaitForDatabaseLockAsync(
+        string queryFragment,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_stat_activity
+                    WHERE datname = current_database()
+                      AND pid <> pg_backend_pid()
+                      AND state = 'active'
+                      AND wait_event_type = 'Lock'
+                      AND query ILIKE @query_pattern)
+                """;
+            command.Parameters.AddWithValue("query_pattern", $"%{queryFragment}%");
+            if (Assert.IsType<bool>(await command.ExecuteScalarAsync(cancellationToken)))
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken);
+        }
+
+        return false;
+    }
+
+    private async Task SetInsertFailureAsync(
+        string tableName,
+        string functionName,
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = enabled
+            ? $"""
+              CREATE OR REPLACE FUNCTION inventory.{functionName}()
+              RETURNS trigger LANGUAGE plpgsql AS $$
+              BEGIN
+                  RAISE EXCEPTION 'controlled inventory persistence failure';
+              END;
+              $$;
+              CREATE TRIGGER {functionName}
+              BEFORE INSERT ON inventory.{tableName}
+              FOR EACH ROW EXECUTE FUNCTION inventory.{functionName}();
+              """
+            : $"""
+              DROP TRIGGER IF EXISTS {functionName} ON inventory.{tableName};
+              DROP FUNCTION IF EXISTS inventory.{functionName}();
+              """;
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async ValueTask DisposeAsync()
     {
         Client.Dispose();
@@ -288,7 +520,13 @@ public sealed class InventoryApiFixture : IAsyncLifetime
 
     private void StartApplication()
     {
-        application = new WebApplicationFactory<Program>()
+        application = CreateApplication();
+        Client = application.CreateClient();
+    }
+
+    private WebApplicationFactory<Program> CreateApplication(
+        Action<IWebHostBuilder>? configure = null) =>
+        new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
                 var connectionString = postgres.GetConnectionString();
@@ -308,9 +546,8 @@ public sealed class InventoryApiFixture : IAsyncLifetime
                     "NexoBarSecurity:Cookies:AntiforgeryName",
                     "nexobar-inventory-antiforgery-test");
                 builder.UseSetting("NexoBarSecurity:Cookies:Secure", "false");
+                configure?.Invoke(builder);
             });
-        Client = application.CreateClient();
-    }
 }
 
 internal sealed record InventoryActor(

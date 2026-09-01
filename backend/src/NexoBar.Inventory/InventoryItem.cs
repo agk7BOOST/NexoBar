@@ -34,6 +34,32 @@ internal sealed class InventoryItem
 
     internal long MovementRevision { get; private set; }
 
+    internal InventoryReconciliationTransition Reconcile(decimal observedQuantity)
+    {
+        if (observedQuantity < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(observedQuantity),
+                "An observed physical quantity cannot be negative.");
+        }
+
+        var previousQuantity = CurrentRegisteredQuantity;
+        if (previousQuantity is not null && previousQuantity.Value == observedQuantity)
+        {
+            return InventoryReconciliationTransition.NoDiscrepancy(
+                previousQuantity.Value,
+                MovementRevision);
+        }
+
+        var resultingRevision = checked(MovementRevision + 1);
+        CurrentRegisteredQuantity = observedQuantity;
+        MovementRevision = resultingRevision;
+        return InventoryReconciliationTransition.Reconciled(
+            previousQuantity,
+            observedQuantity,
+            resultingRevision);
+    }
+
     internal static InventoryItemValidation TryCreate(
         string? rawOperationalName,
         string? rawOperationalUnit)
@@ -72,6 +98,32 @@ internal sealed class InventoryItem
         value.Length is > 0 and <= OperationalNameMaximumLength &&
         !value.Contains('\r', StringComparison.Ordinal) &&
         !value.Contains('\n', StringComparison.Ordinal);
+}
+
+internal sealed record InventoryReconciliationTransition(
+    bool MovementRequired,
+    decimal? PreviousRegisteredQuantity,
+    decimal ObservedQuantity,
+    decimal? Difference,
+    decimal ResultingRegisteredQuantity,
+    long MovementRevision)
+{
+    internal static InventoryReconciliationTransition NoDiscrepancy(
+        decimal quantity,
+        long revision) =>
+        new(false, quantity, quantity, 0m, quantity, revision);
+
+    internal static InventoryReconciliationTransition Reconciled(
+        decimal? previousQuantity,
+        decimal observedQuantity,
+        long revision) =>
+        new(
+            true,
+            previousQuantity,
+            observedQuantity,
+            previousQuantity is null ? null : observedQuantity - previousQuantity.Value,
+            observedQuantity,
+            revision);
 }
 
 internal sealed record InventoryItemValidation(

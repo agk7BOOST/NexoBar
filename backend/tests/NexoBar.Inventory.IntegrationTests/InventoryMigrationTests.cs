@@ -7,6 +7,8 @@ namespace NexoBar.Inventory.IntegrationTests;
 public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
 {
     private const string InitialMigration = "20260901073703_InitialInventory";
+    private const string CountReconciliationMigration =
+        "20260901090459_AddInventoryCountReconciliation";
 
     [Fact]
     public async Task Initial_migration_has_safe_up_and_down()
@@ -26,7 +28,34 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
+            await fixture.MigrateInventoryAsync(CountReconciliationMigration, token);
+        }
+    }
+
+    [Fact]
+    public async Task Count_reconciliation_migration_is_incremental_and_reversible()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+
+        try
+        {
             await fixture.MigrateInventoryAsync(InitialMigration, token);
+            Assert.False(await TableExistsAsync("count_observations", token));
+            Assert.False(await TableExistsAsync("inventory_movements", token));
+            Assert.False(await TableExistsAsync("count_commands", token));
+            Assert.False(await TableExistsAsync("movement_commands", token));
+            Assert.True(await TableExistsAsync("inventory_items", token));
+
+            await fixture.MigrateInventoryAsync(CountReconciliationMigration, token);
+            Assert.True(await TableExistsAsync("count_observations", token));
+            Assert.True(await TableExistsAsync("inventory_movements", token));
+            Assert.True(await TableExistsAsync("count_commands", token));
+            Assert.True(await TableExistsAsync("movement_commands", token));
+        }
+        finally
+        {
+            await fixture.MigrateInventoryAsync(CountReconciliationMigration, token);
         }
     }
 
@@ -78,6 +107,43 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         Assert.Contains("intent_operational_unit", commandColumns);
         Assert.Contains("result_item_id", commandColumns);
         Assert.DoesNotContain("session_id", commandColumns);
+
+        foreach (var (table, column) in new[]
+                 {
+                     ("count_observations", "observed_quantity"),
+                     ("inventory_movements", "quantity"),
+                     ("inventory_movements", "previous_registered_quantity"),
+                     ("inventory_movements", "resulting_registered_quantity"),
+                     ("count_commands", "observed_quantity"),
+                     ("movement_commands", "result_observed_quantity"),
+                     ("movement_commands", "result_previous_registered_quantity"),
+                     ("movement_commands", "result_resulting_registered_quantity")
+                 })
+        {
+            var metadata = await ReadColumnAsync(connection, table, column, token);
+            Assert.Equal("numeric", metadata.DataType);
+            Assert.Equal(28, metadata.NumericPrecision);
+            Assert.Equal(12, metadata.NumericScale);
+        }
+
+        var movementCommandColumns = await ReadColumnNamesAsync(
+            connection,
+            "movement_commands",
+            token);
+        Assert.DoesNotContain("result_difference", movementCommandColumns);
+        Assert.DoesNotContain("session_id", movementCommandColumns);
+        Assert.DoesNotContain("product_id", movementCommandColumns);
+
+        await using var foreignKeys = connection.CreateCommand();
+        foreignKeys.CommandText =
+            """
+            SELECT COUNT(*)
+            FROM information_schema.table_constraints
+            WHERE constraint_schema = 'inventory'
+              AND constraint_type = 'FOREIGN KEY'
+              AND constraint_name ILIKE '%actor%'
+            """;
+        Assert.Equal(0L, await foreignKeys.ExecuteScalarAsync(token));
     }
 
     [Fact]
