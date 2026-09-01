@@ -13,7 +13,7 @@
 - El backend es un monolito modular y una unidad principal de despliegue. `NexoBar.Host` compone los módulos y es el composition root.
 - Los módulos superiores son `OrderOperations`, `Catalog`, `Inventory`, `IdentitiesAndCapabilities` y `OperationalConfiguration`. `Inventory` permanece presente como límite sin implementación funcional; `IdentitiesAndCapabilities` ya posee Estado, sesiones, administración y capacidades públicas de autorización materializadas.
 - `OperationalConfiguration` ya es un módulo persistente y funcional en el alcance de `PreparationResponsibility`; no tiene todavía un lifecycle completo.
-- `Preparation` es una frontera interna de `OrderOperations`, no un módulo top-level.
+- `Preparation` y `Delivery` son fronteras internas de `OrderOperations`, no módulos top-level. Son dimensiones distintas: `Ready != Delivered`.
 - Cada módulo conserva la propiedad de su Estado y colabora mediante capacidades explícitas. No hay ciclos ni un `Shared`/`Common` genérico.
 
 ### Dependencias modulares materializadas
@@ -229,9 +229,25 @@ La primera Confirmación crea el `Order` y su primera `Incorporation`; cada Conf
 - La mutación sobre un `Order` existente expresa la intención de una nueva Confirmación. La `operationalReference` es opaca; el request contiene solo items y no modifica el `Context` del `Order`.
 - Cada Confirmación posterior exitosa crea una `Incorporation` con ordinal sucesivo, una nueva `ConfirmationHistory` y contenido con el `appliedPrice` vigente estabilizado para esa Confirmación.
 
-### IncorporationContent y líneas homogéneas
+### IncorporationContent, snapshot histórico y líneas homogéneas
 
-`IncorporationContent` tiene PK compuesta `(incorporation_id, content_ordinal)` y contiene `product_id`, `quantity`, `applied_price` e `instruction` nullable. `contentOrdinal` es una identidad técnica local a la `Incorporation`, positiva y estable. No se expone públicamente y no representa posición UX, unidad física, unidad conceptual de cumplimiento ni orden de captura.
+`IncorporationContent` tiene PK compuesta `(incorporation_id, content_ordinal)` y contiene `product_id`, `quantity`, `requires_preparation_at_confirmation`, `applied_price` e `instruction` nullable. `contentOrdinal` es una identidad técnica local a la `Incorporation`, positiva y estable. Delivery lo expone junto con `incorporationId` para identificar el Content target; no representa posición UX, unidad física, unidad conceptual de cumplimiento ni orden de captura.
+
+`RequiresPreparationAtConfirmation : bool` es el snapshot histórico, ordinariamente inmutable, de si el Product requería Preparation cuando ese Content fue confirmado. Su Source es el snapshot estabilizado de Product usado por Confirmation; no representa la configuración vigente de Catalog, la existencia actual del Work ni el `Ready` actual. La existencia de Work dejó de ser el único discriminador histórico.
+
+La configuración de Catalog es prospectiva y no reinterpreta Contents existentes:
+
+- un Content confirmado direct conserva `RequiresPreparationAtConfirmation = false` aunque después el Product pase a requerir Preparation; una nueva Confirmation usa `true`;
+- un Content confirmado prepared conserva `RequiresPreparationAtConfirmation = true` y su Work/snapshot de destino original aunque después el Product deje de requerir Preparation o cambie del destino A al B; una nueva Confirmation usa la configuración nueva.
+
+La clasificación materializada exige exactamente una de estas combinaciones:
+
+```text
+flag = true  + PreparationWork presente → Prepared Content
+flag = false + PreparationWork ausente  → Direct Content
+```
+
+`flag = true` sin Work y `flag = false` con Work son inconsistencias técnicas. Delivery no usa Catalog vigente para clasificar un Content.
 
 Ya no existe unicidad `(incorporation_id, product_id)`: una `Incorporation` puede contener múltiples líneas del mismo Product con instrucciones distintas. Cada Content representa una cantidad homogénea respecto de `ProductId + canonical instruction`. Por ejemplo, son líneas válidas dentro de una misma Confirmación:
 
@@ -241,7 +257,7 @@ Product A x1 / "sin cebolla"
 Product A x2 / "sin tomate"
 ```
 
-No existe individualización de unidades físicas. `Quantity` permanece agregada y podrá evolucionar parcialmente en Preparation. No se equipara `IncorporationContent` con una unidad conceptual de cumplimiento; una identidad más fuerte para esas unidades queda fuera de alcance salvo que aparezca un nuevo driver.
+No existe individualización de unidades físicas. `Quantity` permanece agregada y sus cantidades operacionales pueden evolucionar parcialmente en Preparation y Delivery. No se equipara `IncorporationContent` con una unidad conceptual de cumplimiento; una identidad más fuerte para esas unidades queda fuera de alcance salvo que aparezca un nuevo driver.
 
 `instruction` es información operacional puntual asociada al consumo confirmado. Su source of truth es `IncorporationContent`; es nullable e inmutable después de la Confirmación en el alcance actual. No se duplica en `PreparationWork` y no existe `InstructionAdded History`: `ConfirmationHistory` junto con el Content persistido explican su existencia.
 
@@ -264,20 +280,20 @@ El lock ordering y la escritura transaccional materializados son:
 First Confirmation
 advisory idempotency
 → Products FOR SHARE
-→ Order / Incorporation / Content / Work / History / command
+→ Order / Incorporation / Content / Work condicional / DeliveryState / History / command
 → commit
 
 Subsequent Confirmation
 advisory idempotency
 → Order FOR UPDATE
 → Products FOR SHARE
-→ Incorporation / Content / Work / History / command
+→ Incorporation / Content / Work condicional / DeliveryState / History / command
 → commit
 ```
 
 - En Confirmaciones posteriores, `Order FOR UPDATE` serializa la asignación del ordinal `MAX + 1`; la restricción única `(order_id, ordinal)` es la defensa física adicional.
-- Un helper interno estrecho centraliza únicamente la creación de `IncorporationContent` y la creación condicional de `PreparationWork`; no es un framework ni un pipeline genérico.
-- El contenido no preparado no crea Work. El contenido preparado crea exactamente un Work dentro de la misma transacción de la Confirmación, tanto First como Subsequent.
+- Un factory interno estrecho y común a First y Subsequent centraliza la creación de `IncorporationContent`, la creación condicional de `PreparationWork` y la creación de `DeliveryState`; no es un framework ni un pipeline genérico.
+- Todo Content crea atómicamente `DeliveryState(0)` durante Confirmation. Un Direct Content crea Content + ningún Work + DeliveryState; un Prepared Content crea Content + un Work + DeliveryState. El replay no duplica ninguno de ellos.
 - La responsabilidad aplicada al Work procede del snapshot estabilizado del `Product`. Los cambios posteriores de configuración del `Product` no modifican Work existente.
 - No existe un evento `WorkCreated`.
 
@@ -416,19 +432,166 @@ No hay locks de Work de larga duración, distributed lock, lock global de Prepar
 
 El `404` no revela el destination ni permite distinguir pérdida de habilitación de Work inexistente.
 
-## 11. Estado e Historia
+## 11. Delivery mínima operativa
+
+Delivery pertenece a `OrderOperations`; no es un módulo top-level. Delivery y Preparation son dimensiones distintas. Entregar no decrementa ni modifica `PendingQuantity`, `InPreparationQuantity` o `ReadyQuantity`, y `Ready != Delivered`. Delivery tampoco implica Liquidation, Payment ni Closure.
+
+### DeliveryState y clasificación
+
+`DeliveryState` mantiene una relación técnica 1:1 con `IncorporationContent`; ambos comparten la identidad `(IncorporationId, ContentOrdinal)`. El único Estado persistido propio es `DeliveredQuantity : int`, inicialmente `0`. No existen `DeliveryId` UUID, `DeliveryWork`, `Delivery Status`, `IsDelivered` persistido, `Remaining` persistido, `Deliverable` persistido ni una copia de `Ready`.
+
+La clasificación histórica usa `IncorporationContent.RequiresPreparationAtConfirmation` y valida su coherencia con `PreparationWork`:
+
+- prepared: flag `true` y Work presente;
+- direct: flag `false` y Work ausente;
+- cualquiera de las dos combinaciones contrarias es inconsistencia técnica.
+
+Catalog vigente no participa de esta clasificación.
+
+### Read model autorizado
+
+```text
+GET /api/order-operations/orders/{operationalReference}/delivery
+```
+
+La consulta exige Session válida, Identity activa y `OrderOperationsAndBasicClosure` vigente. No requiere `Preparation` ni `PreparationEnablement`. Session/Identity no utilizable responde `401`, Responsibility faltante responde `403` y Order inexistente responde `404`.
+
+La lectura abre una transacción corta `READ COMMITTED`, estabiliza Session, Identity y Responsibility, y obtiene el Estado de `OrderOperations` mediante una proyección coherente. No usa `FOR UPDATE` para la lectura ordinaria. Después resuelve en batch el `ProductOperationalName` vigente mediante la capacidad estrecha de Catalog, reutilizando la transacción; no existe SQL ni acceso a `DbContext` cross-module.
+
+El contrato relevante por Content contiene:
+
+- `incorporationId`;
+- `incorporationOrdinal`;
+- `contentOrdinal`;
+- `productId`;
+- `productOperationalName`;
+- `instruction`;
+- `totalQuantity`;
+- `requiresPreparationAtConfirmation`;
+- `readyQuantity` nullable;
+- `deliveredQuantity`;
+- `deliverableQuantity`;
+- `remainingQuantity`.
+
+No expone Status, WorkId, destination ni `appliedPrice`.
+
+`ProductId` conserva la identidad autoritativa. `productOperationalName` es el nombre actual de Catalog, no un snapshot histórico: un rename posterior a Confirmation cambia la presentación de Delivery, y un Product inactive/retired continúa resolviéndose. Un Product referenciado que ya no existe es inconsistencia técnica y produce `500`; no existe fallback al UUID ni snapshot histórico del nombre en Delivery.
+
+### Fórmulas y Delivery parcial
+
+Para Prepared Content:
+
+```text
+total       = Content.Quantity
+ready       = PreparationWork.ReadyQuantity
+delivered   = DeliveryState.DeliveredQuantity
+deliverable = ready - delivered
+remaining   = total - delivered
+```
+
+Ready no disminuye al entregar. Por ejemplo, `total = 5`, `ready = 3`, `delivered = 2` produce `deliverable = 1`, `remaining = 3` y `ready` sigue siendo `3`.
+
+Para Direct Content:
+
+```text
+total       = Content.Quantity
+ready       = null / no aplicable
+delivered   = DeliveryState.DeliveredQuantity
+deliverable = total - delivered
+remaining   = total - delivered
+```
+
+No se inventan `Ready = Total` ni un `PreparationWork` ficticio.
+
+Delivery parcial está materializada: un Content puede tener `total = 5`, `delivered = 2`, `remaining = 3` sin identidad física por unidad, sub-items ni unidades físicas persistentes. Contents diferentes no se mezclan por `ProductId`.
+
+### DeliverQuantity, autorización y transición
+
+```text
+POST /api/order-operations/incorporations/{incorporationId}/contents/{contentOrdinal}/deliver
+Intent: DeliverQuantity
+Body: { "quantity": integer }
+Headers: Idempotency-Key UUID v4 + antiforgery
+Target: (IncorporationId, ContentOrdinal)
+```
+
+El request no aporta `ProductId`, `WorkId`, actor, claim de Ready ni destination. Una intención nueva exige Session válida, Identity activa y `OrderOperationsAndBasicClosure` vigente; no exige Responsibility `Preparation` ni `PreparationEnablement`. Por ello una Identity puede entregar Prepared Content sin poder prepararlo. El actor procede exclusivamente de `AuthenticatedContext.IdentityId`.
+
+Para Direct Content, `deliverable = Content.Quantity - DeliveredQuantity`. Para Prepared Content, `deliverable = ReadyQuantity - DeliveredQuantity`. En ambos casos la precondición es `0 < quantity <= deliverable` y la mutación es `DeliveredQuantity += quantity`; no hay clipping. La variante direct no crea un Ready ficticio y la prepared no modifica contadores de Preparation.
+
+La transición está encapsulada en el método explícito `DeliveryState.Deliver(quantity, deliverableQuantity)`, que valida cantidad positiva, límite exacto e incremento. El service calcula la elegibilidad desde Content y, cuando corresponde, Work; `DeliveryState` no conoce Catalog ni el modelo completo de Preparation y no expone un setter genérico.
+
+### Transacción, locks y concurrencia
+
+Una intención nueva sigue este orden materializado:
+
+```text
+BEGIN READ COMMITTED
+→ advisory transaction lock del namespace Delivery por Idempotency-Key
+→ estabilización de Session + Identity
+→ replay/conflicto de Delivery command
+→ OrderOperationsAndBasicClosure FOR SHARE
+→ IncorporationContent FOR SHARE
+→ PreparationWork FOR UPDATE, si Prepared
+→ DeliveryState FOR UPDATE
+→ validación y transición
+→ QuantityDelivered History
+→ DeliveryCommand
+→ COMMIT
+```
+
+Cuando intervienen los tres Estados, el orden es Content → PreparationWork → DeliveryState; no se invierte a DeliveryState → Work. No existen locks de larga duración, un lock global de Delivery ni espera automática hasta que exista Ready suficiente.
+
+Ready y Delivery serializan sobre `PreparationWork` para Prepared Content. Si Ready bloquea primero, incrementa Ready y Delivery espera y observa el nuevo valor. Si Delivery bloquea primero, evalúa el Ready ya estabilizado, confirma o responde `409`, y Ready progresa después. Ambos órdenes conservan coherencia.
+
+Direct y Prepared bloquean `DeliveryState FOR UPDATE`. En direct con `total = 5`, dos `Deliver(2)` pueden confirmar secuencialmente y dejar `Delivered = 4`; con `total = 3`, uno confirma y el otro responde `409`, sin clipping. Prepared aplica la misma semántica respecto de la cantidad Ready disponible.
+
+### Historia, idempotencia y replay
+
+Delivery confirma Historia separada de State mediante el evento `QuantityDelivered`, con:
+
+- `HistoryId` UUID v7;
+- `IncorporationId`;
+- `ContentOrdinal`;
+- `Quantity`;
+- `ActorIdentityId`;
+- `OccurredAt` UTC;
+- `ResultingDeliveredQuantity`.
+
+No guarda `SessionId`, Product name, instruction duplicada, snapshot de Ready, destination ni `appliedPrice`. No existen eventos redundantes `OrderDelivered` o `ContentCompleted`, y esta separación no constituye Event Sourcing.
+
+`delivery_commands` persiste la intención comparable: `IdempotencyKey`, `ActorIdentityId`, `CommandKind = DeliverQuantity`, `IncorporationId`, `ContentOrdinal` y `Quantity`, además del resultado original. Mismo actor/key/intención hace replay; la misma key con actor o intención diferentes responde `409`. Delivery tiene namespace advisory propio, no reutiliza `preparation_commands` ni introduce un framework genérico de comandos.
+
+El replay devuelve el resultado original persistido. Si key A dejó `delivered = 1`, key B dejó `delivered = 2` y luego se repite A, responde el `delivered = 1` original; no devuelve el Estado actual, no crea History y no muta Estado.
+
+Un replay confirmado todavía exige Session utilizable e Identity activa, pero no reautoriza `OrderOperationsAndBasicClosure` después del efecto. Así, éxito con key X seguido de revocación de la Responsibility permite replay X con `200`, mientras una intención nueva con key Y recibe `403`. Identity desactivada o Session inválida produce `401`. El actor durable es `IdentityId`, nunca `SessionId`.
+
+### Errores de Delivery
+
+- `400`: key, body, quantity o target estructuralmente inválido;
+- `401`: Session no utilizable o Identity inactiva;
+- `403`: intención nueva sin `OrderOperationsAndBasicClosure`;
+- `404`: Content target inexistente;
+- `409`: cantidad entregable insuficiente, Content completamente entregado bajo una key nueva, conflicto de idempotencia u otro conflicto de dominio conocido;
+- `500`: Estado inconsistente, incluido flag/Work contradictorio, `DeliveryState` faltante, `delivered > total`, Prepared `delivered > Ready` o inconsistencia estructural del Work.
+
+No hay clipping ni auto-repair.
+
+## 12. Estado e Historia
 
 - `ConfirmationHistory` explica la Confirmación que originó el contenido y conserva `confirmedContext` histórico.
 - `ConfirmationHistory` y el `IncorporationContent` persistido explican conjuntamente la existencia de una instruction confirmada; no existe `InstructionAdded History`.
 - `PreparationWork` representa Estado operacional vigente y no se reconstruye ordinariamente desde Historia.
+- `DeliveryState` representa Estado operacional vigente y `QuantityDelivered` explica cada incremento sin reconstruirlo ordinariamente desde Historia.
 - La query de Preparation usa `Order.Context` vigente; no debe confundirse con `ConfirmationHistory.confirmedContext`.
 - El progreso humano materializa Historia separada con los eventos `PreparationQuantityStarted` y `PreparationQuantityReady`. Cada registro conserva `HistoryId` UUID v7, `WorkId`, `Quantity`, `ActorIdentityId`, `OccurredAt` UTC y el resultado de las cuatro cantidades: `TotalQuantity`, `PendingQuantity`, `InPreparationQuantity` y `ReadyQuantity`.
 - No existen eventos `WorkCreated`, `Progress` genérico ni `WorkCompleted`. La Historia de Preparation no conserva `SessionId`, snapshot de nombre del Product ni duplicación de instruction.
 - No existe todavía query, API ni UI de Historia de Preparation.
+- No existe todavía query ni UI de Historia de Delivery.
 - Tampoco está materializado Change Context.
 - Esta separación no constituye Event Sourcing.
 
-## 12. Idempotencia y resultado incierto
+## 13. Idempotencia y resultado incierto
 
 - Los comandos materializados reciben un `Idempotency-Key` UUID v4 y mantienen persistencia durable por comando.
 - Cada comando/módulo toma un advisory transaction lock local. Efecto e idempotencia se confirman dentro de la misma transacción.
@@ -446,11 +609,13 @@ Los comandos humanos de Preparation usan un namespace durable local de `OrderOpe
 - el replay exige Session válida e Identity activa, pero no vuelve a exigir la capability vigente cuando el efecto ya fue confirmado;
 - el replay no duplica Estado ni Historia y devuelve el resultado original persistido, no el Estado posterior actual del Work.
 
+Delivery usa su propio namespace y registro durable `delivery_commands`, con `DeliverQuantity` como único kind actual. Conserva actor, target `(IncorporationId, ContentOrdinal)`, quantity y resultado original; aplica las semánticas de replay y reautorización descritas en la sección 11. No reutiliza `preparation_commands`.
+
 Los contenidos durables de los comandos First y Subsequent tienen PK `(idempotency_key, line_ordinal)` y persisten `product_id`, `quantity` e `instruction` canonical. `lineOrdinal` es técnico y canonical: se deriva después de ordenar las líneas semánticas y no depende del orden HTTP.
 
 El matching de intención incluye `ProductId`, `Quantity` y canonical instruction, además del resto de la intención ya existente. La misma key con instruction diferente produce conflicto; whitespace o line endings equivalentes y distinto orden del array producen replay. El replay no reconsulta `Catalog`, no recrea Work y reproduce el estado persistido.
 
-## 13. Contratos técnicos materializados
+## 14. Contratos técnicos materializados
 
 - HTTP ordinario usa HTTPS y JSON; ASP.NET Core Minimal APIs implementa endpoints con handlers delgados.
 - Problem Details es la estructura común de errores e incluye códigos estables. OpenAPI describe el contrato técnico implementado, no sustituye su significado normativo.
@@ -459,9 +624,9 @@ El matching de intención incluye `ProductId`, `Quantity` y canonical instructio
 - El lookup de Order se reconstruye exclusivamente desde `OrderOperations`; `Catalog` no reconstruye condiciones históricas.
 - Las propiedades JSON autoritativas no reconocidas se rechazan en los comandos donde esta regla está materializada.
 
-Los items de request de First y Subsequent contienen `productId`, `quantity` e `instruction` optional/nullable. Los items de la respuesta confirmada contienen `productId`, `quantity`, `appliedPrice` e `instruction`; el lookup de Order devuelve también `instruction` nullable por item. La consulta autorizada de Preparation Work devuelve `productOperationalName` vigente e `instruction` nullable, y obtiene `productId` e instruction desde Content. Ningún contrato público expone `contentOrdinal` ni `draftLineId`.
+Los items de request de First y Subsequent contienen `productId`, `quantity` e `instruction` optional/nullable. Los items de la respuesta confirmada contienen `productId`, `quantity`, `appliedPrice` e `instruction`; el lookup de Order devuelve también `instruction` nullable por item. La consulta autorizada de Preparation Work devuelve `productOperationalName` vigente e `instruction` nullable, y obtiene `productId` e instruction desde Content. Delivery expone `contentOrdinal` únicamente junto con `incorporationId` como identidad técnica del target. Ningún contrato público expone `draftLineId`.
 
-## 14. Frontend materializado
+## 15. Frontend materializado
 
 - `App` coordina `CatalogPanel`, `OrderWorkflow` y `OrderLookup`; las responsabilidades de catálogo/Price Change, Pedido activo/Composición y consulta están separadas. Un `Order` consultado puede retomarse para una Composición posterior.
 - Los recursos se refrescan desde la autoridad: Price Change recarga `Catalog` y las Confirmaciones recargan el `Order`. El cliente no compone manualmente la Historia.
@@ -480,9 +645,22 @@ Los items de request de First y Subsequent contienen `productId`, `quantity` e `
 - Un `409` conocido limpia la intención, informa que cambió el Estado o que existe conflicto de idempotencia y refresca.
 - Ante network/timeout con resultado incierto no cambia cantidades locales: conserva exactamente key, body y endpoint, ofrece retry exacto y bloquea una segunda mutación sobre ese Work hasta resolver. No genera una key nueva durante el retry ni ofrece descarte ordinario.
 - Un `401` devuelve el frontend a `unauthenticated`, limpia antiforgery e intents y vuelve al login. Un `403` conserva la Identity autenticada y muestra la falla de autorización. Un `404` informa “trabajo ya no disponible” y refresca sin revelar una posible pérdida de enablement.
+
+### Delivery frontend
+
+- Delivery se abre desde `Consultar Pedido` mediante `Abrir entrega de este Pedido`. Reutiliza el lookup existente: no agregó router ni buscador duplicado.
+- Todos los Contents permanecen visibles y no se mezclan por Product. Direct presenta Total, Delivered, Deliverable, Remaining y “Preparación no requerida”; Prepared presenta Total, Ready, Delivered, Deliverable y Remaining.
+- Un Content completamente entregado muestra la presentación derivada “Entregado”. No significa Closed, Liquidated ni Paid.
+- Cuando `deliverable > 0`, el Content ofrece un input integer con `min = 1`, `max = deliverable` observado y valor inicial igual a ese máximo, más el botón “Entregar”. Permite la cantidad elegible completa o una parcial; “todo” es el número exacto observado, no una intención dinámica.
+- Cada Content admite como máximo una mutación activa y los demás Contents siguen operables. El intent congela `incorporationId`, `contentOrdinal`, quantity e idempotency key, con fases `submitting` y `uncertain`; no existe loading global de Delivery.
+- En `200`, resuelve el intent, no calcula Delivered de forma optimista, refresca el GET de Delivery y renderiza Estado autoritativo. No decrementa Ready localmente.
+- Un `409` es una falla conocida: limpia el intent, informa cambio de Estado o conflicto de idempotencia, refresca y reserva una key nueva para una intención futura. No se trata como éxito.
+- Ante network, timeout o `5xx` conservadoramente incierto no modifica quantities: conserva target, quantity y key, marca `uncertain` y el retry usa exactamente el mismo endpoint, body y key. No ofrece descarte ordinario que habilite una Delivery incompatible.
+- Un `401` vuelve a `unauthenticated`, limpia antiforgery e intents y retorna al login. Un `403` conserva la Identity autenticada y muestra la falla de autorización. Un `404` del GET informa Pedido no encontrado; un `404` del POST rechaza el intent conocido y refresca. Un `400` es un error conocido, no outcome incierto.
+
 - Todavía no existe `OperationalConfigurationPanel` productivo ni frontend administrativo completo.
 
-## 15. Testing y verificación
+## 16. Testing y verificación
 
 Existen tres capas:
 
@@ -492,9 +670,9 @@ Existen tres capas:
 
 `scripts/verify.cmd` y `scripts/verify.sh` ejecutan la verificación ordinaria. Esta verificación requiere Docker porque las suites backend usan Testcontainers. La opción `--e2e` añade PostgreSQL efímero aislado, backend, Vite y Chromium; no usa la base persistente de `compose.yaml`.
 
-El último estado verificado después de S3-PRE-I4 es backend 302/302, frontend 95/95 y Playwright 3/3. `HasPendingModelChanges` es false para los cuatro `DbContext` (4/4). Tanto `scripts\verify.cmd` como `scripts\verify.cmd --e2e` pasan.
+El último estado verificado después de Slice 4 es backend 374/374, frontend 121/121 y Playwright 3/3. `HasPendingModelChanges` es false para los cuatro `DbContext` (4/4). Tanto `scripts\verify.cmd` como `scripts\verify.cmd --e2e` pasan.
 
-El baseline integrado mantiene tres escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. El escenario de Preparation provisiona dos preparadores mediante setup E2E. Identity A hace login, ve su destination y Work autorizados, ejecuta Start parcial de 1 sobre 2 y hace logout; Identity B hace login sobre el mismo destination y marca Ready esa cantidad. El resultado visible es Pending 1, InPreparation 0 y Ready 1. Esto demuestra progreso parcial, operación multi-actor sin ownership, autorización real y contadores autoritativos del backend. El fixture no implica bootstrap productivo. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
+El baseline integrado mantiene tres escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. El escenario operacional crea Confirmation con Contents prepared y direct, ejecuta Preparation parcial y Ready con actores autorizados, hace logout, inicia sesión con una Identity que posee `OrderOperationsAndBasicClosure` pero no capability de Preparation, y realiza Delivery parcial tanto del Prepared Content como del Direct Content. Esto demuestra autenticación real, Ready → Delivery sin decrementar Ready, operación sin ownership y con actor distinto, Delivery sin capability de Preparation, disponibilidad inmediata del Direct Content, cantidades parciales e integración frontend/backend. El fixture no implica bootstrap productivo. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
 
 `NexoBar.E2E.DatabaseSetup` aplica explícitamente y verifica los cuatro `DbContext`: `OperationalConfigurationDbContext`, `CatalogDbContext`, `OrderOperationsDbContext` e `IdentitiesAndCapabilitiesDbContext`. `HasPendingModelChanges` debe ser `false` para los cuatro. Chromium se instala manualmente desde `frontend`:
 
@@ -511,7 +689,7 @@ scripts\verify.cmd --e2e
 ./scripts/verify.sh --e2e
 ```
 
-## 16. Tooling, Development y migraciones
+## 17. Tooling, Development y migraciones
 
 - .NET SDK `10.0.400`, con roll-forward deshabilitado.
 - Node.js `22.13.1` y npm `10.9.2`.
@@ -531,11 +709,19 @@ Ambas tienen Designer completo, snapshots coherentes y `HasPendingModelChanges =
 
 Preparation Start agregó la migración `20260831063910_AddPreparationStart`, que materializa la Historia y los comandos durables de Preparation. Ready reutiliza ese modelo y no agregó una migración adicional.
 
-## 17. `InternalsVisibleTo`
+Las migraciones vigentes de Slice 4 son:
+
+- `AddDeliveryState`, que crea el Estado 1:1 y hace backfill `DeliveredQuantity = 0` para Contents previos;
+- `CapturePreparationRequirementAtConfirmation`, que agrega el snapshot histórico: hace backfill `true` cuando existía el Work exacto y `false` cuando no existía, y luego deja la columna `NOT NULL` sin default persistente;
+- `AddDeliveryProgress`, que materializa `delivery_history` y `delivery_commands`.
+
+No se modificaron migraciones durante esta consolidación documental.
+
+## 18. `InternalsVisibleTo`
 
 `InternalsVisibleTo` existe únicamente para consumidores técnicos/test específicos: las suites de integración y `NexoBar.E2E.DatabaseSetup`. No es un mecanismo normal de colaboración productiva entre módulos.
 
-## 18. Deuda consciente y fronteras no materializadas
+## 19. Deuda consciente y fronteras no materializadas
 
 Deuda técnica conocida:
 
@@ -543,10 +729,11 @@ Deuda técnica conocida:
 - la validación runtime o generación de contratos TypeScript sigue diferida;
 - el tooling general de migraciones para Development sigue pendiente.
 - un intent incierto de Preparation vive actualmente solo en memoria: reload o unmount puede perder su key. No hay persistencia en `localStorage` o `sessionStorage`, offline queue ni automatic background retry. El backend conserva idempotencia durable, pero el frontend no garantiza continuidad cross-reload del intent. Es deuda técnica/UX consciente, no una norma.
+- los intents inciertos de Delivery también viven solo en memoria: reload o unmount puede perder target, quantity e idempotency key. No existen `localStorage`, `sessionStorage`, IndexedDB, offline queue ni background retry. El backend conserva idempotencia durable, pero el frontend no garantiza continuidad cross-reload. Esta deuda es especialmente relevante porque Delivery representa un hecho físico; se registra sin convertirla aquí en requisito normativo ni resolverla.
 
 Fronteras todavía no materializadas, sin que esta enumeración diseñe su solución:
 
-- retrofit de autenticación/autorización para endpoints todavía anónimos, según corresponda: Catalog, OperationalConfiguration, Confirmaciones, lookup de Order y otros endpoints funcionales actuales no pertenecientes a Preparation;
+- retrofit global de autenticación/autorización para endpoints todavía anónimos, según corresponda: Catalog, OperationalConfiguration, Confirmaciones, lookup de Order y otros endpoints funcionales actuales no cubiertos por Preparation o Delivery;
 - bootstrap productivo de Identity y credenciales;
 - implementación de recovery extraordinario (`AD-SEC-01`) y UX de recovery ordinario;
 - decisión normativa de parámetros de timeout (`PAR-SEC-02`) y política cuantitativa de brute-force/lockout;
@@ -555,9 +742,16 @@ Fronteras todavía no materializadas, sin que esta enumeración diseñe su soluc
 - auditoría global de seguridad y consumo de autenticación en SSE;
 - Correction ordinaria sobre cantidad todavía Pending/elegible, conforme a reglas aún no definidas;
 - excepciones sobre Work iniciado y Correction de progreso: una Correction no debe reinterpretar silenciosamente cantidades InPreparation o Ready, y modificar trabajo ya iniciado requiere tratamiento excepcional;
-- Delivery, que tendrá Estado propio de cumplimiento: `Ready != Delivered` y Preparation no decrementa Ready al entregar; su modelo detallado no está definido ni implementado;
+- Delivery Correction y su distinción entre Correction ordinaria y excepcional conforme a la Source aplicable;
+- reversal y exception handling de Delivery;
+- interacción completa entre Delivery y Corrections de Content;
+- Liquidation, Settlement, Payment y Closure;
+- Cancellation;
+- query/API/UI de Historia de Delivery;
 - cantidades fraccionarias de Preparation;
+- cantidades fraccionarias de Delivery, mientras continúen abiertas;
 - persistencia cross-reload de intents inciertos de Preparation;
+- persistencia cross-reload de intents inciertos de Delivery;
 - prioridad/SLA y owner/assignment de Preparation;
 - query/API/UI de Historia de Preparation;
 - profundidad de Historia administrativa según los OPEN-TRA aplicables;
@@ -565,9 +759,21 @@ Fronteras todavía no materializadas, sin que esta enumeración diseñe su soluc
 - edición de una instruction ya confirmada;
 - SSE.
 
-El checkpoint de seguridad requerido para acciones humanas de Preparation está cerrado, pero eso no significa que la seguridad global esté cerrada ni que todos los endpoints backend estén protegidos. `Quantity` en Content no implica identidad física individual. La Correction no está implementada: conceptualmente, una futura Correction ordinaria puede actuar sobre cantidad todavía Pending/elegible según sus propias reglas, pero no debe reinterpretar silenciosamente InPreparation o Ready; no se diseña aquí su API. Delivery tampoco está implementada ni se detalla aquí. La instruction confirmada no es editable y SSE permanece pendiente.
+El checkpoint de seguridad requerido para acciones humanas de Preparation y Delivery está cerrado, pero eso no significa que la seguridad global esté cerrada ni que todos los endpoints backend estén protegidos. `Quantity` en Content no implica identidad física individual. La instruction confirmada no es editable y SSE permanece pendiente.
 
-## 19. Estado de Slice 3
+### Correction y coordinación Preparation/Delivery
+
+Delivery Correction no está implementada. Una futura Correction deberá modificar State explícitamente y preservar `QuantityDelivered` histórico; no podrá borrar ni reinterpretar silenciosamente History. La distinción entre Correction ordinaria y excepcional seguirá la Source aplicable, y este documento no diseña endpoint ni política adicional.
+
+Una futura Correction de Preparation tampoco puede crear silenciosamente `DeliveredQuantity > ReadyQuantity` para un Prepared Content. Las Corrections que afecten cantidad ya Ready o Delivered deberán coordinarse con Delivery; esa política permanece abierta y no se resuelve aquí.
+
+### Liquidation, Closure y completitud
+
+`Delivered != Liquidated != Closed`. Slice 4 no implementa Liquidation, Settlement, Payment ni Closure, y Delivery no contiene State materializado de esos procesos. Las futuras reglas que congelen Delivery después de Liquidation deberán integrarse cuando ese State exista; hoy no se inventan `IsLiquidated` ni `IsClosed`.
+
+Tampoco se persiste `Order.IsDelivered` ni se afirma un Status global implementado. La completitud puede derivarse técnicamente del Estado vigente, pero futuras Corrections afectan el concepto de cantidad requerida; no se eleva esa derivación a una decisión adicional.
+
+## 20. Estado de Slice 3
 
 El checkpoint de Identity, autenticación y capabilities requerido antes del progreso humano de Preparation ya está materializado:
 
@@ -584,9 +790,25 @@ Los increments posteriores materializados son:
 - `25166d9 feat: mark preparation quantities ready`;
 - `c6072ce feat: add preparation progress frontend`.
 
-La Preparation mínima operativa ordinaria está materializada para nacimiento de Work, lectura segura, Start parcial, Ready parcial, operación multi-actor, Historia, idempotencia, acciones frontend y recorrido E2E. **Preparation mínima operativa del slice cerrada.** Esto no equivale a Preparation completa del MVP ni resuelve Correction, excepciones, Delivery, SSE, consulta de Historia u otros pendientes de la sección 18.
+La Preparation mínima operativa ordinaria está materializada para nacimiento de Work, lectura segura, Start parcial, Ready parcial, operación multi-actor, Historia, idempotencia, acciones frontend y recorrido E2E. **Preparation mínima operativa del slice cerrada.** Esto no equivale a Preparation completa del MVP ni resuelve Correction, excepciones, SSE, consulta de Historia u otros pendientes de la sección 19.
 
-## 20. Protocolo de trabajo
+## 21. Estado de Slice 4
+
+Slice 4 — Delivery mínima operativa materializa:
+
+- `DeliveryState` 1:1 para cada Content;
+- el snapshot histórico `RequiresPreparationAtConfirmation` y clasificación prepared/direct;
+- read model autorizado de Delivery con nombres vigentes de Product;
+- Delivery parcial y la intención `DeliverQuantity`;
+- Historia `QuantityDelivered` separada de State;
+- idempotencia durable, replay original y semántica de reautorización;
+- locks y concurrencia coherentes con Ready y entre entregas;
+- frontend Delivery con intents por Content y tratamiento de incertidumbre;
+- recorrido E2E integrado para Prepared y Direct Content.
+
+**Delivery mínima operativa del Slice 4 cerrada.** Esto no equivale a Delivery completa del MVP ni materializa Correction, reversals, Liquidation, Payment, Closure, History UI, SSE o las demás fronteras de la sección 19.
+
+## 22. Protocolo de trabajo
 
 - `AGENTS.md` contiene el contexto operacional persistente para Codex. Ante una decisión no resuelta o una contradicción normativa se detiene la parte afectada y se reporta.
 - Los cambios permanecen limitados al objetivo de la tarea y se verifican en proporción al riesgo. No se agregan dependencias, alcance o refactors adyacentes sin autorización.
