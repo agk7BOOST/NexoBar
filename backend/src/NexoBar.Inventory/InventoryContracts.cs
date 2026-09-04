@@ -13,6 +13,9 @@ internal sealed record RecordInventoryCountRequest(string? ObservedQuantity);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record ReconcileInventoryCountRequest(Guid CountObservationId);
 
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record RecordInventoryMovementRequest(string? Quantity);
+
 public sealed record InventoryItemResponse(
     Guid ItemId,
     string OperationalName,
@@ -53,3 +56,13 @@ public sealed record ReconcileInventoryCountResponse(
     string? Difference,
     string ResultingRegisteredQuantity,
     long MovementRevision);
+
+public sealed record InventoryMovementResponse(
+    Guid MovementId,
+    Guid ItemId,
+    string Nature,
+    string Quantity,
+    string PreviousRegisteredQuantity,
+    string ResultingRegisteredQuantity,
+    long MovementRevision,
+    DateTimeOffset OccurredAt);

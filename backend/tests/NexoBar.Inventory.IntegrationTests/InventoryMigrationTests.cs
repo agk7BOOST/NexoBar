@@ -9,6 +9,8 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
     private const string InitialMigration = "20260901073703_InitialInventory";
     private const string CountReconciliationMigration =
         "20260901090459_AddInventoryCountReconciliation";
+    private const string EverydayMovementsMigration =
+        "20260904023608_AddEverydayInventoryMovements";
 
     [Fact]
     public async Task Initial_migration_has_safe_up_and_down()
@@ -28,7 +30,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateInventoryAsync(CountReconciliationMigration, token);
+            await fixture.MigrateInventoryAsync(EverydayMovementsMigration, token);
         }
     }
 
@@ -55,7 +57,52 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
+            await fixture.MigrateInventoryAsync(EverydayMovementsMigration, token);
+        }
+    }
+
+    [Fact]
+    public async Task Everyday_movements_migration_is_incremental_and_reversible()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+
+        try
+        {
             await fixture.MigrateInventoryAsync(CountReconciliationMigration, token);
+            await using var beforeConnection = new NpgsqlConnection(
+                fixture.ConnectionString);
+            await beforeConnection.OpenAsync(token);
+            Assert.DoesNotContain(
+                "intent_quantity",
+                await ReadColumnNamesAsync(
+                    beforeConnection,
+                    "movement_commands",
+                    token));
+
+            await fixture.MigrateInventoryAsync(EverydayMovementsMigration, token);
+            await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+            await connection.OpenAsync(token);
+            var intent = await ReadColumnAsync(
+                connection,
+                "movement_commands",
+                "intent_quantity",
+                token);
+            Assert.Equal("numeric", intent.DataType);
+            Assert.Equal(28, intent.NumericPrecision);
+            Assert.Equal(12, intent.NumericScale);
+            Assert.Equal("YES", intent.IsNullable);
+            Assert.Equal(
+                "YES",
+                (await ReadColumnAsync(
+                    connection,
+                    "movement_commands",
+                    "count_observation_id",
+                    token)).IsNullable);
+        }
+        finally
+        {
+            await fixture.MigrateInventoryAsync(EverydayMovementsMigration, token);
         }
     }
 
@@ -116,6 +163,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
                      ("inventory_movements", "resulting_registered_quantity"),
                      ("count_commands", "observed_quantity"),
                      ("movement_commands", "result_observed_quantity"),
+                     ("movement_commands", "intent_quantity"),
                      ("movement_commands", "result_previous_registered_quantity"),
                      ("movement_commands", "result_resulting_registered_quantity")
                  })

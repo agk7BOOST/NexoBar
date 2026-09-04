@@ -227,10 +227,13 @@ internal sealed class InventoryDbContext(
                         "nature IN ('Reconciliation', 'Entry', 'ManualExit', 'Waste', 'Correction')");
                     table.HasCheckConstraint(
                         "CK_inventory_movements_reconciliation_count",
-                        "nature <> 'Reconciliation' OR count_observation_id IS NOT NULL");
+                        "(nature = 'Reconciliation' AND count_observation_id IS NOT NULL) OR " +
+                        "(nature <> 'Reconciliation' AND count_observation_id IS NULL)");
                     table.HasCheckConstraint(
                         "CK_inventory_movements_reconciliation_quantity",
-                        "nature <> 'Reconciliation' OR quantity >= 0");
+                        "(nature = 'Reconciliation' AND quantity >= 0) OR " +
+                        "(nature IN ('Entry', 'ManualExit', 'Waste') AND quantity > 0) OR " +
+                        "nature = 'Correction'");
                 });
             builder.HasKey(movement => movement.Id)
                 .HasName("PK_inventory_movements");
@@ -342,19 +345,28 @@ internal sealed class InventoryDbContext(
                 {
                     table.HasCheckConstraint(
                         "CK_movement_commands_kind",
-                        "command_kind = 'ReconcileInventoryCount'");
+                        "command_kind IN ('ReconcileInventoryCount', 'RecordInventoryEntry', " +
+                        "'RecordManualInventoryExit', 'RecordInventoryWaste')");
                     table.HasCheckConstraint(
                         "CK_movement_commands_outcome",
+                        "result_outcome IS NULL OR " +
                         "result_outcome IN ('reconciled', 'no_discrepancy')");
                     table.HasCheckConstraint(
                         "CK_movement_commands_revision_non_negative",
                         "result_movement_revision >= 0");
                     table.HasCheckConstraint(
                         "CK_movement_commands_result_shape",
-                        "(result_outcome = 'reconciled' AND result_movement_id IS NOT NULL AND result_occurred_at IS NOT NULL) OR " +
+                        "(command_kind = 'ReconcileInventoryCount' AND count_observation_id IS NOT NULL AND " +
+                        "intent_quantity IS NULL AND result_observed_quantity IS NOT NULL AND " +
+                        "((result_outcome = 'reconciled' AND result_movement_id IS NOT NULL AND result_occurred_at IS NOT NULL) OR " +
                         "(result_outcome = 'no_discrepancy' AND result_movement_id IS NULL AND result_occurred_at IS NULL AND " +
                         "result_previous_registered_quantity = result_observed_quantity AND " +
-                        "result_observed_quantity = result_resulting_registered_quantity)");
+                        "result_observed_quantity = result_resulting_registered_quantity))) OR " +
+                        "(command_kind IN ('RecordInventoryEntry', 'RecordManualInventoryExit', 'RecordInventoryWaste') AND " +
+                        "count_observation_id IS NULL AND intent_quantity > 0 AND result_outcome IS NULL AND " +
+                        "result_observed_quantity IS NULL AND result_movement_id IS NOT NULL AND " +
+                        "result_occurred_at IS NOT NULL AND result_previous_registered_quantity IS NOT NULL AND " +
+                        "result_movement_revision > 0)");
                 });
             builder.HasKey(command => command.IdempotencyKey)
                 .HasName("PK_movement_commands");
@@ -368,8 +380,11 @@ internal sealed class InventoryDbContext(
                 .HasColumnName("inventory_item_id").ValueGeneratedNever();
             builder.Property(command => command.CountObservationId)
                 .HasColumnName("count_observation_id").ValueGeneratedNever();
+            builder.Property(command => command.IntentQuantity)
+                .HasColumnName("intent_quantity")
+                .HasColumnType("numeric(28,12)");
             builder.Property(command => command.ResultOutcome)
-                .HasColumnName("result_outcome").HasMaxLength(24).IsRequired();
+                .HasColumnName("result_outcome").HasMaxLength(24);
             builder.Property(command => command.ResultMovementId)
                 .HasColumnName("result_movement_id").ValueGeneratedNever();
             builder.Property(command => command.ResultOccurredAt)
@@ -380,7 +395,7 @@ internal sealed class InventoryDbContext(
                 .HasColumnType("numeric(28,12)");
             builder.Property(command => command.ResultObservedQuantity)
                 .HasColumnName("result_observed_quantity")
-                .HasColumnType("numeric(28,12)").IsRequired();
+                .HasColumnType("numeric(28,12)");
             builder.Property(command => command.ResultResultingRegisteredQuantity)
                 .HasColumnName("result_resulting_registered_quantity")
                 .HasColumnType("numeric(28,12)").IsRequired();

@@ -59,6 +59,25 @@ internal static class InventoryQuantity
         return true;
     }
 
+    internal static bool TryParsePositive(
+        string? raw,
+        out decimal quantity,
+        out string canonical)
+    {
+        if (!TryParseObserved(raw, out quantity, out canonical) || quantity <= 0)
+        {
+            quantity = default;
+            canonical = string.Empty;
+            return false;
+        }
+
+        return true;
+    }
+
+    internal static bool IsWithinStorageRange(decimal quantity) =>
+        quantity > -10_000_000_000_000_000m &&
+        quantity < 10_000_000_000_000_000m;
+
     internal static string Format(decimal quantity) =>
         quantity.ToString("0.############", CultureInfo.InvariantCulture);
 

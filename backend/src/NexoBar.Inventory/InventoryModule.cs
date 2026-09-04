@@ -29,6 +29,7 @@ public static class InventoryModule
                     "inventory")));
         services.AddScoped<InventoryService>();
         services.AddScoped<InventoryCountService>();
+        services.AddScoped<InventoryMovementService>();
         return services;
     }
 
@@ -75,6 +76,22 @@ public static class InventoryModule
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
+        MapQuantityMovementEndpoint(
+            endpoints,
+            "/api/inventory/items/{itemId}/entries",
+            "RecordInventoryEntry",
+            InventoryMovementCommand.RecordEntryCommandKind);
+        MapQuantityMovementEndpoint(
+            endpoints,
+            "/api/inventory/items/{itemId}/manual-exits",
+            "RecordManualInventoryExit",
+            InventoryMovementCommand.RecordManualExitCommandKind);
+        MapQuantityMovementEndpoint(
+            endpoints,
+            "/api/inventory/items/{itemId}/waste",
+            "RecordInventoryWaste",
+            InventoryMovementCommand.RecordWasteCommandKind);
+
         endpoints.MapGet(
                 "/api/inventory/configuration/items",
                 ListConfigurationItemsAsync)
@@ -96,6 +113,44 @@ public static class InventoryModule
             .ProducesProblem(StatusCodes.Status403Forbidden);
 
         return endpoints;
+    }
+
+    private static void MapQuantityMovementEndpoint(
+        IEndpointRouteBuilder endpoints,
+        string pattern,
+        string endpointName,
+        string commandKind)
+    {
+        endpoints.MapPost(
+                pattern,
+                (string itemId,
+                    [FromHeader(Name = "Idempotency-Key"), Required]
+                    string? idempotencyKey,
+                    RecordInventoryMovementRequest request,
+                    HttpContext httpContext,
+                    IAntiforgery antiforgery,
+                    InventoryMovementService service,
+                    CancellationToken cancellationToken) =>
+                    RecordQuantityMovementAsync(
+                        itemId,
+                        idempotencyKey,
+                        request,
+                        commandKind,
+                        httpContext,
+                        antiforgery,
+                        service,
+                        cancellationToken))
+            .WithName(endpointName)
+            .WithTags("Inventory")
+            .RequireAuthorization()
+            .Accepts<RecordInventoryMovementRequest>("application/json")
+            .Produces<InventoryMovementResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
     }
 
     private static async Task<IResult> CreateItemAsync(
@@ -338,6 +393,106 @@ public static class InventoryModule
                 "Inventory revision is inconsistent",
                 "The Inventory Item movement revision cannot be advanced safely.",
                 "inventory.reconciliation.revision_overflow"),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> RecordQuantityMovementAsync(
+        string itemId,
+        string? idempotencyKey,
+        RecordInventoryMovementRequest request,
+        string commandKind,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        InventoryMovementService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(itemId, out var inventoryItemId) ||
+            inventoryItemId == Guid.Empty)
+        {
+            return InvalidItemIdProblem();
+        }
+
+        if (!TryParseIdempotencyKey(idempotencyKey, out var commandId))
+        {
+            return IdempotencyKeyProblem(idempotencyKey);
+        }
+
+        if (!InventoryQuantity.TryParsePositive(
+                request.Quantity,
+                out var quantity,
+                out _))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid movement quantity",
+                "quantity must be a positive invariant decimal string with at most 16 integral and 12 fractional digits.",
+                "inventory.movement.quantity_invalid");
+        }
+
+        var antiforgeryProblem = await ValidateAntiforgeryAsync(
+            httpContext,
+            antiforgery,
+            "inventory.movement.antiforgery_invalid");
+        if (antiforgeryProblem is not null)
+        {
+            return antiforgeryProblem;
+        }
+
+        var result = commandKind switch
+        {
+            InventoryMovementCommand.RecordEntryCommandKind =>
+                await service.RecordEntryAsync(
+                    commandId,
+                    inventoryItemId,
+                    quantity,
+                    cancellationToken),
+            InventoryMovementCommand.RecordManualExitCommandKind =>
+                await service.RecordManualExitAsync(
+                    commandId,
+                    inventoryItemId,
+                    quantity,
+                    cancellationToken),
+            InventoryMovementCommand.RecordWasteCommandKind =>
+                await service.RecordWasteAsync(
+                    commandId,
+                    inventoryItemId,
+                    quantity,
+                    cancellationToken),
+            _ => throw new UnreachableException()
+        };
+
+        return result.Outcome switch
+        {
+            RecordInventoryMovementOutcome.Succeeded => Results.Ok(result.Response),
+            RecordInventoryMovementOutcome.Unauthenticated => InvalidSessionProblem(),
+            RecordInventoryMovementOutcome.Forbidden =>
+                InventoryOperationForbiddenProblem(),
+            RecordInventoryMovementOutcome.ItemNotFound => Problem(
+                StatusCodes.Status404NotFound,
+                "Inventory Item not found",
+                "The requested Inventory Item does not exist.",
+                "inventory.item.not_found"),
+            RecordInventoryMovementOutcome.QuantityNotEstablished => Problem(
+                StatusCodes.Status409Conflict,
+                "Inventory quantity not established",
+                "La existencia todav\u00eda debe establecerse mediante conteo y reconciliaci\u00f3n.",
+                "inventory.quantity_not_established"),
+            RecordInventoryMovementOutcome.ResultOutOfRange => Problem(
+                StatusCodes.Status409Conflict,
+                "Inventory quantity is outside the supported range",
+                "The resulting registered quantity cannot be represented exactly.",
+                "inventory.movement.result_out_of_range"),
+            RecordInventoryMovementOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                "The supplied Idempotency-Key identifies an incompatible Inventory Movement.",
+                "inventory.movement.idempotency_key_conflict"),
+            RecordInventoryMovementOutcome.RevisionOverflow => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Inventory revision is inconsistent",
+                "The Inventory Item movement revision cannot be advanced safely.",
+                "inventory.movement.revision_overflow"),
             _ => throw new UnreachableException()
         };
     }

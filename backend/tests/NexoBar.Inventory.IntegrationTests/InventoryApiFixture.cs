@@ -233,6 +233,74 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         return await client.SendAsync(request, cancellationToken);
     }
 
+    internal Task<HttpResponseMessage> PostEntryAsync(
+        Guid itemId,
+        Guid key,
+        string? quantity,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null) =>
+        PostMovementAsync(
+            Client,
+            itemId,
+            key,
+            "entries",
+            quantity,
+            cancellationToken,
+            antiforgeryToken);
+
+    internal Task<HttpResponseMessage> PostManualExitAsync(
+        Guid itemId,
+        Guid key,
+        string? quantity,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null) =>
+        PostMovementAsync(
+            Client,
+            itemId,
+            key,
+            "manual-exits",
+            quantity,
+            cancellationToken,
+            antiforgeryToken);
+
+    internal Task<HttpResponseMessage> PostWasteAsync(
+        Guid itemId,
+        Guid key,
+        string? quantity,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null) =>
+        PostMovementAsync(
+            Client,
+            itemId,
+            key,
+            "waste",
+            quantity,
+            cancellationToken,
+            antiforgeryToken);
+
+    internal static async Task<HttpResponseMessage> PostMovementAsync(
+        HttpClient client,
+        Guid itemId,
+        Guid key,
+        string route,
+        string? quantity,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null)
+    {
+        antiforgeryToken ??= await GetAntiforgeryTokenAsync(
+            client,
+            cancellationToken);
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/inventory/items/{itemId:D}/{route}")
+        {
+            Content = JsonContent.Create(new { quantity })
+        };
+        request.Headers.Add("Idempotency-Key", key.ToString("D"));
+        request.Headers.Add("X-NexoBar-CSRF", antiforgeryToken);
+        return await client.SendAsync(request, cancellationToken);
+    }
+
     internal async Task<(int Items, int Commands)> CountInventoryAsync(
         CancellationToken cancellationToken)
     {

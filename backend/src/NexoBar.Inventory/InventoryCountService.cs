@@ -209,7 +209,7 @@ internal sealed class InventoryCountService(
         {
             occurredAt = UtcNow();
             movementId = Guid.CreateVersion7(occurredAt.Value);
-            dbContext.InventoryMovements.Add(new InventoryMovement(
+            dbContext.InventoryMovements.Add(InventoryMovement.Reconciliation(
                 movementId.Value,
                 item.Id,
                 transition.MovementRevision,

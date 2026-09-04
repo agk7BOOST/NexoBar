@@ -60,6 +60,15 @@ internal sealed class InventoryItem
             resultingRevision);
     }
 
+    internal InventoryItemMovementResult RecordEntry(decimal quantity) =>
+        RecordQuantityMovement(quantity, add: true);
+
+    internal InventoryItemMovementResult RecordManualExit(decimal quantity) =>
+        RecordQuantityMovement(quantity, add: false);
+
+    internal InventoryItemMovementResult RecordWaste(decimal quantity) =>
+        RecordQuantityMovement(quantity, add: false);
+
     internal static InventoryItemValidation TryCreate(
         string? rawOperationalName,
         string? rawOperationalUnit)
@@ -98,6 +107,69 @@ internal sealed class InventoryItem
         value.Length is > 0 and <= OperationalNameMaximumLength &&
         !value.Contains('\r', StringComparison.Ordinal) &&
         !value.Contains('\n', StringComparison.Ordinal);
+
+    private InventoryItemMovementResult RecordQuantityMovement(
+        decimal quantity,
+        bool add)
+    {
+        if (quantity <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(quantity),
+                "An Inventory Movement quantity must be positive.");
+        }
+
+        if (CurrentRegisteredQuantity is null)
+        {
+            return InventoryItemMovementResult.QuantityNotEstablished();
+        }
+
+        var previousQuantity = CurrentRegisteredQuantity.Value;
+        var resultingQuantity = add
+            ? checked(previousQuantity + quantity)
+            : checked(previousQuantity - quantity);
+        if (!InventoryQuantity.IsWithinStorageRange(resultingQuantity))
+        {
+            return InventoryItemMovementResult.ResultOutOfRange();
+        }
+
+        var resultingRevision = checked(MovementRevision + 1);
+        CurrentRegisteredQuantity = resultingQuantity;
+        MovementRevision = resultingRevision;
+        return InventoryItemMovementResult.Applied(
+            previousQuantity,
+            resultingQuantity,
+            resultingRevision);
+    }
+}
+
+internal sealed record InventoryItemMovementResult(
+    InventoryItemMovementFailure? Failure,
+    decimal PreviousRegisteredQuantity,
+    decimal ResultingRegisteredQuantity,
+    long MovementRevision)
+{
+    internal static InventoryItemMovementResult Applied(
+        decimal previousRegisteredQuantity,
+        decimal resultingRegisteredQuantity,
+        long movementRevision) =>
+        new(
+            null,
+            previousRegisteredQuantity,
+            resultingRegisteredQuantity,
+            movementRevision);
+
+    internal static InventoryItemMovementResult QuantityNotEstablished() =>
+        new(InventoryItemMovementFailure.QuantityNotEstablished, 0, 0, 0);
+
+    internal static InventoryItemMovementResult ResultOutOfRange() =>
+        new(InventoryItemMovementFailure.ResultOutOfRange, 0, 0, 0);
+}
+
+internal enum InventoryItemMovementFailure
+{
+    QuantityNotEstablished,
+    ResultOutOfRange
 }
 
 internal sealed record InventoryReconciliationTransition(
