@@ -19,6 +19,7 @@ import {
 } from "./identity/sessionClient.ts";
 import { PreparationPanel } from "./preparation/PreparationPanel.tsx";
 import { DeliveryPanel } from "./delivery/DeliveryPanel.tsx";
+import { InventoryPanel } from "./inventory/InventoryPanel.tsx";
 
 type AuthState =
   | { status: "loading" }
@@ -146,6 +147,7 @@ function App() {
             onLoggedOut={returnToLogin}
           />
           <PreparationPanel onUnauthorized={returnToLogin} />
+          <InventoryPanel onUnauthorized={returnToLogin} />
         </>
       )}
 

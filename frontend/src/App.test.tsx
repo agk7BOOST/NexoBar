@@ -95,6 +95,10 @@ vi.mock("./orderOperations/OrderLookup.tsx", () => ({
   ),
 }));
 
+vi.mock("./inventory/InventoryPanel.tsx", () => ({
+  InventoryPanel: () => <section aria-label="Inventario coordinado" />,
+}));
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -259,5 +263,20 @@ describe("App coordination", () => {
     expect(
       screen.queryByRole("heading", { name: "Ingresar" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("adds Inventory access only within an authenticated session", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse([listedProduct]))
+      .mockResolvedValueOnce(
+        jsonResponse({ identityId: "identity-1", operationalName: "Ana" }),
+      )
+      .mockResolvedValueOnce(jsonResponse([]));
+
+    render(<App />);
+
+    expect(
+      await screen.findByLabelText("Inventario coordinado"),
+    ).toBeInTheDocument();
   });
 });
