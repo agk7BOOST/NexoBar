@@ -19,6 +19,8 @@ import {
   InventoryProblemError,
   listInventoryConfigurationItems,
   listInventoryOperationalItems,
+  recordInventoryEntry,
+  recordManualInventoryExit,
   type InventoryConfigurationItem,
   type InventoryOperationalItem,
 } from "./inventoryClient.ts";
@@ -42,6 +44,8 @@ vi.mock("./inventoryClient.ts", async (importOriginal) => {
     getInventoryMovementHistory: vi.fn(),
     listInventoryConfigurationItems: vi.fn(),
     listInventoryOperationalItems: vi.fn(),
+    recordInventoryEntry: vi.fn(),
+    recordManualInventoryExit: vi.fn(),
   };
 });
 
@@ -92,6 +96,8 @@ describe("InventoryPanel", () => {
     vi.mocked(getInventoryMovementHistory).mockReset();
     vi.mocked(listInventoryConfigurationItems).mockReset();
     vi.mocked(listInventoryOperationalItems).mockReset();
+    vi.mocked(recordInventoryEntry).mockReset();
+    vi.mocked(recordManualInventoryExit).mockReset();
   });
 
   it.each([
@@ -462,6 +468,127 @@ describe("InventoryPanel", () => {
     );
     expect(within(negative).getByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText(/versión de stock/i)).not.toBeInTheDocument();
+  });
+
+  it("allows a Manual Exit to cross zero and then renders the authoritative negative warning", async () => {
+    const established = {
+      ...uninitialized,
+      currentRegisteredQuantity: "2",
+      quantityEstablished: true,
+      asOfMovementRevision: 1,
+    };
+    const negative = {
+      ...established,
+      currentRegisteredQuantity: "-3",
+      hasNegativeBalanceInconsistency: true,
+      asOfMovementRevision: 2,
+    };
+    vi.mocked(listInventoryConfigurationItems).mockRejectedValueOnce(forbidden);
+    vi.mocked(listInventoryOperationalItems)
+      .mockResolvedValueOnce([established])
+      .mockResolvedValueOnce([negative]);
+    vi.mocked(recordManualInventoryExit).mockResolvedValueOnce({
+      movementId: "movement-1",
+      itemId: "item-1",
+      nature: "manual_exit",
+      quantity: "5",
+      previousRegisteredQuantity: "2",
+      resultingRegisteredQuantity: "-3",
+      movementRevision: 2,
+      occurredAt: "2026-09-04T12:00:00Z",
+    });
+    const user = userEvent.setup();
+    render(<InventoryPanel onUnauthorized={vi.fn()} />);
+
+    await user.type(
+      await screen.findByLabelText("Cantidad de salida manual para Harina"),
+      "5",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Registrar salida manual" }),
+    );
+
+    const refreshed = await screen.findByRole("article", { name: "Harina" });
+    await waitFor(() => expect(refreshed).toHaveTextContent("-3 kg"));
+    expect(refreshed).toHaveTextContent("Inconsistencia de saldo");
+    expect(within(refreshed).getByRole("alert")).toHaveTextContent(
+      "Realiza un conteo para verificar la existencia.",
+    );
+  });
+
+  it("refreshes open History after a successful Entry", async () => {
+    const established = {
+      ...uninitialized,
+      currentRegisteredQuantity: "2",
+      quantityEstablished: true,
+      asOfMovementRevision: 1,
+    };
+    const refreshed = {
+      ...established,
+      currentRegisteredQuantity: "3",
+      asOfMovementRevision: 2,
+    };
+    vi.mocked(listInventoryConfigurationItems).mockRejectedValueOnce(forbidden);
+    vi.mocked(listInventoryOperationalItems)
+      .mockResolvedValueOnce([established])
+      .mockResolvedValueOnce([refreshed]);
+    vi.mocked(getInventoryMovementHistory)
+      .mockResolvedValueOnce({
+        itemId: "item-1",
+        operationalName: "Harina",
+        operationalUnit: "kg",
+        movements: [],
+        nextBeforeRevision: null,
+      })
+      .mockResolvedValueOnce({
+        itemId: "item-1",
+        operationalName: "Harina",
+        operationalUnit: "kg",
+        movements: [
+          {
+            movementId: "movement-1",
+            movementRevision: 2,
+            nature: "entry",
+            quantity: "1",
+            signedEffect: "+1",
+            previousRegisteredQuantity: "2",
+            resultingRegisteredQuantity: "3",
+            occurredAt: "2026-09-04T12:00:00Z",
+            actorIdentityId: "actor-1",
+            actorOperationalName: "Operador",
+            reconciliation: null,
+          },
+        ],
+        nextBeforeRevision: null,
+      });
+    vi.mocked(recordInventoryEntry).mockResolvedValueOnce({
+      movementId: "movement-1",
+      itemId: "item-1",
+      nature: "entry",
+      quantity: "1",
+      previousRegisteredQuantity: "2",
+      resultingRegisteredQuantity: "3",
+      movementRevision: 2,
+      occurredAt: "2026-09-04T12:00:00Z",
+    });
+    const user = userEvent.setup();
+    render(<InventoryPanel onUnauthorized={vi.fn()} />);
+    await user.click(
+      await screen.findByRole("button", { name: "Ver movimientos de Harina" }),
+    );
+    await screen.findByText(
+      "No hay movimientos registrados para este elemento.",
+    );
+
+    await user.type(
+      screen.getByLabelText("Cantidad de entrada para Harina"),
+      "1",
+    );
+    await user.click(screen.getByRole("button", { name: "Registrar entrada" }));
+
+    expect(await screen.findByText("Operador")).toBeInTheDocument();
+    expect(listInventoryOperationalItems).toHaveBeenCalledTimes(2);
+    expect(getInventoryMovementHistory).toHaveBeenCalledTimes(2);
   });
 
   it("opens State-independent movement History only from an operational Item", async () => {

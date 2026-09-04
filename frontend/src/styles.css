@@ -238,6 +238,50 @@ form select,
   font-size: 0.85rem;
 }
 
+.inventory-item-operations {
+  display: grid;
+  gap: 0.85rem;
+  border-top: 1px solid #d9e0e7;
+  padding-top: 0.85rem;
+}
+
+.inventory-operation-form,
+.inventory-reconciliation {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+  align-items: stretch;
+  margin-top: 0;
+  border-radius: 0.4rem;
+  padding: 0.75rem;
+  background: #f4f6f8;
+}
+
+.inventory-operation-form label,
+.inventory-operation-form label:first-of-type,
+.inventory-operation-form label:last-of-type {
+  grid-column: 1;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.inventory-operation-form > button,
+.inventory-reconciliation > button {
+  justify-self: start;
+}
+
+.inventory-operation-form p,
+.inventory-reconciliation p {
+  margin: 0;
+  color: #52606d;
+  font-size: 0.85rem;
+}
+
+.inventory-everyday-operations {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .inventory-history {
   margin-top: 1.5rem;
   border-top: 1px solid #d9e0e7;

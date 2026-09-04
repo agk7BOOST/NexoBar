@@ -79,10 +79,14 @@ try
     var preparer = new Identity("Preparador E2E", true);
     var secondPreparer = new Identity("Preparadora E2E B", true);
     var deliverer = new Identity("Delivery E2E", true);
+    var inventoryConfigurator = new Identity("Configurador Inventario E2E", true);
+    var inventoryOperator = new Identity("Operador Inventario E2E", true);
     identitiesAndCapabilities.Identities.AddRange(
         preparer,
         secondPreparer,
-        deliverer);
+        deliverer,
+        inventoryConfigurator,
+        inventoryOperator);
     identitiesAndCapabilities.ResponsibilityAssignments.AddRange(
         new ResponsibilityAssignment(
             preparer.Id,
@@ -92,7 +96,13 @@ try
             FunctionalResponsibility.Preparation),
         new ResponsibilityAssignment(
             deliverer.Id,
-            FunctionalResponsibility.OrderOperationsAndBasicClosure));
+            FunctionalResponsibility.OrderOperationsAndBasicClosure),
+        new ResponsibilityAssignment(
+            inventoryConfigurator.Id,
+            FunctionalResponsibility.InventoryConfiguration),
+        new ResponsibilityAssignment(
+            inventoryOperator.Id,
+            FunctionalResponsibility.InventoryOperation));
     identitiesAndCapabilities.PreparationEnablements.AddRange(
         new PreparationEnablement(preparer.Id, kitchen.Id),
         new PreparationEnablement(secondPreparer.Id, kitchen.Id));
@@ -114,6 +124,18 @@ try
             deliverer.Id,
             "delivery-e2e",
             "delivery-e2e-secret",
+            CancellationToken.None);
+    await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+        .ProvisionAsync(
+            inventoryConfigurator.Id,
+            "inventory-config-e2e",
+            "inventory-config-e2e-secret",
+            CancellationToken.None);
+    await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+        .ProvisionAsync(
+            inventoryOperator.Id,
+            "inventory-operation-e2e",
+            "inventory-operation-e2e-secret",
             CancellationToken.None);
 
     var authorizedProduct = new Product(

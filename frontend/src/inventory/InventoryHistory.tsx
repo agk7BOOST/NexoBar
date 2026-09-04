@@ -11,6 +11,7 @@ import {
 
 interface InventoryHistoryProps {
   item: InventoryOperationalItem | null;
+  refreshRevision?: number;
   onClose: () => void;
   onUnauthorized: () => void;
   onItemUnavailable: () => void;
@@ -175,6 +176,7 @@ function MovementCard({
 
 export function InventoryHistory({
   item,
+  refreshRevision = 0,
   onClose,
   onUnauthorized,
   onItemUnavailable,
@@ -238,7 +240,7 @@ export function InventoryHistory({
       window.clearTimeout(timeout);
       cancelRequests();
     };
-  }, [cancelRequests, item, loadFirstPage]);
+  }, [cancelRequests, item, loadFirstPage, refreshRevision]);
 
   async function loadOlder(history: InventoryMovementHistory) {
     if (history.nextBeforeRevision === null || isLoadingOlder) return;

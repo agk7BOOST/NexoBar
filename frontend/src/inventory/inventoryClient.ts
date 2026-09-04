@@ -21,6 +21,41 @@ export interface CreatedInventoryItem extends InventoryConfigurationItem {
   movementRevision: number;
 }
 
+export interface InventoryCountObservation {
+  countObservationId: string;
+  itemId: string;
+  observedQuantity: string;
+  observedMovementRevision: number;
+  observedOperationalUnit: string;
+  observedAt: string;
+}
+
+export type InventoryReconciliationOutcome = "reconciled" | "no_discrepancy";
+
+export interface InventoryReconciliationResult {
+  itemId: string;
+  countObservationId: string;
+  outcome: InventoryReconciliationOutcome;
+  movementId: string | null;
+  occurredAt: string | null;
+  previousRegisteredQuantity: string | null;
+  observedQuantity: string;
+  difference: string | null;
+  resultingRegisteredQuantity: string;
+  movementRevision: number;
+}
+
+export interface InventoryRecordedMovement {
+  movementId: string;
+  itemId: string;
+  nature: Exclude<InventoryMovementNature, "reconciliation">;
+  quantity: string;
+  previousRegisteredQuantity: string;
+  resultingRegisteredQuantity: string;
+  movementRevision: number;
+  occurredAt: string;
+}
+
 export type InventoryMovementNature =
   "entry" | "manual_exit" | "waste" | "reconciliation";
 
@@ -186,6 +221,115 @@ function parseCreatedItem(value: unknown): CreatedInventoryItem {
   };
 }
 
+function parseCountObservation(value: unknown): InventoryCountObservation {
+  if (
+    !isRecord(value) ||
+    typeof value.countObservationId !== "string" ||
+    typeof value.itemId !== "string" ||
+    typeof value.observedQuantity !== "string" ||
+    !isNonNegativeInteger(value.observedMovementRevision) ||
+    typeof value.observedOperationalUnit !== "string" ||
+    typeof value.observedAt !== "string"
+  ) {
+    throw new Error("The Inventory Count observation was not interpretable.");
+  }
+
+  return {
+    countObservationId: value.countObservationId,
+    itemId: value.itemId,
+    observedQuantity: value.observedQuantity,
+    observedMovementRevision: value.observedMovementRevision,
+    observedOperationalUnit: value.observedOperationalUnit,
+    observedAt: value.observedAt,
+  };
+}
+
+function parseReconciliationResult(
+  value: unknown,
+): InventoryReconciliationResult {
+  if (
+    !isRecord(value) ||
+    typeof value.itemId !== "string" ||
+    typeof value.countObservationId !== "string" ||
+    !["reconciled", "no_discrepancy"].includes(String(value.outcome)) ||
+    !isNullableString(value.movementId) ||
+    !isNullableString(value.occurredAt) ||
+    !isNullableString(value.previousRegisteredQuantity) ||
+    typeof value.observedQuantity !== "string" ||
+    !isNullableString(value.difference) ||
+    typeof value.resultingRegisteredQuantity !== "string" ||
+    !isNonNegativeInteger(value.movementRevision)
+  ) {
+    throw new Error("The Inventory Reconciliation was not interpretable.");
+  }
+
+  const outcome = value.outcome as InventoryReconciliationOutcome;
+  if (
+    (outcome === "no_discrepancy" &&
+      (value.movementId !== null ||
+        value.occurredAt !== null ||
+        typeof value.previousRegisteredQuantity !== "string" ||
+        typeof value.difference !== "string")) ||
+    (outcome === "reconciled" &&
+      (typeof value.movementId !== "string" ||
+        typeof value.occurredAt !== "string" ||
+        (value.previousRegisteredQuantity === null
+          ? value.difference !== null
+          : typeof value.difference !== "string")))
+  ) {
+    throw new Error("The Inventory Reconciliation was not interpretable.");
+  }
+
+  return {
+    itemId: value.itemId,
+    countObservationId: value.countObservationId,
+    outcome,
+    movementId: value.movementId,
+    occurredAt: value.occurredAt,
+    previousRegisteredQuantity: value.previousRegisteredQuantity,
+    observedQuantity: value.observedQuantity,
+    difference: value.difference,
+    resultingRegisteredQuantity: value.resultingRegisteredQuantity,
+    movementRevision: value.movementRevision,
+  };
+}
+
+function parseRecordedMovement(value: unknown): InventoryRecordedMovement {
+  const nature = isRecord(value)
+    ? (
+        {
+          Entry: "entry",
+          ManualExit: "manual_exit",
+          Waste: "waste",
+        } as const
+      )[String(value.nature) as "Entry" | "ManualExit" | "Waste"]
+    : undefined;
+  if (
+    !isRecord(value) ||
+    typeof value.movementId !== "string" ||
+    typeof value.itemId !== "string" ||
+    nature === undefined ||
+    typeof value.quantity !== "string" ||
+    typeof value.previousRegisteredQuantity !== "string" ||
+    typeof value.resultingRegisteredQuantity !== "string" ||
+    !isPositiveInteger(value.movementRevision) ||
+    typeof value.occurredAt !== "string"
+  ) {
+    throw new Error("The Inventory Movement was not interpretable.");
+  }
+
+  return {
+    movementId: value.movementId,
+    itemId: value.itemId,
+    nature,
+    quantity: value.quantity,
+    previousRegisteredQuantity: value.previousRegisteredQuantity,
+    resultingRegisteredQuantity: value.resultingRegisteredQuantity,
+    movementRevision: value.movementRevision,
+    occurredAt: value.occurredAt,
+  };
+}
+
 function parseReconciliation(
   value: unknown,
 ): InventoryMovementReconciliation | null {
@@ -316,6 +460,120 @@ export async function listInventoryOperationalItems(): Promise<
     (await response.json()) as unknown,
     parseOperationalItem,
     "operational list",
+  );
+}
+
+function mutationHeaders(
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    "Idempotency-Key": idempotencyKey,
+    "X-NexoBar-CSRF": antiforgeryToken,
+  };
+}
+
+export async function recordInventoryCount(
+  itemId: string,
+  request: { observedQuantity: string },
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<InventoryCountObservation> {
+  const response = await send(
+    `/api/inventory/items/${encodeURIComponent(itemId)}/counts`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: mutationHeaders(idempotencyKey, antiforgeryToken),
+      body: JSON.stringify(request),
+    },
+  );
+  await requireSuccess(response);
+  return parseCountObservation((await response.json()) as unknown);
+}
+
+export async function reconcileInventoryCount(
+  itemId: string,
+  request: { countObservationId: string },
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<InventoryReconciliationResult> {
+  const response = await send(
+    `/api/inventory/items/${encodeURIComponent(itemId)}/reconcile`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: mutationHeaders(idempotencyKey, antiforgeryToken),
+      body: JSON.stringify(request),
+    },
+  );
+  await requireSuccess(response);
+  return parseReconciliationResult((await response.json()) as unknown);
+}
+
+async function recordInventoryMovement(
+  itemId: string,
+  route: "entries" | "manual-exits" | "waste",
+  request: { quantity: string },
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<InventoryRecordedMovement> {
+  const response = await send(
+    `/api/inventory/items/${encodeURIComponent(itemId)}/${route}`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: mutationHeaders(idempotencyKey, antiforgeryToken),
+      body: JSON.stringify(request),
+    },
+  );
+  await requireSuccess(response);
+  return parseRecordedMovement((await response.json()) as unknown);
+}
+
+export function recordInventoryEntry(
+  itemId: string,
+  request: { quantity: string },
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<InventoryRecordedMovement> {
+  return recordInventoryMovement(
+    itemId,
+    "entries",
+    request,
+    idempotencyKey,
+    antiforgeryToken,
+  );
+}
+
+export function recordManualInventoryExit(
+  itemId: string,
+  request: { quantity: string },
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<InventoryRecordedMovement> {
+  return recordInventoryMovement(
+    itemId,
+    "manual-exits",
+    request,
+    idempotencyKey,
+    antiforgeryToken,
+  );
+}
+
+export function recordInventoryWaste(
+  itemId: string,
+  request: { quantity: string },
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<InventoryRecordedMovement> {
+  return recordInventoryMovement(
+    itemId,
+    "waste",
+    request,
+    idempotencyKey,
+    antiforgeryToken,
   );
 }
 

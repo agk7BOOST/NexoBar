@@ -11,6 +11,7 @@ import {
   SessionProblemError,
 } from "../identity/sessionClient.ts";
 import { InventoryHistory } from "./InventoryHistory.tsx";
+import { InventoryItemOperations } from "./InventoryItemOperations.tsx";
 import {
   createInventoryItem,
   InventoryProblemError,
@@ -79,6 +80,7 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
   const [createNotice, setCreateNotice] = useState<Notice | null>(null);
   const [historyItem, setHistoryItem] =
     useState<InventoryOperationalItem | null>(null);
+  const [historyRefreshRevision, setHistoryRefreshRevision] = useState(0);
   const configurationSequence = useRef(0);
   const operationSequence = useRef(0);
   const createIntentRef = useRef<CreateIntent | null>(null);
@@ -127,31 +129,34 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
     }
   }, [handleUnauthorized]);
 
-  const refreshOperation = useCallback(async () => {
-    const sequence = ++operationSequence.current;
-    setOperation({ status: "loading" });
-    try {
-      const items = await listInventoryOperationalItems();
-      if (sequence === operationSequence.current) {
-        operationAuthorizedRef.current = true;
-        setOperation({ status: "ready", items });
+  const refreshOperation = useCallback(
+    async (showLoading = true) => {
+      const sequence = ++operationSequence.current;
+      if (showLoading) setOperation({ status: "loading" });
+      try {
+        const items = await listInventoryOperationalItems();
+        if (sequence === operationSequence.current) {
+          operationAuthorizedRef.current = true;
+          setOperation({ status: "ready", items });
+        }
+      } catch (error) {
+        if (sequence !== operationSequence.current) return;
+        operationAuthorizedRef.current = false;
+        if (error instanceof InventoryProblemError && error.status === 401) {
+          handleUnauthorized();
+        } else if (
+          error instanceof InventoryProblemError &&
+          error.status === 403
+        ) {
+          setOperation({ status: "forbidden" });
+          setHistoryItem(null);
+        } else {
+          setOperation({ status: "error" });
+        }
       }
-    } catch (error) {
-      if (sequence !== operationSequence.current) return;
-      operationAuthorizedRef.current = false;
-      if (error instanceof InventoryProblemError && error.status === 401) {
-        handleUnauthorized();
-      } else if (
-        error instanceof InventoryProblemError &&
-        error.status === 403
-      ) {
-        setOperation({ status: "forbidden" });
-        setHistoryItem(null);
-      } else {
-        setOperation({ status: "error" });
-      }
-    }
-  }, [handleUnauthorized]);
+    },
+    [handleUnauthorized],
+  );
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -284,6 +289,16 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
   }
 
   const creationBlocked = createIntent !== null;
+
+  const handleAuthoritativeOperation = useCallback(
+    async (itemId: string) => {
+      await refreshOperation(false);
+      if (historyItem?.itemId === itemId) {
+        setHistoryRefreshRevision((current) => current + 1);
+      }
+    },
+    [historyItem?.itemId, refreshOperation],
+  );
 
   return (
     <section className="inventory-family" aria-labelledby="inventory-heading">
@@ -490,6 +505,13 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
                     <span>Realiza un conteo para verificar la existencia.</span>
                   </div>
                 )}
+                <InventoryItemOperations
+                  item={item}
+                  onUnauthorized={handleUnauthorized}
+                  onStateRefresh={() => refreshOperation(false)}
+                  onAuthoritativeMutation={handleAuthoritativeOperation}
+                  onItemUnavailable={() => void refreshOperation()}
+                />
                 <button
                   type="button"
                   className="secondary-button"
@@ -506,6 +528,7 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
         <InventoryHistory
           key={historyItem?.itemId ?? "no-inventory-history"}
           item={historyItem}
+          refreshRevision={historyRefreshRevision}
           onClose={() => setHistoryItem(null)}
           onUnauthorized={handleUnauthorized}
           onItemUnavailable={() => void refreshOperation()}

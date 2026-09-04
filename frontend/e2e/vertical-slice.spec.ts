@@ -423,3 +423,106 @@ test("Preparation y Delivery operan cantidades parciales con Identities reales",
   await expect(directDelivery).toContainText("Deliverable1");
   await expect(directDelivery).toContainText("Remaining1");
 });
+
+test("Inventario ejecuta operaciones físicas e Historia con capacidades separadas", async ({
+  page,
+}) => {
+  const itemName = `Harina E2E ${randomUUID().slice(0, 8)}`;
+  await page.goto("/");
+  await page.getByLabel("Identificador de acceso").fill("inventory-config-e2e");
+  await page.getByLabel("Secreto").fill("inventory-config-e2e-secret");
+  await page.getByRole("button", { name: "Ingresar" }).click();
+
+  const configurationIdentity = page.getByRole("region", {
+    name: "Identity actual",
+  });
+  await expect(
+    configurationIdentity.getByText("Configurador Inventario E2E", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  const configuration = page.getByRole("region", {
+    name: "Configuración de Inventario",
+  });
+  await configuration.getByLabel("Nombre operacional").fill(itemName);
+  await configuration.getByLabel("Unidad operacional").fill("kg");
+  await configuration.getByRole("button", { name: "Crear elemento" }).click();
+  await expect(
+    configuration.getByText(itemName, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Esta Identity no tiene autorización para operar Inventario.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+
+  await configurationIdentity
+    .getByRole("button", { name: "Cambiar persona / salir" })
+    .click();
+  await page
+    .getByLabel("Identificador de acceso")
+    .fill("inventory-operation-e2e");
+  await page.getByLabel("Secreto").fill("inventory-operation-e2e-secret");
+  await page.getByRole("button", { name: "Ingresar" }).click();
+
+  const operationIdentity = page.getByRole("region", {
+    name: "Identity actual",
+  });
+  await expect(
+    operationIdentity.getByText("Operador Inventario E2E", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Esta Identity no tiene autorización para configurar Inventario.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+
+  const operation = page.getByRole("region", {
+    name: "Estado actual de Inventario",
+  });
+  const item = operation.getByRole("article", { name: itemName });
+  await expect(item).toContainText("Existencia no establecida");
+  await item.getByLabel(`Cantidad observada para ${itemName}`).fill("5.5");
+  await item.getByRole("button", { name: "Registrar conteo" }).click();
+  await expect(item).toContainText("Conteo registrado: 5.5 kg");
+  await expect(item).toContainText("El saldo no fue modificado");
+  await item.getByRole("button", { name: "Reconciliar conteo" }).click();
+  await expect(item).toContainText("Existencia inicial establecida en 5.5");
+  await expect(item).toContainText("Existencia registrada5.5 kg");
+
+  await item.getByLabel(`Cantidad de entrada para ${itemName}`).fill("2");
+  await item.getByRole("button", { name: "Registrar entrada" }).click();
+  await expect(item).toContainText("Existencia registrada7.5 kg");
+
+  await item.getByLabel(`Cantidad de salida manual para ${itemName}`).fill("8");
+  await item.getByRole("button", { name: "Registrar salida manual" }).click();
+  await expect(item).toContainText("Existencia registrada-0.5 kg");
+  await expect(item.getByRole("alert")).toContainText(
+    "Inconsistencia de saldo",
+  );
+
+  await item.getByLabel(`Cantidad de merma para ${itemName}`).fill("0.5");
+  await item.getByRole("button", { name: "Registrar merma" }).click();
+  await expect(item).toContainText("Existencia registrada-1 kg");
+  await item
+    .getByRole("button", { name: `Ver movimientos de ${itemName}` })
+    .click();
+
+  const history = operation.getByRole("region", { name: "Movimientos" });
+  await expect(history.getByRole("heading", { name: "Merma" })).toBeVisible();
+  await expect(
+    history.getByRole("heading", { name: "Salida manual" }),
+  ).toBeVisible();
+  await expect(history.getByRole("heading", { name: "Entrada" })).toBeVisible();
+  await expect(
+    history.getByRole("heading", { name: "Reconciliación" }),
+  ).toBeVisible();
+  await expect(
+    history.getByText("Existencia establecida mediante conteo"),
+  ).toBeVisible();
+  await expect(history.getByText("Cantidad", { exact: true })).toHaveCount(3);
+  await expect(history.getByText("Resultado", { exact: true })).toHaveCount(1);
+  await expect(history).toContainText("Saldo resultante-1 kg");
+});
