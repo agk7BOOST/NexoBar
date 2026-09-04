@@ -30,6 +30,7 @@ public static class InventoryModule
         services.AddScoped<InventoryService>();
         services.AddScoped<InventoryCountService>();
         services.AddScoped<InventoryMovementService>();
+        services.AddScoped<InventoryMovementHistoryService>();
         return services;
     }
 
@@ -91,6 +92,19 @@ public static class InventoryModule
             "/api/inventory/items/{itemId}/waste",
             "RecordInventoryWaste",
             InventoryMovementCommand.RecordWasteCommandKind);
+
+        endpoints.MapGet(
+                "/api/inventory/items/{itemId}/movements",
+                ReadMovementHistoryAsync)
+            .WithName("ReadInventoryMovementHistory")
+            .WithTags("Inventory")
+            .RequireAuthorization()
+            .Produces<InventoryMovementHistoryResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         endpoints.MapGet(
                 "/api/inventory/configuration/items",
@@ -507,6 +521,87 @@ public static class InventoryModule
             "Inventory operation forbidden",
             "The current Identity is not authorized to operate Inventory.",
             "inventory.operation.forbidden");
+    }
+
+    private static async Task<IResult> ReadMovementHistoryAsync(
+        string itemId,
+        [FromQuery] string? beforeRevision,
+        [FromQuery] string? limit,
+        InventoryMovementHistoryService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(itemId, out var inventoryItemId) ||
+            inventoryItemId == Guid.Empty)
+        {
+            return InvalidItemIdProblem();
+        }
+
+        if (beforeRevision is not null &&
+            (!long.TryParse(
+                beforeRevision,
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var parsedBeforeRevision) ||
+                parsedBeforeRevision <= 0))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid movement revision cursor",
+                "beforeRevision must be a positive integer.",
+                "inventory.movement_history.before_revision_invalid");
+        }
+
+        long? cursor = beforeRevision is null
+            ? null
+            : long.Parse(
+                beforeRevision,
+                System.Globalization.CultureInfo.InvariantCulture);
+        if (limit is not null &&
+            (!int.TryParse(
+                limit,
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var parsedLimit) ||
+                parsedLimit is < 1 or > 100))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid movement page limit",
+                "limit must be an integer between 1 and 100.",
+                "inventory.movement_history.limit_invalid");
+        }
+
+        var pageLimit = limit is null
+            ? 50
+            : int.Parse(limit, System.Globalization.CultureInfo.InvariantCulture);
+        var result = await service.ReadAsync(
+            inventoryItemId,
+            cursor,
+            pageLimit,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            InventoryMovementHistoryOutcome.Succeeded => Results.Ok(result.Response),
+            InventoryMovementHistoryOutcome.Unauthenticated => InvalidSessionProblem(),
+            InventoryMovementHistoryOutcome.Forbidden =>
+                InventoryOperationForbiddenProblem(),
+            InventoryMovementHistoryOutcome.ItemNotFound => Problem(
+                StatusCodes.Status404NotFound,
+                "Inventory Item not found",
+                "The requested Inventory Item does not exist.",
+                "inventory.item.not_found"),
+            InventoryMovementHistoryOutcome.ActorMissing => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Inventory Movement actor is inconsistent",
+                "A historical Inventory Movement references an unavailable Identity.",
+                "inventory.movement_history.actor_missing"),
+            InventoryMovementHistoryOutcome.StateInconsistent => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Inventory Movement History is inconsistent",
+                "A historical Inventory Movement cannot be represented safely.",
+                "inventory.movement_history.state_inconsistent"),
+            _ => throw new UnreachableException()
+        };
     }
 
     private static IResult MapReadResult<TResponse>(

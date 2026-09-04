@@ -29,6 +29,8 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
 
     internal string ConnectionString => postgres.GetConnectionString();
 
+    internal IServiceProvider Services => application!.Services;
+
     internal HttpClient CreateClient() => application!.CreateClient();
 
     public async ValueTask InitializeAsync()

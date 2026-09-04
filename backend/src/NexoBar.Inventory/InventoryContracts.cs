@@ -66,3 +66,28 @@ public sealed record InventoryMovementResponse(
     string ResultingRegisteredQuantity,
     long MovementRevision,
     DateTimeOffset OccurredAt);
+
+public sealed record InventoryMovementHistoryResponse(
+    Guid ItemId,
+    string OperationalName,
+    string OperationalUnit,
+    IReadOnlyList<InventoryMovementHistoryEntryResponse> Movements,
+    long? NextBeforeRevision);
+
+public sealed record InventoryMovementHistoryEntryResponse(
+    Guid MovementId,
+    long MovementRevision,
+    string Nature,
+    string Quantity,
+    string? SignedEffect,
+    string? PreviousRegisteredQuantity,
+    string ResultingRegisteredQuantity,
+    DateTimeOffset OccurredAt,
+    Guid ActorIdentityId,
+    string ActorOperationalName,
+    InventoryMovementReconciliationResponse? Reconciliation);
+
+public sealed record InventoryMovementReconciliationResponse(
+    string ObservedQuantity,
+    string? Difference,
+    bool EstablishedQuantity);

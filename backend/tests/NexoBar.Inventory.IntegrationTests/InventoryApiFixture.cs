@@ -301,6 +301,21 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         return await client.SendAsync(request, cancellationToken);
     }
 
+    internal Task<HttpResponseMessage> GetMovementHistoryAsync(
+        Guid itemId,
+        CancellationToken cancellationToken,
+        string? query = null) =>
+        GetMovementHistoryAsync(Client, itemId.ToString("D"), cancellationToken, query);
+
+    internal static Task<HttpResponseMessage> GetMovementHistoryAsync(
+        HttpClient client,
+        string itemId,
+        CancellationToken cancellationToken,
+        string? query = null) =>
+        client.GetAsync(
+            $"/api/inventory/items/{itemId}/movements{query}",
+            cancellationToken);
+
     internal async Task<(int Items, int Commands)> CountInventoryAsync(
         CancellationToken cancellationToken)
     {
@@ -432,6 +447,33 @@ public sealed class InventoryApiFixture : IAsyncLifetime
             cancellationToken);
     }
 
+    internal async Task ChangeIdentityOperationalNameAsync(
+        Guid identityId,
+        string operationalName,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        var identity = await dbContext.Identities.SingleAsync(
+            candidate => candidate.Id == identityId,
+            cancellationToken);
+        identity.ChangeOperationalName(operationalName);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    internal async Task CorruptMovementResultAsync(
+        Guid movementId,
+        decimal resultingQuantity,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE inventory.inventory_movements SET resulting_registered_quantity = {resultingQuantity} WHERE id = {movementId}",
+            cancellationToken);
+    }
+
     internal async Task SetCountCommandFailureAsync(
         bool enabled,
         CancellationToken cancellationToken) =>
@@ -510,6 +552,15 @@ public sealed class InventoryApiFixture : IAsyncLifetime
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IInventoryAuthorization>();
+                services.AddScoped(factory);
+            }));
+
+    internal WebApplicationFactory<Program> CreateApplicationWithIdentityLookup(
+        Func<IServiceProvider, IIdentityOperationalNameLookup> factory) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IIdentityOperationalNameLookup>();
                 services.AddScoped(factory);
             }));
 
