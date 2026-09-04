@@ -11,7 +11,7 @@
 - Monorepo Git con backend y frontend como unidades técnicas separadas.
 - Backend autoritativo: C# sobre .NET 10 LTS y ASP.NET Core 10. Frontend: React 19, TypeScript estricto y Vite 8.
 - El backend es un monolito modular y una unidad principal de despliegue. `NexoBar.Host` compone los módulos y es el composition root.
-- Los módulos superiores son `OrderOperations`, `Catalog`, `Inventory`, `IdentitiesAndCapabilities` y `OperationalConfiguration`. `Inventory` permanece presente como límite sin implementación funcional; `IdentitiesAndCapabilities` ya posee Estado, sesiones, administración y capacidades públicas de autorización materializadas.
+- Los módulos superiores son `OrderOperations`, `Catalog`, `Inventory`, `IdentitiesAndCapabilities` y `OperationalConfiguration`. Los cinco están materializados; `Inventory` posee su Estado, operaciones físicas, Historia y superficies web de configuración y operación, mientras `IdentitiesAndCapabilities` posee Estado, sesiones, administración y capacidades públicas de autorización.
 - `OperationalConfiguration` ya es un módulo persistente y funcional en el alcance de `PreparationResponsibility`; no tiene todavía un lifecycle completo.
 - `Preparation` y `Delivery` son fronteras internas de `OrderOperations`, no módulos top-level. Son dimensiones distintas: `Ready != Delivered`.
 - Cada módulo conserva la propiedad de su Estado y colabora mediante capacidades explícitas. No hay ciclos ni un `Shared`/`Common` genérico.
@@ -22,18 +22,21 @@
 Host
 ├─ OrderOperations
 ├─ Catalog
+├─ Inventory
 ├─ OperationalConfiguration
 └─ IdentitiesAndCapabilities
 
 OrderOperations ──→ Catalog
 OrderOperations ──→ IdentitiesAndCapabilities
 Catalog ──────────→ OperationalConfiguration
+Inventory ────────→ IdentitiesAndCapabilities
 IdentitiesAndCapabilities ──→ OperationalConfiguration
 ```
 
 - `Catalog` consume una capacidad pública estrecha de `OperationalConfiguration` para validar la existencia de una `PreparationResponsibility`; no accede a su `DbContext`, schema ni tablas.
 - `OrderOperations` depende de `Catalog` y de capacidades públicas estrechas de `IdentitiesAndCapabilities`; no depende directamente de `OperationalConfiguration` ni lo consulta durante una Confirmación.
 - `IdentitiesAndCapabilities` consume una capacidad pública estrecha de `OperationalConfiguration` para resolver o validar destinos de Preparation.
+- `Inventory` consume capacidades públicas estrechas de `IdentitiesAndCapabilities` para estabilizar autorización y resolver el nombre operacional vigente de los actores de Movimientos; no accede a su `DbContext`, schema ni tablas.
 - No existen las dependencias inversas `OperationalConfiguration → IdentitiesAndCapabilities`, `Catalog → OrderOperations` ni `IdentitiesAndCapabilities → OrderOperations`.
 - No existen foreign keys ni accesos a `DbContext`, schema o tablas ajenos cross-module. El Host compone las capacidades y sus implementaciones.
 
@@ -43,6 +46,7 @@ IdentitiesAndCapabilities ──→ OperationalConfiguration
 - Cada módulo que persiste Estado posee su propio `DbContext`, schema e historial de migraciones:
   - `CatalogDbContext` mapea `catalog`;
   - `OrderOperationsDbContext` mapea `order_operations`;
+  - `InventoryDbContext` mapea `inventory`;
   - `OperationalConfigurationDbContext` mapea `operational_configuration`;
   - `IdentitiesAndCapabilitiesDbContext` mapea `identities_and_capabilities`.
 - Las migraciones son explícitas, versionadas y revisables. El Host productivo no ejecuta auto-migrate durante el startup.
@@ -54,7 +58,7 @@ IdentitiesAndCapabilities ──→ OperationalConfiguration
 
 ### Invariante de configuración
 
-Las connection strings modulares de `Catalog`, `OrderOperations`, `OperationalConfiguration` e `IdentitiesAndCapabilities` deben apuntar a la misma instancia y base PostgreSQL. Las colaboraciones transaccionales entre módulos dependen de ello. Actualmente es una invariante de configuración documentada, no una validación automatizada.
+Las connection strings modulares de `Catalog`, `OrderOperations`, `Inventory`, `OperationalConfiguration` e `IdentitiesAndCapabilities` deben apuntar a la misma instancia y base PostgreSQL. Las colaboraciones transaccionales entre módulos dependen de ello. Actualmente es una invariante de configuración documentada, no una validación automatizada.
 
 ## 4. OperationalConfiguration
 
@@ -202,7 +206,46 @@ El comando recibe `expectedCurrentPreparationResponsibilityId` y realiza un `UPD
 
 Price Change continúa siendo otro comando explícito de `Catalog`, no un `PATCH` genérico: recibe `expectedCurrentPrice`, ejecuta un `UPDATE` condicionado, responde `409 Conflict` ante una expectativa desactualizada, mantiene idempotencia durable local y no crea Price History ni reescribe `appliedPrice` históricos.
 
-## 8. Colaboración `OrderOperations -> Catalog` y concurrencia
+## 8. Inventory mínimo operativo
+
+`Inventory` posee `InventoryDbContext`, el schema `inventory` y migration history propia sobre la PostgreSQL primaria compartida. `InventoryItem` es Estado propio del módulo y contiene `Id` UUID v7, nombre operacional con unicidad case-insensitive, unidad operacional, `CurrentRegisteredQuantity` nullable y `MovementRevision` monotónica. Las cantidades autoritativas se representan como decimal string en HTTP y `numeric(28,12)` en PostgreSQL.
+
+Un Item recién creado tiene cantidad no inicializada: `CurrentRegisteredQuantity = null` y `MovementRevision = 0`. `null` significa que todavía no se estableció una existencia; no equivale a cero. La creación requiere `InventoryConfiguration`, antiforgery e `Idempotency-Key` UUID v4. Las lecturas también separan capacidades honestamente: configuración requiere `InventoryConfiguration`, mientras Estado operacional, Conteo, Reconciliación, Movimientos e Historia requieren `InventoryOperation`. Una Identity con una sola responsabilidad no obtiene implícitamente la otra.
+
+Los contratos materializados son:
+
+```text
+POST /api/inventory/items
+GET  /api/inventory/configuration/items
+GET  /api/inventory/operations/items
+POST /api/inventory/items/{itemId}/counts
+POST /api/inventory/items/{itemId}/reconcile
+POST /api/inventory/items/{itemId}/entries
+POST /api/inventory/items/{itemId}/manual-exits
+POST /api/inventory/items/{itemId}/waste
+GET  /api/inventory/items/{itemId}/movements
+```
+
+### Conteo, Reconciliación y decisiones aplicadas
+
+`CountObservation` registra el hecho observado sin modificar el saldo. Conserva Item, cantidad física no negativa, unidad operacional, `ObservedMovementRevision`, actor y timestamp UTC. La Reconciliación consume una observación del mismo Item y la invalida si la unidad cambió o si `MovementRevision` ya no coincide: cualquier Reconciliation con cambio, Entry, ManualExit o Waste intermedia avanza la revisión y hace obsoleto el Conteo.
+
+- `AD-INV-01` está aplicada: la Reconciliación inicial establece la cantidad desde `null`, crea un Movimiento, conserva `PreviousRegisteredQuantity = null` y no inventa una diferencia contra cero.
+- `AD-INV-02` está aplicada: una Reconciliación ordinaria deriva la diferencia contra el saldo registrado; si no hay discrepancia devuelve `no_discrepancy`, no crea Movimiento y no incrementa `MovementRevision`.
+
+La Reconciliación que sí cambia Estado incrementa `MovementRevision` y confirma atómicamente Item, `InventoryMovement` y comando durable. El lock `FOR UPDATE` del Item serializa Reconciliaciones y Movimientos del mismo Item; Conteo usa `FOR SHARE` para capturar coherentemente revisión y unidad. Los locks de idempotencia, la autorización estabilizada y la transacción `READ COMMITTED` preservan replay, concurrencia same-Item y rollback total ante una falla de persistencia.
+
+### Movimientos físicos, Historia e idempotencia
+
+`Entry` suma una cantidad positiva. `ManualExit` y `Waste` restan una cantidad positiva y pueden atravesar cero: el saldo negativo se conserva como inconsistencia operacional visible, no se recorta ni se rechaza. Los tres requieren que la cantidad ya esté establecida, incrementan la revisión exactamente una vez y crean `InventoryMovement` con naturaleza, cantidad, saldo previo y resultante, actor y timestamp. `Correction` figura en la forma persistente reservada, pero no tiene comando, API ni comportamiento implementado.
+
+Create Item, Count, Reconciliation, Entry, ManualExit y Waste mantienen idempotencia durable local. La misma key UUID v4 con el mismo actor e intención reproduce el resultado original sin duplicar Estado ni Historia; una reutilización incompatible responde conflicto. Un replay confirmado todavía requiere Session utilizable e Identity activa, pero no reinterpreta el efecto por una revocación posterior de la capability.
+
+La Historia autorizada de Movimientos se consulta en orden descendente por `MovementRevision`, con cursor exclusivo `beforeRevision`, página por defecto de 50 y límite entre 1 y 100. Incluye el efecto con signo, saldos previo/resultante y detalle de Reconciliación. Persiste `ActorIdentityId` y resuelve al leer el nombre operacional vigente mediante la capacidad pública de Identities; no guarda `SessionId` ni un snapshot de nombre. El Estado vigente no se reconstruye ordinariamente desde esta Historia.
+
+No existe integración automática con `Catalog`, Product, ventas u `OrderOperations`: `Product != InventoryItem`. Order, Confirmation, Preparation y Delivery no crean Movimientos de Inventory automáticamente.
+
+## 9. Colaboración `OrderOperations -> Catalog` y concurrencia
 
 - `IOrderConfirmationCatalog` es la capacidad pública mínima de Confirmación. `Catalog` conserva la propiedad de su Estado; `OrderOperations` no accede a `CatalogDbContext` ni a tablas `catalog.*`.
 - Su snapshot de `Product` incluye `ProductId`, `Price`, `IsActive`, `IsAvailable`, `RequiresPreparation` y `PreparationResponsibilityId`.
@@ -222,7 +265,7 @@ Una Confirmación deduplica los `ProductId`, estabiliza una sola vez cada `Produ
 
 Si el Product estabilizado tiene `RequiresPreparation = false` y una línea contiene `instruction != null`, la Confirmación responde `409 Conflict` con `order_operations.confirmation.instruction_requires_preparation` y no produce efectos. La instrucción no se descarta, no fuerza Preparation y no crea Work por sí sola. Si una Confirmación estabiliza primero un Product preparado y luego espera una configuración concurrente `true → false`, puede completar y su Work conserva el snapshot anterior; si `false` ya estaba aplicado al estabilizar, la Confirmación falla con ese `409`.
 
-## 9. Confirmaciones, Incorporations y nacimiento de Work
+## 10. Confirmaciones, Incorporations y nacimiento de Work
 
 La primera Confirmación crea el `Order` y su primera `Incorporation`; cada Confirmación posterior crea una nueva `Incorporation` del mismo `Order`. Ambas aceptan Products preparados.
 
@@ -303,7 +346,7 @@ advisory idempotency
 - No crea nuevos Work y no requiere `workId` en las tablas de comandos.
 - El nacimiento de Work no introduce una idempotencia adicional: queda cubierto por la idempotencia y transacción de la Confirmación que lo origina.
 
-## 10. PreparationWork, progreso y consulta autorizada
+## 11. PreparationWork, progreso y consulta autorizada
 
 `PreparationWork` es Estado operacional vigente poseído por `OrderOperations` y contiene:
 
@@ -432,7 +475,7 @@ No hay locks de Work de larga duración, distributed lock, lock global de Prepar
 
 El `404` no revela el destination ni permite distinguir pérdida de habilitación de Work inexistente.
 
-## 11. Delivery mínima operativa
+## 12. Delivery mínima operativa
 
 Delivery pertenece a `OrderOperations`; no es un módulo top-level. Delivery y Preparation son dimensiones distintas. Entregar no decrementa ni modifica `PendingQuantity`, `InPreparationQuantity` o `ReadyQuantity`, y `Ready != Delivered`. Delivery tampoco implica Liquidation, Payment ni Closure.
 
@@ -577,7 +620,7 @@ Un replay confirmado todavía exige Session utilizable e Identity activa, pero n
 
 No hay clipping ni auto-repair.
 
-## 12. Estado e Historia
+## 13. Estado e Historia
 
 - `ConfirmationHistory` explica la Confirmación que originó el contenido y conserva `confirmedContext` histórico.
 - `ConfirmationHistory` y el `IncorporationContent` persistido explican conjuntamente la existencia de una instruction confirmada; no existe `InstructionAdded History`.
@@ -591,7 +634,7 @@ No hay clipping ni auto-repair.
 - Tampoco está materializado Change Context.
 - Esta separación no constituye Event Sourcing.
 
-## 13. Idempotencia y resultado incierto
+## 14. Idempotencia y resultado incierto
 
 - Los comandos materializados reciben un `Idempotency-Key` UUID v4 y mantienen persistencia durable por comando.
 - Cada comando/módulo toma un advisory transaction lock local. Efecto e idempotencia se confirman dentro de la misma transacción.
@@ -609,13 +652,13 @@ Los comandos humanos de Preparation usan un namespace durable local de `OrderOpe
 - el replay exige Session válida e Identity activa, pero no vuelve a exigir la capability vigente cuando el efecto ya fue confirmado;
 - el replay no duplica Estado ni Historia y devuelve el resultado original persistido, no el Estado posterior actual del Work.
 
-Delivery usa su propio namespace y registro durable `delivery_commands`, con `DeliverQuantity` como único kind actual. Conserva actor, target `(IncorporationId, ContentOrdinal)`, quantity y resultado original; aplica las semánticas de replay y reautorización descritas en la sección 11. No reutiliza `preparation_commands`.
+Delivery usa su propio namespace y registro durable `delivery_commands`, con `DeliverQuantity` como único kind actual. Conserva actor, target `(IncorporationId, ContentOrdinal)`, quantity y resultado original; aplica las semánticas de replay y reautorización descritas en la sección 12. No reutiliza `preparation_commands`.
 
 Los contenidos durables de los comandos First y Subsequent tienen PK `(idempotency_key, line_ordinal)` y persisten `product_id`, `quantity` e `instruction` canonical. `lineOrdinal` es técnico y canonical: se deriva después de ordenar las líneas semánticas y no depende del orden HTTP.
 
 El matching de intención incluye `ProductId`, `Quantity` y canonical instruction, además del resto de la intención ya existente. La misma key con instruction diferente produce conflicto; whitespace o line endings equivalentes y distinto orden del array producen replay. El replay no reconsulta `Catalog`, no recrea Work y reproduce el estado persistido.
 
-## 14. Contratos técnicos materializados
+## 15. Contratos técnicos materializados
 
 - HTTP ordinario usa HTTPS y JSON; ASP.NET Core Minimal APIs implementa endpoints con handlers delgados.
 - Problem Details es la estructura común de errores e incluye códigos estables. OpenAPI describe el contrato técnico implementado, no sustituye su significado normativo.
@@ -626,7 +669,7 @@ El matching de intención incluye `ProductId`, `Quantity` y canonical instructio
 
 Los items de request de First y Subsequent contienen `productId`, `quantity` e `instruction` optional/nullable. Los items de la respuesta confirmada contienen `productId`, `quantity`, `appliedPrice` e `instruction`; el lookup de Order devuelve también `instruction` nullable por item. La consulta autorizada de Preparation Work devuelve `productOperationalName` vigente e `instruction` nullable, y obtiene `productId` e instruction desde Content. Delivery expone `contentOrdinal` únicamente junto con `incorporationId` como identidad técnica del target. Ningún contrato público expone `draftLineId`.
 
-## 15. Frontend materializado
+## 16. Frontend materializado
 
 - `App` coordina `CatalogPanel`, `OrderWorkflow` y `OrderLookup`; las responsabilidades de catálogo/Price Change, Pedido activo/Composición y consulta están separadas. Un `Order` consultado puede retomarse para una Composición posterior.
 - Los recursos se refrescan desde la autoridad: Price Change recarga `Catalog` y las Confirmaciones recargan el `Order`. El cliente no compone manualmente la Historia.
@@ -658,9 +701,18 @@ Los items de request de First y Subsequent contienen `productId`, `quantity` e `
 - Ante network, timeout o `5xx` conservadoramente incierto no modifica quantities: conserva target, quantity y key, marca `uncertain` y el retry usa exactamente el mismo endpoint, body y key. No ofrece descarte ordinario que habilite una Delivery incompatible.
 - Un `401` vuelve a `unauthenticated`, limpia antiforgery e intents y retorna al login. Un `403` conserva la Identity autenticada y muestra la falla de autorización. Un `404` del GET informa Pedido no encontrado; un `404` del POST rechaza el intent conocido y refresca. Un `400` es un error conocido, no outcome incierto.
 
+### Inventory frontend
+
+- `InventoryPanel` presenta superficies independientes de **Configuración de Inventario** y **Estado actual de Inventario**. Cada una carga su read model y expone por separado su `403`; una Identity de configuración puede crear/listar Items sin aparentar autoridad operacional y una Identity de operación puede consultar/actuar sin aparentar autoridad de configuración.
+- La vista de configuración crea Items con nombre y unidad operacional. La vista operacional distingue “Existencia no establecida” (`null`) de una existencia establecida en `0`, muestra cantidad y unidad autoritativas y emite una advertencia visible de inconsistencia cuando el saldo es negativo.
+- Cada Item operacional permite registrar un Conteo y luego reconciliar exactamente esa observación. También expone Entry, ManualExit y Waste sólo una vez establecida la cantidad. No calcula aritmética optimista: tras una mutación usa el resultado autoritativo y refresca el listado.
+- Cada intención nueva congela kind, Item, body e `Idempotency-Key`. Ante network, timeout o `5xx` incierto conserva esos mismos datos, bloquea otra acción sobre el Item y ofrece reintentar la misma operación con la misma key. Un conflicto conocido resuelve la intención y refresca; no se presenta como éxito.
+- **Movimientos** muestra la Historia paginada, separa Reconciliation de Entry, ManualExit y Waste, muestra actor con su nombre operacional vigente, timestamp, efecto y saldos, y distingue el establecimiento inicial sin diferencia ficticia. Puede actualizarse manualmente y se refresca automáticamente después de una mutación autoritativa del Item abierto.
+- No hay SSE ni actualización activa. Los intents inciertos viven sólo en memoria y una recarga puede perder la key; no existe cola offline ni retry automático en background.
+
 - Todavía no existe `OperationalConfigurationPanel` productivo ni frontend administrativo completo.
 
-## 16. Testing y verificación
+## 17. Testing y verificación
 
 Existen tres capas:
 
@@ -670,11 +722,11 @@ Existen tres capas:
 
 `scripts/verify.cmd` y `scripts/verify.sh` ejecutan la verificación ordinaria. Esta verificación requiere Docker porque las suites backend usan Testcontainers. La opción `--e2e` añade PostgreSQL efímero aislado, backend, Vite y Chromium; no usa la base persistente de `compose.yaml`.
 
-El último estado verificado después de Slice 4 es backend 374/374, frontend 121/121 y Playwright 3/3. `HasPendingModelChanges` es false para los cuatro `DbContext` (4/4). Tanto `scripts\verify.cmd` como `scripts\verify.cmd --e2e` pasan.
+El estado verificado del baseline implementado al cierre del núcleo operativo mínimo de Inventory es backend 561/561, frontend 170/170 y Playwright 4/4. `HasPendingModelChanges` es false para los cinco `DbContext` (5/5). Tanto `scripts\verify.cmd` como `scripts\verify.cmd --e2e` pasan en ese baseline.
 
-El baseline integrado mantiene tres escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. El escenario operacional crea Confirmation con Contents prepared y direct, ejecuta Preparation parcial y Ready con actores autorizados, hace logout, inicia sesión con una Identity que posee `OrderOperationsAndBasicClosure` pero no capability de Preparation, y realiza Delivery parcial tanto del Prepared Content como del Direct Content. Esto demuestra autenticación real, Ready → Delivery sin decrementar Ready, operación sin ownership y con actor distinto, Delivery sin capability de Preparation, disponibilidad inmediata del Direct Content, cantidades parciales e integración frontend/backend. El fixture no implica bootstrap productivo. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
+El baseline integrado mantiene cuatro escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. El escenario operacional de Preparation/Delivery conserva sus actores y cantidades parciales. El escenario de Inventory inicia sesión con una Identity que sólo posee `InventoryConfiguration`, crea un Item y comprueba que no puede operar; luego usa otra Identity que sólo posee `InventoryOperation`, establece la cantidad mediante Count/Reconciliation, registra Entry, ManualExit atravesando cero y Waste, comprueba el saldo vigente negativo y consulta una Historia que contiene los cuatro Movimientos. Esto demuestra capacidades separadas, `null != 0`, balance autoritativo e integración real navegador/backend/PostgreSQL. El fixture no implica bootstrap productivo. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
 
-`NexoBar.E2E.DatabaseSetup` aplica explícitamente y verifica los cuatro `DbContext`: `OperationalConfigurationDbContext`, `CatalogDbContext`, `OrderOperationsDbContext` e `IdentitiesAndCapabilitiesDbContext`. `HasPendingModelChanges` debe ser `false` para los cuatro. Chromium se instala manualmente desde `frontend`:
+`NexoBar.E2E.DatabaseSetup` aplica explícitamente y verifica los cinco `DbContext`: `OperationalConfigurationDbContext`, `CatalogDbContext`, `InventoryDbContext`, `OrderOperationsDbContext` e `IdentitiesAndCapabilitiesDbContext`. `HasPendingModelChanges` debe ser `false` para los cinco. Chromium se instala manualmente desde `frontend`:
 
 ```text
 npm exec playwright install chromium
@@ -689,7 +741,7 @@ scripts\verify.cmd --e2e
 ./scripts/verify.sh --e2e
 ```
 
-## 17. Tooling, Development y migraciones
+## 18. Tooling, Development y migraciones
 
 - .NET SDK `10.0.400`, con roll-forward deshabilitado.
 - Node.js `22.13.1` y npm `10.9.2`.
@@ -715,13 +767,19 @@ Las migraciones vigentes de Slice 4 son:
 - `CapturePreparationRequirementAtConfirmation`, que agrega el snapshot histórico: hace backfill `true` cuando existía el Work exacto y `false` cuando no existía, y luego deja la columna `NOT NULL` sin default persistente;
 - `AddDeliveryProgress`, que materializa `delivery_history` y `delivery_commands`.
 
+Las migraciones vigentes de Inventory en Slice 5 son:
+
+- `InitialInventory`, que crea Items y comandos durables de creación;
+- `AddInventoryCountReconciliation`, que agrega CountObservation, Reconciliation, Historia y comandos durables;
+- `AddEverydayInventoryMovements`, que materializa Entry, ManualExit y Waste sobre el mismo Estado, Historia y namespace durable de Movimientos.
+
 No se modificaron migraciones durante esta consolidación documental.
 
-## 18. `InternalsVisibleTo`
+## 19. `InternalsVisibleTo`
 
 `InternalsVisibleTo` existe únicamente para consumidores técnicos/test específicos: las suites de integración y `NexoBar.E2E.DatabaseSetup`. No es un mecanismo normal de colaboración productiva entre módulos.
 
-## 19. Deuda consciente y fronteras no materializadas
+## 20. Deuda consciente y fronteras no materializadas
 
 Deuda técnica conocida:
 
@@ -730,6 +788,8 @@ Deuda técnica conocida:
 - el tooling general de migraciones para Development sigue pendiente.
 - un intent incierto de Preparation vive actualmente solo en memoria: reload o unmount puede perder su key. No hay persistencia en `localStorage` o `sessionStorage`, offline queue ni automatic background retry. El backend conserva idempotencia durable, pero el frontend no garantiza continuidad cross-reload del intent. Es deuda técnica/UX consciente, no una norma.
 - los intents inciertos de Delivery también viven solo en memoria: reload o unmount puede perder target, quantity e idempotency key. No existen `localStorage`, `sessionStorage`, IndexedDB, offline queue ni background retry. El backend conserva idempotencia durable, pero el frontend no garantiza continuidad cross-reload. Esta deuda es especialmente relevante porque Delivery representa un hecho físico; se registra sin convertirla aquí en requisito normativo ni resolverla.
+- los intents inciertos de Inventory también viven sólo en memoria: reload o unmount puede perder kind, Item, body e idempotency key. El backend conserva idempotencia durable, pero el frontend no garantiza continuidad cross-reload.
+- una auditoría realizada durante I3B detectó seis nombres de identificadores EF preexistentes de más de 63 bytes en `OrderOperations`. Son ajenos a los cambios de Inventory, no se corrigen en esta unidad documental y quedan señalados para una futura revisión de higiene de schema/migraciones.
 
 Fronteras todavía no materializadas, sin que esta enumeración diseñe su solución:
 
@@ -757,6 +817,12 @@ Fronteras todavía no materializadas, sin que esta enumeración diseñe su soluc
 - profundidad de Historia administrativa según los OPEN-TRA aplicables;
 - Correcciones de Content o instruction;
 - edición de una instruction ya confirmada;
+- Movement Correction de Inventory; la forma final de su relación con Movimientos previos no está decidida aquí;
+- `retire/reactivate/delete` de InventoryItem;
+- Unit Correction de InventoryItem y sus reglas antes/después de existir Historia;
+- actualización activa de Inventory mediante SSE;
+- persistencia cross-reload de intents inciertos de Inventory;
+- política final de reutilización de nombres antes de materializar lifecycle de InventoryItem;
 - SSE.
 
 El checkpoint de seguridad requerido para acciones humanas de Preparation y Delivery está cerrado, pero eso no significa que la seguridad global esté cerrada ni que todos los endpoints backend estén protegidos. `Quantity` en Content no implica identidad física individual. La instruction confirmada no es editable y SSE permanece pendiente.
@@ -773,7 +839,7 @@ Una futura Correction de Preparation tampoco puede crear silenciosamente `Delive
 
 Tampoco se persiste `Order.IsDelivered` ni se afirma un Status global implementado. La completitud puede derivarse técnicamente del Estado vigente, pero futuras Corrections afectan el concepto de cantidad requerida; no se eleva esa derivación a una decisión adicional.
 
-## 20. Estado de Slice 3
+## 21. Estado de Slice 3
 
 El checkpoint de Identity, autenticación y capabilities requerido antes del progreso humano de Preparation ya está materializado:
 
@@ -790,9 +856,9 @@ Los increments posteriores materializados son:
 - `25166d9 feat: mark preparation quantities ready`;
 - `c6072ce feat: add preparation progress frontend`.
 
-La Preparation mínima operativa ordinaria está materializada para nacimiento de Work, lectura segura, Start parcial, Ready parcial, operación multi-actor, Historia, idempotencia, acciones frontend y recorrido E2E. **Preparation mínima operativa del slice cerrada.** Esto no equivale a Preparation completa del MVP ni resuelve Correction, excepciones, SSE, consulta de Historia u otros pendientes de la sección 19.
+La Preparation mínima operativa ordinaria está materializada para nacimiento de Work, lectura segura, Start parcial, Ready parcial, operación multi-actor, Historia, idempotencia, acciones frontend y recorrido E2E. **Preparation mínima operativa del slice cerrada.** Esto no equivale a Preparation completa del MVP ni resuelve Correction, excepciones, SSE, consulta de Historia u otros pendientes de la sección 20.
 
-## 21. Estado de Slice 4
+## 22. Estado de Slice 4
 
 Slice 4 — Delivery mínima operativa materializa:
 
@@ -806,9 +872,26 @@ Slice 4 — Delivery mínima operativa materializa:
 - frontend Delivery con intents por Content y tratamiento de incertidumbre;
 - recorrido E2E integrado para Prepared y Direct Content.
 
-**Delivery mínima operativa del Slice 4 cerrada.** Esto no equivale a Delivery completa del MVP ni materializa Correction, reversals, Liquidation, Payment, Closure, History UI, SSE o las demás fronteras de la sección 19.
+**Delivery mínima operativa del Slice 4 cerrada.** Esto no equivale a Delivery completa del MVP ni materializa Correction, reversals, Liquidation, Payment, Closure, History UI, SSE o las demás fronteras de la sección 20.
 
-## 22. Protocolo de trabajo
+## 23. Estado de Slice 5 — Inventory
+
+Los increments materializados de Inventory son:
+
+- `1987975 feat: establish inventory item foundation`;
+- `3f03a15 feat: add inventory count reconciliation`;
+- `337968a feat: add everyday inventory movements`;
+- `1e58d48 feat: add inventory movement history`;
+- `b0ad822 feat: add inventory frontend foundation`;
+- `9a5de08 feat: add inventory physical operations frontend`.
+
+El alcance consolidado incluye módulo, DbContext y schema propios; InventoryItem con cantidad inicialmente no establecida; Create Item; autorización separada de configuración/operación; CountObservation y Reconciliation inicial/ordinaria conforme a `AD-INV-01` y `AD-INV-02`; invalidación del Conteo por `MovementRevision`; Entry, ManualExit y Waste con saldos negativos visibles; Historia paginada autorizada con actor; idempotencia durable; concurrencia same-Item y atomicidad de rollback. El frontend materializa vistas separadas de configuración y operación, `null != 0`, advertencia de saldo negativo, flujo Count → Reconcile, operaciones físicas, Historia/refresco y retry incierto con la misma key sin aritmética optimista. El E2E cubre ese recorrido con Identities de capacidades distintas.
+
+**Inventory minimum operational core of Slice 5 is closed.** Esto no afirma que Inventory MVP esté completo. Permanecen diferidos Movement Correction, `retire/reactivate/delete`, Unit Correction y sus reglas antes/después de Historia, SSE, persistencia de intención incierta entre recargas y la política final de reutilización de nombres antes del lifecycle. Tampoco se decide aquí que un Item retirado guarde cantidad `null`, la semántica final de reutilización de nombre ni la forma relacional de Correction.
+
+Inventory permanece independiente de ventas y Catalog: `Product != InventoryItem`; Order, Confirmation, Preparation y Delivery no generan Movimientos de Inventory automáticamente.
+
+## 24. Protocolo de trabajo
 
 - `AGENTS.md` contiene el contexto operacional persistente para Codex. Ante una decisión no resuelta o una contradicción normativa se detiene la parte afectada y se reporta.
 - Los cambios permanecen limitados al objetivo de la tarea y se verifican en proporción al riesgo. No se agregan dependencias, alcance o refactors adyacentes sin autorización.
