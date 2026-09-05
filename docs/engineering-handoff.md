@@ -269,8 +269,16 @@ Si el Product estabilizado tiene `RequiresPreparation = false` y una línea cont
 
 La primera Confirmación crea el `Order` y su primera `Incorporation`; cada Confirmación posterior crea una nueva `Incorporation` del mismo `Order`. Ambas aceptan Products preparados.
 
-- La mutación sobre un `Order` existente expresa la intención de una nueva Confirmación. La `operationalReference` es opaca; el request contiene solo items y no modifica el `Context` del `Order`.
+- La mutación sobre un `Order` existente expresa la intención de una nueva Confirmación. La `operationalReference` es opaca; el request contiene `pendingCompositionId` e items y no modifica el `Context` del `Order`.
 - Cada Confirmación posterior exitosa crea una `Incorporation` con ordinal sucesivo, una nueva `ConfirmationHistory` y contenido con el `appliedPrice` vigente estabilizado para esa Confirmación.
+
+### PendingComposition autoritativa y seguridad de Confirmación
+
+- La primera Composición permanece local antes de existir el Order. `PendingComposition` existe únicamente para Orders existentes y persiste un marcador con Id, OrderId, CreatedAt y CreatedByIdentityId; no persiste líneas de borrador.
+- Hay como máximo un marcador por Order, respaldado por índice unique. Start y Discard son intenciones explícitas, autorizadas e idempotentes; no hay TTL, expiración ni descarte automático al recargar, salir o cambiar de sesión.
+- La Confirmación posterior exige el `pendingCompositionId` exacto vigente y lo consume atómicamente junto con Incorporation, Content, Work cuando corresponde, DeliveryState, History y resultado durable. Un marcador ausente o reemplazado produce conflicto; no se consume otro marcador por aproximación.
+- First y Subsequent Confirmation requieren autenticación, Session válida, Identity activa y antiforgery. Una intención nueva exige `OrderOperationsAndBasicClosure`, estabilizada transaccionalmente. El actor procede de la Identity autenticada y se atribuye tanto al comando como a `ConfirmationHistory`.
+- Las columnas legacy `actor_identity_id` de comandos de Confirmación e Historia permanecen nullable para preservar la verdad histórica: no se atribuyen actores ficticios a registros anteriores. Los nuevos comandos sí registran actor; el matching de replay lo incluye. El replay exige sesión válida e Identity activa, pero no reexige la responsabilidad para un efecto ya confirmado.
 
 ### IncorporationContent, snapshot histórico y líneas homogéneas
 
@@ -322,15 +330,18 @@ El lock ordering y la escritura transaccional materializados son:
 ```text
 First Confirmation
 advisory idempotency
+→ Session + Identity / replay / capability vigente para intención nueva
 → Products FOR SHARE
 → Order / Incorporation / Content / Work condicional / DeliveryState / History / command
 → commit
 
 Subsequent Confirmation
 advisory idempotency
+→ Session + Identity / replay / capability vigente para intención nueva
 → Order FOR UPDATE
+→ validación de Freeze y marcador exacto
 → Products FOR SHARE
-→ Incorporation / Content / Work condicional / DeliveryState / History / command
+→ Incorporation / Content / Work condicional / DeliveryState / History / command / consumo del marcador
 → commit
 ```
 
@@ -454,6 +465,7 @@ BEGIN READ COMMITTED
 → estabilización de Session + Identity
 → replay/conflicto de Preparation command
 → Responsibility.Preparation FOR SHARE
+→ Order FOR UPDATE
 → Work FOR UPDATE
 → destination obtenido del Work
 → exact PreparationEnablement FOR SHARE
@@ -574,6 +586,7 @@ BEGIN READ COMMITTED
 → estabilización de Session + Identity
 → replay/conflicto de Delivery command
 → OrderOperationsAndBasicClosure FOR SHARE
+→ Order FOR UPDATE / validación de Freeze
 → IncorporationContent FOR SHARE
 → PreparationWork FOR UPDATE, si Prepared
 → DeliveryState FOR UPDATE
@@ -620,6 +633,21 @@ Un replay confirmado todavía exige Session utilizable e Identity activa, pero n
 
 No hay clipping ni auto-repair.
 
+### Functional Amount, Liquidation, Freeze y Closure — Slice 6
+
+`OrderEconomicStateReader` deriva el Importe funcional del Estado vigente: suma de Delivery efectiva (`DeliveredQuantity`) × `AppliedPrice` histórico de cada Content. Usa aritmética `decimal` exacta y comprobada, con representación HTTP decimal string; no usa el precio actual de Catalog ni replay de History. Al liquidar se persiste un snapshot del importe completo.
+
+La elegibilidad de Liquidation exige ausencia de PendingComposition, cumplimiento resuelto y Estado consistente, sin Liquidation previa. El read de Order expone `functionalAmount`, `isLiquidationEligible` y `liquidationBlockers`: `pending_composition`, `unresolved_fulfillment`, `state_inconsistent` y `already_liquidated`. Actualmente cumplimiento resuelto exige que cada Content esté completamente entregado; no anticipa reglas de futuras Corrections o Cancellation.
+
+- `LiquidateSimple` registra el importe completo y un único medio declarado de texto libre, canonicalizado con trim exterior y longitud de 1 a 200 caracteres. No existe catálogo de medios ni integración de cobro.
+- `RecordExternalCollection` registra el modo `ExternalCollection`, sin medio declarado. Ambos modos usan el importe calculado por el backend; el cliente no decide el importe. No hay pago parcial ni mixto.
+- Liquidation confirma atómicamente State, `LiquidationHistory` e idempotencia durable, con actor y `occurredAt` UTC. Las intenciones nuevas requieren Session válida, Identity activa, `OrderOperationsAndBasicClosure` y antiforgery. Replay devuelve el resultado original sin duplicar efecto ni History.
+- Freeze es consecuencia de Liquidation, derivado de su existencia; no hay comando Freeze. Bloquea nuevas mutaciones ordinarias actuales del mismo Order: Start/Discard de PendingComposition, Confirmación posterior, Start/Ready de Preparation y Delivery. Closure permanece como intención terminal explícita permitida después de Liquidation.
+- La coordinación del mismo Order usa `Order FOR UPDATE` antes de los locks de Content/Work/DeliveryState cuando corresponden. PendingComposition, Confirmación posterior, progreso, Liquidation y Closure participan de esa coordinación; así Liquidation evalúa un Estado estabilizado. El replay durable de efectos previos conserva su resultado original incluso después de Freeze o Closure.
+- Closure es explícito, separado de Liquidation y terminal. Requiere Liquidation previa, ausencia de Closure y Estado consistente; no hay reapertura ordinaria. Confirma State, `ClosureHistory` y resultado idempotente atómicamente, con actor y `closedAt`, bajo autenticación, capacidad y antiforgery. El read expone `isClosed`, `closedAt` e `isClosureEligible`. La consulta exacta por referencia sigue disponible después del Cierre y conserva las Incorporations.
+
+Liquidation `occurredAt` está persistido y disponible en el resultado del comando y en History, pero el read actual de Order no lo expone después de reload. El frontend no lo fabrica. Esto es una limitación de lectura/presentación pendiente, no ausencia del hecho histórico.
+
 ## 13. Estado e Historia
 
 - `ConfirmationHistory` explica la Confirmación que originó el contenido y conserva `confirmedContext` histórico.
@@ -641,7 +669,7 @@ No hay clipping ni auto-repair.
 - Misma key y misma intención produce replay; misma key e intención incompatible produce conflicto.
 - Ante resultado incierto se reintenta con la misma key. No existe blind retry para mutaciones.
 - `Catalog`, `OperationalConfiguration`, Primera Confirmación y Confirmación posterior tienen infraestructura y canonicalización propias; no deben uniformarse sin una decisión explícita.
-- En una Confirmación posterior, la intención se define por `Order` e items canonicalizados; el orden del array no la altera.
+- En una Confirmación posterior, el matching incluye actor, `Order`, marcador exacto `pendingCompositionId` e items canonicalizados; el orden del array no lo altera.
 - La duplicación local actual es deliberada. No existe infraestructura `Shared` de idempotencia.
 
 Los comandos humanos de Preparation usan un namespace durable local de `OrderOperations`. La intención persistida contiene `IdempotencyKey` UUID v4, `ActorIdentityId`, `CommandKind`, `WorkId`, `Quantity` y un resultado estable. Los kinds actuales son `StartPreparationQuantity` y `MarkPreparationQuantityReady`.
@@ -669,14 +697,25 @@ El matching de intención incluye `ProductId`, `Quantity` y canonical instructio
 
 Los items de request de First y Subsequent contienen `productId`, `quantity` e `instruction` optional/nullable. Los items de la respuesta confirmada contienen `productId`, `quantity`, `appliedPrice` e `instruction`; el lookup de Order devuelve también `instruction` nullable por item. La consulta autorizada de Preparation Work devuelve `productOperationalName` vigente e `instruction` nullable, y obtiene `productId` e instruction desde Content. Delivery expone `contentOrdinal` únicamente junto con `incorporationId` como identidad técnica del target. Ningún contrato público expone `draftLineId`.
 
+Contratos de terminación y marcador de Slice 6:
+
+```text
+POST /api/orders/{orderId}/pending-composition
+GET  /api/orders/{orderId}/pending-composition
+POST /api/orders/{orderId}/pending-composition/{pendingCompositionId}/discard
+POST /api/order-operations/orders/{operationalReference}/liquidate-simple
+POST /api/order-operations/orders/{operationalReference}/record-external-collection
+POST /api/orders/{orderId}/close
+```
+
 ## 16. Frontend materializado
 
-- `App` coordina `CatalogPanel`, `OrderWorkflow` y `OrderLookup`; las responsabilidades de catálogo/Price Change, Pedido activo/Composición y consulta están separadas. Un `Order` consultado puede retomarse para una Composición posterior.
+- `App` coordina `CatalogPanel`, `OrderWorkflow` y `OrderLookup`; las responsabilidades de catálogo/Price Change, Pedido activo/Composición y consulta están separadas. Un `Order` consultado puede retomarse para una Composición posterior mientras su Estado lo permita; Frozen/Closed impide continuar ordinariamente.
 - Los recursos se refrescan desde la autoridad: Price Change recarga `Catalog` y las Confirmaciones recargan el `Order`. El cliente no compone manualmente la Historia.
 - La Composición usa `CompositionLine { draftLineId, productId, quantity, instruction }`. `draftLineId` se crea con `crypto.randomUUID()`, es estable mientras vive la línea y existe solo en frontend: no se envía, no pertenece al dominio y no es el `Idempotency-Key`.
 - Cantidad `+/-`, remove e instruction editable operan por `draftLineId`, por lo que pueden coexistir múltiples líneas del mismo Product. “Agregar” incrementa la línea existente sin instruction canonical; “Agregar otra línea” crea una nueva línea del mismo Product.
 - El frontend detecta líneas duplicadas por `(ProductId, canonicalInstruction)` y bloquea la Confirmación sin combinar cantidades.
-- Ante incertidumbre de First o Subsequent, el workflow congela exactamente la key, destination u order reference relevante, context donde corresponde, y cada `productId`, `quantity` e instruction canonical. Mientras existe incertidumbre no permite editar la Composición ni cambiar destination; retry reenvía el mismo request exacto con la misma key. Discard desbloquea y la próxima Confirmación usa una key nueva.
+- Ante incertidumbre de First o Subsequent, el workflow congela exactamente la key, destination u order reference relevante, context donde corresponde, marcador de Subsequent y cada `productId`, `quantity` e instruction canonical. Mientras existe incertidumbre no permite editar la Composición ni cambiar destination; retry reenvía el mismo request exacto con la misma key. No ofrece descarte ordinario de la intención incierta.
 - Un `409` conocido no se trata como incertidumbre: la Composición permanece editable y la siguiente intención usa una key nueva.
 - El lookup de Order muestra Product actual, quantity, `appliedPrice` histórico e instruction confirmada; cuando es null muestra “Sin instrucción”. Las líneas del mismo Product permanecen visualmente distinguibles.
 - El Estado de autenticación es explícito: `loading`, `unauthenticated` o `authenticated(currentIdentity)`. Login envía `loginIdentifier + secret` con antiforgery, muestra el `401` genérico y limpia el secret al tener éxito. La barra de sesión muestra el `OperationalName` actual y permite logout/cambiar persona.
@@ -701,6 +740,16 @@ Los items de request de First y Subsequent contienen `productId`, `quantity` e `
 - Ante network, timeout o `5xx` conservadoramente incierto no modifica quantities: conserva target, quantity y key, marca `uncertain` y el retry usa exactamente el mismo endpoint, body y key. No ofrece descarte ordinario que habilite una Delivery incompatible.
 - Un `401` vuelve a `unauthenticated`, limpia antiforgery e intents y retorna al login. Un `403` conserva la Identity autenticada y muestra la falla de autorización. Un `404` del GET informa Pedido no encontrado; un `404` del POST rechaza el intent conocido y refresca. Un `400` es un error conocido, no outcome incierto.
 
+### Terminación de Order y PendingComposition frontend
+
+- Para un Order existente, el workflow inicia y descarta explícitamente el marcador autoritativo. Presenta marcadores remotos sin inventar sus líneas locales y evita iniciar un segundo marcador. La primera Composición sigue siendo local.
+- `OrderEnding` muestra Functional Amount, elegibilidad y blockers autoritativos. Ofrece Liquidation simple con un medio libre o registro de cobro gestionado externamente, y advierte la consecuencia de Freeze antes de liquidar.
+- Tras el éxito refresca el Order desde backend, sin cálculo económico optimista. La presentación Frozen muestra importe liquidado, modo y medio cuando corresponde, y bloquea operaciones ordinarias. Liquidation no muestra por sí sola el Pedido como cerrado.
+- Closure tiene una acción explícita `Cerrar Pedido`, disponible según elegibilidad después de Liquidation. Closed muestra el Cierre y su fecha, conserva la consulta y no ofrece continuar, liquidar de nuevo ni reabrir.
+- Ante network, timeout o `5xx` incierto se conserva en memoria el mismo endpoint, body e Idempotency-Key para retry exacto; se bloquean acciones incompatibles. Un conflicto conocido refresca Estado y no se presenta como éxito. Si falla el refresco, se exige actualizar antes de continuar.
+- El timestamp de Liquidation recibido por comando se muestra mientras está disponible localmente. Después de reload, el GET de Order no devuelve ese `occurredAt`: la UI informa que la fecha no está disponible en esa consulta, sin fabricar un timestamp.
+- No hay SSE activo ni persistencia de la intención incierta entre recargas; no hay cola offline ni retry automático en background.
+
 ### Inventory frontend
 
 - `InventoryPanel` presenta superficies independientes de **Configuración de Inventario** y **Estado actual de Inventario**. Cada una carga su read model y expone por separado su `403`; una Identity de configuración puede crear/listar Items sin aparentar autoridad operacional y una Identity de operación puede consultar/actuar sin aparentar autoridad de configuración.
@@ -722,9 +771,11 @@ Existen tres capas:
 
 `scripts/verify.cmd` y `scripts/verify.sh` ejecutan la verificación ordinaria. Esta verificación requiere Docker porque las suites backend usan Testcontainers. La opción `--e2e` añade PostgreSQL efímero aislado, backend, Vite y Chromium; no usa la base persistente de `compose.yaml`.
 
-El estado verificado del baseline implementado al cierre del núcleo operativo mínimo de Inventory es backend 561/561, frontend 170/170 y Playwright 4/4. `HasPendingModelChanges` es false para los cinco `DbContext` (5/5). Tanto `scripts\verify.cmd` como `scripts\verify.cmd --e2e` pasan en ese baseline.
+Los totales actuales de Slice 6 son **628 pruebas backend, 216 frontend y 7 escenarios Playwright**. El descubrimiento backend se desglosa en Catalog 51, IdentitiesAndCapabilities 64, Inventory 185, OperationalConfiguration 17 y OrderOperations 311. En S6-I4 se verificaron los totales por descubrimiento (`dotnet test --no-build --no-restore --list-tests`, `vitest list --json` y `playwright test --list`), sin ejecutar las suites completas ni afirmar un nuevo resultado de aprobación. Los artefactos locales de Vitest y Playwright registran su última ejecución sin fallos; no hay un reporte backend persistido que permita atribuir aquí un nuevo 628/628 aprobado. El harness conserva la comprobación `HasPendingModelChanges = false` para los cinco DbContext (5/5); no se volvió a ejecutar en esta tarea documental.
 
-El baseline integrado mantiene cuatro escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. El escenario operacional de Preparation/Delivery conserva sus actores y cantidades parciales. El escenario de Inventory inicia sesión con una Identity que sólo posee `InventoryConfiguration`, crea un Item y comprueba que no puede operar; luego usa otra Identity que sólo posee `InventoryOperation`, establece la cantidad mediante Count/Reconciliation, registra Entry, ManualExit atravesando cero y Waste, comprueba el saldo vigente negativo y consulta una Historia que contiene los cuatro Movimientos. Esto demuestra capacidades separadas, `null != 0`, balance autoritativo e integración real navegador/backend/PostgreSQL. El fixture no implica bootstrap productivo. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
+El baseline integrado mantiene siete escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, inicia el marcador autoritativo, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. Otro escenario verifica que un contexto autorizado ve el marcador remoto y no puede iniciar un segundo; se conserva también el lookup de Pedido inexistente. El escenario operacional de Preparation/Delivery conserva sus actores y cantidades parciales. El escenario de Inventory inicia sesión con una Identity que sólo posee `InventoryConfiguration`, crea un Item y comprueba que no puede operar; luego usa otra Identity que sólo posee `InventoryOperation`, establece la cantidad mediante Count/Reconciliation, registra Entry, ManualExit atravesando cero y Waste, comprueba el saldo vigente negativo y consulta una Historia que contiene los cuatro Movimientos. Esto demuestra capacidades separadas, `null != 0`, balance autoritativo e integración real navegador/backend/PostgreSQL. El fixture no implica bootstrap productivo. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
+
+Los dos escenarios terminales de Slice 6 recorren Confirmation → Delivery completa de Content directo → Functional Amount 20 → Liquidation → Freeze → Closure explícito. La rama simple declara un medio libre y verifica su trim; la segunda registra cobro gestionado externamente sin medio. Ambas verifican que Liquidation todavía no es Closure, muestran el timestamp recibido, bloquean Composición ordinaria tras Freeze y realizan lookup exacto después de Closure: el Pedido y su Incorporation siguen visibles, sin acciones para continuar, liquidar, cerrar de nuevo o reabrir.
 
 `NexoBar.E2E.DatabaseSetup` aplica explícitamente y verifica los cinco `DbContext`: `OperationalConfigurationDbContext`, `CatalogDbContext`, `InventoryDbContext`, `OrderOperationsDbContext` e `IdentitiesAndCapabilitiesDbContext`. `HasPendingModelChanges` debe ser `false` para los cinco. Chromium se instala manualmente desde `frontend`:
 
@@ -773,7 +824,7 @@ Las migraciones vigentes de Inventory en Slice 5 son:
 - `AddInventoryCountReconciliation`, que agrega CountObservation, Reconciliation, Historia y comandos durables;
 - `AddEverydayInventoryMovements`, que materializa Entry, ManualExit y Waste sobre el mismo Estado, Historia y namespace durable de Movimientos.
 
-No se modificaron migraciones durante esta consolidación documental.
+Slice 6 agregó `20260904152524_AddAuthoritativePendingComposition` (marcador, comandos y columnas legacy nullable de actor), `20260905055531_AddLiquidation` (State, History y comandos) y `20260905101316_AddClosure` (State, History y comandos). No se modificaron migraciones durante esta consolidación documental.
 
 ## 19. `InternalsVisibleTo`
 
@@ -793,7 +844,7 @@ Deuda técnica conocida:
 
 Fronteras todavía no materializadas, sin que esta enumeración diseñe su solución:
 
-- retrofit global de autenticación/autorización para endpoints todavía anónimos, según corresponda: Catalog, OperationalConfiguration, Confirmaciones, lookup de Order y otros endpoints funcionales actuales no cubiertos por Preparation o Delivery;
+- retrofit global de autenticación/autorización para endpoints todavía anónimos, según corresponda: Catalog, OperationalConfiguration, lookup de Order y otros endpoints funcionales actuales no cubiertos. Confirmaciones ya tienen el retrofit de Slice 6;
 - bootstrap productivo de Identity y credenciales;
 - implementación de recovery extraordinario (`AD-SEC-01`) y UX de recovery ordinario;
 - decisión normativa de parámetros de timeout (`PAR-SEC-02`) y política cuantitativa de brute-force/lockout;
@@ -805,13 +856,17 @@ Fronteras todavía no materializadas, sin que esta enumeración diseñe su soluc
 - Delivery Correction y su distinción entre Correction ordinaria y excepcional conforme a la Source aplicable;
 - reversal y exception handling de Delivery;
 - interacción completa entre Delivery y Corrections de Content;
-- Liquidation, Settlement, Payment y Closure;
-- Cancellation;
+- errores post-Liquidation intencionalmente sin resolución en el flujo ordinario del MVP; Slice 6 no agrega correcciones económicas, reversals ni un subsistema adicional de Settlement/Payment;
+- Cancellation de contenido y Cancellation completa donde siguen pendientes;
+- Correction de AppliedPrice donde sigue pendiente;
+- otras Corrections y excepciones de Order diferidas;
 - query/API/UI de Historia de Delivery;
 - cantidades fraccionarias de Preparation;
 - cantidades fraccionarias de Delivery, mientras continúen abiertas;
 - persistencia cross-reload de intents inciertos de Preparation;
 - persistencia cross-reload de intents inciertos de Delivery;
+- persistencia cross-reload de intents inciertos de Confirmation, PendingComposition, Liquidation y Closure;
+- exposición de Liquidation `occurredAt` en el read de Order después de reload; el hecho ya está persistido en State, resultado del comando e History y la UI no lo fabrica;
 - prioridad/SLA y owner/assignment de Preparation;
 - query/API/UI de Historia de Preparation;
 - profundidad de Historia administrativa según los OPEN-TRA aplicables;
@@ -835,7 +890,7 @@ Una futura Correction de Preparation tampoco puede crear silenciosamente `Delive
 
 ### Liquidation, Closure y completitud
 
-`Delivered != Liquidated != Closed`. Slice 4 no implementa Liquidation, Settlement, Payment ni Closure, y Delivery no contiene State materializado de esos procesos. Las futuras reglas que congelen Delivery después de Liquidation deberán integrarse cuando ese State exista; hoy no se inventan `IsLiquidated` ni `IsClosed`.
+`Delivered != Liquidated != Closed`. Slice 6 materializa Liquidation, Freeze como consecuencia y Closure explícito en OrderOperations. Delivery sigue siendo una dimensión distinta y sus nuevas mutaciones ordinarias quedan bloqueadas tras Liquidation. El read expone `isLiquidated`, `isFrozen` e `isClosed` como dimensiones diferenciadas; no constituyen un Status global único.
 
 Tampoco se persiste `Order.IsDelivered` ni se afirma un Status global implementado. La completitud puede derivarse técnicamente del Estado vigente, pero futuras Corrections afectan el concepto de cantidad requerida; no se eleva esa derivación a una decisión adicional.
 
@@ -872,7 +927,7 @@ Slice 4 — Delivery mínima operativa materializa:
 - frontend Delivery con intents por Content y tratamiento de incertidumbre;
 - recorrido E2E integrado para Prepared y Direct Content.
 
-**Delivery mínima operativa del Slice 4 cerrada.** Esto no equivale a Delivery completa del MVP ni materializa Correction, reversals, Liquidation, Payment, Closure, History UI, SSE o las demás fronteras de la sección 20.
+**Delivery mínima operativa del Slice 4 cerrada.** Esto no equivale a Delivery completa del MVP: Correction, reversals, History UI, SSE y las demás fronteras de la sección 20 siguen pendientes. Liquidation y Closure se materializaron posteriormente en Slice 6.
 
 ## 23. Estado de Slice 5 — Inventory
 
@@ -891,7 +946,20 @@ El alcance consolidado incluye módulo, DbContext y schema propios; InventoryIte
 
 Inventory permanece independiente de ventas y Catalog: `Product != InventoryItem`; Order, Confirmation, Preparation y Delivery no generan Movimientos de Inventory automáticamente.
 
-## 24. Protocolo de trabajo
+## 24. Estado de Slice 6 — Terminación normal de Order
+
+Los increments materializados son:
+
+- `0fa462e feat: add authoritative pending composition`;
+- `ddf5c52 feat: add order liquidation and freeze`;
+- `8438757 feat: add explicit order closure`;
+- `e2ad8dd feat: add order liquidation and closure frontend`.
+
+El alcance consolidado incluye PendingComposition autoritativa para Orders existentes, retrofit de seguridad y actor de Confirmation, Functional Amount derivado de Delivery efectiva y AppliedPrice, Liquidation completa simple o con cobro externo, Freeze consecuente y Closure explícito terminal. Incluye State e History separados, idempotencia durable, coordinación del mismo Order, frontend con blockers y retry incierto y ambas ramas terminales E2E con consulta exacta después de Closure.
+
+**Normal Order termination happy path of Slice 6 is closed.** Esta declaración se limita al recorrido normal materializado. Permanecen pendientes Delivery Correction, Corrections/excepciones de Preparation aún no implementadas, Cancellation de contenido/completa y Correction de AppliedPrice donde siguen pendientes, otras Corrections/excepciones de Order, SSE activo y persistencia de intención incierta entre recargas. Los errores post-Liquidation permanecen intencionalmente sin resolución en el flujo ordinario del MVP. La limitación de lectura de Liquidation `occurredAt` después de reload continúa registrada en las secciones 12, 16 y 20.
+
+## 25. Protocolo de trabajo
 
 - `AGENTS.md` contiene el contexto operacional persistente para Codex. Ante una decisión no resuelta o una contradicción normativa se detiene la parte afectada y se reporta.
 - Los cambios permanecen limitados al objetivo de la tarea y se verifican en proporción al riesgo. No se agregan dependencias, alcance o refactors adyacentes sin autorización.
