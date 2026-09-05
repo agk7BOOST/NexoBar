@@ -59,6 +59,11 @@ internal sealed class PendingCompositionService(
             return PendingCompositionCommandResult.OrderNotFound();
         }
 
+        if (await IsFrozenAsync(orderId, cancellationToken))
+        {
+            return PendingCompositionCommandResult.OrderFrozen();
+        }
+
         if (await dbContext.PendingCompositions.AnyAsync(
                 pending => pending.OrderId == orderId,
                 cancellationToken))
@@ -179,6 +184,11 @@ internal sealed class PendingCompositionService(
             return PendingCompositionCommandResult.OrderNotFound();
         }
 
+        if (await IsFrozenAsync(orderId, cancellationToken))
+        {
+            return PendingCompositionCommandResult.OrderFrozen();
+        }
+
         var pending = await dbContext.PendingCompositions.SingleOrDefaultAsync(
             candidate => candidate.OrderId == orderId,
             cancellationToken);
@@ -215,6 +225,13 @@ internal sealed class PendingCompositionService(
                 $"SELECT id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE")
             .AsNoTracking()
             .AnyAsync(cancellationToken);
+
+    private Task<bool> IsFrozenAsync(
+        Guid orderId,
+        CancellationToken cancellationToken) =>
+        dbContext.Liquidations.AsNoTracking().AnyAsync(
+            liquidation => liquidation.OrderId == orderId,
+            cancellationToken);
 
     private static DateTimeOffset TruncateToMicroseconds(DateTimeOffset value) =>
         new(
@@ -259,6 +276,9 @@ internal sealed record PendingCompositionCommandResult(
 
     internal static PendingCompositionCommandResult IdempotencyConflict() =>
         new(PendingCompositionCommandOutcome.IdempotencyConflict, null);
+
+    internal static PendingCompositionCommandResult OrderFrozen() =>
+        new(PendingCompositionCommandOutcome.OrderFrozen, null);
 }
 
 internal enum PendingCompositionCommandOutcome
@@ -270,7 +290,8 @@ internal enum PendingCompositionCommandOutcome
     OrderNotFound,
     AlreadyExists,
     Stale,
-    IdempotencyConflict
+    IdempotencyConflict,
+    OrderFrozen
 }
 
 internal sealed record CurrentPendingCompositionResult(

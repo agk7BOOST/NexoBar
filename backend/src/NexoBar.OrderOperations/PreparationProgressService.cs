@@ -88,6 +88,23 @@ internal sealed class PreparationProgressService(
             return PreparationProgressResult.Forbidden();
         }
 
+        var orderId = await (
+            from workCandidate in dbContext.PreparationWork.AsNoTracking()
+            join incorporation in dbContext.Incorporations.AsNoTracking()
+                on workCandidate.IncorporationId equals incorporation.Id
+            where workCandidate.Id == workId
+            select (Guid?)incorporation.OrderId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (orderId is null)
+        {
+            return PreparationProgressResult.WorkNotFound();
+        }
+
+        await dbContext.Orders
+            .FromSqlInterpolated(
+                $"SELECT id, context FROM order_operations.orders WHERE id = {orderId.Value} FOR UPDATE")
+            .AsNoTracking()
+            .AnyAsync(cancellationToken);
         var work = await dbContext.PreparationWork
             .FromSqlInterpolated(
                 $"SELECT * FROM order_operations.preparation_work WHERE id = {workId} FOR UPDATE")
@@ -104,6 +121,13 @@ internal sealed class PreparationProgressService(
                 cancellationToken))
         {
             return PreparationProgressResult.WorkNotFound();
+        }
+
+        if (await dbContext.Liquidations.AsNoTracking().AnyAsync(
+                liquidation => liquidation.OrderId == orderId.Value,
+                cancellationToken))
+        {
+            return PreparationProgressResult.OrderFrozen();
         }
 
         var transition = Apply(progressCommand, work, quantity);
@@ -256,6 +280,9 @@ internal sealed record PreparationProgressResult(
 
     internal static PreparationProgressResult IdempotencyConflict() =>
         new(PreparationProgressOutcome.IdempotencyConflict, null);
+
+    internal static PreparationProgressResult OrderFrozen() =>
+        new(PreparationProgressOutcome.OrderFrozen, null);
 }
 
 internal enum PreparationProgressOutcome
@@ -266,7 +293,8 @@ internal enum PreparationProgressOutcome
     WorkNotFound,
     QuantityInvalid,
     AvailableQuantityInsufficient,
-    IdempotencyConflict
+    IdempotencyConflict,
+    OrderFrozen
 }
 
 internal enum PreparationProgressCommand

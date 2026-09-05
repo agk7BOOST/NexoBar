@@ -7,6 +7,9 @@ internal sealed class OrderOperationsDbContext(
     DbContextOptions<OrderOperationsDbContext> options) : DbContext(options)
 {
     internal DbSet<Order> Orders => Set<Order>();
+    internal DbSet<Liquidation> Liquidations => Set<Liquidation>();
+    internal DbSet<LiquidationHistory> LiquidationHistory => Set<LiquidationHistory>();
+    internal DbSet<LiquidationCommand> LiquidationCommands => Set<LiquidationCommand>();
     internal DbSet<PendingComposition> PendingCompositions => Set<PendingComposition>();
     internal DbSet<PendingCompositionCommand> PendingCompositionCommands =>
         Set<PendingCompositionCommand>();
@@ -32,6 +35,9 @@ internal sealed class OrderOperationsDbContext(
     {
         modelBuilder.HasDefaultSchema("order_operations");
         modelBuilder.ApplyConfiguration(new OrderConfiguration());
+        modelBuilder.ApplyConfiguration(new LiquidationConfiguration());
+        modelBuilder.ApplyConfiguration(new LiquidationHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new LiquidationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new PendingCompositionConfiguration());
         modelBuilder.ApplyConfiguration(new PendingCompositionCommandConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationConfiguration());
@@ -425,6 +431,181 @@ internal sealed class OrderOperationsDbContext(
             builder.Property(order => order.Id).HasColumnName("id").ValueGeneratedNever();
             builder.Property(order => order.Context)
                 .HasColumnName("context").HasColumnType("text").IsRequired();
+        }
+    }
+
+    private sealed class LiquidationConfiguration : IEntityTypeConfiguration<Liquidation>
+    {
+        public void Configure(EntityTypeBuilder<Liquidation> builder)
+        {
+            builder.ToTable(
+                "liquidations",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_liquidations_mode",
+                        "mode IN ('Simple', 'ExternalCollection')");
+                    table.HasCheckConstraint(
+                        "CK_liquidations_amount_non_negative",
+                        "functional_amount >= 0");
+                    table.HasCheckConstraint(
+                        "CK_liquidations_medium_shape",
+                        "(mode = 'Simple' AND declared_payment_medium IS NOT NULL AND " +
+                        "length(declared_payment_medium) BETWEEN 1 AND 200) OR " +
+                        "(mode = 'ExternalCollection' AND declared_payment_medium IS NULL)");
+                });
+            builder.HasKey(liquidation => liquidation.Id)
+                .HasName("PK_order_operations_liquidations");
+            builder.Property(liquidation => liquidation.Id)
+                .HasColumnName("id").ValueGeneratedNever();
+            builder.Property(liquidation => liquidation.OrderId)
+                .HasColumnName("order_id").ValueGeneratedNever();
+            builder.Property(liquidation => liquidation.Mode)
+                .HasColumnName("mode").HasColumnType("text").IsRequired();
+            builder.Property(liquidation => liquidation.FunctionalAmount)
+                .HasColumnName("functional_amount").HasColumnType("numeric").IsRequired();
+            builder.Property(liquidation => liquidation.DeclaredPaymentMedium)
+                .HasColumnName("declared_payment_medium")
+                .HasMaxLength(200);
+            builder.Property(liquidation => liquidation.OccurredAt)
+                .HasColumnName("occurred_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.Property(liquidation => liquidation.ActorIdentityId)
+                .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.HasIndex(liquidation => liquidation.OrderId)
+                .HasDatabaseName("UX_liquidations_order")
+                .IsUnique();
+            builder.HasOne<Order>().WithOne()
+                .HasForeignKey<Liquidation>(liquidation => liquidation.OrderId)
+                .HasConstraintName("FK_liquidations_orders")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class LiquidationHistoryConfiguration :
+        IEntityTypeConfiguration<LiquidationHistory>
+    {
+        public void Configure(EntityTypeBuilder<LiquidationHistory> builder)
+        {
+            builder.ToTable(
+                "liquidation_history",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_liquidation_history_event_kind",
+                        "event_kind = 'Liquidated'");
+                    table.HasCheckConstraint(
+                        "CK_liquidation_history_mode",
+                        "mode IN ('Simple', 'ExternalCollection')");
+                    table.HasCheckConstraint(
+                        "CK_liquidation_history_amount_non_negative",
+                        "functional_amount >= 0");
+                    table.HasCheckConstraint(
+                        "CK_liquidation_history_medium_shape",
+                        "(mode = 'Simple' AND declared_payment_medium IS NOT NULL AND " +
+                        "length(declared_payment_medium) BETWEEN 1 AND 200) OR " +
+                        "(mode = 'ExternalCollection' AND declared_payment_medium IS NULL)");
+                });
+            builder.HasKey(history => history.Id)
+                .HasName("PK_order_operations_liquidation_history");
+            builder.Property(history => history.Id)
+                .HasColumnName("id").ValueGeneratedNever();
+            builder.Property(history => history.LiquidationId)
+                .HasColumnName("liquidation_id").ValueGeneratedNever();
+            builder.Property(history => history.OrderId)
+                .HasColumnName("order_id").ValueGeneratedNever();
+            builder.Property(history => history.EventKind)
+                .HasColumnName("event_kind").HasColumnType("text").IsRequired();
+            builder.Property(history => history.Mode)
+                .HasColumnName("mode").HasColumnType("text").IsRequired();
+            builder.Property(history => history.FunctionalAmount)
+                .HasColumnName("functional_amount").HasColumnType("numeric").IsRequired();
+            builder.Property(history => history.DeclaredPaymentMedium)
+                .HasColumnName("declared_payment_medium")
+                .HasMaxLength(200);
+            builder.Property(history => history.OccurredAt)
+                .HasColumnName("occurred_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.Property(history => history.ActorIdentityId)
+                .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.HasIndex(history => history.LiquidationId)
+                .HasDatabaseName("UX_liquidation_history_liquidation")
+                .IsUnique();
+            builder.HasIndex(history => new { history.OrderId, history.OccurredAt, history.Id })
+                .HasDatabaseName("IX_liquidation_history_order_time_id");
+            builder.HasOne<Liquidation>().WithOne()
+                .HasForeignKey<LiquidationHistory>(history => history.LiquidationId)
+                .HasConstraintName("FK_liquidation_history_liquidations")
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<Order>().WithMany()
+                .HasForeignKey(history => history.OrderId)
+                .HasConstraintName("FK_liquidation_history_orders")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class LiquidationCommandConfiguration :
+        IEntityTypeConfiguration<LiquidationCommand>
+    {
+        public void Configure(EntityTypeBuilder<LiquidationCommand> builder)
+        {
+            builder.ToTable(
+                "liquidation_commands",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_liquidation_commands_kind",
+                        "command_kind IN ('LiquidateSimple', 'RecordExternalCollection')");
+                    table.HasCheckConstraint(
+                        "CK_liquidation_commands_intent_medium",
+                        "(command_kind = 'LiquidateSimple' AND declared_payment_medium IS NOT NULL " +
+                        "AND length(declared_payment_medium) BETWEEN 1 AND 200) OR " +
+                        "(command_kind = 'RecordExternalCollection' AND " +
+                        "declared_payment_medium IS NULL)");
+                    table.HasCheckConstraint(
+                        "CK_liquidation_commands_result_amount_non_negative",
+                        "result_functional_amount >= 0");
+                });
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_order_operations_liquidation_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(command => command.CommandKind)
+                .HasColumnName("command_kind").HasColumnType("text").IsRequired();
+            builder.Property(command => command.OrderId)
+                .HasColumnName("order_id").ValueGeneratedNever();
+            builder.Property(command => command.DeclaredPaymentMedium)
+                .HasColumnName("declared_payment_medium").HasMaxLength(200);
+            builder.Property(command => command.ResultLiquidationId)
+                .HasColumnName("result_liquidation_id").ValueGeneratedNever();
+            builder.Property(command => command.ResultMode)
+                .HasColumnName("result_mode").HasColumnType("text").IsRequired();
+            builder.Property(command => command.ResultFunctionalAmount)
+                .HasColumnName("result_functional_amount")
+                .HasColumnType("numeric").IsRequired();
+            builder.Property(command => command.ResultDeclaredPaymentMedium)
+                .HasColumnName("result_declared_payment_medium").HasMaxLength(200);
+            builder.Property(command => command.ResultOccurredAt)
+                .HasColumnName("result_occurred_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.HasIndex(command => command.OrderId)
+                .HasDatabaseName("IX_liquidation_commands_order");
+            builder.HasIndex(command => command.ResultLiquidationId)
+                .HasDatabaseName("UX_liquidation_commands_liquidation")
+                .IsUnique();
+            builder.HasOne<Order>().WithMany()
+                .HasForeignKey(command => command.OrderId)
+                .HasConstraintName("FK_liquidation_commands_orders")
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<Liquidation>().WithOne()
+                .HasForeignKey<LiquidationCommand>(command => command.ResultLiquidationId)
+                .HasConstraintName("FK_liquidation_commands_liquidations")
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 

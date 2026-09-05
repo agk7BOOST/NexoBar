@@ -31,6 +31,8 @@ public static class OrderOperationsModule
         services.AddScoped<SubsequentConfirmationService>();
         services.AddScoped<PendingCompositionService>();
         services.AddScoped<OrderQueryService>();
+        services.AddScoped<OrderEconomicStateReader>();
+        services.AddScoped<LiquidationService>();
         services.AddScoped<OrderDeliveryQueryService>();
         services.AddScoped<DeliveryQuantityService>();
         services.AddScoped<PreparationWorkQueryService>();
@@ -147,6 +149,35 @@ public static class OrderOperationsModule
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         endpoints.MapPost(
+                "/api/order-operations/orders/{operationalReference}/liquidate-simple",
+                LiquidateSimpleAsync)
+            .WithName("LiquidateSimple")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Accepts<LiquidateSimpleRequest>("application/json")
+            .Produces<LiquidationResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        endpoints.MapPost(
+                "/api/order-operations/orders/{operationalReference}/record-external-collection",
+                RecordExternalCollectionAsync)
+            .WithName("RecordExternalCollection")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Produces<LiquidationResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        endpoints.MapPost(
                 "/api/orders/{orderId}/pending-composition",
                 StartPendingCompositionAsync)
             .WithName("StartPendingComposition")
@@ -185,6 +216,203 @@ public static class OrderOperationsModule
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         return endpoints;
+    }
+
+    private static async Task<IResult> LiquidateSimpleAsync(
+        string operationalReference,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        LiquidateSimpleRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        LiquidationService service,
+        CancellationToken cancellationToken)
+    {
+        var validation = ValidateLiquidationCommand(
+            operationalReference,
+            idempotencyKey);
+        if (validation.Error is not null)
+        {
+            return validation.Error;
+        }
+        var antiforgeryError = await ValidateLiquidationAntiforgeryAsync(
+            httpContext,
+            antiforgery);
+        if (antiforgeryError is not null)
+        {
+            return antiforgeryError;
+        }
+
+        var medium = LiquidationService.CanonicalizeDeclaredPaymentMedium(
+            request.DeclaredPaymentMedium);
+        if (medium is null)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid declared payment medium",
+                $"declaredPaymentMedium must contain 1 to {LiquidationService.DeclaredPaymentMediumMaxLength} characters after trimming outer whitespace.",
+                "order_operations.liquidation.declared_payment_medium_invalid");
+        }
+
+        return ToLiquidationHttpResult(await service.LiquidateSimpleAsync(
+            validation.IdempotencyKey,
+            validation.OrderId,
+            medium,
+            cancellationToken));
+    }
+
+    private static async Task<IResult> RecordExternalCollectionAsync(
+        string operationalReference,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        LiquidationService service,
+        CancellationToken cancellationToken)
+    {
+        var validation = ValidateLiquidationCommand(
+            operationalReference,
+            idempotencyKey);
+        if (validation.Error is not null)
+        {
+            return validation.Error;
+        }
+        if (httpContext.Request.ContentLength is > 0 ||
+            httpContext.Request.Headers.TransferEncoding.Count > 0)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Request body is not accepted",
+                "RecordExternalCollection does not accept payment-medium or external financial details.",
+                "order_operations.liquidation.external_collection_body_not_allowed");
+        }
+        var antiforgeryError = await ValidateLiquidationAntiforgeryAsync(
+            httpContext,
+            antiforgery);
+        if (antiforgeryError is not null)
+        {
+            return antiforgeryError;
+        }
+
+        return ToLiquidationHttpResult(await service.RecordExternalCollectionAsync(
+            validation.IdempotencyKey,
+            validation.OrderId,
+            cancellationToken));
+    }
+
+    private static LiquidationCommandValidation ValidateLiquidationCommand(
+        string operationalReference,
+        string? idempotencyKey)
+    {
+        if (!Guid.TryParse(operationalReference, out var orderId))
+        {
+            return LiquidationCommandValidation.Invalid(Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid operational reference",
+                "The supplied operational reference is structurally invalid.",
+                "order_operations.order.operational_reference_invalid"));
+        }
+
+        if (idempotencyKey is null)
+        {
+            return LiquidationCommandValidation.Invalid(Problem(
+                StatusCodes.Status400BadRequest,
+                "Idempotency-Key is required",
+                "Liquidation requires an Idempotency-Key containing a UUID v4.",
+                "order_operations.liquidation.idempotency_key_required"));
+        }
+
+        if (!Guid.TryParse(idempotencyKey, out var commandId) || !IsUuidVersion4(commandId))
+        {
+            return LiquidationCommandValidation.Invalid(Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Idempotency-Key",
+                "Idempotency-Key must contain a UUID v4.",
+                "order_operations.liquidation.idempotency_key_invalid"));
+        }
+
+        return LiquidationCommandValidation.Valid(orderId, commandId);
+    }
+
+    private static async Task<IResult?> ValidateLiquidationAntiforgeryAsync(
+        HttpContext httpContext,
+        IAntiforgery antiforgery)
+    {
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+            return null;
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Antiforgery validation failed",
+                "A valid antiforgery cookie and request token are required.",
+                "order_operations.liquidation.antiforgery_invalid");
+        }
+    }
+
+    private static IResult ToLiquidationHttpResult(LiquidationResult result) =>
+        result.Outcome switch
+        {
+            LiquidationOutcome.Succeeded => Results.Ok(ToLiquidationResponse(result.Response!)),
+            LiquidationOutcome.Unauthenticated => InvalidSession(),
+            LiquidationOutcome.Forbidden => Problem(
+                StatusCodes.Status403Forbidden,
+                "Liquidation forbidden",
+                "The current Identity is not authorized for Order Operations and basic Closure.",
+                "order_operations.liquidation.forbidden"),
+            LiquidationOutcome.OrderNotFound => PendingCompositionOrderNotFound(),
+            LiquidationOutcome.OrderFrozen => FrozenOrderProblem(),
+            LiquidationOutcome.PendingComposition => Problem(
+                StatusCodes.Status409Conflict,
+                "Pending Composition blocks Liquidation",
+                "The Order has a current Pending Composition.",
+                "order_operations.liquidation.pending_composition"),
+            LiquidationOutcome.UnresolvedFulfillment => Problem(
+                StatusCodes.Status409Conflict,
+                "Fulfillment blocks Liquidation",
+                "The Order contains current content that is not fully delivered.",
+                "order_operations.liquidation.unresolved_fulfillment"),
+            LiquidationOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                "The supplied Idempotency-Key identifies an incompatible Liquidation command.",
+                "order_operations.liquidation.idempotency_key_conflict"),
+            LiquidationOutcome.StateInconsistent => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Order economic state is inconsistent",
+                "The Order cannot be resolved economically from its current authoritative State.",
+                "order_operations.liquidation.state_inconsistent"),
+            _ => throw new UnreachableException()
+        };
+
+    private static LiquidationResponse ToLiquidationResponse(LiquidationCommandResult result) =>
+        new(
+            result.LiquidationId,
+            result.OrderId,
+            result.Mode,
+            result.FunctionalAmount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            result.DeclaredPaymentMedium,
+            result.OccurredAt,
+            IsFrozen: true);
+
+    private static IResult FrozenOrderProblem() => Problem(
+        StatusCodes.Status409Conflict,
+        "Order is frozen",
+        "The Order is frozen by its successful Liquidation.",
+        "order_operations.order.frozen");
+
+    private sealed record LiquidationCommandValidation(
+        Guid OrderId,
+        Guid IdempotencyKey,
+        IResult? Error)
+    {
+        internal static LiquidationCommandValidation Valid(
+            Guid orderId,
+            Guid idempotencyKey) => new(orderId, idempotencyKey, null);
+
+        internal static LiquidationCommandValidation Invalid(IResult error) =>
+            new(Guid.Empty, Guid.Empty, error);
     }
 
     private static async Task<IResult> StartPreparationQuantityAsync(
@@ -276,6 +504,7 @@ public static class OrderOperationsModule
                 "Idempotency-Key was already used for another intention",
                 "The supplied Idempotency-Key identifies an incompatible Preparation command.",
                 "order_operations.preparation_start.idempotency_key_conflict"),
+            PreparationProgressOutcome.OrderFrozen => FrozenOrderProblem(),
             _ => throw new UnreachableException()
         };
     }
@@ -369,6 +598,7 @@ public static class OrderOperationsModule
                 "Idempotency-Key was already used for another intention",
                 "The supplied Idempotency-Key identifies an incompatible Preparation command.",
                 "order_operations.preparation_ready.idempotency_key_conflict"),
+            PreparationProgressOutcome.OrderFrozen => FrozenOrderProblem(),
             _ => throw new UnreachableException()
         };
     }
@@ -492,6 +722,7 @@ public static class OrderOperationsModule
                 "Delivery state is inconsistent",
                 "The target Content cannot be mutated because its Delivery state is inconsistent.",
                 "order_operations.delivery.state_inconsistent"),
+            DeliveryQuantityOutcome.OrderFrozen => FrozenOrderProblem(),
             _ => throw new UnreachableException()
         };
     }
@@ -591,6 +822,7 @@ public static class OrderOperationsModule
                 "This Order already has a current Pending Composition.",
                 "order.pending_composition_already_exists"),
             PendingCompositionCommandOutcome.IdempotencyConflict => PendingCompositionIdempotencyConflict(),
+            PendingCompositionCommandOutcome.OrderFrozen => FrozenOrderProblem(),
             _ => throw new UnreachableException()
         };
     }
@@ -688,6 +920,7 @@ public static class OrderOperationsModule
                 "The supplied PendingCompositionId is not the current Pending Composition for this Order.",
                 "order.pending_composition_stale"),
             PendingCompositionCommandOutcome.IdempotencyConflict => PendingCompositionIdempotencyConflict(),
+            PendingCompositionCommandOutcome.OrderFrozen => FrozenOrderProblem(),
             _ => throw new UnreachableException()
         };
     }
@@ -830,6 +1063,7 @@ public static class OrderOperationsModule
                 "Pending Composition is stale",
                 "The supplied PendingCompositionId is not the current Pending Composition for this Order.",
                 "order.pending_composition_stale"),
+            SubsequentConfirmationOutcome.OrderFrozen => FrozenOrderProblem(),
             SubsequentConfirmationOutcome.Unauthenticated => Problem(
                 StatusCodes.Status401Unauthorized,
                 "Invalid session",

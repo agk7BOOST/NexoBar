@@ -15,7 +15,7 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
     private const string CurrentMigration =
         "20260830230000_AddConfirmationInstructions";
     private const string LatestMigration =
-        "20260904152524_AddAuthoritativePendingComposition";
+        "20260905055531_AddLiquidation";
 
     [Fact]
     public async Task Migration_preserves_I3A_data_replay_queries_and_has_safe_down()

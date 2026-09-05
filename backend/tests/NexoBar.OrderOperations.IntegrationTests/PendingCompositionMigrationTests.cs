@@ -9,6 +9,7 @@ public sealed class PendingCompositionMigrationTests(OrderOperationsApiFixture f
     private const string PreviousMigration = "20260831214404_AddDeliveryProgress";
     private const string CurrentMigration =
         "20260904152524_AddAuthoritativePendingComposition";
+    private const string LatestMigration = "20260905055531_AddLiquidation";
 
     [Fact]
     public async Task Migration_is_incremental_reversible_and_uses_safe_identifiers()
@@ -54,7 +55,7 @@ public sealed class PendingCompositionMigrationTests(OrderOperationsApiFixture f
         }
         finally
         {
-            await fixture.MigrateOrderOperationsAsync(CurrentMigration, token);
+            await fixture.MigrateOrderOperationsAsync(LatestMigration, token);
             await fixture.ResetAsync(token);
         }
     }

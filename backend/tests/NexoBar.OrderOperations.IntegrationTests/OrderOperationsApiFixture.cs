@@ -54,6 +54,9 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                order_operations.liquidation_commands,
+                order_operations.liquidation_history,
+                order_operations.liquidations,
                 order_operations.pending_composition_commands,
                 order_operations.pending_compositions,
                 order_operations.delivery_commands,
@@ -541,6 +544,82 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             .DeliveryCommands.AsNoTracking()
             .OrderBy(command => command.IdempotencyKey)
             .ToArrayAsync(cancellationToken);
+    }
+
+    internal async Task<IReadOnlyList<Liquidation>> ReadLiquidationsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .Liquidations.AsNoTracking()
+            .OrderBy(liquidation => liquidation.OccurredAt)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    internal async Task<IReadOnlyList<LiquidationHistory>> ReadLiquidationHistoryAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .LiquidationHistory.AsNoTracking()
+            .OrderBy(history => history.OccurredAt)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    internal async Task<IReadOnlyList<LiquidationCommand>> ReadLiquidationCommandsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .LiquidationCommands.AsNoTracking()
+            .OrderBy(command => command.IdempotencyKey)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    internal async Task SetAllDeliveredQuantitiesAsync(
+        Guid orderId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE order_operations.delivery_states AS state
+            SET delivered_quantity = content.quantity
+            FROM order_operations.incorporation_contents AS content,
+                 order_operations.incorporations AS incorporation
+            WHERE state.incorporation_id = content.incorporation_id
+              AND state.content_ordinal = content.content_ordinal
+              AND incorporation.id = content.incorporation_id
+              AND incorporation.order_id = {orderId}
+            """,
+            cancellationToken);
+    }
+
+    internal async Task SetLiquidationHistoryFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        var sql = enabled
+            ? """
+              CREATE OR REPLACE FUNCTION order_operations.fail_liquidation_history()
+              RETURNS trigger LANGUAGE plpgsql AS $$
+              BEGIN
+                  RAISE EXCEPTION 'controlled liquidation history failure';
+              END;
+              $$;
+              CREATE TRIGGER fail_liquidation_history
+              BEFORE INSERT ON order_operations.liquidation_history
+              FOR EACH ROW EXECUTE FUNCTION order_operations.fail_liquidation_history();
+              """
+            : """
+              DROP TRIGGER IF EXISTS fail_liquidation_history
+                  ON order_operations.liquidation_history;
+              DROP FUNCTION IF EXISTS order_operations.fail_liquidation_history();
+              """;
+        await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
     }
 
     internal async Task SetPreparationQuantitiesAsync(

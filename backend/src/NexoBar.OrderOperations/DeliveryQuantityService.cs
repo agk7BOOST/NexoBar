@@ -66,6 +66,29 @@ internal sealed class DeliveryQuantityService(
             return DeliveryQuantityResult.Forbidden();
         }
 
+
+        var orderId = await dbContext.Incorporations
+            .AsNoTracking()
+            .Where(incorporation => incorporation.Id == incorporationId)
+            .Select(incorporation => (Guid?)incorporation.OrderId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (orderId is null)
+        {
+            return DeliveryQuantityResult.ContentNotFound();
+        }
+
+        await dbContext.Orders
+            .FromSqlInterpolated(
+                $"SELECT id, context FROM order_operations.orders WHERE id = {orderId.Value} FOR UPDATE")
+            .AsNoTracking()
+            .AnyAsync(cancellationToken);
+        if (await dbContext.Liquidations.AsNoTracking().AnyAsync(
+                liquidation => liquidation.OrderId == orderId.Value,
+                cancellationToken))
+        {
+            return DeliveryQuantityResult.OrderFrozen();
+        }
+
         var content = await dbContext.IncorporationContents
             .FromSqlInterpolated(
                 $"""
@@ -237,6 +260,9 @@ internal sealed record DeliveryQuantityResult(
 
     internal static DeliveryQuantityResult StateInconsistent() =>
         new(DeliveryQuantityOutcome.StateInconsistent, null);
+
+    internal static DeliveryQuantityResult OrderFrozen() =>
+        new(DeliveryQuantityOutcome.OrderFrozen, null);
 }
 
 internal enum DeliveryQuantityOutcome
@@ -248,5 +274,6 @@ internal enum DeliveryQuantityOutcome
     QuantityInvalid,
     DeliverableQuantityInsufficient,
     IdempotencyConflict,
-    StateInconsistent
+    StateInconsistent,
+    OrderFrozen
 }

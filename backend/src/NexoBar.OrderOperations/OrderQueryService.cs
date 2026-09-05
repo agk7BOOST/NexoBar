@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace NexoBar.OrderOperations;
 
-internal sealed class OrderQueryService(OrderOperationsDbContext dbContext)
+internal sealed class OrderQueryService(
+    OrderOperationsDbContext dbContext,
+    OrderEconomicStateReader economicStateReader)
 {
     internal async Task<OrderQueryResponse?> FindAsync(
         Guid orderId,
@@ -62,6 +64,44 @@ internal sealed class OrderQueryService(OrderOperationsDbContext dbContext)
                 contentsByIncorporation.GetValueOrDefault(incorporation.Id, [])))
             .ToArray();
 
-        return new OrderQueryResponse(orderId.ToString("D"), context, incorporations);
+        var economicState = await economicStateReader.ReadAsync(orderId, cancellationToken);
+        var liquidation = await dbContext.Liquidations
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                candidate => candidate.OrderId == orderId,
+                cancellationToken);
+        var hasPendingComposition = await dbContext.PendingCompositions
+            .AsNoTracking()
+            .AnyAsync(candidate => candidate.OrderId == orderId, cancellationToken);
+        var blockers = new List<string>();
+        if (liquidation is not null)
+        {
+            blockers.Add(LiquidationEligibilityBlockers.AlreadyLiquidated);
+        }
+        if (hasPendingComposition)
+        {
+            blockers.Add(LiquidationEligibilityBlockers.PendingComposition);
+        }
+        if (economicState.IsInconsistent)
+        {
+            blockers.Add(LiquidationEligibilityBlockers.StateInconsistent);
+        }
+        else if (economicState.HasUnresolvedFulfillment)
+        {
+            blockers.Add(LiquidationEligibilityBlockers.UnresolvedFulfillment);
+        }
+
+        return new OrderQueryResponse(
+            orderId.ToString("D"),
+            context,
+            incorporations,
+            economicState.FunctionalAmount.ToString(CultureInfo.InvariantCulture),
+            blockers.Count == 0,
+            blockers,
+            liquidation is not null,
+            liquidation is not null,
+            liquidation?.FunctionalAmount.ToString(CultureInfo.InvariantCulture),
+            liquidation?.Mode,
+            liquidation?.DeclaredPaymentMedium);
     }
 }

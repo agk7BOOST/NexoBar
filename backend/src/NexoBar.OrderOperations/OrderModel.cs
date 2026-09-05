@@ -14,6 +14,143 @@ internal sealed class Order
     internal string Context { get; private set; } = string.Empty;
 }
 
+internal sealed class Liquidation
+{
+    private Liquidation() { }
+
+    internal Liquidation(
+        Guid id,
+        Guid orderId,
+        string mode,
+        decimal functionalAmount,
+        string? declaredPaymentMedium,
+        DateTimeOffset occurredAt,
+        Guid actorIdentityId)
+    {
+        Id = id;
+        OrderId = orderId;
+        Mode = mode;
+        FunctionalAmount = functionalAmount;
+        DeclaredPaymentMedium = declaredPaymentMedium;
+        OccurredAt = occurredAt;
+        ActorIdentityId = actorIdentityId;
+    }
+
+    internal Guid Id { get; private set; }
+    internal Guid OrderId { get; private set; }
+    internal string Mode { get; private set; } = string.Empty;
+    internal decimal FunctionalAmount { get; private set; }
+    internal string? DeclaredPaymentMedium { get; private set; }
+    internal DateTimeOffset OccurredAt { get; private set; }
+    internal Guid ActorIdentityId { get; private set; }
+}
+
+internal sealed class LiquidationHistory
+{
+    internal const string LiquidatedEventKind = "Liquidated";
+
+    private LiquidationHistory() { }
+
+    internal LiquidationHistory(
+        Guid id,
+        Guid liquidationId,
+        Guid orderId,
+        string mode,
+        decimal functionalAmount,
+        string? declaredPaymentMedium,
+        DateTimeOffset occurredAt,
+        Guid actorIdentityId)
+    {
+        Id = id;
+        LiquidationId = liquidationId;
+        OrderId = orderId;
+        EventKind = LiquidatedEventKind;
+        Mode = mode;
+        FunctionalAmount = functionalAmount;
+        DeclaredPaymentMedium = declaredPaymentMedium;
+        OccurredAt = occurredAt;
+        ActorIdentityId = actorIdentityId;
+    }
+
+    internal Guid Id { get; private set; }
+    internal Guid LiquidationId { get; private set; }
+    internal Guid OrderId { get; private set; }
+    internal string EventKind { get; private set; } = string.Empty;
+    internal string Mode { get; private set; } = string.Empty;
+    internal decimal FunctionalAmount { get; private set; }
+    internal string? DeclaredPaymentMedium { get; private set; }
+    internal DateTimeOffset OccurredAt { get; private set; }
+    internal Guid ActorIdentityId { get; private set; }
+}
+
+internal sealed class LiquidationCommand
+{
+    internal const string LiquidateSimpleCommandKind = "LiquidateSimple";
+    internal const string RecordExternalCollectionCommandKind = "RecordExternalCollection";
+
+    private LiquidationCommand() { }
+
+    internal LiquidationCommand(
+        Guid idempotencyKey,
+        Guid actorIdentityId,
+        string commandKind,
+        Guid orderId,
+        string? declaredPaymentMedium,
+        LiquidationCommandResult result)
+    {
+        IdempotencyKey = idempotencyKey;
+        ActorIdentityId = actorIdentityId;
+        CommandKind = commandKind;
+        OrderId = orderId;
+        DeclaredPaymentMedium = declaredPaymentMedium;
+        ResultLiquidationId = result.LiquidationId;
+        ResultMode = result.Mode;
+        ResultFunctionalAmount = result.FunctionalAmount;
+        ResultDeclaredPaymentMedium = result.DeclaredPaymentMedium;
+        ResultOccurredAt = result.OccurredAt;
+    }
+
+    internal Guid IdempotencyKey { get; private set; }
+    internal Guid ActorIdentityId { get; private set; }
+    internal string CommandKind { get; private set; } = string.Empty;
+    internal Guid OrderId { get; private set; }
+    internal string? DeclaredPaymentMedium { get; private set; }
+    internal Guid ResultLiquidationId { get; private set; }
+    internal string ResultMode { get; private set; } = string.Empty;
+    internal decimal ResultFunctionalAmount { get; private set; }
+    internal string? ResultDeclaredPaymentMedium { get; private set; }
+    internal DateTimeOffset ResultOccurredAt { get; private set; }
+
+    internal bool Matches(
+        Guid actorIdentityId,
+        string commandKind,
+        Guid orderId,
+        string? declaredPaymentMedium) =>
+        ActorIdentityId == actorIdentityId &&
+        string.Equals(CommandKind, commandKind, StringComparison.Ordinal) &&
+        OrderId == orderId &&
+        string.Equals(
+            DeclaredPaymentMedium,
+            declaredPaymentMedium,
+            StringComparison.Ordinal);
+
+    internal LiquidationCommandResult ToResult() => new(
+        ResultLiquidationId,
+        OrderId,
+        ResultMode,
+        ResultFunctionalAmount,
+        ResultDeclaredPaymentMedium,
+        ResultOccurredAt);
+}
+
+internal sealed record LiquidationCommandResult(
+    Guid LiquidationId,
+    Guid OrderId,
+    string Mode,
+    decimal FunctionalAmount,
+    string? DeclaredPaymentMedium,
+    DateTimeOffset OccurredAt);
+
 internal sealed class Incorporation
 {
     private Incorporation() { }

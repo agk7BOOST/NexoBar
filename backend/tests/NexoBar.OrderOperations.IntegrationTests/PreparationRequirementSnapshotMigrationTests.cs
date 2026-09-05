@@ -10,7 +10,7 @@ public sealed class PreparationRequirementSnapshotMigrationTests(
     private const string CurrentMigration =
         "20260831202815_CapturePreparationRequirementAtConfirmation";
     private const string LatestMigration =
-        "20260904152524_AddAuthoritativePendingComposition";
+        "20260905055531_AddLiquidation";
 
     [Fact]
     public async Task Migration_backfills_by_exact_content_identity_and_has_no_default()

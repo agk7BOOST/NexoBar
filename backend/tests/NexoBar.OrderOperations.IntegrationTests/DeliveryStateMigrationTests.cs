@@ -9,7 +9,7 @@ public sealed class DeliveryStateMigrationTests(OrderOperationsApiFixture fixtur
     private const string PreviousMigration = "20260831063910_AddPreparationStart";
     private const string CurrentMigration = "20260831171256_AddDeliveryState";
     private const string LatestMigration =
-        "20260904152524_AddAuthoritativePendingComposition";
+        "20260905055531_AddLiquidation";
 
     [Fact]
     public async Task Migration_backfills_every_existing_content_and_has_safe_down()

@@ -78,7 +78,7 @@ public sealed class DeliveryQuantityConcurrencyTests(OrderOperationsApiFixture f
     }
 
     [Fact]
-    public async Task Ready_lock_first_makes_delivery_wait_then_observe_new_ready()
+    public async Task Ready_order_lock_first_makes_delivery_wait_then_observe_new_ready()
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
@@ -119,8 +119,8 @@ public sealed class DeliveryQuantityConcurrencyTests(OrderOperationsApiFixture f
             token);
         try
         {
-            Assert.True(await fixture.WaitForPreparationWorkLockAsync(
-                TimeSpan.FromSeconds(10), token));
+            Assert.True(await fixture.WaitForOrderRowLockWaitersAsync(
+                1, TimeSpan.FromSeconds(10), token));
             Assert.False(deliveryTask.IsCompleted);
 
             releaseReady.TrySetResult();
