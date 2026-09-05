@@ -7,6 +7,9 @@ internal sealed class OrderOperationsDbContext(
     DbContextOptions<OrderOperationsDbContext> options) : DbContext(options)
 {
     internal DbSet<Order> Orders => Set<Order>();
+    internal DbSet<Closure> Closures => Set<Closure>();
+    internal DbSet<ClosureHistory> ClosureHistory => Set<ClosureHistory>();
+    internal DbSet<ClosureCommand> ClosureCommands => Set<ClosureCommand>();
     internal DbSet<Liquidation> Liquidations => Set<Liquidation>();
     internal DbSet<LiquidationHistory> LiquidationHistory => Set<LiquidationHistory>();
     internal DbSet<LiquidationCommand> LiquidationCommands => Set<LiquidationCommand>();
@@ -35,6 +38,9 @@ internal sealed class OrderOperationsDbContext(
     {
         modelBuilder.HasDefaultSchema("order_operations");
         modelBuilder.ApplyConfiguration(new OrderConfiguration());
+        modelBuilder.ApplyConfiguration(new ClosureConfiguration());
+        modelBuilder.ApplyConfiguration(new ClosureHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new ClosureCommandConfiguration());
         modelBuilder.ApplyConfiguration(new LiquidationConfiguration());
         modelBuilder.ApplyConfiguration(new LiquidationHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new LiquidationCommandConfiguration());

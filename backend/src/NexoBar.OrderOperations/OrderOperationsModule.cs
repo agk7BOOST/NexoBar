@@ -11,7 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace NexoBar.OrderOperations;
 
-public static class OrderOperationsModule
+public static partial class OrderOperationsModule
 {
     public static IServiceCollection AddOrderOperations(
         this IServiceCollection services,
@@ -33,6 +33,8 @@ public static class OrderOperationsModule
         services.AddScoped<OrderQueryService>();
         services.AddScoped<OrderEconomicStateReader>();
         services.AddScoped<LiquidationService>();
+        services.AddScoped<ClosureService>();
+        services.AddScoped<ClosureStateReader>();
         services.AddScoped<OrderDeliveryQueryService>();
         services.AddScoped<DeliveryQuantityService>();
         services.AddScoped<PreparationWorkQueryService>();
@@ -209,6 +211,17 @@ public static class OrderOperationsModule
             .WithTags("OrderOperations")
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapPost("/api/orders/{orderId}/close", CloseOrderAsync)
+            .WithName("CloseOrder")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Produces<ClosureResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)

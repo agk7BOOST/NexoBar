@@ -11,7 +11,10 @@ internal sealed record OrderQueryResponse(
     bool IsFrozen,
     string? LiquidatedAmount,
     string? LiquidationMode,
-    string? DeclaredPaymentMedium);
+    string? DeclaredPaymentMedium,
+    bool IsClosed,
+    DateTimeOffset? ClosedAt,
+    bool IsClosureEligible);
 
 internal sealed record OrderIncorporationResponse(
     Guid Id,

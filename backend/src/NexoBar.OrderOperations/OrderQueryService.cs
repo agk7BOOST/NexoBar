@@ -5,7 +5,8 @@ namespace NexoBar.OrderOperations;
 
 internal sealed class OrderQueryService(
     OrderOperationsDbContext dbContext,
-    OrderEconomicStateReader economicStateReader)
+    OrderEconomicStateReader economicStateReader,
+    ClosureStateReader closureStateReader)
 {
     internal async Task<OrderQueryResponse?> FindAsync(
         Guid orderId,
@@ -65,14 +66,9 @@ internal sealed class OrderQueryService(
             .ToArray();
 
         var economicState = await economicStateReader.ReadAsync(orderId, cancellationToken);
-        var liquidation = await dbContext.Liquidations
-            .AsNoTracking()
-            .SingleOrDefaultAsync(
-                candidate => candidate.OrderId == orderId,
-                cancellationToken);
-        var hasPendingComposition = await dbContext.PendingCompositions
-            .AsNoTracking()
-            .AnyAsync(candidate => candidate.OrderId == orderId, cancellationToken);
+        var closureState = await closureStateReader.ReadAsync(orderId, cancellationToken);
+        var liquidation = closureState.Liquidation;
+        var hasPendingComposition = closureState.HasPendingComposition;
         var blockers = new List<string>();
         if (liquidation is not null)
         {
@@ -102,6 +98,9 @@ internal sealed class OrderQueryService(
             liquidation is not null,
             liquidation?.FunctionalAmount.ToString(CultureInfo.InvariantCulture),
             liquidation?.Mode,
-            liquidation?.DeclaredPaymentMedium);
+            liquidation?.DeclaredPaymentMedium,
+            closureState.Closure is not null,
+            closureState.Closure?.ClosedAt,
+            closureState.IsEligible);
     }
 }
