@@ -1,5 +1,12 @@
-import { type FormEvent, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { Product } from "../catalog/catalogClient.ts";
+import { getAntiforgeryToken } from "../identity/sessionClient.ts";
 import { canonicalizeConfirmationInstruction } from "./confirmationInstruction.ts";
 import {
   hasDuplicateCompositionLines,
@@ -9,10 +16,15 @@ import { CompositionLineEditor } from "./CompositionLineEditor.tsx";
 import {
   confirmFirst,
   confirmSubsequent,
+  discardPendingComposition,
+  getPendingComposition,
   OrderOperationsNetworkError,
   OrderOperationsProblemError,
+  startPendingComposition,
   type FirstConfirmationRequest,
   type OrderOperationsProblemDetails,
+  type PendingComposition,
+  type PendingCompositionCommand,
   type SubsequentConfirmationRequest,
 } from "./orderOperationsClient.ts";
 
@@ -24,12 +36,30 @@ type Notice =
 interface FirstConfirmationIntention {
   request: FirstConfirmationRequest;
   idempotencyKey: string;
+  antiforgeryToken: string;
 }
 
 interface SubsequentConfirmationIntention {
   operationalReference: string;
   request: SubsequentConfirmationRequest;
   idempotencyKey: string;
+  antiforgeryToken: string;
+}
+
+interface PendingAddAction {
+  product: Product;
+  anotherLine: boolean;
+}
+
+interface StartPendingIntention {
+  command: PendingCompositionCommand;
+  action: PendingAddAction;
+}
+
+interface DiscardPendingIntention {
+  command: PendingCompositionCommand & { pendingCompositionId: string };
+  destination: PendingDestination | null;
+  clearsLocalComposition: boolean;
 }
 
 type PendingDestination =
@@ -48,6 +78,7 @@ interface OrderWorkflowProps {
   onActivateOrder: (operationalReference: string) => void;
   onStartNewOrder: () => void;
   onOrderChanged: (operationalReference: string) => void;
+  onUnauthorized: () => void;
 }
 
 function confirmationErrorMessage(
@@ -100,6 +131,7 @@ export function OrderWorkflow({
   onActivateOrder,
   onStartNewOrder,
   onOrderChanged,
+  onUnauthorized,
 }: OrderWorkflowProps) {
   const [composition, setComposition] = useState<CompositionLine[]>([]);
   const [context, setContext] = useState("");
@@ -117,10 +149,114 @@ export function OrderWorkflow({
     null,
   );
   const [draftLineToFocus, setDraftLineToFocus] = useState<string | null>(null);
+  const [pendingAuthority, setPendingAuthority] =
+    useState<PendingComposition | null>(null);
+  const [pendingAuthorityOrderId, setPendingAuthorityOrderId] = useState<
+    string | null
+  >(null);
+  const [isPendingLoading, setIsPendingLoading] = useState(false);
+  const [isPendingMutating, setIsPendingMutating] = useState(false);
+  const [uncertainStart, setUncertainStart] =
+    useState<StartPendingIntention | null>(null);
+  const [uncertainDiscard, setUncertainDiscard] =
+    useState<DiscardPendingIntention | null>(null);
+  const [localPending, setLocalPending] = useState<{
+    orderId: string;
+    marker: PendingComposition;
+  } | null>(null);
+  const localPendingRef = useRef(localPending);
+  const activeOrderRef = useRef(activeOperationalReference);
+  const [staleComposition, setStaleComposition] = useState(false);
+  activeOrderRef.current = activeOperationalReference;
+
+  function rememberLocalPending(
+    value: { orderId: string; marker: PendingComposition } | null,
+  ) {
+    localPendingRef.current = value;
+    setLocalPending(value);
+  }
+
+  const reconcilePending = useCallback(
+    async (orderId: string): Promise<PendingComposition | null> => {
+      setIsPendingLoading(true);
+      try {
+        const authority = (await getPendingComposition(orderId))
+          .pendingComposition;
+        if (activeOrderRef.current !== orderId) {
+          return authority;
+        }
+
+        setPendingAuthority(authority);
+        setPendingAuthorityOrderId(orderId);
+        const owned = localPendingRef.current;
+        if (
+          owned?.orderId === orderId &&
+          authority?.pendingCompositionId !== owned.marker.pendingCompositionId
+        ) {
+          rememberLocalPending(null);
+          if (composition.length > 0) {
+            setStaleComposition(true);
+            setConfirmationNotice({
+              kind: "functional-error",
+              message:
+                "La Composición autoritativa cambió. El borrador local se conserva sólo para revisión y no se reenviará con otro identificador.",
+            });
+          }
+        }
+        return authority;
+      } catch (error) {
+        if (error instanceof OrderOperationsProblemError) {
+          if (error.problem.status === 401) {
+            onUnauthorized();
+          } else if (error.problem.status === 403) {
+            setConfirmationNotice({
+              kind: "functional-error",
+              message:
+                "La Identidad actual no tiene autorización para operar Composiciones del Pedido.",
+            });
+          } else {
+            setConfirmationNotice({
+              kind: "functional-error",
+              message: "No se pudo reconciliar la Composición pendiente.",
+            });
+          }
+        } else {
+          setConfirmationNotice({
+            kind: "uncertain",
+            message:
+              "No se pudo consultar el Estado autoritativo de la Composición pendiente.",
+          });
+        }
+        return null;
+      } finally {
+        if (activeOrderRef.current === orderId) {
+          setIsPendingLoading(false);
+        }
+      }
+    },
+    [composition.length, onUnauthorized],
+  );
 
   const hasUncertainIntention =
-    uncertainFirst !== null || uncertainSubsequent !== null;
-  const isCompositionLocked = isConfirming || hasUncertainIntention;
+    uncertainFirst !== null ||
+    uncertainSubsequent !== null ||
+    uncertainStart !== null ||
+    uncertainDiscard !== null;
+  const isPendingAuthorityResolved =
+    activeOperationalReference === null ||
+    pendingAuthorityOrderId === activeOperationalReference;
+  const currentPendingAuthority =
+    activeOperationalReference !== null && isPendingAuthorityResolved
+      ? pendingAuthority
+      : null;
+  const hasAuthoritativePending = currentPendingAuthority !== null;
+  const isCompositionLocked =
+    isConfirming ||
+    isPendingLoading ||
+    isPendingMutating ||
+    !isPendingAuthorityResolved ||
+    hasUncertainIntention ||
+    staleComposition;
   const isSubsequent = activeOperationalReference !== null;
   const requestedExistingReference =
     requestedTarget !== undefined &&
@@ -132,19 +268,46 @@ export function OrderWorkflow({
     if (
       requestedExistingReference !== null &&
       !hasUncertainIntention &&
-      composition.length === 0
+      composition.length === 0 &&
+      isPendingAuthorityResolved &&
+      !hasAuthoritativePending
     ) {
       onActivateOrder(requestedExistingReference);
     }
   }, [
     composition.length,
     hasUncertainIntention,
+    hasAuthoritativePending,
+    isPendingAuthorityResolved,
     onActivateOrder,
     requestedExistingReference,
   ]);
 
-  function addToComposition(product: Product) {
-    if (!product.isAvailable || isCompositionLocked) {
+  useEffect(() => {
+    if (activeOperationalReference === null) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void reconcilePending(activeOperationalReference);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [activeOperationalReference, reconcilePending]);
+
+  function applyAddToComposition(product: Product, anotherLine: boolean) {
+    if (anotherLine) {
+      const draftLineId = crypto.randomUUID();
+      setDraftLineToFocus(draftLineId);
+      setComposition((current) => [
+        ...current,
+        {
+          draftLineId,
+          productId: product.id,
+          quantity: 1,
+          instruction: "",
+        },
+      ]);
+      setConfirmationNotice(null);
       return;
     }
 
@@ -174,23 +337,54 @@ export function OrderWorkflow({
     });
   }
 
-  function addAnotherLine(product: Product) {
+  async function beginAdd(product: Product, anotherLine: boolean) {
     if (!product.isAvailable || isCompositionLocked) {
       return;
     }
 
-    const draftLineId = crypto.randomUUID();
-    setDraftLineToFocus(draftLineId);
-    setComposition((current) => [
-      ...current,
-      {
-        draftLineId,
-        productId: product.id,
-        quantity: 1,
-        instruction: "",
+    if (activeOperationalReference === null) {
+      applyAddToComposition(product, anotherLine);
+      return;
+    }
+
+    const owned = localPendingRef.current;
+    if (
+      owned?.orderId === activeOperationalReference &&
+      currentPendingAuthority?.pendingCompositionId ===
+        owned.marker.pendingCompositionId
+    ) {
+      applyAddToComposition(product, anotherLine);
+      return;
+    }
+
+    if (currentPendingAuthority !== null) {
+      setConfirmationNotice({
+        kind: "functional-error",
+        message:
+          "Este Pedido ya tiene una Composición pendiente cuyas líneas no están disponibles en este navegador. Descartala explícitamente para comenzar otra.",
+      });
+      return;
+    }
+
+    let antiforgeryToken: string;
+    try {
+      antiforgeryToken = await getAntiforgeryToken();
+    } catch {
+      setConfirmationNotice({
+        kind: "functional-error",
+        message: "No se pudo preparar el inicio seguro de la Composición.",
+      });
+      return;
+    }
+
+    await submitStartPending({
+      command: {
+        orderId: activeOperationalReference,
+        idempotencyKey: crypto.randomUUID(),
+        antiforgeryToken,
       },
-    ]);
-    setConfirmationNotice(null);
+      action: { product, anotherLine },
+    });
   }
 
   function increaseQuantity(draftLineId: string) {
@@ -232,6 +426,156 @@ export function OrderWorkflow({
     );
   }
 
+  function handleKnownAuthorization(
+    error: OrderOperationsProblemError,
+  ): boolean {
+    if (error.problem.status === 401) {
+      onUnauthorized();
+      return true;
+    }
+
+    if (error.problem.status === 403) {
+      setConfirmationNotice({
+        kind: "functional-error",
+        message:
+          "La Identidad actual no tiene la responsabilidad necesaria para operar Pedidos.",
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  async function submitStartPending(intention: StartPendingIntention) {
+    setIsPendingMutating(true);
+    setConfirmationNotice(null);
+    try {
+      const marker = await startPendingComposition(intention.command);
+      setUncertainStart(null);
+      rememberLocalPending({ orderId: intention.command.orderId, marker });
+      setPendingAuthority(marker);
+      setPendingAuthorityOrderId(intention.command.orderId);
+      const authority = await reconcilePending(intention.command.orderId);
+      if (authority?.pendingCompositionId === marker.pendingCompositionId) {
+        applyAddToComposition(
+          intention.action.product,
+          intention.action.anotherLine,
+        );
+      } else {
+        setConfirmationNotice({
+          kind: "functional-error",
+          message:
+            "La Composición pendiente ya no está vigente. Se actualizó el Estado autoritativo sin iniciar el borrador local.",
+        });
+      }
+    } catch (error) {
+      if (error instanceof OrderOperationsProblemError) {
+        setUncertainStart(null);
+        if (!handleKnownAuthorization(error)) {
+          setConfirmationNotice({
+            kind: "functional-error",
+            message:
+              error.problem.code === "order.pending_composition_already_exists"
+                ? "El Pedido ya tiene una Composición pendiente. Se actualizó el Estado autoritativo; no se inició otro borrador."
+                : "No se pudo iniciar la Composición pendiente.",
+          });
+          await reconcilePending(intention.command.orderId);
+        }
+      } else {
+        setUncertainStart(intention);
+        setConfirmationNotice({
+          kind: "uncertain",
+          message:
+            "Resultado incierto al iniciar la Composición. Reintentá exactamente la misma intención.",
+        });
+      }
+    } finally {
+      setIsPendingMutating(false);
+    }
+  }
+
+  async function beginDiscardPending(
+    marker: PendingComposition,
+    destination: PendingDestination | null,
+    clearsLocalComposition: boolean,
+  ) {
+    if (activeOperationalReference === null || isCompositionLocked) {
+      return;
+    }
+
+    let antiforgeryToken: string;
+    try {
+      antiforgeryToken = await getAntiforgeryToken();
+    } catch {
+      setConfirmationNotice({
+        kind: "functional-error",
+        message: "No se pudo preparar el descarte seguro.",
+      });
+      return;
+    }
+
+    await submitDiscardPending({
+      command: {
+        orderId: activeOperationalReference,
+        pendingCompositionId: marker.pendingCompositionId,
+        idempotencyKey: crypto.randomUUID(),
+        antiforgeryToken,
+      },
+      destination,
+      clearsLocalComposition,
+    });
+  }
+
+  async function submitDiscardPending(intention: DiscardPendingIntention) {
+    setIsPendingMutating(true);
+    setConfirmationNotice(null);
+    try {
+      await discardPendingComposition(intention.command);
+      setUncertainDiscard(null);
+      if (intention.clearsLocalComposition) {
+        setComposition([]);
+        rememberLocalPending(null);
+        setStaleComposition(false);
+      }
+      await reconcilePending(intention.command.orderId);
+      setPendingDestination(null);
+      setDestinationMessage(null);
+      if (intention.destination?.kind === "new-order") {
+        onStartNewOrder();
+      } else if (intention.destination?.kind === "existing-order") {
+        onActivateOrder(intention.destination.operationalReference);
+      } else {
+        setConfirmationNotice({
+          kind: "success",
+          message: "La Composición pendiente fue descartada explícitamente.",
+        });
+      }
+    } catch (error) {
+      if (error instanceof OrderOperationsProblemError) {
+        setUncertainDiscard(null);
+        if (!handleKnownAuthorization(error)) {
+          setConfirmationNotice({
+            kind: "functional-error",
+            message:
+              error.problem.code === "order.pending_composition_stale"
+                ? "La Composición pendiente cambió antes del descarte. Se actualizó el Estado autoritativo."
+                : "No se pudo descartar la Composición pendiente.",
+          });
+          await reconcilePending(intention.command.orderId);
+        }
+      } else {
+        setUncertainDiscard(intention);
+        setConfirmationNotice({
+          kind: "uncertain",
+          message:
+            "Resultado incierto al descartar la Composición. Reintentá exactamente el mismo descarte.",
+        });
+      }
+    } finally {
+      setIsPendingMutating(false);
+    }
+  }
+
   async function submitFirst(intention: FirstConfirmationIntention) {
     setConfirmationNotice(null);
     setIsConfirming(true);
@@ -240,6 +584,7 @@ export function OrderWorkflow({
       const confirmed = await confirmFirst(
         intention.request,
         intention.idempotencyKey,
+        intention.antiforgeryToken,
       );
       setUncertainFirst(null);
       setComposition([]);
@@ -253,10 +598,12 @@ export function OrderWorkflow({
     } catch (error) {
       if (error instanceof OrderOperationsProblemError) {
         setUncertainFirst(null);
-        setConfirmationNotice({
-          kind: "functional-error",
-          message: confirmationErrorMessage(error.problem, products, false),
-        });
+        if (!handleKnownAuthorization(error)) {
+          setConfirmationNotice({
+            kind: "functional-error",
+            message: confirmationErrorMessage(error.problem, products, false),
+          });
+        }
       } else {
         setUncertainFirst(intention);
         setConfirmationNotice({
@@ -281,22 +628,38 @@ export function OrderWorkflow({
         intention.operationalReference,
         intention.request,
         intention.idempotencyKey,
+        intention.antiforgeryToken,
       );
       setUncertainSubsequent(null);
       setComposition([]);
+      rememberLocalPending(null);
+      setPendingAuthority(null);
+      setPendingAuthorityOrderId(intention.operationalReference);
       setDestinationMessage(null);
       setConfirmationNotice({
         kind: "success",
         message: "Nueva Incorporación confirmada correctamente.",
       });
       onOrderChanged(intention.operationalReference);
+      await reconcilePending(intention.operationalReference);
     } catch (error) {
       if (error instanceof OrderOperationsProblemError) {
         setUncertainSubsequent(null);
-        setConfirmationNotice({
-          kind: "functional-error",
-          message: confirmationErrorMessage(error.problem, products, true),
-        });
+        if (!handleKnownAuthorization(error)) {
+          const isStale =
+            error.problem.code === "order.pending_composition_stale";
+          if (isStale) {
+            rememberLocalPending(null);
+            setStaleComposition(true);
+            await reconcilePending(intention.operationalReference);
+          }
+          setConfirmationNotice({
+            kind: "functional-error",
+            message: isStale
+              ? "La Composición autoritativa cambió. Este borrador no se reenviará automáticamente con otro identificador."
+              : confirmationErrorMessage(error.problem, products, true),
+          });
+        }
       } else {
         setUncertainSubsequent(intention);
         setConfirmationNotice({
@@ -334,6 +697,17 @@ export function OrderWorkflow({
       instruction: canonicalizeConfirmationInstruction(instruction),
     }));
 
+    let antiforgeryToken: string;
+    try {
+      antiforgeryToken = await getAntiforgeryToken();
+    } catch {
+      setConfirmationNotice({
+        kind: "functional-error",
+        message: "No se pudo preparar la Confirmación segura.",
+      });
+      return;
+    }
+
     if (activeOperationalReference === null) {
       if (context.trim().length === 0) {
         return;
@@ -342,14 +716,34 @@ export function OrderWorkflow({
       await submitFirst({
         request: { context, items },
         idempotencyKey: crypto.randomUUID(),
+        antiforgeryToken,
       });
+      return;
+    }
+
+    const owned = localPendingRef.current;
+    if (
+      owned?.orderId !== activeOperationalReference ||
+      currentPendingAuthority?.pendingCompositionId !==
+        owned.marker.pendingCompositionId
+    ) {
+      setConfirmationNotice({
+        kind: "functional-error",
+        message:
+          "No existe una Composición pendiente autoritativa asociada a este borrador.",
+      });
+      await reconcilePending(activeOperationalReference);
       return;
     }
 
     await submitSubsequent({
       operationalReference: activeOperationalReference,
-      request: { items },
+      request: {
+        pendingCompositionId: owned.marker.pendingCompositionId,
+        items,
+      },
       idempotencyKey: crypto.randomUUID(),
+      antiforgeryToken,
     });
   }
 
@@ -361,7 +755,7 @@ export function OrderWorkflow({
       return;
     }
 
-    if (composition.length > 0) {
+    if (composition.length > 0 || hasAuthoritativePending) {
       setPendingDestination({ kind: "new-order" });
       setDestinationMessage(
         "La Composición actual no se cambiará de destino. Descartala explícitamente para iniciar un nuevo Pedido.",
@@ -373,7 +767,7 @@ export function OrderWorkflow({
     onStartNewOrder();
   }
 
-  function discardCompositionAndChangeDestination() {
+  async function discardCompositionAndChangeDestination() {
     const destination =
       requestedExistingReference === null
         ? pendingDestination
@@ -386,7 +780,23 @@ export function OrderWorkflow({
       return;
     }
 
+    const owned = localPendingRef.current;
+    const marker =
+      activeOperationalReference !== null &&
+      owned?.orderId === activeOperationalReference
+        ? owned.marker
+        : currentPendingAuthority;
+    if (marker !== null) {
+      await beginDiscardPending(
+        marker,
+        destination,
+        owned?.orderId === activeOperationalReference,
+      );
+      return;
+    }
+
     setComposition([]);
+    setStaleComposition(false);
     setDestinationMessage(null);
     setPendingDestination(null);
 
@@ -397,38 +807,20 @@ export function OrderWorkflow({
     }
   }
 
-  function discardUncertainFirst() {
-    setUncertainFirst(null);
-    setDestinationMessage(null);
-    setConfirmationNotice({
-      kind: "uncertain",
-      message:
-        "La intención incierta fue descartada. El resultado previo sigue sin confirmarse; una futura Confirmación será una intención nueva.",
-    });
-  }
-
-  function discardUncertainSubsequent() {
-    setUncertainSubsequent(null);
-    setDestinationMessage(null);
-    setConfirmationNotice({
-      kind: "uncertain",
-      message:
-        "La intención incierta fue descartada. El resultado previo sigue sin confirmarse; una futura Incorporación será una intención nueva.",
-    });
-  }
-
   const canConfirm =
     composition.length > 0 &&
     !isCompositionLocked &&
     !hasDuplicateCompositionLines(composition) &&
-    (isSubsequent || context.trim().length > 0);
+    (isSubsequent || context.trim().length > 0) &&
+    (!isSubsequent ||
+      (localPending !== null && currentPendingAuthority !== null));
   const modeLabel = isSubsequent ? "Nueva Composición" : "Composición inicial";
   const requestedDestinationMessage =
     requestedExistingReference === null
       ? null
       : hasUncertainIntention
         ? "Resolvé o descartá la Confirmación incierta antes de cambiar de Pedido."
-        : composition.length > 0
+        : composition.length > 0 || hasAuthoritativePending
           ? "La Composición actual no se cambiará de destino. Descartala explícitamente para continuar el Pedido seleccionado."
           : null;
   const displayedDestinationMessage =
@@ -436,7 +828,8 @@ export function OrderWorkflow({
   const canDiscardForDestination =
     !hasUncertainIntention &&
     (pendingDestination !== null ||
-      (requestedExistingReference !== null && composition.length > 0));
+      (requestedExistingReference !== null &&
+        (composition.length > 0 || hasAuthoritativePending)));
 
   return (
     <section className="panel" aria-labelledby="composition-title">
@@ -458,7 +851,7 @@ export function OrderWorkflow({
             className="secondary-button"
             type="button"
             onClick={requestNewOrder}
-            disabled={isConfirming}
+            disabled={isCompositionLocked}
           >
             Iniciar nuevo Pedido
           </button>
@@ -472,13 +865,66 @@ export function OrderWorkflow({
             <button
               className="secondary-button"
               type="button"
-              onClick={discardCompositionAndChangeDestination}
+              onClick={() => void discardCompositionAndChangeDestination()}
             >
               Descartar Composición
             </button>
           )}
         </div>
       )}
+
+      {isSubsequent &&
+        currentPendingAuthority !== null &&
+        localPending?.marker.pendingCompositionId !==
+          currentPendingAuthority.pendingCompositionId && (
+          <div className="destination-change" role="alert">
+            <p>
+              Existe una Composición pendiente autoritativa, pero sus líneas no
+              están disponibles en esta memoria local. No se recuperarán ni se
+              descartarán automáticamente.
+            </p>
+            <dl>
+              <div>
+                <dt>Identificador</dt>
+                <dd>{currentPendingAuthority.pendingCompositionId}</dd>
+              </div>
+              <div>
+                <dt>Creada</dt>
+                <dd>{currentPendingAuthority.createdAt}</dd>
+              </div>
+            </dl>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() =>
+                void beginDiscardPending(currentPendingAuthority, null, false)
+              }
+              disabled={isCompositionLocked}
+            >
+              Descartar Composición pendiente
+            </button>
+          </div>
+        )}
+
+      {isSubsequent &&
+        localPending?.orderId === activeOperationalReference &&
+        currentPendingAuthority?.pendingCompositionId ===
+          localPending.marker.pendingCompositionId && (
+          <div className="active-order-summary" role="status">
+            <span>Composición pendiente autoritativa activa</span>
+            <strong>{localPending.marker.pendingCompositionId}</strong>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() =>
+                void beginDiscardPending(localPending.marker, null, true)
+              }
+              disabled={isCompositionLocked}
+            >
+              Descartar Composición actual
+            </button>
+          </div>
+        )}
 
       <div
         className="product-selector"
@@ -512,7 +958,7 @@ export function OrderWorkflow({
                         <button
                           className="catalog-add-button"
                           type="button"
-                          onClick={() => addToComposition(product)}
+                          onClick={() => void beginAdd(product, false)}
                           disabled={!product.isAvailable || isCompositionLocked}
                           aria-label={`Agregar ${product.operationalName} a ${modeLabel}`}
                         >
@@ -521,7 +967,7 @@ export function OrderWorkflow({
                         <button
                           className="secondary-button"
                           type="button"
-                          onClick={() => addAnotherLine(product)}
+                          onClick={() => void beginAdd(product, true)}
                           disabled={!product.isAvailable || isCompositionLocked}
                           aria-label={`Agregar otra línea de ${product.operationalName} a ${modeLabel}`}
                         >
@@ -598,14 +1044,6 @@ export function OrderWorkflow({
             >
               Reintentar misma Primera Confirmación
             </button>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={discardUncertainFirst}
-              disabled={isConfirming}
-            >
-              Descartar intención incierta
-            </button>
           </div>
         </div>
       )}
@@ -635,16 +1073,61 @@ export function OrderWorkflow({
             >
               Reintentar misma Confirmación posterior
             </button>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={discardUncertainSubsequent}
-              disabled={isConfirming}
-            >
-              Descartar intención incierta
-            </button>
           </div>
         </div>
+      )}
+
+      {uncertainStart && (
+        <div
+          className="uncertain-intention"
+          role="region"
+          aria-label="Inicio de Composición con resultado incierto"
+        >
+          <p>
+            El resultado del inicio es incierto. El reintento conserva el mismo
+            Pedido y la misma Idempotency-Key.
+          </p>
+          <button
+            type="button"
+            onClick={() => void submitStartPending(uncertainStart)}
+            disabled={isPendingMutating}
+          >
+            Reintentar mismo inicio
+          </button>
+        </div>
+      )}
+
+      {uncertainDiscard && (
+        <div
+          className="uncertain-intention"
+          role="region"
+          aria-label="Descarte de Composición con resultado incierto"
+        >
+          <p>
+            El resultado del descarte es incierto. El reintento conserva el
+            mismo Pedido, marcador e Idempotency-Key.
+          </p>
+          <button
+            type="button"
+            onClick={() => void submitDiscardPending(uncertainDiscard)}
+            disabled={isPendingMutating}
+          >
+            Reintentar mismo descarte
+          </button>
+        </div>
+      )}
+
+      {staleComposition && composition.length > 0 && (
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => {
+            setComposition([]);
+            setStaleComposition(false);
+          }}
+        >
+          Descartar borrador local desvinculado
+        </button>
       )}
 
       {composition.length === 0 ? (

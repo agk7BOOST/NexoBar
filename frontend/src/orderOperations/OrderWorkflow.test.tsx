@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,9 +11,28 @@ import {
   type SubsequentConfirmationResponse,
 } from "./orderOperationsClient.ts";
 
-const { confirmFirstMock, confirmSubsequentMock } = vi.hoisted(() => ({
+const {
+  confirmFirstMock,
+  confirmSubsequentMock,
+  getPendingCompositionMock,
+  startPendingCompositionMock,
+  discardPendingCompositionMock,
+  getAntiforgeryTokenMock,
+  pendingAuthorityState,
+} = vi.hoisted(() => ({
   confirmFirstMock: vi.fn(),
   confirmSubsequentMock: vi.fn(),
+  getPendingCompositionMock: vi.fn(),
+  startPendingCompositionMock: vi.fn(),
+  discardPendingCompositionMock: vi.fn(),
+  getAntiforgeryTokenMock: vi.fn(),
+  pendingAuthorityState: {
+    marker: null as {
+      pendingCompositionId: string;
+      createdAt: string;
+      createdByIdentityId: string;
+    } | null,
+  },
 }));
 
 vi.mock("./orderOperationsClient.ts", async (importOriginal) => {
@@ -23,7 +42,40 @@ vi.mock("./orderOperationsClient.ts", async (importOriginal) => {
     ...original,
     confirmFirst: confirmFirstMock,
     confirmSubsequent: confirmSubsequentMock,
+    getPendingComposition: getPendingCompositionMock,
+    startPendingComposition: startPendingCompositionMock,
+    discardPendingComposition: discardPendingCompositionMock,
   };
+});
+
+vi.mock("../identity/sessionClient.ts", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("../identity/sessionClient.ts")>();
+  return { ...original, getAntiforgeryToken: getAntiforgeryTokenMock };
+});
+
+beforeEach(() => {
+  pendingAuthorityState.marker = null;
+  getAntiforgeryTokenMock.mockReset();
+  getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
+  getPendingCompositionMock.mockReset();
+  getPendingCompositionMock.mockImplementation(async (orderId: string) => ({
+    orderId,
+    pendingComposition: pendingAuthorityState.marker,
+  }));
+  startPendingCompositionMock.mockReset();
+  startPendingCompositionMock.mockImplementation(async () => {
+    pendingAuthorityState.marker = {
+      pendingCompositionId: "pending-local",
+      createdAt: "2026-09-04T12:00:00Z",
+      createdByIdentityId: "identity-1",
+    };
+    return pendingAuthorityState.marker;
+  });
+  discardPendingCompositionMock.mockReset();
+  discardPendingCompositionMock.mockImplementation(async () => {
+    pendingAuthorityState.marker = null;
+  });
 });
 
 const water: Product = {
@@ -89,6 +141,7 @@ interface HarnessProps {
   requestedTarget?: OrderTargetRequest;
   onActivate?: (reference: string) => void;
   onChanged?: (reference: string) => void;
+  onUnauthorized?: () => void;
 }
 
 function Harness({
@@ -96,6 +149,7 @@ function Harness({
   requestedTarget,
   onActivate = () => undefined,
   onChanged = () => undefined,
+  onUnauthorized = () => undefined,
 }: HarnessProps) {
   const [activeReference, setActiveReference] = useState(initialReference);
 
@@ -110,6 +164,7 @@ function Harness({
       }}
       onStartNewOrder={() => setActiveReference(null)}
       onOrderChanged={onChanged}
+      onUnauthorized={onUnauthorized}
     />
   );
 }
@@ -310,6 +365,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
         onActivateOrder={() => undefined}
         onStartNewOrder={() => undefined}
         onOrderChanged={() => undefined}
+        onUnauthorized={() => undefined}
       />,
     );
 
@@ -517,7 +573,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     expect(confirmFirstMock.mock.calls[1]).toEqual(firstCall);
   });
 
-  it("discard de Primera Confirmación incierta conserva el borrador y genera una key nueva", async () => {
+  it("no permite abandonar una Primera Confirmación incierta ni generar otra key", async () => {
     confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
     const user = userEvent.setup();
     render(<Harness />);
@@ -529,27 +585,23 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     await screen.findByRole("region", {
       name: "Primera Confirmación con resultado no confirmado",
     });
-    const firstKey = confirmFirstMock.mock.calls[0]?.[1];
-
-    await user.click(
-      screen.getByRole("button", { name: "Descartar intención incierta" }),
-    );
+    const firstCall = confirmFirstMock.mock.calls[0];
+    expect(
+      screen.queryByRole("button", { name: "Descartar intención incierta" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText("Cantidad de Agua")).toHaveTextContent("1");
-    expect(screen.getByLabelText("Contexto")).toBeEnabled();
-
-    confirmFirstMock.mockRejectedValueOnce(
-      new OrderOperationsProblemError({
-        code: "order_operations.first_confirmation.product_not_current",
+    expect(screen.getByLabelText("Contexto")).toBeDisabled();
+    confirmFirstMock.mockResolvedValueOnce(firstResponse);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Reintentar misma Primera Confirmación",
       }),
     );
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    );
-    await screen.findByText(/ya no está vigente/);
-    expect(confirmFirstMock.mock.calls[1]?.[1]).not.toBe(firstKey);
+    await screen.findByRole("heading", { name: "Nueva Composición" });
+    expect(confirmFirstMock.mock.calls[1]).toEqual(firstCall);
   });
 
-  it("discard First desbloquea instruction y la próxima intención usa el texto editado", async () => {
+  it("mantiene instruction congelada durante incertidumbre First", async () => {
     confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
     const user = userEvent.setup();
     render(<Harness />);
@@ -565,28 +617,9 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     await screen.findByRole("region", {
       name: "Primera Confirmación con resultado no confirmado",
     });
-    const firstKey = confirmFirstMock.mock.calls[0]?.[1];
-
-    await user.click(
-      screen.getByRole("button", { name: "Descartar intención incierta" }),
-    );
-    expect(instruction).toBeEnabled();
-    await user.clear(instruction);
-    await user.type(instruction, "sin tomate");
-    confirmFirstMock.mockRejectedValueOnce(
-      new OrderOperationsProblemError({
-        code: "order_operations.first_confirmation.product_not_current",
-      }),
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    );
-    await screen.findByText(/ya no está vigente/);
-
-    expect(confirmFirstMock.mock.calls[1]?.[0].items[0]?.instruction).toBe(
-      "sin tomate",
-    );
-    expect(confirmFirstMock.mock.calls[1]?.[1]).not.toBe(firstKey);
+    expect(instruction).toBeDisabled();
+    expect(instruction).toHaveValue("sin cebolla");
+    expect(confirmFirstMock).toHaveBeenCalledOnce();
   });
 
   it("mapea el rechazo funcional y conserva la Composición", async () => {
@@ -634,6 +667,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     const [reference, request, key] = confirmSubsequentMock.mock.calls[0]!;
     expect(reference).toBe("order-active");
     expect(request).toEqual({
+      pendingCompositionId: "pending-local",
       items: [
         { productId: soda.id, quantity: 1, instruction: null },
         { productId: water.id, quantity: 2, instruction: null },
@@ -672,6 +706,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
 
     expect(confirmSubsequentMock.mock.calls[0]?.[0]).toBe("order-active");
     expect(confirmSubsequentMock.mock.calls[0]?.[1]).toEqual({
+      pendingCompositionId: "pending-local",
       items: [
         { productId: burger.id, quantity: 2, instruction: null },
         { productId: burger.id, quantity: 1, instruction: "sin tomate" },
@@ -742,12 +777,9 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     expect(firstCall?.[0]).toBe("order-active");
     expect(firstCall?.[1].items[0]?.instruction).toBe("sin cebolla");
 
-    await user.click(
-      screen.getByRole("button", { name: "Iniciar nuevo Pedido" }),
-    );
     expect(
-      screen.getByText(/Resolvé o descartá la Confirmación incierta/),
-    ).toBeInTheDocument();
+      screen.getByRole("button", { name: "Iniciar nuevo Pedido" }),
+    ).toBeDisabled();
     expect(
       screen.getByRole("heading", { name: "Nueva Composición" }),
     ).toBeInTheDocument();
@@ -764,7 +796,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     expect(confirmSubsequentMock.mock.calls[1]).toEqual(firstCall);
   });
 
-  it("discard de incertidumbre habilita edición y una key nueva", async () => {
+  it("no permite abandonar incertidumbre Subsequent y reintenta ID/key/body exactos", async () => {
     confirmSubsequentMock.mockRejectedValueOnce(
       new OrderOperationsNetworkError(),
     );
@@ -781,33 +813,238 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     await screen.findByRole("region", {
       name: "Confirmación posterior con resultado no confirmado",
     });
-    const firstKey = confirmSubsequentMock.mock.calls[0]?.[2];
+    const firstCall = confirmSubsequentMock.mock.calls[0];
+    expect(instruction).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Descartar intención incierta" }),
+    ).not.toBeInTheDocument();
+    confirmSubsequentMock.mockResolvedValueOnce(subsequentResponse);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Reintentar misma Confirmación posterior",
+      }),
+    );
+    await screen.findByText("Nueva Incorporación confirmada correctamente.");
+    expect(confirmSubsequentMock.mock.calls[1]).toEqual(firstCall);
+  });
+});
+
+describe("OrderWorkflow - autoridad de Composición pendiente", () => {
+  beforeEach(() => {
+    confirmFirstMock.mockReset();
+    confirmSubsequentMock.mockReset();
+  });
+
+  it("mantiene la primera Composición local y nunca inicia un marcador servidor", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await addProduct(user, water, "Composición inicial");
+
+    expect(startPendingCompositionMock).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Cantidad de Agua")).toHaveTextContent("1");
+  });
+
+  it("no inicia al visualizar y establece autoridad antes del primer ítem posterior", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialReference="order-active" />);
+    await waitFor(() => expect(getPendingCompositionMock).toHaveBeenCalled());
+    expect(startPendingCompositionMock).not.toHaveBeenCalled();
+
+    await addProduct(user, water, "Nueva Composición");
+
+    expect(startPendingCompositionMock).toHaveBeenCalledOnce();
+    expect(startPendingCompositionMock.mock.calls[0]?.[0]).toMatchObject({
+      orderId: "order-active",
+      antiforgeryToken: "csrf-token",
+    });
+    expect(
+      startPendingCompositionMock.mock.calls[0]?.[0].idempotencyKey,
+    ).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(screen.getByText("pending-local")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cantidad de Agua")).toHaveTextContent("1");
+  });
+
+  it("expone un marcador remoto sin inventar líneas, bloquea otro draft y permite descarte explícito", async () => {
+    pendingAuthorityState.marker = {
+      pendingCompositionId: "pending-remote",
+      createdAt: "2026-09-04T12:00:00Z",
+      createdByIdentityId: "identity-remote",
+    };
+    const user = userEvent.setup();
+    render(<Harness initialReference="order-active" />);
+
+    expect(await screen.findByText("pending-remote")).toBeInTheDocument();
+    expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
+    await addProduct(user, water, "Nueva Composición");
+    expect(startPendingCompositionMock).not.toHaveBeenCalled();
+    expect(
+      await screen.findAllByText(/líneas no están disponibles/),
+    ).toHaveLength(2);
 
     await user.click(
-      screen.getByRole("button", { name: "Descartar intención incierta" }),
+      screen.getByRole("button", { name: "Descartar Composición pendiente" }),
     );
-    expect(instruction).toBeEnabled();
-    await user.clear(instruction);
-    await user.type(instruction, "sin tomate");
-    expect(
-      screen.getByRole("button", {
-        name: "Aumentar cantidad de Hamburguesa, línea 1",
-      }),
-    ).toBeEnabled();
+    await waitFor(() =>
+      expect(discardPendingCompositionMock).toHaveBeenCalledOnce(),
+    );
+    expect(discardPendingCompositionMock.mock.calls[0]?.[0]).toMatchObject({
+      orderId: "order-active",
+      pendingCompositionId: "pending-remote",
+      antiforgeryToken: "csrf-token",
+    });
+    expect(startPendingCompositionMock).not.toHaveBeenCalled();
 
-    confirmSubsequentMock.mockRejectedValueOnce(
-      new OrderOperationsProblemError({
-        code: "order_operations.first_confirmation.product_not_current",
+    await addProduct(user, water, "Nueva Composición");
+    expect(startPendingCompositionMock).toHaveBeenCalledOnce();
+  });
+
+  it("reintenta un Start incierto con endpoint, acción, token y key idénticos", async () => {
+    startPendingCompositionMock.mockRejectedValueOnce(
+      new OrderOperationsNetworkError(),
+    );
+    const user = userEvent.setup();
+    render(<Harness initialReference="order-active" />);
+    await screen.findByText("La Composición está vacía.");
+
+    await addProduct(user, water, "Nueva Composición");
+    const uncertain = await screen.findByRole("region", {
+      name: "Inicio de Composición con resultado incierto",
+    });
+    expect(screen.queryByLabelText("Cantidad de Agua")).not.toBeInTheDocument();
+    const original = startPendingCompositionMock.mock.calls[0];
+
+    await user.click(
+      within(uncertain).getByRole("button", {
+        name: "Reintentar mismo inicio",
       }),
     );
+    await screen.findByLabelText("Cantidad de Agua");
+    expect(startPendingCompositionMock.mock.calls[1]).toEqual(original);
+  });
+
+  it("reintenta un Discard incierto con marcador, token y key idénticos", async () => {
+    pendingAuthorityState.marker = {
+      pendingCompositionId: "pending-remote",
+      createdAt: "2026-09-04T12:00:00Z",
+      createdByIdentityId: "identity-remote",
+    };
+    discardPendingCompositionMock.mockRejectedValueOnce(
+      new OrderOperationsNetworkError(),
+    );
+    const user = userEvent.setup();
+    render(<Harness initialReference="order-active" />);
+    await screen.findByText("pending-remote");
+
+    await user.click(
+      screen.getByRole("button", { name: "Descartar Composición pendiente" }),
+    );
+    const uncertain = await screen.findByRole("region", {
+      name: "Descarte de Composición con resultado incierto",
+    });
+    const original = discardPendingCompositionMock.mock.calls[0];
+    await user.click(
+      within(uncertain).getByRole("button", {
+        name: "Reintentar mismo descarte",
+      }),
+    );
+    await waitFor(() =>
+      expect(discardPendingCompositionMock).toHaveBeenCalledTimes(2),
+    );
+    expect(discardPendingCompositionMock.mock.calls[1]).toEqual(original);
+  });
+
+  it("no abandona un marcador autoritativo aunque ya no queden líneas locales", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialReference="order-active" />);
+    await addProduct(user, water, "Nueva Composición");
+    await user.click(
+      screen.getByRole("button", {
+        name: "Retirar Agua, línea 1, de la composición",
+      }),
+    );
+    expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
+
+    const newOrder = screen.getByRole("button", {
+      name: "Iniciar nuevo Pedido",
+    });
+    await waitFor(() => expect(newOrder).toBeEnabled());
+    await user.click(newOrder);
+    expect(screen.getByText(/Descartala explícitamente/)).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Descartar Composición" }),
+    );
+
+    await waitFor(() =>
+      expect(discardPendingCompositionMock).toHaveBeenCalledOnce(),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Composición inicial" }),
+    ).toBeInTheDocument();
+  });
+
+  it("401 aplica logout/reset y 403 conserva la Identidad con explicación", async () => {
+    const onUnauthorized = vi.fn();
+    getPendingCompositionMock.mockRejectedValueOnce(
+      new OrderOperationsProblemError({ status: 401 }),
+    );
+    const first = render(
+      <Harness
+        initialReference="order-active"
+        onUnauthorized={onUnauthorized}
+      />,
+    );
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalledOnce());
+    first.unmount();
+
+    getPendingCompositionMock.mockRejectedValueOnce(
+      new OrderOperationsProblemError({ status: 403 }),
+    );
+    render(
+      <Harness
+        initialReference="order-active"
+        onUnauthorized={onUnauthorized}
+      />,
+    );
+    expect(
+      await screen.findByText(
+        /no tiene autorización para operar Composiciones/,
+      ),
+    ).toBeInTheDocument();
+    expect(onUnauthorized).toHaveBeenCalledOnce();
+  });
+
+  it("un 409 stale conserva líneas sólo para revisión y nunca cambia el ID", async () => {
+    confirmSubsequentMock.mockImplementationOnce(async () => {
+      pendingAuthorityState.marker = null;
+      throw new OrderOperationsProblemError({
+        status: 409,
+        code: "order.pending_composition_stale",
+      });
+    });
+    const user = userEvent.setup();
+    render(<Harness initialReference="order-active" />);
+    await addProduct(user, water, "Nueva Composición");
     await user.click(
       screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
     );
-    await screen.findByText(/ya no está vigente/);
-    expect(confirmSubsequentMock.mock.calls[1]?.[1].items[0]?.instruction).toBe(
-      "sin tomate",
-    );
-    expect(confirmSubsequentMock.mock.calls[1]?.[2]).not.toBe(firstKey);
+
+    expect(
+      await screen.findByText(/no se reenviará automáticamente/),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Cantidad de Agua")).toHaveTextContent("1");
+    expect(
+      screen.getByRole("button", {
+        name: "Aumentar cantidad de Agua, línea 1",
+      }),
+    ).toBeDisabled();
+    expect(startPendingCompositionMock).toHaveBeenCalledOnce();
+    expect(confirmSubsequentMock).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole("button", {
+        name: "Descartar borrador local desvinculado",
+      }),
+    ).toBeInTheDocument();
   });
 });
 

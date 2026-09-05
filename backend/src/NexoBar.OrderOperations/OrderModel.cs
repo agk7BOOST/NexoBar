@@ -187,17 +187,20 @@ internal sealed class ConfirmationHistory
         Guid id,
         Guid incorporationId,
         string confirmedContext,
+        Guid actorIdentityId,
         DateTimeOffset occurredAt)
     {
         Id = id;
         IncorporationId = incorporationId;
         ConfirmedContext = confirmedContext;
+        ActorIdentityId = actorIdentityId;
         OccurredAt = occurredAt;
     }
 
     internal Guid Id { get; private set; }
     internal Guid IncorporationId { get; private set; }
     internal string ConfirmedContext { get; private set; } = string.Empty;
+    internal Guid? ActorIdentityId { get; private set; }
     internal DateTimeOffset OccurredAt { get; private set; }
 }
 
@@ -207,15 +210,18 @@ internal sealed class FirstConfirmationCommand
 
     internal FirstConfirmationCommand(
         Guid idempotencyKey,
+        Guid actorIdentityId,
         string intentContext,
         Guid resultIncorporationId)
     {
         IdempotencyKey = idempotencyKey;
+        ActorIdentityId = actorIdentityId;
         IntentContext = intentContext;
         ResultIncorporationId = resultIncorporationId;
     }
 
     internal Guid IdempotencyKey { get; private set; }
+    internal Guid? ActorIdentityId { get; private set; }
     internal string IntentContext { get; private set; } = string.Empty;
     internal Guid ResultIncorporationId { get; private set; }
 }

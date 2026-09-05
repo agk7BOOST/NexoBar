@@ -15,7 +15,7 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
     private const string CurrentMigration =
         "20260830210000_ReidentifyIncorporationContent";
     private const string LatestMigration =
-        "20260831214404_AddDeliveryProgress";
+        "20260904152524_AddAuthoritativePendingComposition";
 
     private static readonly Guid OrderId =
         Guid.Parse("01910000-0000-7000-8000-000000000001");
@@ -39,7 +39,7 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
         Guid.Parse("22222222-2222-4222-8222-222222222222");
 
     [Fact]
-    public async Task Migration_preserves_previous_confirmation_data_and_replay()
+    public async Task Migration_preserves_previous_confirmation_data_and_actorless_commands_conflict()
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
@@ -215,6 +215,15 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
                 content.LineOrdinal,
                 content.ProductId,
                 content.Quantity)).ToArray());
+        Assert.All(
+            await dbContext.ConfirmationHistory.AsNoTracking().ToArrayAsync(token),
+            history => Assert.Null(history.ActorIdentityId));
+        Assert.Null((await dbContext.FirstConfirmationCommands.AsNoTracking()
+            .SingleAsync(token)).ActorIdentityId);
+        var legacySubsequent = await dbContext.SubsequentConfirmationCommands
+            .AsNoTracking().SingleAsync(token);
+        Assert.Null(legacySubsequent.ActorIdentityId);
+        Assert.Null(legacySubsequent.IntentPendingCompositionId);
     }
 
     private async Task AssertPhysicalStructureAsync(CancellationToken token)
@@ -383,20 +392,18 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
                 ]))
         };
         firstRequest.Headers.Add("Idempotency-Key", FirstCommandKey.ToString("D"));
-        using var firstResponse = await fixture.Client.SendAsync(firstRequest, token);
-        Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
-        var first = Assert.IsType<FirstConfirmationResponse>(
-            await firstResponse.Content.ReadFromJsonAsync<FirstConfirmationResponse>(token));
-        Assert.Equal(OrderId.ToString("D"), first.OperationalReference);
-        Assert.Equal(
-            [ProductA, ProductB],
-            first.FirstIncorporation.Items.Select(item => item.ProductId).ToArray());
+        using var firstResponse = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            firstRequest,
+            token);
+        Assert.Equal(HttpStatusCode.Conflict, firstResponse.StatusCode);
 
         using var subsequentRequest = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/order-operations/orders/{OrderId:D}/confirmations")
         {
             Content = JsonContent.Create(new SubsequentConfirmationRequest(
+                Guid.NewGuid(),
                 [
                     new SubsequentConfirmationItemRequest(ProductC, 5),
                     new SubsequentConfirmationItemRequest(ProductA, 4)
@@ -405,17 +412,11 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
         subsequentRequest.Headers.Add(
             "Idempotency-Key",
             SubsequentCommandKey.ToString("D"));
-        using var subsequentResponse = await fixture.Client.SendAsync(
+        using var subsequentResponse = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
             subsequentRequest,
             token);
-        Assert.Equal(HttpStatusCode.Created, subsequentResponse.StatusCode);
-        var subsequent = Assert.IsType<SubsequentConfirmationResponse>(
-            await subsequentResponse.Content
-                .ReadFromJsonAsync<SubsequentConfirmationResponse>(token));
-        Assert.Equal(2, subsequent.Incorporation.Ordinal);
-        Assert.Equal(
-            [ProductA, ProductC],
-            subsequent.Incorporation.Items.Select(item => item.ProductId).ToArray());
+        Assert.Equal(HttpStatusCode.Conflict, subsequentResponse.StatusCode);
 
         using var orderResponse = await fixture.Client.GetAsync(
             $"/api/order-operations/orders/{OrderId:D}",

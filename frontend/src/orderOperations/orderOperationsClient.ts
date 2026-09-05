@@ -35,7 +35,26 @@ export interface SubsequentConfirmationItemRequest {
 }
 
 export interface SubsequentConfirmationRequest {
+  pendingCompositionId: string;
   items: SubsequentConfirmationItemRequest[];
+}
+
+export interface PendingComposition {
+  pendingCompositionId: string;
+  createdAt: string;
+  createdByIdentityId: string;
+}
+
+export interface CurrentPendingComposition {
+  orderId: string;
+  pendingComposition: PendingComposition | null;
+}
+
+export interface PendingCompositionCommand {
+  orderId: string;
+  pendingCompositionId?: string;
+  idempotencyKey: string;
+  antiforgeryToken: string;
 }
 
 export interface SubsequentIncorporation {
@@ -116,18 +135,35 @@ async function readProblem(
   return { status: response.status };
 }
 
+async function requireOrderOperationsSuccess(
+  response: Response,
+): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+
+  if (response.status >= 500) {
+    throw new OrderOperationsNetworkError();
+  }
+
+  throw new OrderOperationsProblemError(await readProblem(response));
+}
+
 export async function confirmFirst(
   request: FirstConfirmationRequest,
   idempotencyKey: string,
+  antiforgeryToken: string,
 ): Promise<FirstConfirmationResponse> {
   let response: Response;
 
   try {
     response = await fetch("/api/order-operations/first-confirmations", {
       method: "POST",
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json",
         "Idempotency-Key": idempotencyKey,
+        "X-NexoBar-CSRF": antiforgeryToken,
       },
       body: JSON.stringify(request),
     });
@@ -135,9 +171,7 @@ export async function confirmFirst(
     throw new OrderOperationsNetworkError({ cause: error });
   }
 
-  if (!response.ok) {
-    throw new OrderOperationsProblemError(await readProblem(response));
-  }
+  await requireOrderOperationsSuccess(response);
 
   return (await response.json()) as FirstConfirmationResponse;
 }
@@ -146,6 +180,7 @@ export async function confirmSubsequent(
   operationalReference: string,
   request: SubsequentConfirmationRequest,
   idempotencyKey: string,
+  antiforgeryToken: string,
 ): Promise<SubsequentConfirmationResponse> {
   let response: Response;
 
@@ -154,9 +189,11 @@ export async function confirmSubsequent(
       `/api/order-operations/orders/${encodeURIComponent(operationalReference)}/confirmations`,
       {
         method: "POST",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
           "Idempotency-Key": idempotencyKey,
+          "X-NexoBar-CSRF": antiforgeryToken,
         },
         body: JSON.stringify(request),
       },
@@ -165,9 +202,7 @@ export async function confirmSubsequent(
     throw new OrderOperationsNetworkError({ cause: error });
   }
 
-  if (!response.ok) {
-    throw new OrderOperationsProblemError(await readProblem(response));
-  }
+  await requireOrderOperationsSuccess(response);
 
   return (await response.json()) as SubsequentConfirmationResponse;
 }
@@ -190,4 +225,68 @@ export async function getOrder(
   }
 
   return (await response.json()) as OrderResponse;
+}
+
+export async function getPendingComposition(
+  orderId: string,
+): Promise<CurrentPendingComposition> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/orders/${encodeURIComponent(orderId)}/pending-composition`,
+      { credentials: "same-origin" },
+    );
+  } catch (error) {
+    throw new OrderOperationsNetworkError({ cause: error });
+  }
+
+  await requireOrderOperationsSuccess(response);
+  return (await response.json()) as CurrentPendingComposition;
+}
+
+export async function startPendingComposition(
+  command: PendingCompositionCommand,
+): Promise<PendingComposition> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/orders/${encodeURIComponent(command.orderId)}/pending-composition`,
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Idempotency-Key": command.idempotencyKey,
+          "X-NexoBar-CSRF": command.antiforgeryToken,
+        },
+      },
+    );
+  } catch (error) {
+    throw new OrderOperationsNetworkError({ cause: error });
+  }
+
+  await requireOrderOperationsSuccess(response);
+  return (await response.json()) as PendingComposition;
+}
+
+export async function discardPendingComposition(
+  command: PendingCompositionCommand & { pendingCompositionId: string },
+): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/orders/${encodeURIComponent(command.orderId)}/pending-composition/${encodeURIComponent(command.pendingCompositionId)}/discard`,
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Idempotency-Key": command.idempotencyKey,
+          "X-NexoBar-CSRF": command.antiforgeryToken,
+        },
+      },
+    );
+  } catch (error) {
+    throw new OrderOperationsNetworkError({ cause: error });
+  }
+
+  await requireOrderOperationsSuccess(response);
 }

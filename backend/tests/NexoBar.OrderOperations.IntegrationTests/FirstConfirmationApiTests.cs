@@ -259,7 +259,10 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
             price: 10m,
             preparationResponsibilityId: responsibilityId);
         await using var application = fixture.CreateApplicationWithCatalog(replacement);
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(
+            fixture.DefaultOrderOperationsActor,
+            cancellationToken,
+            application);
 
         using var response = await PostFirstConfirmationAsync(
             Request("Mesa 7", (productId, 1)),
@@ -368,10 +371,21 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         var product = await fixture.CreateProductAsync("Agua", "10", cancellationToken);
         var key = NewIdempotencyKey();
         var request = Request("Mesa 7", (product.Id, 1));
+        var antiforgeryToken = await OrderOperationsApiFixture.GetAntiforgeryTokenAsync(
+            fixture.OrderOperationsClient,
+            cancellationToken);
 
         var responses = await Task.WhenAll(
-            PostFirstConfirmationAsync(request, key, cancellationToken),
-            PostFirstConfirmationAsync(request, key, cancellationToken));
+            PostFirstConfirmationAsync(
+                request,
+                key,
+                cancellationToken,
+                antiforgeryToken: antiforgeryToken),
+            PostFirstConfirmationAsync(
+                request,
+                key,
+                cancellationToken,
+                antiforgeryToken: antiforgeryToken));
 
         try
         {
@@ -491,7 +505,10 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         await fixture.ResetAsync(cancellationToken);
         var replacement = new UnexpectedCatalogCapability();
         await using var application = fixture.CreateApplicationWithCatalog(replacement);
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(
+            fixture.DefaultOrderOperationsActor,
+            cancellationToken,
+            application);
 
         using var response = await PostRawAsync(
             body,
@@ -552,7 +569,10 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         var productId = Guid.NewGuid();
         var replacement = new FixedCatalogCapability(true, true, false, 10m);
         await using var application = fixture.CreateApplicationWithCatalog(replacement);
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(
+            fixture.DefaultOrderOperationsActor,
+            cancellationToken,
+            application);
 
         using var response = await PostFirstConfirmationAsync(
             Request("Mesa 7", (productId, 1)),
@@ -664,7 +684,10 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
                     services.GetRequiredService<CatalogDbContext>()),
                 lockAcquired,
                 releaseConfirmation));
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(
+            fixture.DefaultOrderOperationsActor,
+            cancellationToken,
+            application);
 
         var confirmationTask = PostFirstConfirmationAsync(
             Request("Mesa 7", (product.Id, 1)),
@@ -784,7 +807,8 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         object request,
         string? idempotencyKey,
         CancellationToken cancellationToken,
-        HttpClient? client = null)
+        HttpClient? client = null,
+        string? antiforgeryToken = null)
     {
         using var message = new HttpRequestMessage(
             HttpMethod.Post,
@@ -797,7 +821,17 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
             message.Headers.Add("Idempotency-Key", idempotencyKey);
         }
 
-        return await (client ?? fixture.Client).SendAsync(message, cancellationToken);
+        var targetClient = client ?? fixture.OrderOperationsClient;
+        if (antiforgeryToken is null)
+        {
+            return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+                targetClient,
+                message,
+                cancellationToken);
+        }
+
+        message.Headers.Add("X-NexoBar-CSRF", antiforgeryToken);
+        return await targetClient.SendAsync(message, cancellationToken);
     }
 
     private static async Task<HttpResponseMessage> PostPriceChangeAsync(
@@ -819,7 +853,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         return await client.SendAsync(message, cancellationToken);
     }
 
-    private Task<HttpResponseMessage> PostRawAsync(
+    private async Task<HttpResponseMessage> PostRawAsync(
         string body,
         string idempotencyKey,
         CancellationToken cancellationToken,
@@ -832,7 +866,10 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
             Content = new StringContent(body, Encoding.UTF8, "application/json")
         };
         request.Headers.Add("Idempotency-Key", idempotencyKey);
-        return (client ?? fixture.Client).SendAsync(request, cancellationToken);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            client ?? fixture.OrderOperationsClient,
+            request,
+            cancellationToken);
     }
 
     private static FirstConfirmationRequest Request(

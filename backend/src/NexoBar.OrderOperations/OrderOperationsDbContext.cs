@@ -7,6 +7,9 @@ internal sealed class OrderOperationsDbContext(
     DbContextOptions<OrderOperationsDbContext> options) : DbContext(options)
 {
     internal DbSet<Order> Orders => Set<Order>();
+    internal DbSet<PendingComposition> PendingCompositions => Set<PendingComposition>();
+    internal DbSet<PendingCompositionCommand> PendingCompositionCommands =>
+        Set<PendingCompositionCommand>();
     internal DbSet<Incorporation> Incorporations => Set<Incorporation>();
     internal DbSet<IncorporationContent> IncorporationContents => Set<IncorporationContent>();
     internal DbSet<DeliveryState> DeliveryStates => Set<DeliveryState>();
@@ -29,6 +32,8 @@ internal sealed class OrderOperationsDbContext(
     {
         modelBuilder.HasDefaultSchema("order_operations");
         modelBuilder.ApplyConfiguration(new OrderConfiguration());
+        modelBuilder.ApplyConfiguration(new PendingCompositionConfiguration());
+        modelBuilder.ApplyConfiguration(new PendingCompositionCommandConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationContentConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryStateConfiguration());
@@ -423,6 +428,84 @@ internal sealed class OrderOperationsDbContext(
         }
     }
 
+    private sealed class PendingCompositionConfiguration :
+        IEntityTypeConfiguration<PendingComposition>
+    {
+        public void Configure(EntityTypeBuilder<PendingComposition> builder)
+        {
+            builder.ToTable("pending_compositions");
+            builder.HasKey(pending => pending.Id)
+                .HasName("PK_order_operations_pending_compositions");
+            builder.Property(pending => pending.Id)
+                .HasColumnName("id").ValueGeneratedNever();
+            builder.Property(pending => pending.OrderId)
+                .HasColumnName("order_id").ValueGeneratedNever();
+            builder.Property(pending => pending.CreatedAt)
+                .HasColumnName("created_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.Property(pending => pending.CreatedByIdentityId)
+                .HasColumnName("created_by_identity_id")
+                .ValueGeneratedNever();
+            builder.HasIndex(pending => pending.OrderId)
+                .HasDatabaseName("UX_pending_compositions_order")
+                .IsUnique();
+            builder.HasOne<Order>().WithMany()
+                .HasForeignKey(pending => pending.OrderId)
+                .HasConstraintName("FK_pending_compositions_orders")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class PendingCompositionCommandConfiguration :
+        IEntityTypeConfiguration<PendingCompositionCommand>
+    {
+        public void Configure(EntityTypeBuilder<PendingCompositionCommand> builder)
+        {
+            builder.ToTable(
+                "pending_composition_commands",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_pending_composition_commands_kind",
+                        "command_kind IN ('StartPendingComposition', 'DiscardPendingComposition')");
+                    table.HasCheckConstraint(
+                        "CK_pending_composition_commands_intent",
+                        "(command_kind = 'StartPendingComposition' AND " +
+                        "intent_pending_composition_id IS NULL) OR " +
+                        "(command_kind = 'DiscardPendingComposition' AND " +
+                        "intent_pending_composition_id IS NOT NULL)");
+                });
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_pending_composition_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(command => command.CommandKind)
+                .HasColumnName("command_kind").HasColumnType("text").IsRequired();
+            builder.Property(command => command.OrderId)
+                .HasColumnName("order_id").ValueGeneratedNever();
+            builder.Property(command => command.IntentPendingCompositionId)
+                .HasColumnName("intent_pending_composition_id");
+            builder.Property(command => command.ResultPendingCompositionId)
+                .HasColumnName("result_pending_composition_id").ValueGeneratedNever();
+            builder.Property(command => command.ResultCreatedAt)
+                .HasColumnName("result_created_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.Property(command => command.ResultCreatedByIdentityId)
+                .HasColumnName("result_created_by_identity_id")
+                .ValueGeneratedNever();
+            builder.HasIndex(command => command.OrderId)
+                .HasDatabaseName("IX_pending_composition_commands_order");
+            builder.HasOne<Order>().WithMany()
+                .HasForeignKey(command => command.OrderId)
+                .HasConstraintName("FK_pending_composition_commands_orders")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
     private sealed class IncorporationConfiguration : IEntityTypeConfiguration<Incorporation>
     {
         public void Configure(EntityTypeBuilder<Incorporation> builder)
@@ -519,6 +602,8 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("incorporation_id").ValueGeneratedNever();
             builder.Property(history => history.ConfirmedContext)
                 .HasColumnName("confirmed_context").HasColumnType("text").IsRequired();
+            builder.Property(history => history.ActorIdentityId)
+                .HasColumnName("actor_identity_id");
             builder.Property(history => history.OccurredAt)
                 .HasColumnName("occurred_at").HasColumnType("timestamp with time zone").IsRequired();
             builder.HasIndex(history => history.IncorporationId)
@@ -545,6 +630,8 @@ internal sealed class OrderOperationsDbContext(
                 .HasName("PK_order_operations_first_confirmation_commands");
             builder.Property(command => command.IdempotencyKey)
                 .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id");
             builder.Property(command => command.IntentContext)
                 .HasColumnName("intent_context").HasColumnType("text").IsRequired();
             builder.Property(command => command.ResultIncorporationId)
@@ -611,8 +698,12 @@ internal sealed class OrderOperationsDbContext(
                 .HasName("PK_order_operations_subsequent_confirmation_commands");
             builder.Property(command => command.IdempotencyKey)
                 .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id");
             builder.Property(command => command.IntentOrderId)
                 .HasColumnName("intent_order_id").ValueGeneratedNever();
+            builder.Property(command => command.IntentPendingCompositionId)
+                .HasColumnName("intent_pending_composition_id");
             builder.Property(command => command.ResultIncorporationId)
                 .HasColumnName("result_incorporation_id").ValueGeneratedNever();
             builder.HasIndex(command => command.IntentOrderId)

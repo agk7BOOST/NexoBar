@@ -2,9 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   confirmFirst,
   confirmSubsequent,
+  discardPendingComposition,
+  getPendingComposition,
   getOrder,
   OrderOperationsNetworkError,
   OrderOperationsProblemError,
+  startPendingComposition,
   type FirstConfirmationResponse,
   type OrderResponse,
   type SubsequentConfirmationResponse,
@@ -56,6 +59,7 @@ describe("confirmFirst", () => {
           ],
         },
         "first-confirmation-key",
+        "csrf-token",
       ),
     ).resolves.toEqual(response);
 
@@ -65,6 +69,7 @@ describe("confirmFirst", () => {
     const headers = new Headers(init?.headers);
     expect(headers.get("Content-Type")).toBe("application/json");
     expect(headers.get("Idempotency-Key")).toBe("first-confirmation-key");
+    expect(headers.get("X-NexoBar-CSRF")).toBe("csrf-token");
     expect(JSON.parse(String(init?.body))).toEqual({
       context: "Mesa 7",
       items: [
@@ -98,6 +103,7 @@ describe("confirmFirst", () => {
         items: [{ productId: "product-1", quantity: 1, instruction: null }],
       },
       "key",
+      "csrf-token",
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(OrderOperationsProblemError);
@@ -118,10 +124,123 @@ describe("confirmFirst", () => {
         items: [{ productId: "product-1", quantity: 1, instruction: null }],
       },
       "key",
+      "csrf-token",
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(OrderOperationsNetworkError);
     expect(error).not.toBeInstanceOf(OrderOperationsProblemError);
+  });
+});
+
+describe("Pending Composition client", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("lee el marcador autorizado y codifica el OrderId", async () => {
+    const value = {
+      orderId: "order with/slash",
+      pendingComposition: null,
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(value), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(getPendingComposition("order with/slash")).resolves.toEqual(
+      value,
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/orders/order%20with%2Fslash/pending-composition",
+      { credentials: "same-origin" },
+    );
+  });
+
+  it("Start y Discard preservan exactamente destino, key, CSRF y credenciales", async () => {
+    const marker = {
+      pendingCompositionId: "pending with/slash",
+      createdAt: "2026-09-04T12:00:00Z",
+      createdByIdentityId: "identity-1",
+    };
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(marker), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const command = {
+      orderId: "order with/slash",
+      idempotencyKey: "same-key",
+      antiforgeryToken: "same-csrf",
+    };
+
+    await expect(startPendingComposition(command)).resolves.toEqual(marker);
+    await expect(
+      discardPendingComposition({
+        ...command,
+        pendingCompositionId: marker.pendingCompositionId,
+      }),
+    ).resolves.toBeUndefined();
+
+    const [startUrl, startInit] = fetchMock.mock.calls[0]!;
+    expect(startUrl).toBe(
+      "/api/orders/order%20with%2Fslash/pending-composition",
+    );
+    expect(startInit).toMatchObject({
+      method: "POST",
+      credentials: "same-origin",
+    });
+    expect(new Headers(startInit?.headers).get("Idempotency-Key")).toBe(
+      "same-key",
+    );
+    expect(new Headers(startInit?.headers).get("X-NexoBar-CSRF")).toBe(
+      "same-csrf",
+    );
+
+    const [discardUrl, discardInit] = fetchMock.mock.calls[1]!;
+    expect(discardUrl).toBe(
+      "/api/orders/order%20with%2Fslash/pending-composition/pending%20with%2Fslash/discard",
+    );
+    expect(discardInit).toMatchObject({
+      method: "POST",
+      credentials: "same-origin",
+    });
+    expect(new Headers(discardInit?.headers).get("Idempotency-Key")).toBe(
+      "same-key",
+    );
+    expect(new Headers(discardInit?.headers).get("X-NexoBar-CSRF")).toBe(
+      "same-csrf",
+    );
+  });
+
+  it("trata timeout, rechazo de fetch y 5xx como resultado incierto", async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(null, { status: 500 }));
+    const command = {
+      orderId: "order-1",
+      idempotencyKey: "key-1",
+      antiforgeryToken: "csrf-1",
+    };
+
+    await expect(startPendingComposition(command)).rejects.toBeInstanceOf(
+      OrderOperationsNetworkError,
+    );
+    await expect(
+      discardPendingComposition({
+        ...command,
+        pendingCompositionId: "pending-1",
+      }),
+    ).rejects.toBeInstanceOf(OrderOperationsNetworkError);
+    await expect(getPendingComposition("order-1")).rejects.toBeInstanceOf(
+      OrderOperationsNetworkError,
+    );
   });
 });
 
@@ -202,6 +321,7 @@ describe("confirmSubsequent", () => {
       confirmSubsequent(
         "reference with/slash",
         {
+          pendingCompositionId: "pending-1",
           items: [
             {
               productId: "product-1",
@@ -212,6 +332,7 @@ describe("confirmSubsequent", () => {
           ],
         },
         "same-key",
+        "csrf-token",
       ),
     ).resolves.toEqual(response);
 
@@ -222,6 +343,7 @@ describe("confirmSubsequent", () => {
     expect(init?.method).toBe("POST");
     expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("same-key");
     expect(JSON.parse(String(init?.body))).toEqual({
+      pendingCompositionId: "pending-1",
       items: [
         { productId: "product-1", quantity: 2, instruction: "sin hielo" },
         { productId: "product-2", quantity: 1, instruction: null },
@@ -247,12 +369,22 @@ describe("confirmSubsequent", () => {
     );
 
     await expect(
-      confirmSubsequent("reference", { items: [] }, "key"),
+      confirmSubsequent(
+        "reference",
+        { pendingCompositionId: "pending-1", items: [] },
+        "key",
+        "csrf-token",
+      ),
     ).rejects.toBeInstanceOf(OrderOperationsProblemError);
 
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     await expect(
-      confirmSubsequent("reference", { items: [] }, "key"),
+      confirmSubsequent(
+        "reference",
+        { pendingCompositionId: "pending-1", items: [] },
+        "key",
+        "csrf-token",
+      ),
     ).rejects.toBeInstanceOf(OrderOperationsNetworkError);
   });
 });

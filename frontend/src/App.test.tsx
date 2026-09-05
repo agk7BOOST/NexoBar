@@ -119,10 +119,16 @@ const listedProduct: Product = {
 };
 
 async function renderLoadedApp() {
-  fetchMock.mockResolvedValueOnce(jsonResponse([listedProduct]));
+  fetchMock
+    .mockResolvedValueOnce(jsonResponse([listedProduct]))
+    .mockResolvedValueOnce(
+      jsonResponse({ identityId: "identity-1", operationalName: "Ana" }),
+    )
+    .mockResolvedValueOnce(jsonResponse([]));
   const user = userEvent.setup();
   render(<App />);
   await screen.findByText("Products: 1");
+  await screen.findByLabelText("Workflow coordinado");
   return user;
 }
 
@@ -178,7 +184,7 @@ describe("App coordination", () => {
     );
 
     expect(await screen.findByText("Products: 2")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("Confirmación posterior incrementa sequence para refrescar el mismo Pedido", async () => {
@@ -198,7 +204,7 @@ describe("App coordination", () => {
     expect(screen.getByText("Sequence: 2")).toBeInTheDocument();
   });
 
-  it("initial current-session 401 shows login without hiding anonymous flows", async () => {
+  it("initial current-session 401 keeps anonymous reads but hides authenticated workflow", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse([listedProduct]))
       .mockResolvedValueOnce(
@@ -211,7 +217,9 @@ describe("App coordination", () => {
       await screen.findByRole("heading", { name: "Ingresar" }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Catalog coordinado")).toBeInTheDocument();
-    expect(screen.getByLabelText("Workflow coordinado")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Workflow coordinado"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows current Identity and returns to login after protected 401", async () => {

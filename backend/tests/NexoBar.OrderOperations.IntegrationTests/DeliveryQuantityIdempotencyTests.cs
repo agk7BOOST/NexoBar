@@ -210,16 +210,23 @@ public sealed class DeliveryQuantityIdempotencyTests(OrderOperationsApiFixture f
         CancellationToken token)
     {
         var product = await fixture.CreateProductAsync("Otro directo", "4", token);
+        var pending = await fixture.StartPendingCompositionAsync(
+            firstTarget.OperationalReference,
+            token);
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/order-operations/orders/{firstTarget.OperationalReference}/confirmations")
         {
             Content = System.Net.Http.Json.JsonContent.Create(
                 new SubsequentConfirmationRequest(
+                    pending.PendingCompositionId,
                     [new SubsequentConfirmationItemRequest(product.Id, 2)]))
         };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
-        using var response = await fixture.Client.SendAsync(request, token);
+        using var response = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            request,
+            token);
         response.EnsureSuccessStatusCode();
         var content = (await fixture.ReadConfirmedContentsAsync(token))
             .Single(candidate => candidate.IncorporationId != firstTarget.IncorporationId);

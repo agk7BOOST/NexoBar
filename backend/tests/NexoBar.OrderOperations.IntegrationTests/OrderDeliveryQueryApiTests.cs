@@ -405,7 +405,10 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
                     item.Instruction)).ToArray()))
         };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
-        using var response = await fixture.Client.SendAsync(request, token);
+        using var response = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            request,
+            token);
         response.EnsureSuccessStatusCode();
         return Assert.IsType<FirstConfirmationResponse>(
             await response.Content.ReadFromJsonAsync<FirstConfirmationResponse>(token));
@@ -416,18 +419,25 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
         CancellationToken token,
         params (Guid ProductId, int Quantity, string? Instruction)[] items)
     {
+        var pending = await fixture.StartPendingCompositionAsync(
+            operationalReference,
+            token);
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/order-operations/orders/{operationalReference}/confirmations")
         {
             Content = JsonContent.Create(new SubsequentConfirmationRequest(
+                pending.PendingCompositionId,
                 items.Select(item => new SubsequentConfirmationItemRequest(
                     item.ProductId,
                     item.Quantity,
                     item.Instruction)).ToArray()))
         };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
-        using var response = await fixture.Client.SendAsync(request, token);
+        using var response = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            request,
+            token);
         response.EnsureSuccessStatusCode();
         return Assert.IsType<SubsequentConfirmationResponse>(
             await response.Content.ReadFromJsonAsync<SubsequentConfirmationResponse>(token));

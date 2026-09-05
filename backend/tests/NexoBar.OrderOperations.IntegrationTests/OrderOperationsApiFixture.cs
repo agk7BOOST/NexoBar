@@ -26,6 +26,8 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
     private WebApplicationFactory<Program>? application;
 
     internal HttpClient Client { get; private set; } = null!;
+    internal HttpClient OrderOperationsClient { get; private set; } = null!;
+    internal PreparationActor DefaultOrderOperationsActor { get; private set; } = null!;
     internal string ConnectionString => postgres.GetConnectionString();
     internal IServiceProvider Services => application!.Services;
 
@@ -52,6 +54,8 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                order_operations.pending_composition_commands,
+                order_operations.pending_compositions,
                 order_operations.delivery_commands,
                 order_operations.delivery_history,
                 order_operations.delivery_states,
@@ -79,6 +83,16 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 operational_configuration.preparation_responsibility_creation_commands,
                 operational_configuration.preparation_responsibilities
             """,
+            cancellationToken);
+
+        DefaultOrderOperationsActor = await CreateDeliveryActorAsync(
+            hasOrderOperations: true,
+            hasPreparation: false,
+            enabledResponsibilityId: null,
+            cancellationToken);
+        OrderOperationsClient?.Dispose();
+        OrderOperationsClient = await LoginAsync(
+            DefaultOrderOperationsActor,
             cancellationToken);
     }
 
@@ -207,6 +221,71 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         return client;
     }
 
+    internal static async Task<string> GetAntiforgeryTokenAsync(
+        HttpClient client,
+        CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync(
+            "/api/security/antiforgery",
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        using var document = await System.Text.Json.JsonDocument.ParseAsync(
+            await response.Content.ReadAsStreamAsync(cancellationToken),
+            cancellationToken: cancellationToken);
+        return Assert.IsType<string>(
+            document.RootElement.GetProperty("requestToken").GetString());
+    }
+
+    internal static async Task<HttpResponseMessage> SendWithAntiforgeryAsync(
+        HttpClient client,
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        request.Headers.Add(
+            "X-NexoBar-CSRF",
+            await GetAntiforgeryTokenAsync(client, cancellationToken));
+        return await client.SendAsync(request, cancellationToken);
+    }
+
+    internal async Task<PendingCompositionResponse> StartPendingCompositionAsync(
+        string orderId,
+        CancellationToken cancellationToken,
+        HttpClient? client = null)
+    {
+        var targetClient = client ?? OrderOperationsClient;
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/orders/{orderId}/pending-composition");
+        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
+        using var response = await SendWithAntiforgeryAsync(
+            targetClient,
+            request,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return Assert.IsType<PendingCompositionResponse>(
+            await response.Content.ReadFromJsonAsync<PendingCompositionResponse>(
+                cancellationToken));
+    }
+
+    internal async Task<PendingCompositionResponse> GetOrStartPendingCompositionAsync(
+        string orderId,
+        CancellationToken cancellationToken,
+        HttpClient? client = null)
+    {
+        var targetClient = client ?? OrderOperationsClient;
+        using var response = await targetClient.GetAsync(
+            $"/api/orders/{orderId}/pending-composition",
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var current = Assert.IsType<CurrentPendingCompositionResponse>(
+            await response.Content.ReadFromJsonAsync<CurrentPendingCompositionResponse>(
+                cancellationToken));
+        return current.PendingComposition ?? await StartPendingCompositionAsync(
+            orderId,
+            cancellationToken,
+            targetClient);
+    }
+
     internal async Task SetIdentityActiveAsync(
         Guid identityId,
         bool isActive,
@@ -327,7 +406,10 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 [new FirstConfirmationItemRequest(product.Id, quantity)]))
         };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
-        using var response = await Client.SendAsync(request, cancellationToken);
+        using var response = await SendWithAntiforgeryAsync(
+            OrderOperationsClient,
+            request,
+            cancellationToken);
         response.EnsureSuccessStatusCode();
         var confirmation = Assert.IsType<FirstConfirmationResponse>(
             await response.Content.ReadFromJsonAsync<FirstConfirmationResponse>(
@@ -756,6 +838,32 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         }
     }
 
+    internal async Task SetPendingCompositionCommandFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        var sql = enabled
+            ? """
+              CREATE OR REPLACE FUNCTION order_operations.fail_pending_composition_command()
+              RETURNS trigger LANGUAGE plpgsql AS $$
+              BEGIN
+                  RAISE EXCEPTION 'controlled pending composition command failure';
+              END;
+              $$;
+              CREATE TRIGGER fail_pending_composition_command
+              BEFORE INSERT ON order_operations.pending_composition_commands
+              FOR EACH ROW EXECUTE FUNCTION order_operations.fail_pending_composition_command();
+              """
+            : """
+              DROP TRIGGER IF EXISTS fail_pending_composition_command
+                  ON order_operations.pending_composition_commands;
+              DROP FUNCTION IF EXISTS order_operations.fail_pending_composition_command();
+              """;
+        await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+    }
+
     internal async Task SetPreparationCommandFailureAsync(
         bool enabled,
         CancellationToken cancellationToken)
@@ -935,8 +1043,12 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
     {
         cancellationToken.ThrowIfCancellationRequested();
         Client.Dispose();
+        OrderOperationsClient.Dispose();
         await application!.DisposeAsync();
         StartApplication();
+        OrderOperationsClient = await LoginAsync(
+            DefaultOrderOperationsActor,
+            cancellationToken);
     }
 
     internal WebApplicationFactory<Program> CreateApplicationWithCatalog(
@@ -1111,6 +1223,7 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
     public async ValueTask DisposeAsync()
     {
         Client.Dispose();
+        OrderOperationsClient?.Dispose();
         if (application is not null)
         {
             await application.DisposeAsync();

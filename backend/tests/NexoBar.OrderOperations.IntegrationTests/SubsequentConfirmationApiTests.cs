@@ -13,6 +13,8 @@ namespace NexoBar.OrderOperations.IntegrationTests;
 [Collection(OrderOperationsApiCollection.Name)]
 public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fixture)
 {
+    private readonly Dictionary<string, Guid> pendingCompositionByConfirmationKey = [];
+    private readonly SemaphoreSlim pendingCompositionGate = new(1, 1);
     [Fact]
     public async Task Second_confirmation_preserves_previous_state_history_and_context()
     {
@@ -246,7 +248,10 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
                     services.GetRequiredService<CatalogDbContext>()),
                 catalogLocked,
                 releaseCatalog));
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(
+            fixture.DefaultOrderOperationsActor,
+            cancellationToken,
+            application);
         var key = NewIdempotencyKey();
         var request = Request((product.Id, 2));
 
@@ -309,7 +314,10 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         await fixture.RestartApplicationAsync(cancellationToken);
         var unexpectedCatalog = new UnexpectedCatalogCapability();
         await using var application = fixture.CreateApplicationWithCatalog(unexpectedCatalog);
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(
+            fixture.DefaultOrderOperationsActor,
+            cancellationToken,
+            application);
         using var replay = await PostSubsequentAsync(
             first.OperationalReference, request, key, cancellationToken, client);
 
@@ -322,13 +330,20 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
     }
 
     [Fact]
-    public async Task Different_keys_on_same_order_wait_for_row_lock_and_create_ordinals_two_and_three()
+    public async Task Different_keys_on_same_pending_composition_serialize_and_only_one_confirms()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(cancellationToken);
         var product = await fixture.CreateProductAsync("Agua", "10", cancellationToken);
         var first = await CreateOrderAsync(product.Id, 1, "Mesa 7", cancellationToken);
         var orderId = Guid.Parse(first.OperationalReference);
+        var pending = await fixture.StartPendingCompositionAsync(
+            first.OperationalReference,
+            cancellationToken);
+        var firstKey = NewIdempotencyKey();
+        var secondKey = NewIdempotencyKey();
+        pendingCompositionByConfirmationKey[firstKey] = pending.PendingCompositionId;
+        pendingCompositionByConfirmationKey[secondKey] = pending.PendingCompositionId;
 
         await using var blockerConnection = new NpgsqlConnection(fixture.ConnectionString);
         await blockerConnection.OpenAsync(cancellationToken);
@@ -339,12 +354,12 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         var firstTask = PostSubsequentAsync(
             first.OperationalReference,
             Request((product.Id, 2)),
-            NewIdempotencyKey(),
+            firstKey,
             cancellationToken);
         var secondTask = PostSubsequentAsync(
             first.OperationalReference,
             Request((product.Id, 3)),
-            NewIdempotencyKey(),
+            secondKey,
             cancellationToken);
 
         Assert.True(await fixture.WaitForOrderRowLockWaitersAsync(
@@ -356,12 +371,8 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         var responses = await Task.WhenAll(firstTask, secondTask);
         try
         {
-            Assert.All(responses, response =>
-                Assert.Equal(HttpStatusCode.Created, response.StatusCode));
-            var results = await Task.WhenAll(responses.Select(response =>
-                ReadSubsequentAsync(response, cancellationToken)));
-            Assert.Equal(new[] { 2, 3 },
-                results.Select(result => result.Incorporation.Ordinal).Order().ToArray());
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Created);
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
 
             await using var scope = fixture.Services.CreateAsyncScope();
             var ordinals = await scope.ServiceProvider
@@ -371,7 +382,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
                 .OrderBy(incorporation => incorporation.Ordinal)
                 .Select(incorporation => incorporation.Ordinal)
                 .ToArrayAsync(cancellationToken);
-            Assert.Equal(new[] { 1, 2, 3 }, ordinals);
+            Assert.Equal(new[] { 1, 2 }, ordinals);
         }
         finally
         {
@@ -390,6 +401,16 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         var product = await fixture.CreateProductAsync("Agua", "10", cancellationToken);
         var blockedOrder = await CreateOrderAsync(product.Id, 1, "Mesa 1", cancellationToken);
         var freeOrder = await CreateOrderAsync(product.Id, 1, "Mesa 2", cancellationToken);
+        var blockedPending = await fixture.StartPendingCompositionAsync(
+            blockedOrder.OperationalReference,
+            cancellationToken);
+        var freePending = await fixture.StartPendingCompositionAsync(
+            freeOrder.OperationalReference,
+            cancellationToken);
+        var blockedKey = NewIdempotencyKey();
+        var freeKey = NewIdempotencyKey();
+        pendingCompositionByConfirmationKey[blockedKey] = blockedPending.PendingCompositionId;
+        pendingCompositionByConfirmationKey[freeKey] = freePending.PendingCompositionId;
 
         await using var blockerConnection = new NpgsqlConnection(fixture.ConnectionString);
         await blockerConnection.OpenAsync(cancellationToken);
@@ -404,7 +425,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         var blockedTask = PostSubsequentAsync(
             blockedOrder.OperationalReference,
             Request((product.Id, 2)),
-            NewIdempotencyKey(),
+            blockedKey,
             cancellationToken);
         Assert.True(await fixture.WaitForOrderRowLockWaitersAsync(
             1,
@@ -414,7 +435,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         using var freeResponse = await PostSubsequentAsync(
                 freeOrder.OperationalReference,
                 Request((product.Id, 2)),
-                NewIdempotencyKey(),
+                freeKey,
                 cancellationToken)
             .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
         Assert.Equal(HttpStatusCode.Created, freeResponse.StatusCode);
@@ -483,7 +504,10 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
             10m,
             responsibilityId);
         await using var application = fixture.CreateApplicationWithCatalog(replacement);
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(
+            fixture.DefaultOrderOperationsActor,
+            cancellationToken,
+            application);
 
         using var response = await PostSubsequentAsync(
             first.OperationalReference,
@@ -545,7 +569,10 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         var first = await CreateOrderAsync(product.Id, 1, "Mesa 7", cancellationToken);
         var unexpectedCatalog = new UnexpectedCatalogCapability();
         await using var application = fixture.CreateApplicationWithCatalog(unexpectedCatalog);
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(
+            fixture.DefaultOrderOperationsActor,
+            cancellationToken,
+            application);
 
         using var response = await PostSubsequentAsync(
             first.OperationalReference,
@@ -651,7 +678,11 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
                 Content = new StringContent(body, Encoding.UTF8, "application/json")
             };
             message.Headers.Add("Idempotency-Key", NewIdempotencyKey());
-            using var response = await fixture.Client.SendAsync(message, cancellationToken);
+            using var response =
+                await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+                    fixture.OrderOperationsClient,
+                    message,
+                    cancellationToken);
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         }
 
@@ -680,14 +711,26 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
 
         try
         {
+            var key = NewIdempotencyKey();
             using var response = await PostSubsequentAsync(
                 first.OperationalReference,
                 Request((product.Id, 2)),
-                NewIdempotencyKey(),
+                key,
                 cancellationToken);
             Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
             Assert.Equal(new SubsequentPersistenceCounts(1, 1, 1, 0, 0),
                 await fixture.CountSubsequentEffectsAsync(cancellationToken));
+            using var pendingResponse = await fixture.OrderOperationsClient.GetAsync(
+                $"/api/orders/{first.OperationalReference}/pending-composition",
+                cancellationToken);
+            var pending = Assert.IsType<CurrentPendingCompositionResponse>(
+                await pendingResponse.Content
+                    .ReadFromJsonAsync<CurrentPendingCompositionResponse>(
+                        cancellationToken));
+            Assert.Equal(
+                pendingCompositionByConfirmationKey[key],
+                Assert.IsType<PendingCompositionResponse>(
+                    pending.PendingComposition).PendingCompositionId);
         }
         finally
         {
@@ -719,7 +762,10 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
                     services.GetRequiredService<CatalogDbContext>()),
                 catalogLocked,
                 releaseCatalog));
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(
+            fixture.DefaultOrderOperationsActor,
+            cancellationToken,
+            application);
 
         var confirmationTask = PostSubsequentAsync(
             first.OperationalReference,
@@ -782,7 +828,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
 
         var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
         Assert.Equal(
-            new[] { "items" },
+            new[] { "pendingCompositionId", "items" },
             schemas.GetProperty(nameof(SubsequentConfirmationRequest))
                 .GetProperty("properties").EnumerateObject()
                 .Select(property => property.Name).ToArray());
@@ -824,7 +870,10 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
                 [new FirstConfirmationItemRequest(productId, quantity)]))
         };
         message.Headers.Add("Idempotency-Key", NewIdempotencyKey());
-        using var response = await fixture.Client.SendAsync(message, cancellationToken);
+        using var response = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            message,
+            cancellationToken);
         response.EnsureSuccessStatusCode();
         return Assert.IsType<FirstConfirmationResponse>(
             await response.Content.ReadFromJsonAsync<FirstConfirmationResponse>(cancellationToken));
@@ -837,6 +886,19 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         CancellationToken cancellationToken,
         HttpClient? client = null)
     {
+        var targetClient = client ?? fixture.OrderOperationsClient;
+        if (request is SubsequentConfirmationRequest typedRequest &&
+            typedRequest.PendingCompositionId == Guid.Empty &&
+            key is not null)
+        {
+            var pendingCompositionId = await GetPendingCompositionForConfirmationAsync(
+                operationalReference,
+                key,
+                targetClient,
+                cancellationToken);
+            request = typedRequest with { PendingCompositionId = pendingCompositionId };
+        }
+
         using var message = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/order-operations/orders/{operationalReference}/confirmations")
@@ -848,7 +910,66 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
             message.Headers.Add("Idempotency-Key", key);
         }
 
-        return await (client ?? fixture.Client).SendAsync(message, cancellationToken);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            targetClient,
+            message,
+            cancellationToken);
+    }
+
+    private async Task<Guid> GetPendingCompositionForConfirmationAsync(
+        string operationalReference,
+        string confirmationKey,
+        HttpClient client,
+        CancellationToken cancellationToken)
+    {
+        await pendingCompositionGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (pendingCompositionByConfirmationKey.TryGetValue(
+                    confirmationKey,
+                    out var existing))
+            {
+                return existing;
+            }
+
+            using var currentResponse = await client.GetAsync(
+                $"/api/orders/{operationalReference}/pending-composition",
+                cancellationToken);
+            if (!currentResponse.IsSuccessStatusCode)
+            {
+                var unavailableOrderPendingId = Guid.NewGuid();
+                pendingCompositionByConfirmationKey[confirmationKey] =
+                    unavailableOrderPendingId;
+                return unavailableOrderPendingId;
+            }
+            var current = Assert.IsType<CurrentPendingCompositionResponse>(
+                await currentResponse.Content.ReadFromJsonAsync<CurrentPendingCompositionResponse>(
+                    cancellationToken));
+            var pendingId = current.PendingComposition?.PendingCompositionId;
+            if (pendingId is null)
+            {
+                using var startRequest = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    $"/api/orders/{operationalReference}/pending-composition");
+                startRequest.Headers.Add("Idempotency-Key", NewIdempotencyKey());
+                using var startResponse =
+                    await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+                        client,
+                        startRequest,
+                        cancellationToken);
+                startResponse.EnsureSuccessStatusCode();
+                pendingId = Assert.IsType<PendingCompositionResponse>(
+                    await startResponse.Content.ReadFromJsonAsync<PendingCompositionResponse>(
+                        cancellationToken)).PendingCompositionId;
+            }
+
+            pendingCompositionByConfirmationKey[confirmationKey] = pendingId.Value;
+            return pendingId.Value;
+        }
+        finally
+        {
+            pendingCompositionGate.Release();
+        }
     }
 
     private async Task<HttpResponseMessage> PostPriceChangeAsync(
@@ -867,7 +988,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
                 newPrice))
         };
         message.Headers.Add("Idempotency-Key", NewIdempotencyKey());
-        return await (client ?? fixture.Client).SendAsync(message, cancellationToken);
+        return await (client ?? fixture.OrderOperationsClient).SendAsync(message, cancellationToken);
     }
 
     private async Task<bool> WaitForAdvisoryLockWaiterAsync(
@@ -919,7 +1040,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
 
     private static SubsequentConfirmationRequest Request(
         params (Guid ProductId, int Quantity)[] items) =>
-        new(items.Select(item => new SubsequentConfirmationItemRequest(
+        new(Guid.Empty, items.Select(item => new SubsequentConfirmationItemRequest(
             item.ProductId,
             item.Quantity)).ToArray());
 

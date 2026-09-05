@@ -6,16 +6,22 @@ internal sealed class SubsequentConfirmationCommand
 
     internal SubsequentConfirmationCommand(
         Guid idempotencyKey,
+        Guid actorIdentityId,
         Guid intentOrderId,
+        Guid intentPendingCompositionId,
         Guid resultIncorporationId)
     {
         IdempotencyKey = idempotencyKey;
+        ActorIdentityId = actorIdentityId;
         IntentOrderId = intentOrderId;
+        IntentPendingCompositionId = intentPendingCompositionId;
         ResultIncorporationId = resultIncorporationId;
     }
 
     internal Guid IdempotencyKey { get; private set; }
+    internal Guid? ActorIdentityId { get; private set; }
     internal Guid IntentOrderId { get; private set; }
+    internal Guid? IntentPendingCompositionId { get; private set; }
     internal Guid ResultIncorporationId { get; private set; }
 }
 

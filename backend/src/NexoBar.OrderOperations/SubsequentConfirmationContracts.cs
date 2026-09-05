@@ -5,6 +5,7 @@ namespace NexoBar.OrderOperations;
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record SubsequentConfirmationRequest(
+    [property: Required, JsonRequired] Guid PendingCompositionId,
     [property: Required] IReadOnlyList<SubsequentConfirmationItemRequest>? Items);
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

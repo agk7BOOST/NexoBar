@@ -26,7 +26,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         await fixture.SetProductPreparationAsync(preparedBar.Id, bar, token);
 
         using var response = await PostFirstAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             "Mesa 7",
             Guid.NewGuid(),
             token,
@@ -64,7 +64,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         await fixture.SetProductPreparationAsync(product.Id, a, token);
 
         using var firstResponse = await PostFirstAsync(
-            fixture.Client, "Mesa 7", Guid.NewGuid(), token, (product.Id, 2));
+            fixture.OrderOperationsClient, "Mesa 7", Guid.NewGuid(), token, (product.Id, 2));
         var first = await ReadFirstAsync(firstResponse, token);
         Assert.Equal(a, Assert.Single(
             await fixture.ReadPreparationWorkAsync(token)).PreparationResponsibilityId);
@@ -74,7 +74,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
             await fixture.ReadPreparationWorkAsync(token)).PreparationResponsibilityId);
 
         using var subsequentResponse = await PostSubsequentAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             first.OperationalReference,
             Guid.NewGuid(),
             token,
@@ -100,11 +100,14 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         var key = Guid.NewGuid();
 
         using var first = await PostFirstAsync(
-            fixture.Client, "Mesa 7", key, token, (product.Id, 2));
+            fixture.OrderOperationsClient, "Mesa 7", key, token, (product.Id, 2));
         var originalBody = await first.Content.ReadAsStringAsync(token);
         var unexpectedCatalog = new UnexpectedCatalogCapability();
         await using var application = fixture.CreateApplicationWithCatalog(unexpectedCatalog);
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(
+            fixture.DefaultOrderOperationsActor,
+            token,
+            application);
         using var replay = await PostFirstAsync(
             client, "Mesa 7", key, token, (product.Id, 2));
 
@@ -133,7 +136,10 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
                  })
         {
             await using var application = fixture.CreateApplicationWithCatalog(catalog);
-            using var client = application.CreateClient();
+            using var client = await fixture.LoginAsync(
+                fixture.DefaultOrderOperationsActor,
+                token,
+                application);
             using var response = await PostFirstAsync(
                 client, "Mesa 7", Guid.NewGuid(), token, (productId, 1));
 
@@ -158,7 +164,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         await fixture.SetProductPreparationAsync(otherProduct.Id, otherResponsibility, token);
 
         using var firstResponse = await PostFirstAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             "Mesa histórica",
             Guid.NewGuid(),
             token,
@@ -336,7 +342,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         var product = await fixture.CreateProductAsync("Papas", "5", token);
         await fixture.SetProductPreparationAsync(product.Id, responsibility, token);
         using var confirmation = await PostFirstAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             "Mesa 7",
             Guid.NewGuid(),
             token,
@@ -386,7 +392,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         var product = await fixture.CreateProductAsync("Pizza", "9", token);
         await fixture.SetProductPreparationAsync(product.Id, responsibility, token);
         using var confirmation = await PostFirstAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             "Mesa 3",
             Guid.NewGuid(),
             token,
@@ -421,14 +427,14 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         var product = await fixture.CreateProductAsync("Papas", "5", token);
         await fixture.SetProductPreparationAsync(product.Id, responsibility, token);
         using var firstResponse = await PostFirstAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             "Mesa 7",
             Guid.NewGuid(),
             token,
             (product.Id, 1));
         var first = await ReadFirstAsync(firstResponse, token);
         using var subsequentResponse = await PostSubsequentAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             first.OperationalReference,
             Guid.NewGuid(),
             token,
@@ -464,7 +470,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         var product = await fixture.CreateProductAsync("Papas", "5", token);
         await fixture.SetProductPreparationAsync(product.Id, responsibility, token);
         using var confirmation = await PostFirstAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             "Mesa 7",
             Guid.NewGuid(),
             token,
@@ -511,7 +517,10 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
                     catalogLocked,
                     releaseCatalog),
                 new ExistingPreparationResponsibilityLookup());
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(
+            fixture.DefaultOrderOperationsActor,
+            token,
+            application);
 
         var confirmationTask = PostFirstAsync(
             client, "Mesa 7", Guid.NewGuid(), token, (product.Id, 2));
@@ -555,7 +564,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         try
         {
             using var failed = await PostFirstAsync(
-                fixture.Client, "Mesa 7", key, token, (product.Id, 2));
+                fixture.OrderOperationsClient, "Mesa 7", key, token, (product.Id, 2));
             Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
             Assert.Equal(PersistenceCounts.Empty, await fixture.CountEffectsAsync(token));
             Assert.Equal(0, await fixture.CountPreparationWorkAsync(token));
@@ -566,7 +575,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         }
 
         using var retry = await PostFirstAsync(
-            fixture.Client, "Mesa 7", key, token, (product.Id, 2));
+            fixture.OrderOperationsClient, "Mesa 7", key, token, (product.Id, 2));
         Assert.Equal(HttpStatusCode.Created, retry.StatusCode);
         Assert.Equal(1, await fixture.CountPreparationWorkAsync(token));
     }
@@ -578,7 +587,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         await fixture.ResetAsync(token);
         var product = await fixture.CreateProductAsync("Papas", "5", token);
         using var firstResponse = await PostFirstAsync(
-            fixture.Client, "Mesa 7", Guid.NewGuid(), token, (product.Id, 1));
+            fixture.OrderOperationsClient, "Mesa 7", Guid.NewGuid(), token, (product.Id, 1));
         var first = await ReadFirstAsync(firstResponse, token);
         await fixture.SetProductPreparationAsync(product.Id, Guid.CreateVersion7(), token);
         await fixture.SetPreparationWorkFailureAsync(true, token);
@@ -586,7 +595,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         try
         {
             using var failed = await PostSubsequentAsync(
-                fixture.Client,
+                fixture.OrderOperationsClient,
                 first.OperationalReference,
                 Guid.NewGuid(),
                 token,
@@ -609,7 +618,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         await fixture.ResetAsync(token);
         var product = await fixture.CreateProductAsync("Agua", "3", token);
         using var firstResponse = await PostFirstAsync(
-            fixture.Client, "Mesa 7", Guid.NewGuid(), token, (product.Id, 1));
+            fixture.OrderOperationsClient, "Mesa 7", Guid.NewGuid(), token, (product.Id, 1));
         var first = await ReadFirstAsync(firstResponse, token);
         var responsibility = Guid.CreateVersion7();
 
@@ -767,27 +776,38 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
                     item.Quantity)).ToArray()))
         };
         request.Headers.Add("Idempotency-Key", key.ToString("D"));
-        return await client.SendAsync(request, token);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            client,
+            request,
+            token);
     }
 
-    private static async Task<HttpResponseMessage> PostSubsequentAsync(
+    private async Task<HttpResponseMessage> PostSubsequentAsync(
         HttpClient client,
         string operationalReference,
         Guid key,
         CancellationToken token,
         params (Guid ProductId, int Quantity)[] items)
     {
+        var pending = await fixture.GetOrStartPendingCompositionAsync(
+            operationalReference,
+            token,
+            client);
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/order-operations/orders/{operationalReference}/confirmations")
         {
             Content = JsonContent.Create(new SubsequentConfirmationRequest(
+                pending.PendingCompositionId,
                 items.Select(item => new SubsequentConfirmationItemRequest(
                     item.ProductId,
                     item.Quantity)).ToArray()))
         };
         request.Headers.Add("Idempotency-Key", key.ToString("D"));
-        return await client.SendAsync(request, token);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            client,
+            request,
+            token);
     }
 
     private static async Task<HttpResponseMessage> PostPreparationConfigurationChangeAsync(

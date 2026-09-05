@@ -1,14 +1,18 @@
 using System.Buffers.Binary;
 using System.Globalization;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using NexoBar.Catalog;
+using NexoBar.IdentitiesAndCapabilities;
 
 namespace NexoBar.OrderOperations;
 
 internal sealed class SubsequentConfirmationService(
     OrderOperationsDbContext dbContext,
-    IOrderConfirmationCatalog catalog)
+    IOrderConfirmationCatalog catalog,
+    IAuthenticatedSessionStabilizer sessionStabilizer,
+    IOrderOperationsCapabilityStabilizer capabilityStabilizer)
 {
     private const long SubsequentConfirmationLockNamespace = 0x535542434F4E4600;
 
@@ -27,12 +31,21 @@ internal sealed class SubsequentConfirmationService(
         var intent = validation.Intent!;
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
             cancellationToken);
 
         var lockKey = CreateTransactionLockKey(idempotencyKey);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({lockKey})",
             cancellationToken);
+
+        var stabilizedSession = await sessionStabilizer.StabilizeAsync(
+            transaction.GetDbTransaction(),
+            cancellationToken);
+        if (stabilizedSession is null)
+        {
+            return SubsequentConfirmationResult.Unauthenticated();
+        }
 
         var existingCommand = await dbContext.SubsequentConfirmationCommands
             .AsNoTracking()
@@ -48,7 +61,12 @@ internal sealed class SubsequentConfirmationService(
                 .OrderBy(content => content.LineOrdinal)
                 .ToArrayAsync(cancellationToken);
 
-            if (!Matches(existingCommand, existingContents, orderId, intent))
+            if (!Matches(
+                    existingCommand,
+                    existingContents,
+                    stabilizedSession.IdentityId,
+                    orderId,
+                    intent))
             {
                 await transaction.CommitAsync(cancellationToken);
                 return SubsequentConfirmationResult.IdempotencyConflict();
@@ -59,6 +77,14 @@ internal sealed class SubsequentConfirmationService(
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return SubsequentConfirmationResult.Confirmed(replay);
+        }
+
+        if (!await capabilityStabilizer.StabilizeResponsibilityAsync(
+                stabilizedSession.IdentityId,
+                transaction.GetDbTransaction(),
+                cancellationToken))
+        {
+            return SubsequentConfirmationResult.Forbidden();
         }
 
         var order = await dbContext.Orders
@@ -75,6 +101,16 @@ internal sealed class SubsequentConfirmationService(
         if (order is null)
         {
             return SubsequentConfirmationResult.OrderNotFound();
+        }
+
+        var pendingComposition = await dbContext.PendingCompositions
+            .SingleOrDefaultAsync(
+                pending => pending.OrderId == orderId,
+                cancellationToken);
+        if (pendingComposition is null ||
+            pendingComposition.Id != intent.PendingCompositionId)
+        {
+            return SubsequentConfirmationResult.PendingCompositionStale();
         }
 
         var catalogProducts = await catalog.ReadProductsAsync(
@@ -124,10 +160,13 @@ internal sealed class SubsequentConfirmationService(
             Guid.CreateVersion7(),
             incorporationId,
             order.Context,
+            stabilizedSession.IdentityId,
             confirmedAt));
         dbContext.SubsequentConfirmationCommands.Add(new SubsequentConfirmationCommand(
             idempotencyKey,
+            stabilizedSession.IdentityId,
             orderId,
+            intent.PendingCompositionId,
             incorporationId));
 
         var responseItems = new List<ConfirmedItemResponse>(intent.Items.Count);
@@ -162,6 +201,8 @@ internal sealed class SubsequentConfirmationService(
                 product.Price.ToString(CultureInfo.InvariantCulture),
                 item.Instruction));
         }
+
+        dbContext.PendingCompositions.Remove(pendingComposition);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -218,6 +259,12 @@ internal sealed class SubsequentConfirmationService(
     private static SubsequentConfirmationValidation Validate(
         SubsequentConfirmationRequest request)
     {
+        if (request.PendingCompositionId == Guid.Empty)
+        {
+            return SubsequentConfirmationValidation.Invalid(
+                SubsequentConfirmationResult.RequestInvalid());
+        }
+
         if (request.Items is null || request.Items.Count == 0)
         {
             return SubsequentConfirmationValidation.Invalid(
@@ -256,6 +303,7 @@ internal sealed class SubsequentConfirmationService(
 
         return SubsequentConfirmationValidation.Valid(
             new ValidatedSubsequentConfirmationIntent(
+                request.PendingCompositionId,
                 items.OrderBy(item => item.ProductId)
                     .ThenBy(item => item.Instruction is null ? 0 : 1)
                     .ThenBy(item => item.Instruction, StringComparer.Ordinal)
@@ -265,9 +313,12 @@ internal sealed class SubsequentConfirmationService(
     private static bool Matches(
         SubsequentConfirmationCommand command,
         IReadOnlyList<SubsequentConfirmationCommandContent> contents,
+        Guid actorIdentityId,
         Guid orderId,
         ValidatedSubsequentConfirmationIntent intent) =>
+        command.ActorIdentityId == actorIdentityId &&
         command.IntentOrderId == orderId &&
+        command.IntentPendingCompositionId == intent.PendingCompositionId &&
         contents.Count == intent.Items.Count &&
         contents.Zip(intent.Items).All(pair =>
             pair.First.ProductId == pair.Second.ProductId &&
@@ -300,6 +351,7 @@ internal sealed record SubsequentConfirmationValidation(
 }
 
 internal sealed record ValidatedSubsequentConfirmationIntent(
+    Guid PendingCompositionId,
     IReadOnlyList<ValidatedSubsequentConfirmationItem> Items);
 
 internal sealed record ValidatedSubsequentConfirmationItem(
@@ -343,6 +395,15 @@ internal sealed record SubsequentConfirmationResult(
 
     internal static SubsequentConfirmationResult IdempotencyConflict() =>
         new(SubsequentConfirmationOutcome.IdempotencyConflict, null, null);
+
+    internal static SubsequentConfirmationResult PendingCompositionStale() =>
+        new(SubsequentConfirmationOutcome.PendingCompositionStale, null, null);
+
+    internal static SubsequentConfirmationResult Unauthenticated() =>
+        new(SubsequentConfirmationOutcome.Unauthenticated, null, null);
+
+    internal static SubsequentConfirmationResult Forbidden() =>
+        new(SubsequentConfirmationOutcome.Forbidden, null, null);
 }
 
 internal enum SubsequentConfirmationOutcome
@@ -356,5 +417,8 @@ internal enum SubsequentConfirmationOutcome
     ProductNotCurrent,
     ProductUnavailable,
     InstructionRequiresPreparation,
-    IdempotencyConflict
+    IdempotencyConflict,
+    PendingCompositionStale,
+    Unauthenticated,
+    Forbidden
 }

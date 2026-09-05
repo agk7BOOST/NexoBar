@@ -94,7 +94,7 @@ internal static class DeliveryQuantityTestSupport
             "5",
             cancellationToken);
         var confirmation = await ConfirmAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             product.Id,
             quantity,
             cancellationToken);
@@ -149,7 +149,10 @@ internal static class DeliveryQuantityTestSupport
                 [new FirstConfirmationItemRequest(productId, quantity)]))
         };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
-        using var response = await client.SendAsync(request, cancellationToken);
+        using var response = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            client,
+            request,
+            cancellationToken);
         response.EnsureSuccessStatusCode();
         return Assert.IsType<FirstConfirmationResponse>(
             await response.Content.ReadFromJsonAsync<FirstConfirmationResponse>(

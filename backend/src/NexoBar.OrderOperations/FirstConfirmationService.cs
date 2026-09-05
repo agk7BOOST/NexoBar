@@ -1,14 +1,18 @@
 using System.Buffers.Binary;
 using System.Globalization;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using NexoBar.Catalog;
+using NexoBar.IdentitiesAndCapabilities;
 
 namespace NexoBar.OrderOperations;
 
 internal sealed class FirstConfirmationService(
     OrderOperationsDbContext dbContext,
-    IOrderConfirmationCatalog catalog)
+    IOrderConfirmationCatalog catalog,
+    IAuthenticatedSessionStabilizer sessionStabilizer,
+    IOrderOperationsCapabilityStabilizer capabilityStabilizer)
 {
     private const long FirstConfirmationLockNamespace = 0x4F524445524F5000;
 
@@ -26,12 +30,21 @@ internal sealed class FirstConfirmationService(
         var intent = validation.Intent!;
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
             cancellationToken);
 
         var lockKey = CreateTransactionLockKey(idempotencyKey);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({lockKey})",
             cancellationToken);
+
+        var stabilizedSession = await sessionStabilizer.StabilizeAsync(
+            transaction.GetDbTransaction(),
+            cancellationToken);
+        if (stabilizedSession is null)
+        {
+            return FirstConfirmationResult.Unauthenticated();
+        }
 
         var existingCommand = await dbContext.FirstConfirmationCommands
             .AsNoTracking()
@@ -47,7 +60,11 @@ internal sealed class FirstConfirmationService(
                 .OrderBy(content => content.LineOrdinal)
                 .ToArrayAsync(cancellationToken);
 
-            if (!Matches(existingCommand, existingContents, intent))
+            if (!Matches(
+                    existingCommand,
+                    existingContents,
+                    stabilizedSession.IdentityId,
+                    intent))
             {
                 await transaction.CommitAsync(cancellationToken);
                 return FirstConfirmationResult.IdempotencyConflict();
@@ -58,6 +75,14 @@ internal sealed class FirstConfirmationService(
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return FirstConfirmationResult.Confirmed(replay);
+        }
+
+        if (!await capabilityStabilizer.StabilizeResponsibilityAsync(
+                stabilizedSession.IdentityId,
+                transaction.GetDbTransaction(),
+                cancellationToken))
+        {
+            return FirstConfirmationResult.Forbidden();
         }
 
         var catalogProducts = await catalog.ReadProductsAsync(
@@ -99,9 +124,11 @@ internal sealed class FirstConfirmationService(
             Guid.CreateVersion7(),
             incorporationId,
             intent.Context,
+            stabilizedSession.IdentityId,
             confirmedAt));
         dbContext.FirstConfirmationCommands.Add(new FirstConfirmationCommand(
             idempotencyKey,
+            stabilizedSession.IdentityId,
             intent.Context,
             incorporationId));
 
@@ -247,7 +274,9 @@ internal sealed class FirstConfirmationService(
     private static bool Matches(
         FirstConfirmationCommand command,
         IReadOnlyList<FirstConfirmationCommandContent> contents,
+        Guid actorIdentityId,
         ValidatedFirstConfirmationIntent intent) =>
+        command.ActorIdentityId == actorIdentityId &&
         string.Equals(command.IntentContext, intent.Context, StringComparison.Ordinal) &&
         contents.Count == intent.Items.Count &&
         contents.Zip(intent.Items).All(pair =>
@@ -324,6 +353,12 @@ internal sealed record FirstConfirmationResult(
 
     internal static FirstConfirmationResult IdempotencyConflict() =>
         new(FirstConfirmationOutcome.IdempotencyConflict, null, null);
+
+    internal static FirstConfirmationResult Unauthenticated() =>
+        new(FirstConfirmationOutcome.Unauthenticated, null, null);
+
+    internal static FirstConfirmationResult Forbidden() =>
+        new(FirstConfirmationOutcome.Forbidden, null, null);
 }
 
 internal enum FirstConfirmationOutcome
@@ -337,5 +372,7 @@ internal enum FirstConfirmationOutcome
     ProductNotCurrent,
     ProductUnavailable,
     InstructionRequiresPreparation,
-    IdempotencyConflict
+    IdempotencyConflict,
+    Unauthenticated,
+    Forbidden
 }

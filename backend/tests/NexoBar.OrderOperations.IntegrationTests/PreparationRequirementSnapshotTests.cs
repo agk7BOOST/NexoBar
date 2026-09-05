@@ -8,6 +8,8 @@ namespace NexoBar.OrderOperations.IntegrationTests;
 public sealed class PreparationRequirementSnapshotTests(
     OrderOperationsApiFixture fixture)
 {
+    private readonly Dictionary<Guid, Guid> pendingCompositionByConfirmationKey = [];
+
     [Fact]
     public async Task First_confirmation_captures_direct_and_prepared_requirements()
     {
@@ -159,7 +161,10 @@ public sealed class PreparationRequirementSnapshotTests(
                 items))
         };
         request.Headers.Add("Idempotency-Key", key.ToString("D"));
-        return await fixture.Client.SendAsync(request, token);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            request,
+            token);
     }
 
     private async Task ConfirmSubsequentAsync(
@@ -168,15 +173,28 @@ public sealed class PreparationRequirementSnapshotTests(
         Guid key,
         CancellationToken token)
     {
+        if (!pendingCompositionByConfirmationKey.TryGetValue(
+                key,
+                out var pendingCompositionId))
+        {
+            pendingCompositionId = (await fixture.StartPendingCompositionAsync(
+                operationalReference,
+                token)).PendingCompositionId;
+            pendingCompositionByConfirmationKey[key] = pendingCompositionId;
+        }
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/order-operations/orders/{operationalReference}/confirmations")
         {
             Content = JsonContent.Create(new SubsequentConfirmationRequest(
+                pendingCompositionId,
                 [new SubsequentConfirmationItemRequest(productId, 1)]))
         };
         request.Headers.Add("Idempotency-Key", key.ToString("D"));
-        using var response = await fixture.Client.SendAsync(request, token);
+        using var response = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            request,
+            token);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 }

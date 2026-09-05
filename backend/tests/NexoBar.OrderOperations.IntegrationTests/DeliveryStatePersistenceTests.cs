@@ -10,6 +10,8 @@ namespace NexoBar.OrderOperations.IntegrationTests;
 [Collection(OrderOperationsApiCollection.Name)]
 public sealed class DeliveryStatePersistenceTests(OrderOperationsApiFixture fixture)
 {
+    private readonly Dictionary<Guid, Guid> pendingCompositionByConfirmationKey = [];
+
     [Fact]
     public async Task First_confirmation_creates_zero_state_for_every_direct_and_prepared_content()
     {
@@ -78,6 +80,7 @@ public sealed class DeliveryStatePersistenceTests(OrderOperationsApiFixture fixt
             await firstResponse.Content.ReadFromJsonAsync<FirstConfirmationResponse>(token));
         var key = Guid.NewGuid();
         var request = new SubsequentConfirmationRequest(
+            Guid.Empty,
             [
                 new SubsequentConfirmationItemRequest(prepared.Id, 1),
                 new SubsequentConfirmationItemRequest(prepared.Id, 1, "sin sal")
@@ -255,6 +258,7 @@ public sealed class DeliveryStatePersistenceTests(OrderOperationsApiFixture fixt
             using var failed = await PostSubsequentAsync(
                 first.OperationalReference,
                 new SubsequentConfirmationRequest(
+                    Guid.Empty,
                     [new SubsequentConfirmationItemRequest(product.Id, 2)]),
                 Guid.NewGuid(),
                 token);
@@ -283,7 +287,10 @@ public sealed class DeliveryStatePersistenceTests(OrderOperationsApiFixture fixt
             Content = JsonContent.Create(request)
         };
         message.Headers.Add("Idempotency-Key", key.ToString("D"));
-        return await fixture.Client.SendAsync(message, token);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            message,
+            token);
     }
 
     private async Task<HttpResponseMessage> PostSubsequentAsync(
@@ -292,14 +299,28 @@ public sealed class DeliveryStatePersistenceTests(OrderOperationsApiFixture fixt
         Guid key,
         CancellationToken token)
     {
+        if (!pendingCompositionByConfirmationKey.TryGetValue(key, out var pendingCompositionId))
+        {
+            var pending = await fixture.GetOrStartPendingCompositionAsync(
+                operationalReference,
+                token);
+            pendingCompositionId = pending.PendingCompositionId;
+            pendingCompositionByConfirmationKey[key] = pendingCompositionId;
+        }
         using var message = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/order-operations/orders/{operationalReference}/confirmations")
         {
-            Content = JsonContent.Create(request)
+            Content = JsonContent.Create(request with
+            {
+                PendingCompositionId = pendingCompositionId
+            })
         };
         message.Headers.Add("Idempotency-Key", key.ToString("D"));
-        return await fixture.Client.SendAsync(message, token);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            message,
+            token);
     }
 
     private static async Task<Dictionary<string, string>> ReadConstraintDefinitionsAsync(

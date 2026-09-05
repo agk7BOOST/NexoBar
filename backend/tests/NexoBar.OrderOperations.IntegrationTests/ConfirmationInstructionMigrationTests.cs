@@ -15,7 +15,7 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
     private const string CurrentMigration =
         "20260830230000_AddConfirmationInstructions";
     private const string LatestMigration =
-        "20260831214404_AddDeliveryProgress";
+        "20260904152524_AddAuthoritativePendingComposition";
 
     [Fact]
     public async Task Migration_preserves_I3A_data_replay_queries_and_has_safe_down()
@@ -68,6 +68,15 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
                     await dbContext.SubsequentConfirmationCommandContents.AsNoTracking()
                         .ToArrayAsync(token),
                     line => Assert.Null(line.Instruction));
+                Assert.All(
+                    await dbContext.ConfirmationHistory.AsNoTracking().ToArrayAsync(token),
+                    history => Assert.Null(history.ActorIdentityId));
+                Assert.Null((await dbContext.FirstConfirmationCommands.AsNoTracking()
+                    .SingleAsync(token)).ActorIdentityId);
+                var legacySubsequent = await dbContext.SubsequentConfirmationCommands
+                    .AsNoTracking().SingleAsync(token);
+                Assert.Null(legacySubsequent.ActorIdentityId);
+                Assert.Null(legacySubsequent.IntentPendingCompositionId);
             }
             var migratedWork = Assert.Single(await fixture.ReadPreparationWorkAsync(token));
             Assert.Equal(workId, migratedWork.Id);
@@ -76,14 +85,14 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
 
             using var firstReplay = await PostFirstAsync(
                 "Mesa 7", firstKey, prepared.Id, 2, null, token);
-            Assert.Equal(HttpStatusCode.Created, firstReplay.StatusCode);
-            Assert.Null((await ReadFirstAsync(firstReplay, token))
-                .FirstIncorporation.Items.Single().Instruction);
+            Assert.Equal(HttpStatusCode.Conflict, firstReplay.StatusCode);
             using var subsequentReplay = await PostSubsequentAsync(
-                orderId, subsequentKey, [(plain.Id, 3, null)], token);
-            Assert.Equal(HttpStatusCode.Created, subsequentReplay.StatusCode);
-            Assert.Null((await ReadSubsequentAsync(subsequentReplay, token))
-                .Incorporation.Items.Single().Instruction);
+                orderId,
+                subsequentKey,
+                Guid.NewGuid(),
+                [(plain.Id, 3, null)],
+                token);
+            Assert.Equal(HttpStatusCode.Conflict, subsequentReplay.StatusCode);
 
             using var orderResponse = await fixture.Client.GetAsync(
                 $"/api/order-operations/orders/{orderId:D}", token);
@@ -108,9 +117,13 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
             await AssertInstructionColumnsAsync(expected: false, token);
             await fixture.MigrateOrderOperationsAsync(LatestMigration, token);
 
+            var pending = await fixture.StartPendingCompositionAsync(
+                orderId.ToString("D"),
+                token);
             using var newConfirmation = await PostSubsequentAsync(
                 orderId,
                 Guid.NewGuid(),
+                pending.PendingCompositionId,
                 [
                     (prepared.Id, 1, (string?)null),
                     (prepared.Id, 1, "sin cebolla")
@@ -249,12 +262,16 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
                 [new FirstConfirmationItemRequest(productId, quantity, instruction)]))
         };
         request.Headers.Add("Idempotency-Key", key.ToString("D"));
-        return await fixture.Client.SendAsync(request, token);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            request,
+            token);
     }
 
     private async Task<HttpResponseMessage> PostSubsequentAsync(
         Guid orderId,
         Guid key,
+        Guid pendingCompositionId,
         IReadOnlyList<(Guid ProductId, int Quantity, string? Instruction)> items,
         CancellationToken token)
     {
@@ -263,13 +280,17 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
             $"/api/order-operations/orders/{orderId:D}/confirmations")
         {
             Content = JsonContent.Create(new SubsequentConfirmationRequest(
+                pendingCompositionId,
                 items.Select(item => new SubsequentConfirmationItemRequest(
                     item.ProductId,
                     item.Quantity,
                     item.Instruction)).ToArray()))
         };
         request.Headers.Add("Idempotency-Key", key.ToString("D"));
-        return await fixture.Client.SendAsync(request, token);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            request,
+            token);
     }
 
     private static async Task<FirstConfirmationResponse> ReadFirstAsync(

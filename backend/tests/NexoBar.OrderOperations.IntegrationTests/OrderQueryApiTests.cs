@@ -182,7 +182,10 @@ public sealed class OrderQueryApiTests(OrderOperationsApiFixture fixture)
                 [new FirstConfirmationItemRequest(productId, 2)]))
         };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
-        return await fixture.Client.SendAsync(request, cancellationToken);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            fixture.OrderOperationsClient,
+            request,
+            cancellationToken);
     }
 
     private static async Task<JsonDocument> AssertProblemAsync(

@@ -25,9 +25,11 @@ public sealed class OrderDeliveryAuthorizationConcurrencyTests(
                     [new FirstConfirmationItemRequest(product.Id, 1)]))
         };
         confirmationRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
-        using var confirmationResponse = await fixture.Client.SendAsync(
-            confirmationRequest,
-            token);
+        using var confirmationResponse =
+            await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+                fixture.OrderOperationsClient,
+                confirmationRequest,
+                token);
         confirmationResponse.EnsureSuccessStatusCode();
         var confirmation = Assert.IsType<FirstConfirmationResponse>(
             await confirmationResponse.Content.ReadFromJsonAsync<FirstConfirmationResponse>(token));

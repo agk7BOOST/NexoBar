@@ -29,6 +29,7 @@ public static class OrderOperationsModule
                     "order_operations")));
         services.AddScoped<FirstConfirmationService>();
         services.AddScoped<SubsequentConfirmationService>();
+        services.AddScoped<PendingCompositionService>();
         services.AddScoped<OrderQueryService>();
         services.AddScoped<OrderDeliveryQueryService>();
         services.AddScoped<DeliveryQuantityService>();
@@ -46,9 +47,12 @@ public static class OrderOperationsModule
                 ConfirmFirstAsync)
             .WithName("ConfirmFirstOrderIncorporation")
             .WithTags("OrderOperations")
+            .RequireAuthorization()
             .Accepts<FirstConfirmationRequest>("application/json")
             .Produces<FirstConfirmationResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         endpoints.MapGet(
@@ -133,9 +137,50 @@ public static class OrderOperationsModule
                 ConfirmSubsequentAsync)
             .WithName("ConfirmSubsequentOrderIncorporation")
             .WithTags("OrderOperations")
+            .RequireAuthorization()
             .Accepts<SubsequentConfirmationRequest>("application/json")
             .Produces<SubsequentConfirmationResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapPost(
+                "/api/orders/{orderId}/pending-composition",
+                StartPendingCompositionAsync)
+            .WithName("StartPendingComposition")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Produces<PendingCompositionResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapGet(
+                "/api/orders/{orderId}/pending-composition",
+                FindPendingCompositionAsync)
+            .WithName("GetPendingComposition")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Produces<CurrentPendingCompositionResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        endpoints.MapPost(
+                "/api/orders/{orderId}/pending-composition/{pendingCompositionId}/discard",
+                DiscardPendingCompositionAsync)
+            .WithName("DiscardPendingComposition")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
@@ -482,10 +527,201 @@ public static class OrderOperationsModule
             result.OccurredAt,
             result.DeliveredQuantity);
 
+    private static async Task<IResult> StartPendingCompositionAsync(
+        string orderId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        PendingCompositionService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(orderId, out var parsedOrderId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Order",
+                "orderId must contain a UUID.",
+                "order.pending_composition_order_id_invalid");
+        }
+
+        if (idempotencyKey is null)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Idempotency-Key is required",
+                "Starting a Pending Composition requires an Idempotency-Key containing a UUID v4.",
+                "order.pending_composition_idempotency_key_required");
+        }
+
+        if (!Guid.TryParse(idempotencyKey, out var commandId) ||
+            !IsUuidVersion4(commandId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Idempotency-Key",
+                "Idempotency-Key must contain a UUID v4.",
+                "order.pending_composition_idempotency_key_invalid");
+        }
+
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Antiforgery validation failed",
+                "A valid antiforgery cookie and request token are required.",
+                "order.pending_composition_antiforgery_invalid");
+        }
+
+        var result = await service.StartAsync(commandId, parsedOrderId, cancellationToken);
+        return result.Outcome switch
+        {
+            PendingCompositionCommandOutcome.Started => Results.Json(
+                result.Response,
+                statusCode: StatusCodes.Status201Created),
+            PendingCompositionCommandOutcome.Unauthenticated => InvalidSession(),
+            PendingCompositionCommandOutcome.Forbidden => PendingCompositionForbidden(),
+            PendingCompositionCommandOutcome.OrderNotFound => PendingCompositionOrderNotFound(),
+            PendingCompositionCommandOutcome.AlreadyExists => Problem(
+                StatusCodes.Status409Conflict,
+                "Pending Composition already exists",
+                "This Order already has a current Pending Composition.",
+                "order.pending_composition_already_exists"),
+            PendingCompositionCommandOutcome.IdempotencyConflict => PendingCompositionIdempotencyConflict(),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> FindPendingCompositionAsync(
+        string orderId,
+        PendingCompositionService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(orderId, out var parsedOrderId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Order",
+                "orderId must contain a UUID.",
+                "order.pending_composition_order_id_invalid");
+        }
+
+        var result = await service.FindAsync(parsedOrderId, cancellationToken);
+        return result.Outcome switch
+        {
+            CurrentPendingCompositionOutcome.Succeeded => Results.Ok(result.Response),
+            CurrentPendingCompositionOutcome.Unauthenticated => InvalidSession(),
+            CurrentPendingCompositionOutcome.Forbidden => PendingCompositionForbidden(),
+            CurrentPendingCompositionOutcome.OrderNotFound => PendingCompositionOrderNotFound(),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> DiscardPendingCompositionAsync(
+        string orderId,
+        string pendingCompositionId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        PendingCompositionService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(orderId, out var parsedOrderId) ||
+            !Guid.TryParse(pendingCompositionId, out var parsedPendingCompositionId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Pending Composition target",
+                "orderId and pendingCompositionId must contain UUIDs.",
+                "order.pending_composition_target_invalid");
+        }
+
+        if (idempotencyKey is null)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Idempotency-Key is required",
+                "Discarding a Pending Composition requires an Idempotency-Key containing a UUID v4.",
+                "order.pending_composition_idempotency_key_required");
+        }
+
+        if (!Guid.TryParse(idempotencyKey, out var commandId) ||
+            !IsUuidVersion4(commandId))
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Idempotency-Key",
+                "Idempotency-Key must contain a UUID v4.",
+                "order.pending_composition_idempotency_key_invalid");
+        }
+
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Antiforgery validation failed",
+                "A valid antiforgery cookie and request token are required.",
+                "order.pending_composition_antiforgery_invalid");
+        }
+
+        var result = await service.DiscardAsync(
+            commandId,
+            parsedOrderId,
+            parsedPendingCompositionId,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            PendingCompositionCommandOutcome.Discarded => Results.NoContent(),
+            PendingCompositionCommandOutcome.Unauthenticated => InvalidSession(),
+            PendingCompositionCommandOutcome.Forbidden => PendingCompositionForbidden(),
+            PendingCompositionCommandOutcome.OrderNotFound => PendingCompositionOrderNotFound(),
+            PendingCompositionCommandOutcome.Stale => Problem(
+                StatusCodes.Status409Conflict,
+                "Pending Composition is stale",
+                "The supplied PendingCompositionId is not the current Pending Composition for this Order.",
+                "order.pending_composition_stale"),
+            PendingCompositionCommandOutcome.IdempotencyConflict => PendingCompositionIdempotencyConflict(),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static IResult InvalidSession() => Problem(
+        StatusCodes.Status401Unauthorized,
+        "Invalid session",
+        "The current session is invalid or expired.",
+        "identities_and_capabilities.invalid_session");
+
+    private static IResult PendingCompositionForbidden() => Problem(
+        StatusCodes.Status403Forbidden,
+        "Pending Composition forbidden",
+        "The current Identity is not authorized for Order Operations.",
+        "order.pending_composition_forbidden");
+
+    private static IResult PendingCompositionOrderNotFound() => Problem(
+        StatusCodes.Status404NotFound,
+        "Order not found",
+        "No Order exists with the supplied identifier.",
+        "order_operations.order.not_found");
+
+    private static IResult PendingCompositionIdempotencyConflict() => Problem(
+        StatusCodes.Status409Conflict,
+        "Idempotency-Key was already used for another intention",
+        "The supplied Idempotency-Key identifies an incompatible Pending Composition command.",
+        "order.pending_composition_idempotency_key_conflict");
+
     private static async Task<IResult> ConfirmSubsequentAsync(
         string operationalReference,
         [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
         SubsequentConfirmationRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
         SubsequentConfirmationService service,
         CancellationToken cancellationToken)
     {
@@ -514,6 +750,19 @@ public static class OrderOperationsModule
                 "Invalid Idempotency-Key",
                 "Idempotency-Key must contain a UUID v4.",
                 "order_operations.subsequent_confirmation.idempotency_key_invalid");
+        }
+
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Antiforgery validation failed",
+                "A valid antiforgery cookie and request token are required.",
+                "order_operations.subsequent_confirmation.antiforgery_invalid");
         }
 
         var result = await service.ConfirmAsync(
@@ -576,6 +825,21 @@ public static class OrderOperationsModule
                 "Idempotency-Key was already used for another intention",
                 "The supplied Idempotency-Key identifies an incompatible subsequent Confirmation.",
                 "order_operations.subsequent_confirmation.idempotency_key_conflict"),
+            SubsequentConfirmationOutcome.PendingCompositionStale => Problem(
+                StatusCodes.Status409Conflict,
+                "Pending Composition is stale",
+                "The supplied PendingCompositionId is not the current Pending Composition for this Order.",
+                "order.pending_composition_stale"),
+            SubsequentConfirmationOutcome.Unauthenticated => Problem(
+                StatusCodes.Status401Unauthorized,
+                "Invalid session",
+                "The current session is invalid or expired.",
+                "identities_and_capabilities.invalid_session"),
+            SubsequentConfirmationOutcome.Forbidden => Problem(
+                StatusCodes.Status403Forbidden,
+                "Confirmation forbidden",
+                "The current Identity is not authorized for Order Operations.",
+                "order_operations.confirmation.forbidden"),
             _ => throw new UnreachableException()
         };
     }
@@ -702,6 +966,8 @@ public static class OrderOperationsModule
     private static async Task<IResult> ConfirmFirstAsync(
         [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
         FirstConfirmationRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
         FirstConfirmationService service,
         CancellationToken cancellationToken)
     {
@@ -721,6 +987,20 @@ public static class OrderOperationsModule
                 "Invalid Idempotency-Key",
                 "Idempotency-Key must contain a UUID v4.",
                 "order_operations.first_confirmation.idempotency_key_invalid");
+        }
+
+
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Antiforgery validation failed",
+                "A valid antiforgery cookie and request token are required.",
+                "order_operations.first_confirmation.antiforgery_invalid");
         }
 
         var result = await service.ConfirmAsync(commandId, request, cancellationToken);
@@ -779,6 +1059,16 @@ public static class OrderOperationsModule
                 "Idempotency-Key was already used for another intention",
                 "The supplied Idempotency-Key identifies an incompatible First Confirmation.",
                 "order_operations.first_confirmation.idempotency_key_conflict"),
+            FirstConfirmationOutcome.Unauthenticated => Problem(
+                StatusCodes.Status401Unauthorized,
+                "Invalid session",
+                "The current session is invalid or expired.",
+                "identities_and_capabilities.invalid_session"),
+            FirstConfirmationOutcome.Forbidden => Problem(
+                StatusCodes.Status403Forbidden,
+                "Confirmation forbidden",
+                "The current Identity is not authorized for Order Operations.",
+                "order_operations.confirmation.forbidden"),
             _ => throw new UnreachableException()
         };
     }

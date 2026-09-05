@@ -59,6 +59,14 @@ async function createConfirmedOrder(page: Page): Promise<{
   const productName = `E2E-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
   await page.goto("/");
+  await page.getByLabel("Identificador de acceso").fill("delivery-e2e");
+  await page.getByLabel("Secreto").fill("delivery-e2e-secret");
+  await page.getByRole("button", { name: "Ingresar" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "Identity actual" })
+      .getByText("Delivery E2E", { exact: true }),
+  ).toBeVisible();
   await page.getByLabel("Nombre operacional").fill(productName);
   await page.getByLabel("Precio", { exact: true }).fill("10");
   await page.getByRole("button", { name: "Crear producto" }).click();
@@ -186,6 +194,12 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
       name: `Agregar ${productName} a Nueva Composición`,
     })
     .click();
+  await expect(
+    subsequentComposition.getByText(
+      "Composición pendiente autoritativa activa",
+      { exact: true },
+    ),
+  ).toBeVisible();
 
   const subsequentCompositionRow = compositionRowForProduct(
     subsequentComposition,
@@ -208,6 +222,12 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
   await subsequentComposition
     .getByRole("button", { name: "Confirmar nueva Incorporación" })
     .click();
+  await expect(
+    subsequentComposition.getByText(
+      "Composición pendiente autoritativa activa",
+      { exact: true },
+    ),
+  ).toHaveCount(0);
 
   const activeOrder = page.getByRole("region", { name: "Pedido activo" });
   const incorporation2 = activeOrder.getByRole("article", {
@@ -241,6 +261,89 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
   await expect(
     subsequentComposition.getByText(operationalReference, { exact: true }),
   ).toBeVisible();
+});
+
+test("otro contexto autorizado ve el marcador remoto y no puede iniciar un segundo", async ({
+  page,
+}) => {
+  const { productName, operationalReference } =
+    await createConfirmedOrder(page);
+  const composition = page.getByRole("region", { name: "Nueva Composición" });
+  await composition
+    .getByRole("button", {
+      name: `Agregar ${productName} a Nueva Composición`,
+    })
+    .click();
+  await expect(
+    composition.getByText("Composición pendiente autoritativa activa", {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  const otherPage = await page.context().newPage();
+  try {
+    await otherPage.goto("/");
+    await expect(
+      otherPage
+        .getByRole("region", { name: "Identity actual" })
+        .getByText("Delivery E2E", { exact: true }),
+    ).toBeVisible();
+    await otherPage
+      .getByLabel("Referencia operacional")
+      .fill(operationalReference);
+    await otherPage.getByRole("button", { name: "Buscar Pedido" }).click();
+    const consultedOrder = otherPage.getByRole("region", {
+      name: "Pedido consultado",
+    });
+    await expect(consultedOrder).toBeVisible();
+    await consultedOrder
+      .getByRole("button", { name: "Continuar este Pedido" })
+      .click();
+
+    const otherComposition = otherPage.getByRole("region", {
+      name: "Nueva Composición",
+    });
+    await expect(
+      otherComposition.getByText(
+        /líneas no están disponibles en esta memoria local/,
+      ),
+    ).toBeVisible();
+    await otherComposition
+      .getByRole("button", {
+        name: `Agregar ${productName} a Nueva Composición`,
+      })
+      .click();
+    await expect(
+      otherComposition.getByText(
+        /Descartala explícitamente para comenzar otra/,
+      ),
+    ).toBeVisible();
+
+    const antiforgery = await otherPage
+      .context()
+      .request.get("/api/security/antiforgery");
+    expect(antiforgery.ok()).toBeTruthy();
+    const { requestToken } = (await antiforgery.json()) as {
+      requestToken: string;
+    };
+    const secondStart = await otherPage
+      .context()
+      .request.post(
+        `/api/orders/${encodeURIComponent(operationalReference)}/pending-composition`,
+        {
+          headers: {
+            "Idempotency-Key": randomUUID(),
+            "X-NexoBar-CSRF": requestToken,
+          },
+        },
+      );
+    expect(secondStart.status()).toBe(409);
+    expect((await secondStart.json()).code).toBe(
+      "order.pending_composition_already_exists",
+    );
+  } finally {
+    await otherPage.close();
+  }
 });
 
 test("informa un Pedido inexistente sin conservar el resultado previo", async ({

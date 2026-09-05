@@ -148,6 +148,15 @@ function App() {
           />
           <PreparationPanel onUnauthorized={returnToLogin} />
           <InventoryPanel onUnauthorized={returnToLogin} />
+          <OrderWorkflow
+            products={products}
+            activeOperationalReference={activeOperationalReference}
+            requestedTarget={requestedTarget}
+            onActivateOrder={activateOrder}
+            onStartNewOrder={startNewOrder}
+            onOrderChanged={requestOrderRefresh}
+            onUnauthorized={returnToLogin}
+          />
         </>
       )}
 
@@ -156,15 +165,6 @@ function App() {
         isLoading={isLoading}
         loadError={loadError}
         reloadProducts={reloadProducts}
-      />
-
-      <OrderWorkflow
-        products={products}
-        activeOperationalReference={activeOperationalReference}
-        requestedTarget={requestedTarget}
-        onActivateOrder={activateOrder}
-        onStartNewOrder={startNewOrder}
-        onOrderChanged={requestOrderRefresh}
       />
 
       <OrderLookup

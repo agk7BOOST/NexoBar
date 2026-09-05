@@ -227,7 +227,11 @@ public sealed class DeliveryQuantityApiTests(OrderOperationsApiFixture fixture)
         })
         {
             request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
-            using var confirmation = await fixture.Client.SendAsync(request, token);
+            using var confirmation =
+                await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+                    fixture.OrderOperationsClient,
+                    request,
+                    token);
             confirmation.EnsureSuccessStatusCode();
         }
 

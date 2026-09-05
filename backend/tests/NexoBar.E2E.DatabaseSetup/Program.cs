@@ -213,6 +213,7 @@ try
         Guid.CreateVersion7(),
         incorporation.Id,
         order.Context,
+        deliverer.Id,
         DateTimeOffset.UtcNow));
     await orderOperations.SaveChangesAsync();
 
