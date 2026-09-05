@@ -527,6 +527,103 @@ test("Preparation y Delivery operan cantidades parciales con Identities reales",
   await expect(directDelivery).toContainText("Remaining1");
 });
 
+for (const mode of ["simple", "external"] as const) {
+  test(`Pedido termina por Liquidación ${mode}, Freeze y Cierre explícito`, async ({
+    page,
+  }) => {
+    const { productName, operationalReference } =
+      await createConfirmedOrder(page);
+    await page
+      .getByRole("button", { name: "Abrir entrega de este Pedido" })
+      .click();
+    const delivery = page.getByRole("region", {
+      name: `Entrega del Pedido ${operationalReference}`,
+    });
+    const content = delivery.getByRole("article", {
+      name: `${productName}, sin instrucción, incorporación 1`,
+    });
+    await expect(content).toContainText("Preparación no requerida");
+    await content
+      .getByRole("button", {
+        name: `Entregar ${productName}, sin instrucción, incorporación 1`,
+      })
+      .click();
+    await expect(content).toContainText("Delivered2");
+    const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
+    await expect(
+      ending.getByText("Importe funcional actual").locator("..").locator("dd"),
+    ).toHaveText(/^20(?:\.0+)?$/);
+    await expect(
+      ending.getByRole("button", { name: "Liquidar", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      ending.getByRole("button", { name: "Cerrar Pedido" }),
+    ).toHaveCount(0);
+    await expect(
+      ending.getByText("Después de Liquidar, el Pedido quedará congelado."),
+    ).toBeVisible();
+    if (mode === "simple") {
+      await ending
+        .getByLabel("Medio de pago declarado")
+        .fill("  Vale del club / septiembre  ");
+      await ending
+        .getByRole("button", { name: "Liquidar", exact: true })
+        .click();
+    } else {
+      await ending
+        .getByRole("button", {
+          name: "Registrar cobro gestionado externamente",
+        })
+        .click();
+    }
+    await expect(ending.getByText(/Pedido congelado/)).toBeVisible();
+    await expect(
+      ending.getByText("Importe liquidado").locator("..").locator("dd"),
+    ).toHaveText(/^20(?:\.0+)?$/);
+    await expect(ending.getByRole("time")).toHaveAttribute("datetime", /\S+/);
+    if (mode === "simple") {
+      await expect(
+        ending.getByText("Vale del club / septiembre", { exact: true }),
+      ).toBeVisible();
+    } else {
+      await expect(ending.getByText("Medio de pago declarado")).toHaveCount(0);
+      await expect(
+        ending.getByText("Cobro gestionado externamente", { exact: true }),
+      ).toBeVisible();
+    }
+    await expect(
+      ending.getByText("Pedido cerrado", { exact: true }),
+    ).toHaveCount(0);
+    const composition = page.getByRole("region", { name: "Nueva Composición" });
+    await expect(
+      composition.getByRole("button", {
+        name: `Agregar ${productName} a Nueva Composición`,
+        exact: true,
+      }),
+    ).toBeDisabled();
+    await ending.getByRole("button", { name: "Cerrar Pedido" }).click();
+    await expect(
+      ending.getByText("Pedido cerrado", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      ending.getByText("Cerrado el").getByRole("time"),
+    ).toHaveAttribute("datetime", /\S+/);
+    await lookupActiveOrder(page, operationalReference);
+    await expect(
+      ending.getByText("Pedido cerrado", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("article", { name: "Incorporación 1", exact: true }),
+    ).toBeVisible();
+    await expect(
+      ending.getByRole("button", { name: /Liquidar|Cerrar Pedido|reabrir/i }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Continuar este Pedido" }),
+    ).toHaveCount(0);
+  });
+}
+
 test("Inventario ejecuta operaciones físicas e Historia con capacidades separadas", async ({
   page,
 }) => {

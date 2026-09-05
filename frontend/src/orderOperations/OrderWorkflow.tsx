@@ -79,6 +79,7 @@ interface OrderWorkflowProps {
   onStartNewOrder: () => void;
   onOrderChanged: (operationalReference: string) => void;
   onUnauthorized: () => void;
+  ordinaryMutationsBlocked?: boolean;
 }
 
 function confirmationErrorMessage(
@@ -132,6 +133,7 @@ export function OrderWorkflow({
   onStartNewOrder,
   onOrderChanged,
   onUnauthorized,
+  ordinaryMutationsBlocked = false,
 }: OrderWorkflowProps) {
   const [composition, setComposition] = useState<CompositionLine[]>([]);
   const [context, setContext] = useState("");
@@ -250,13 +252,14 @@ export function OrderWorkflow({
       ? pendingAuthority
       : null;
   const hasAuthoritativePending = currentPendingAuthority !== null;
-  const isCompositionLocked =
+  const isWorkflowLocked =
     isConfirming ||
     isPendingLoading ||
     isPendingMutating ||
     !isPendingAuthorityResolved ||
     hasUncertainIntention ||
     staleComposition;
+  const isCompositionLocked = ordinaryMutationsBlocked || isWorkflowLocked;
   const isSubsequent = activeOperationalReference !== null;
   const requestedExistingReference =
     requestedTarget !== undefined &&
@@ -451,6 +454,7 @@ export function OrderWorkflow({
     setConfirmationNotice(null);
     try {
       const marker = await startPendingComposition(intention.command);
+      onOrderChanged(intention.command.orderId);
       setUncertainStart(null);
       rememberLocalPending({ orderId: intention.command.orderId, marker });
       setPendingAuthority(marker);
@@ -531,6 +535,7 @@ export function OrderWorkflow({
     setConfirmationNotice(null);
     try {
       await discardPendingComposition(intention.command);
+      onOrderChanged(intention.command.orderId);
       setUncertainDiscard(null);
       if (intention.clearsLocalComposition) {
         setComposition([]);
@@ -851,7 +856,7 @@ export function OrderWorkflow({
             className="secondary-button"
             type="button"
             onClick={requestNewOrder}
-            disabled={isCompositionLocked}
+            disabled={isWorkflowLocked}
           >
             Iniciar nuevo Pedido
           </button>

@@ -114,6 +114,21 @@ function inputFor(item: OrderDeliveryContent) {
   );
 }
 
+it("bloquea entregas ordinarias aunque Delivery conserve una lectura anterior a Freeze", async () => {
+  vi.mocked(getOrderDelivery).mockResolvedValue(orderDelivery([direct]));
+  render(
+    <DeliveryPanel
+      operationalReference="order-reference"
+      onUnauthorized={vi.fn()}
+      ordinaryMutationsBlocked
+    />,
+  );
+  await screen.findByRole("article", { name: description(direct) });
+  expect(buttonFor(direct)).toBeDisabled();
+  expect(inputFor(direct)).toBeDisabled();
+  expect(articleFor(direct)).toBeVisible();
+});
+
 function buttonFor(item: OrderDeliveryContent) {
   return screen.getByRole("button", { name: `Entregar ${description(item)}` });
 }

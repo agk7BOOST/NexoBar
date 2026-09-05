@@ -69,6 +69,23 @@ const mixedWork: PreparationWork = {
   readyQuantity: 2,
 };
 
+it("bloquea preparación ordinaria de un Pedido congelado sin ocultar Work", async () => {
+  vi.mocked(listPreparationDestinations).mockResolvedValue([firstDestination]);
+  vi.mocked(listPreparationWork).mockResolvedValue([mixedWork]);
+  render(
+    <PreparationPanel
+      onUnauthorized={vi.fn()}
+      isOrderBlocked={(reference) => reference === work.operationalReference}
+    />,
+  );
+  const start = await screen.findByRole("button", { name: /Iniciar Papas/ });
+  expect(start).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: /Marcar listo Papas/ }),
+  ).toBeDisabled();
+  expect(screen.getByText("Mesa 7")).toBeVisible();
+});
+
 const firstKey =
   "11111111-1111-4111-8111-111111111111" as `${string}-${string}-${string}-${string}-${string}`;
 const secondKey =

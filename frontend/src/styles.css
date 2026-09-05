@@ -896,3 +896,21 @@ th {
     grid-template-columns: 1fr;
   }
 }
+.order-ending {
+  margin-block: 1.5rem;
+  padding: 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+}
+
+.order-ending form {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 32rem;
+}
+
+.external-collection {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid currentColor;
+}

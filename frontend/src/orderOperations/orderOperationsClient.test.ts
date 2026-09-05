@@ -252,6 +252,17 @@ describe("getOrder", () => {
 
   it("usa una ruta relativa segura y conserva los valores textuales del response", async () => {
     const response: OrderResponse = {
+      functionalAmount: "21.00",
+      isLiquidationEligible: false,
+      liquidationBlockers: ["unresolved_fulfillment"],
+      isLiquidated: false,
+      isFrozen: false,
+      liquidatedAmount: null,
+      liquidationMode: null,
+      declaredPaymentMedium: null,
+      isClosureEligible: false,
+      isClosed: false,
+      closedAt: null,
       operationalReference: "reference-from-response",
       context: "Mesa 7",
       incorporations: [

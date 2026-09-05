@@ -87,6 +87,17 @@ export interface OrderResponse {
   operationalReference: string;
   context: string;
   incorporations: OrderIncorporation[];
+  functionalAmount: string;
+  isLiquidationEligible: boolean;
+  liquidationBlockers: string[];
+  isLiquidated: boolean;
+  isFrozen: boolean;
+  liquidatedAmount: string | null;
+  liquidationMode: string | null;
+  declaredPaymentMedium: string | null;
+  isClosureEligible: boolean;
+  isClosed: boolean;
+  closedAt: string | null;
 }
 
 export interface OrderOperationsProblemDetails {
@@ -129,7 +140,10 @@ async function readProblem(
   const contentType = response.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/problem+json")) {
-    return (await response.json()) as OrderOperationsProblemDetails;
+    return {
+      ...((await response.json()) as OrderOperationsProblemDetails),
+      status: response.status,
+    };
   }
 
   return { status: response.status };

@@ -1,4 +1,11 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { OrderEnding } from "./OrderEnding.tsx";
 import type { Product } from "../catalog/catalogClient.ts";
 import {
   getOrder,
@@ -19,9 +26,16 @@ interface OrderLookupProps {
   activeOperationalReference: string | null;
   onContinueOrder: (operationalReference: string) => void;
   onOpenDelivery?: (operationalReference: string) => void;
+  onUnauthorized?: () => void;
+  identityId?: string;
+  onOrderState?: (order: OrderResponse) => void;
+  onEndingBusy?: (reference: string, busy: boolean) => void;
 }
 
 function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
+  if (problem.status === 403) {
+    return "Esta Identity no tiene autorización para consultar el Pedido.";
+  }
   if (problem.code === "order_operations.order.operational_reference_invalid") {
     return "La Referencia operacional no es válida.";
   }
@@ -39,33 +53,61 @@ export function OrderLookup({
   activeOperationalReference,
   onContinueOrder,
   onOpenDelivery,
+  onUnauthorized,
+  identityId,
+  onOrderState,
+  onEndingBusy,
 }: OrderLookupProps) {
   const [operationalReference, setOperationalReference] = useState("");
   const [order, setOrder] = useState<OrderResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [endingBusy, setEndingBusy] = useState(false);
+  const [liquidationTimes, setLiquidationTimes] = useState<
+    Record<string, string>
+  >({});
+  const endingBusyRef = useRef(false);
+  const sequence = useRef(0);
+  useEffect(
+    () => () => {
+      sequence.current++;
+    },
+    [],
+  );
 
-  const lookup = useCallback(async (reference: string) => {
-    setIsLoading(true);
-    setOrder(null);
-    setErrorMessage(null);
+  const lookup = useCallback(
+    async (reference: string, preserveOrder = false): Promise<boolean> => {
+      if (endingBusyRef.current && !preserveOrder) return false;
+      const request = ++sequence.current;
+      setIsLoading(true);
+      if (!preserveOrder) setOrder(null);
+      setErrorMessage(null);
 
-    try {
-      setOrder(await getOrder(reference));
-    } catch (error) {
-      if (error instanceof OrderOperationsProblemError) {
-        setErrorMessage(lookupErrorMessage(error.problem));
-      } else {
-        setErrorMessage(
-          error instanceof OrderLookupNetworkError
-            ? "No se pudo consultar el Pedido por un fallo de comunicación."
-            : "No se pudo completar la consulta del Pedido.",
-        );
+      try {
+        const loaded = await getOrder(reference);
+        if (request !== sequence.current) return false;
+        setOrder(loaded);
+        onOrderState?.(loaded);
+        return true;
+      } catch (error) {
+        if (request !== sequence.current) return false;
+        if (error instanceof OrderOperationsProblemError) {
+          if (error.problem.status === 401) onUnauthorized?.();
+          setErrorMessage(lookupErrorMessage(error.problem));
+        } else {
+          setErrorMessage(
+            error instanceof OrderLookupNetworkError
+              ? "No se pudo consultar el Pedido por un fallo de comunicación."
+              : "No se pudo completar la consulta del Pedido.",
+          );
+        }
+        return false;
+      } finally {
+        if (request === sequence.current) setIsLoading(false);
       }
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    },
+    [onOrderState, onUnauthorized],
+  );
 
   useEffect(() => {
     if (requestedLookup === undefined) {
@@ -85,7 +127,10 @@ export function OrderLookup({
   }
 
   const isDisplayedOrderActive =
-    order !== null && order.operationalReference === activeOperationalReference;
+    order !== null &&
+    !order.isFrozen &&
+    !order.isClosed &&
+    order.operationalReference === activeOperationalReference;
 
   return (
     <section className="panel" aria-labelledby="order-lookup-title">
@@ -102,10 +147,10 @@ export function OrderLookup({
           name="operationalReference"
           value={operationalReference}
           onChange={(event) => setOperationalReference(event.target.value)}
-          disabled={isLoading}
+          disabled={isLoading || endingBusy}
           required
         />
-        <button type="submit" disabled={isLoading}>
+        <button type="submit" disabled={isLoading || endingBusy}>
           {isLoading ? "Buscando…" : "Buscar Pedido"}
         </button>
       </form>
@@ -131,18 +176,41 @@ export function OrderLookup({
             </div>
           </dl>
 
-          {isDisplayedOrderActive ? (
-            <p className="active-order-indicator" role="status">
-              Este Pedido está activo para una nueva Incorporación.
-            </p>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onContinueOrder(order.operationalReference)}
-            >
-              Continuar este Pedido
-            </button>
-          )}
+          {!order.isFrozen &&
+            !order.isClosed &&
+            (isDisplayedOrderActive ? (
+              <p className="active-order-indicator" role="status">
+                Este Pedido está activo para una nueva Incorporación.
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onContinueOrder(order.operationalReference)}
+                disabled={endingBusy}
+              >
+                Continuar este Pedido
+              </button>
+            ))}
+
+          <OrderEnding
+            key={`${identityId ?? "anonymous"}:${order.operationalReference}`}
+            order={order}
+            canAct={identityId !== undefined && !isLoading}
+            occurredAt={liquidationTimes[order.operationalReference] ?? null}
+            onOccurredAt={(timestamp) =>
+              setLiquidationTimes((current) => ({
+                ...current,
+                [order.operationalReference]: timestamp,
+              }))
+            }
+            onRefresh={() => lookup(order.operationalReference, true)}
+            onUnauthorized={() => onUnauthorized?.()}
+            onBusyChange={(busy) => {
+              endingBusyRef.current = busy;
+              setEndingBusy(busy);
+              onEndingBusy?.(order.operationalReference, busy);
+            }}
+          />
 
           {onOpenDelivery && (
             <button

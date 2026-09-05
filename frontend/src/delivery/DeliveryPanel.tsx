@@ -15,6 +15,8 @@ import {
 interface DeliveryPanelProps {
   operationalReference: string | null;
   onUnauthorized: () => void;
+  ordinaryMutationsBlocked?: boolean;
+  onOrderChanged?: (reference: string) => void;
 }
 
 type DeliveryIntentPhase = "submitting" | "uncertain";
@@ -54,6 +56,8 @@ function contentDescription(item: OrderDeliveryContent): string {
 export function DeliveryPanel({
   operationalReference,
   onUnauthorized,
+  ordinaryMutationsBlocked = false,
+  onOrderChanged,
 }: DeliveryPanelProps) {
   const [delivery, setDelivery] = useState<OrderDelivery | null>(null);
   const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>(
@@ -249,6 +253,7 @@ export function DeliveryPanel({
         setContentMessage(key, null);
         setSynchronizingKey(key, true);
         const refreshed = await refreshDelivery(reference);
+        onOrderChanged?.(reference);
         if (refreshed) setSynchronizingKey(key, false);
       } catch (error) {
         if (error instanceof DeliveryProblemError && error.status === 401) {
@@ -338,12 +343,13 @@ export function DeliveryPanel({
       setContentMessage,
       setIntent,
       setSynchronizingKey,
+      onOrderChanged,
     ],
   );
 
   const submitNewIntent = useCallback(
     (item: OrderDeliveryContent) => {
-      if (operationalReference === null) return;
+      if (operationalReference === null || ordinaryMutationsBlocked) return;
       const key = contentKey(item);
       if (
         intentsRef.current[key] !== undefined ||
@@ -386,6 +392,7 @@ export function DeliveryPanel({
       setContentMessage,
       setIntent,
       synchronizing,
+      ordinaryMutationsBlocked,
     ],
   );
 
@@ -461,7 +468,9 @@ export function DeliveryPanel({
                 const intent = intents[key];
                 const itemMessage = contentMessages[key];
                 const isBlocked =
-                  intent !== undefined || synchronizing[key] !== undefined;
+                  ordinaryMutationsBlocked ||
+                  intent !== undefined ||
+                  synchronizing[key] !== undefined;
                 const isFullyDelivered = item.remainingQuantity === 0;
                 const fieldId = `delivery-quantity-${item.incorporationId}-${item.contentOrdinal}`;
                 const messageId = `delivery-message-${item.incorporationId}-${item.contentOrdinal}`;

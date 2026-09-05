@@ -20,6 +20,7 @@ import {
 import { PreparationPanel } from "./preparation/PreparationPanel.tsx";
 import { DeliveryPanel } from "./delivery/DeliveryPanel.tsx";
 import { InventoryPanel } from "./inventory/InventoryPanel.tsx";
+import type { OrderResponse } from "./orderOperations/orderOperationsClient.ts";
 
 type AuthState =
   | { status: "loading" }
@@ -39,6 +40,19 @@ function App() {
   const [deliveryOperationalReference, setDeliveryOperationalReference] =
     useState<string | null>(null);
   const [authState, setAuthState] = useState<AuthState>({ status: "loading" });
+  const [terminalOrders, setTerminalOrders] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [endingOrders, setEndingOrders] = useState<Record<string, boolean>>({});
+  const rememberOrderState = useCallback((order: OrderResponse) => {
+    setTerminalOrders((current) => ({
+      ...current,
+      [order.operationalReference]: order.isFrozen || order.isClosed,
+    }));
+  }, []);
+  const rememberEndingBusy = useCallback((reference: string, busy: boolean) => {
+    setEndingOrders((current) => ({ ...current, [reference]: busy }));
+  }, []);
 
   const reloadProducts = useCallback(async () => {
     setIsLoading(true);
@@ -98,6 +112,7 @@ function App() {
   const returnToLogin = useCallback(() => {
     discardAntiforgeryToken();
     setAuthState({ status: "unauthenticated" });
+    setEndingOrders({});
   }, []);
 
   function activateOrder(operationalReference: string) {
@@ -110,12 +125,12 @@ function App() {
     setRequestedTarget(undefined);
   }
 
-  function requestOrderRefresh(operationalReference: string) {
+  const requestOrderRefresh = useCallback((operationalReference: string) => {
     setRequestedLookup((current) => ({
       operationalReference,
       sequence: (current?.sequence ?? 0) + 1,
     }));
-  }
+  }, []);
 
   function requestContinueOrder(operationalReference: string) {
     setRequestedTarget((current) => ({
@@ -146,7 +161,13 @@ function App() {
             identity={authState.identity}
             onLoggedOut={returnToLogin}
           />
-          <PreparationPanel onUnauthorized={returnToLogin} />
+          <PreparationPanel
+            onUnauthorized={returnToLogin}
+            isOrderBlocked={(reference) =>
+              terminalOrders[reference] === true ||
+              endingOrders[reference] === true
+            }
+          />
           <InventoryPanel onUnauthorized={returnToLogin} />
           <OrderWorkflow
             products={products}
@@ -156,6 +177,11 @@ function App() {
             onStartNewOrder={startNewOrder}
             onOrderChanged={requestOrderRefresh}
             onUnauthorized={returnToLogin}
+            ordinaryMutationsBlocked={
+              activeOperationalReference !== null &&
+              (terminalOrders[activeOperationalReference] === true ||
+                endingOrders[activeOperationalReference] === true)
+            }
           />
         </>
       )}
@@ -168,17 +194,36 @@ function App() {
       />
 
       <OrderLookup
+        key={
+          authState.status === "authenticated"
+            ? authState.identity.identityId
+            : "anonymous"
+        }
         products={products}
         requestedLookup={requestedLookup}
         activeOperationalReference={activeOperationalReference}
         onContinueOrder={requestContinueOrder}
         onOpenDelivery={setDeliveryOperationalReference}
+        identityId={
+          authState.status === "authenticated"
+            ? authState.identity.identityId
+            : undefined
+        }
+        onUnauthorized={returnToLogin}
+        onOrderState={rememberOrderState}
+        onEndingBusy={rememberEndingBusy}
       />
 
       {authState.status === "authenticated" && (
         <DeliveryPanel
           operationalReference={deliveryOperationalReference}
           onUnauthorized={returnToLogin}
+          ordinaryMutationsBlocked={
+            deliveryOperationalReference !== null &&
+            (terminalOrders[deliveryOperationalReference] === true ||
+              endingOrders[deliveryOperationalReference] === true)
+          }
+          onOrderChanged={requestOrderRefresh}
         />
       )}
     </main>

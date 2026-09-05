@@ -30,6 +30,17 @@ const currentProduct: Product = {
 };
 
 const order: OrderResponse = {
+  functionalAmount: "28.25",
+  isLiquidationEligible: false,
+  liquidationBlockers: ["unresolved_fulfillment"],
+  isLiquidated: false,
+  isFrozen: false,
+  liquidatedAmount: null,
+  liquidationMode: null,
+  declaredPaymentMedium: null,
+  isClosureEligible: false,
+  isClosed: false,
+  closedAt: null,
   operationalReference: "order-reference-from-response",
   context: "Mesa 7",
   incorporations: [

@@ -94,6 +94,32 @@ const soda: Product = {
   price: "12.00",
 };
 
+it("bloquea la Composición del Pedido congelado y permite iniciar otro Pedido", async () => {
+  const onStartNewOrder = vi.fn();
+  render(
+    <OrderWorkflow
+      products={[water]}
+      activeOperationalReference="frozen-order"
+      onActivateOrder={vi.fn()}
+      onStartNewOrder={onStartNewOrder}
+      onOrderChanged={vi.fn()}
+      onUnauthorized={vi.fn()}
+      ordinaryMutationsBlocked
+    />,
+  );
+  await waitFor(() => expect(getPendingCompositionMock).toHaveBeenCalled());
+  expect(
+    screen.getByRole("button", { name: "Agregar Agua a Nueva Composición" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
+  ).toBeDisabled();
+  await userEvent
+    .setup()
+    .click(screen.getByRole("button", { name: "Iniciar nuevo Pedido" }));
+  expect(onStartNewOrder).toHaveBeenCalledOnce();
+});
+
 const burger: Product = {
   ...water,
   id: "product-burger",
@@ -182,6 +208,24 @@ async function addProduct(
     await user.click(button);
   }
 }
+
+it("refresca el Pedido al iniciar y descartar Composición para actualizar elegibilidad de Liquidación", async () => {
+  const onChanged = vi.fn();
+  const user = userEvent.setup();
+  render(<Harness initialReference="order-active" onChanged={onChanged} />);
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Agregar Agua a Nueva Composición" }),
+    ).toBeEnabled(),
+  );
+  await addProduct(user, water, "Nueva Composición");
+  expect(onChanged).toHaveBeenCalledWith("order-active");
+  onChanged.mockClear();
+  await user.click(
+    screen.getByRole("button", { name: "Descartar Composición actual" }),
+  );
+  await waitFor(() => expect(onChanged).toHaveBeenCalledWith("order-active"));
+});
 
 describe("OrderWorkflow - Composición y Primera Confirmación", () => {
   beforeEach(() => {

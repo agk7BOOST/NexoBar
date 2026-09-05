@@ -16,6 +16,7 @@ import {
 } from "./preparationClient.ts";
 
 interface PreparationPanelProps {
+  isOrderBlocked?: (reference: string) => boolean;
   onUnauthorized: () => void;
 }
 
@@ -89,7 +90,10 @@ function updatedWork(
   };
 }
 
-export function PreparationPanel({ onUnauthorized }: PreparationPanelProps) {
+export function PreparationPanel({
+  onUnauthorized,
+  isOrderBlocked,
+}: PreparationPanelProps) {
   const [destinations, setDestinations] = useState<PreparationDestination[]>(
     [],
   );
@@ -457,7 +461,9 @@ export function PreparationPanel({ onUnauthorized }: PreparationPanelProps) {
     if (availableQuantity === 0) return null;
 
     const intent = intents[item.workId];
-    const isWorkBlocked = intent !== undefined;
+    const isWorkBlocked =
+      intent !== undefined ||
+      isOrderBlocked?.(item.operationalReference) === true;
     const fieldId = `preparation-${kind}-quantity-${item.workId}`;
     const messageId = `preparation-message-${item.workId}`;
     return (
@@ -467,7 +473,7 @@ export function PreparationPanel({ onUnauthorized }: PreparationPanelProps) {
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          submitNewIntent(item, kind);
+          if (!isWorkBlocked) submitNewIntent(item, kind);
         }}
       >
         <label htmlFor={fieldId}>
