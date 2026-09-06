@@ -5,6 +5,7 @@ import {
   SessionProblemError,
 } from "../identity/sessionClient.ts";
 import {
+  correctDelivery,
   deliverQuantity,
   DeliveryProblemError,
   getOrderDelivery,
@@ -23,6 +24,9 @@ type DeliveryIntentPhase = "submitting" | "uncertain";
 
 interface DeliveryIntent {
   phase: DeliveryIntentPhase;
+  kind: "delivery" | "correction";
+  orderId: string;
+  antiforgeryToken?: string;
   incorporationId: string;
   contentOrdinal: number;
   quantity: number;
@@ -63,11 +67,22 @@ export function DeliveryPanel({
   const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>(
     {},
   );
+  const [correctionInputs, setCorrectionInputs] = useState<
+    Record<string, string>
+  >({});
+  const [correctionOpen, setCorrectionOpen] = useState<Record<string, boolean>>(
+    {},
+  );
   const [intents, setIntents] = useState<Record<string, DeliveryIntent>>({});
   const [synchronizing, setSynchronizing] = useState<Record<string, true>>({});
   const [contentMessages, setContentMessages] = useState<
     Record<string, ContentMessage>
   >({});
+  const [frozenOrders, setFrozenOrders] = useState<Record<string, true>>({});
+  const mutationsBlocked =
+    ordinaryMutationsBlocked ||
+    (operationalReference !== null &&
+      frozenOrders[operationalReference] === true);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const requestSequence = useRef(0);
@@ -218,7 +233,10 @@ export function DeliveryPanel({
       let antiforgeryToken: string;
 
       try {
-        antiforgeryToken = await getAntiforgeryToken();
+        antiforgeryToken =
+          intent.antiforgeryToken ?? (await getAntiforgeryToken());
+        intent = { ...intent, antiforgeryToken };
+        setIntent(intent);
       } catch (error) {
         if (error instanceof SessionProblemError && error.status === 401) {
           handleUnauthorized();
@@ -234,13 +252,17 @@ export function DeliveryPanel({
       }
 
       try {
-        const result = await deliverQuantity({
+        const command = {
           incorporationId: intent.incorporationId,
           contentOrdinal: intent.contentOrdinal,
           quantity: intent.quantity,
           idempotencyKey: intent.idempotencyKey,
           antiforgeryToken,
-        });
+        };
+        const result =
+          intent.kind === "correction"
+            ? await correctDelivery({ ...command, orderId: intent.orderId })
+            : await deliverQuantity(command);
 
         if (
           result.incorporationId !== intent.incorporationId ||
@@ -250,6 +272,10 @@ export function DeliveryPanel({
         }
 
         clearIntent(key);
+        if (intent.kind === "correction") {
+          setCorrectionOpen((current) => ({ ...current, [key]: false }));
+          setCorrectionInputs((current) => ({ ...current, [key]: "" }));
+        }
         setContentMessage(key, null);
         setSynchronizingKey(key, true);
         const refreshed = await refreshDelivery(reference);
@@ -266,7 +292,10 @@ export function DeliveryPanel({
             setIntent({ ...intent, phase: "uncertain" });
             setContentMessage(key, {
               kind: "uncertain",
-              text: "No se pudo confirmar el resultado de la entrega.",
+              text:
+                intent.kind === "correction"
+                  ? "No se pudo confirmar el resultado de la corrección de entrega."
+                  : "No se pudo confirmar el resultado de la entrega.",
               detail:
                 error.status >= 500
                   ? "No se pudo procesar la entrega por un problema técnico."
@@ -278,19 +307,25 @@ export function DeliveryPanel({
           clearIntent(key);
 
           if (error.status === 409) {
+            if (error.problem.code === "order_operations.order.frozen")
+              setFrozenOrders((current) => ({ ...current, [reference]: true }));
             const isIdempotencyConflict =
               error.problem.code?.endsWith(".idempotency_key_conflict") ===
               true;
             setContentMessage(key, {
               kind: "error",
-              text: isIdempotencyConflict
-                ? "La operación no coincide con el intento original."
-                : "El estado de la entrega cambió. Se actualizó la información.",
+              text:
+                error.problem.code === "order_operations.order.frozen"
+                  ? "El Pedido está congelado y ya no puede modificarse."
+                  : isIdempotencyConflict
+                    ? "La operación no coincide con el intento original."
+                    : "El estado de la entrega cambió. Se actualizó la información.",
             });
             setSynchronizingKey(key, true);
             const refreshed = await refreshDelivery(reference, {
               preserveMessage: true,
             });
+            onOrderChanged?.(reference);
             if (refreshed) setSynchronizingKey(key, false);
             return;
           }
@@ -312,6 +347,7 @@ export function DeliveryPanel({
             const refreshed = await refreshDelivery(reference, {
               preserveMessage: true,
             });
+            onOrderChanged?.(reference);
             if (refreshed) setSynchronizingKey(key, false);
             return;
           }
@@ -332,7 +368,10 @@ export function DeliveryPanel({
         setIntent({ ...intent, phase: "uncertain" });
         setContentMessage(key, {
           kind: "uncertain",
-          text: "No se pudo confirmar el resultado de la entrega.",
+          text:
+            intent.kind === "correction"
+              ? "No se pudo confirmar el resultado de la corrección de entrega."
+              : "No se pudo confirmar el resultado de la entrega.",
         });
       }
     },
@@ -348,8 +387,11 @@ export function DeliveryPanel({
   );
 
   const submitNewIntent = useCallback(
-    (item: OrderDeliveryContent) => {
-      if (operationalReference === null || ordinaryMutationsBlocked) return;
+    (
+      item: OrderDeliveryContent,
+      kind: "delivery" | "correction" = "delivery",
+    ) => {
+      if (operationalReference === null || mutationsBlocked) return;
       const key = contentKey(item);
       if (
         intentsRef.current[key] !== undefined ||
@@ -358,23 +400,31 @@ export function DeliveryPanel({
         return;
       }
 
-      const rawQuantity = quantityInputs[key] ?? "";
+      const maximum =
+        kind === "correction"
+          ? item.deliveredQuantity
+          : item.deliverableQuantity;
+      const rawQuantity =
+        (kind === "correction" ? correctionInputs[key] : quantityInputs[key]) ??
+        "";
       const quantity = Number(rawQuantity);
       if (
         !/^\d+$/.test(rawQuantity) ||
         !Number.isInteger(quantity) ||
         quantity <= 0 ||
-        quantity > item.deliverableQuantity
+        quantity > maximum
       ) {
         setContentMessage(key, {
           kind: "error",
-          text: `Ingresá una cantidad entera entre 1 y ${item.deliverableQuantity}.`,
+          text: `Ingresá una cantidad entera entre 1 y ${maximum}.`,
         });
         return;
       }
 
       const intent: DeliveryIntent = {
         phase: "submitting",
+        kind,
+        orderId: delivery!.orderId,
         incorporationId: item.incorporationId,
         contentOrdinal: item.contentOrdinal,
         quantity,
@@ -389,10 +439,12 @@ export function DeliveryPanel({
       executeIntent,
       operationalReference,
       quantityInputs,
+      correctionInputs,
+      delivery,
       setContentMessage,
       setIntent,
       synchronizing,
-      ordinaryMutationsBlocked,
+      mutationsBlocked,
     ],
   );
 
@@ -468,7 +520,7 @@ export function DeliveryPanel({
                 const intent = intents[key];
                 const itemMessage = contentMessages[key];
                 const isBlocked =
-                  ordinaryMutationsBlocked ||
+                  mutationsBlocked ||
                   intent !== undefined ||
                   synchronizing[key] !== undefined;
                 const isFullyDelivered = item.remainingQuantity === 0;
@@ -574,8 +626,82 @@ export function DeliveryPanel({
                       </form>
                     )}
 
+                    {!mutationsBlocked && item.deliveredQuantity > 0 && (
+                      <div className="delivery-action">
+                        <button
+                          type="button"
+                          disabled={isBlocked}
+                          aria-label={`Corregir entrega ${description}`}
+                          onClick={() =>
+                            setCorrectionOpen((current) => ({
+                              ...current,
+                              [key]: true,
+                            }))
+                          }
+                        >
+                          Corregir entrega
+                        </button>
+                        {correctionOpen[key] && (
+                          <form
+                            noValidate
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              submitNewIntent(item, "correction");
+                            }}
+                          >
+                            <p>
+                              Indicá la cantidad registrada por error que debe
+                              retirarse de la entrega.
+                            </p>
+                            <p>
+                              Actualmente entregado: {item.deliveredQuantity}
+                            </p>
+                            <label htmlFor={`${fieldId}-correction`}>
+                              Cantidad a corregir — {description}
+                            </label>
+                            <input
+                              id={`${fieldId}-correction`}
+                              type="number"
+                              min="1"
+                              max={item.deliveredQuantity}
+                              step="1"
+                              disabled={isBlocked}
+                              value={correctionInputs[key] ?? ""}
+                              onChange={(event) =>
+                                setCorrectionInputs((current) => ({
+                                  ...current,
+                                  [key]: event.target.value,
+                                }))
+                              }
+                            />
+                            <p>
+                              Cantidad a corregir:{" "}
+                              {correctionInputs[key] || "—"}
+                            </p>
+                            <p>
+                              Entrega resultante (prevista):{" "}
+                              {/^[0-9]+$/.test(correctionInputs[key] ?? "") &&
+                              Number(correctionInputs[key]) > 0 &&
+                              Number(correctionInputs[key]) <=
+                                item.deliveredQuantity
+                                ? item.deliveredQuantity -
+                                  Number(correctionInputs[key])
+                                : "—"}
+                            </p>
+                            <button type="submit" disabled={isBlocked}>
+                              Confirmar corrección de entrega
+                            </button>
+                          </form>
+                        )}
+                      </div>
+                    )}
+
                     {intent?.phase === "submitting" && (
-                      <p role="status">Confirmando entrega…</p>
+                      <p role="status">
+                        {intent.kind === "correction"
+                          ? "Confirmando corrección de entrega…"
+                          : "Confirmando entrega…"}
+                      </p>
                     )}
                     {synchronizing[key] !== undefined && (
                       <p role="status">Actualizando cantidades…</p>

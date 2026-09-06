@@ -183,3 +183,57 @@ export async function deliverQuantity(
 
   return readDeliverQuantityResult(response);
 }
+
+export interface CorrectDeliveryCommand extends DeliverQuantityCommand {
+  orderId: string;
+}
+export interface CorrectDeliveryResult {
+  orderId: string;
+  incorporationId: string;
+  contentOrdinal: number;
+  historyId: string;
+  correctedQuantity: number;
+  previousDeliveredQuantity: number;
+  resultingDeliveredQuantity: number;
+  occurredAt: string;
+}
+export async function correctDelivery(
+  command: CorrectDeliveryCommand,
+): Promise<CorrectDeliveryResult> {
+  const response = await fetch(
+    `/api/order-operations/orders/${encodeURIComponent(command.orderId)}/incorporations/${encodeURIComponent(command.incorporationId)}/contents/${encodeURIComponent(String(command.contentOrdinal))}/correct-delivery`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": command.idempotencyKey,
+        "X-NexoBar-CSRF": command.antiforgeryToken,
+      },
+      body: JSON.stringify({ quantity: command.quantity }),
+    },
+  );
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403)
+      throw new DeliveryProblemError(response.status);
+    throw new DeliveryProblemError(
+      response.status,
+      await readProblem(response),
+    );
+  }
+  const payload: unknown = await response.json();
+  if (
+    !isRecord(payload) ||
+    payload.orderId !== command.orderId ||
+    payload.incorporationId !== command.incorporationId ||
+    payload.contentOrdinal !== command.contentOrdinal ||
+    typeof payload.historyId !== "string" ||
+    typeof payload.occurredAt !== "string" ||
+    payload.correctedQuantity !== command.quantity ||
+    !isNonNegativeInteger(payload.previousDeliveredQuantity) ||
+    !isNonNegativeInteger(payload.resultingDeliveredQuantity)
+  ) {
+    throw new Error("The Delivery Correction response was not interpretable.");
+  }
+  return payload as unknown as CorrectDeliveryResult;
+}

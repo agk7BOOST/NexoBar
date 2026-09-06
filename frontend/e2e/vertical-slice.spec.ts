@@ -726,3 +726,51 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
   await expect(history.getByText("Resultado", { exact: true })).toHaveCount(1);
   await expect(history).toContainText("Saldo resultante-1 kg");
 });
+
+test("Delivery Correction reduce importe, permite reentrega y desaparece al Liquidar", async ({
+  page,
+}) => {
+  const { productName, operationalReference } =
+    await createConfirmedOrder(page);
+  await page
+    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .click();
+  const delivery = page.getByRole("region", {
+    name: `Entrega del Pedido ${operationalReference}`,
+  });
+  const content = delivery.getByRole("article", {
+    name: `${productName}, sin instrucción, incorporación 1`,
+  });
+  const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
+  const amount = ending
+    .getByText("Importe funcional actual")
+    .locator("..")
+    .locator("dd");
+  const deliver = content.getByRole("button", {
+    name: `Entregar ${productName}, sin instrucción, incorporación 1`,
+  });
+  await expect(content).toContainText("Preparación no requerida");
+  await deliver.click();
+  await expect(content).toContainText("Delivered2");
+  await expect(amount).toHaveText(/^20(?:\.0+)?$/);
+  await content.getByRole("button", { name: /^Corregir entrega / }).click();
+  await content.getByLabel(/^Cantidad a corregir —/).fill("1");
+  await expect(content).toContainText("Actualmente entregado: 2");
+  await expect(content).toContainText("Entrega resultante (prevista): 1");
+  await content
+    .getByRole("button", { name: "Confirmar corrección de entrega" })
+    .click();
+  await expect(content).toContainText("Delivered1");
+  await expect(content).toContainText("Deliverable1");
+  await expect(amount).toHaveText(/^10(?:\.0+)?$/);
+  await expect(content.getByLabel(/^Cantidad a entregar —/)).toHaveValue("1");
+  await deliver.click();
+  await expect(content).toContainText("Delivered2");
+  await expect(amount).toHaveText(/^20(?:\.0+)?$/);
+  await ending.getByLabel("Medio de pago declarado").fill("Efectivo");
+  await ending.getByRole("button", { name: "Liquidar", exact: true }).click();
+  await expect(ending.getByText(/Pedido congelado/)).toBeVisible();
+  await expect(
+    content.getByRole("button", { name: /^Corregir entrega / }),
+  ).toHaveCount(0);
+});
