@@ -42,7 +42,7 @@ public sealed class LiquidationMigrationTests(OrderOperationsApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateOrderOperationsAsync("20260905101316_AddClosure", token);
+            await fixture.MigrateOrderOperationsAsync("20260906000853_AddDeliveryCorrection", token);
             await fixture.ResetAsync(token);
         }
     }

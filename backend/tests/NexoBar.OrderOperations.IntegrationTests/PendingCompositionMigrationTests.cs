@@ -9,7 +9,7 @@ public sealed class PendingCompositionMigrationTests(OrderOperationsApiFixture f
     private const string PreviousMigration = "20260831214404_AddDeliveryProgress";
     private const string CurrentMigration =
         "20260904152524_AddAuthoritativePendingComposition";
-    private const string LatestMigration = "20260905101316_AddClosure";
+    private const string LatestMigration = "20260906000853_AddDeliveryCorrection";
 
     [Fact]
     public async Task Migration_is_incremental_reversible_and_uses_safe_identifiers()

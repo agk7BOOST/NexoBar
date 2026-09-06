@@ -21,6 +21,8 @@ internal sealed class OrderOperationsDbContext(
     internal DbSet<DeliveryState> DeliveryStates => Set<DeliveryState>();
     internal DbSet<DeliveryHistory> DeliveryHistory => Set<DeliveryHistory>();
     internal DbSet<DeliveryCommand> DeliveryCommands => Set<DeliveryCommand>();
+    internal DbSet<DeliveryCorrectionHistory> DeliveryCorrectionHistory => Set<DeliveryCorrectionHistory>();
+    internal DbSet<DeliveryCorrectionCommand> DeliveryCorrectionCommands => Set<DeliveryCorrectionCommand>();
     internal DbSet<PreparationWork> PreparationWork => Set<PreparationWork>();
     internal DbSet<PreparationHistory> PreparationHistory => Set<PreparationHistory>();
     internal DbSet<PreparationCommand> PreparationCommands => Set<PreparationCommand>();
@@ -51,6 +53,8 @@ internal sealed class OrderOperationsDbContext(
         modelBuilder.ApplyConfiguration(new DeliveryStateConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new DeliveryCorrectionHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new DeliveryCorrectionCommandConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationWorkConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationCommandConfiguration());

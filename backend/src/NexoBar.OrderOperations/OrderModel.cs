@@ -213,6 +213,15 @@ internal sealed class DeliveryState
     internal int ContentOrdinal { get; private set; }
     internal int DeliveredQuantity { get; private set; }
 
+    internal DeliveryCorrectionTransition Correct(int quantity)
+    {
+        if (quantity <= 0) return DeliveryCorrectionTransition.QuantityInvalid;
+        if (DeliveredQuantity == 0) return DeliveryCorrectionTransition.NoEffectiveDelivery;
+        if (quantity > DeliveredQuantity) return DeliveryCorrectionTransition.QuantityExceedsDelivered;
+        DeliveredQuantity -= quantity;
+        return DeliveryCorrectionTransition.Corrected;
+    }
+
     internal DeliveryTransition Deliver(int quantity, int deliverableQuantity)
     {
         if (quantity <= 0)
@@ -235,6 +244,11 @@ internal enum DeliveryTransition
     Delivered,
     QuantityInvalid,
     DeliverableQuantityInsufficient
+}
+
+internal enum DeliveryCorrectionTransition
+{
+    Corrected, QuantityInvalid, NoEffectiveDelivery, QuantityExceedsDelivered
 }
 
 internal sealed class PreparationWork

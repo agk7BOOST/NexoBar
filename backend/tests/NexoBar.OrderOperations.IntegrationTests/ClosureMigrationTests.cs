@@ -21,7 +21,7 @@ public sealed class ClosureMigrationTests(OrderOperationsApiFixture fixture)
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT to_regclass('order_operations.closures') IS NULL";
             Assert.True(Assert.IsType<bool>(await command.ExecuteScalarAsync(token)));
-            await fixture.MigrateOrderOperationsAsync("20260905101316_AddClosure", token);
+            await fixture.MigrateOrderOperationsAsync("20260906000853_AddDeliveryCorrection", token);
             await ClosureTestSupport.AssertCountsAsync(fixture, 0, token);
             Assert.Equal(liquidation.Id, Assert.Single(await fixture.ReadLiquidationsAsync(token)).Id);
             Assert.Single(await fixture.ReadLiquidationHistoryAsync(token));
@@ -34,7 +34,7 @@ public sealed class ClosureMigrationTests(OrderOperationsApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateOrderOperationsAsync("20260905101316_AddClosure", token);
+            await fixture.MigrateOrderOperationsAsync("20260906000853_AddDeliveryCorrection", token);
             await fixture.ResetAsync(token);
         }
     }
