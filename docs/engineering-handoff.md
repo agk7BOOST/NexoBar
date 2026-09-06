@@ -622,6 +622,22 @@ El replay devuelve el resultado original persistido. Si key A dejó `delivered =
 
 Un replay confirmado todavía exige Session utilizable e Identity activa, pero no reautoriza `OrderOperationsAndBasicClosure` después del efecto. Así, éxito con key X seguido de revocación de la Responsibility permite replay X con `200`, mientras una intención nueva con key Y recibe `403`. Identity desactivada o Session inválida produce `401`. El actor durable es `IdentityId`, nunca `SessionId`.
 
+### Delivery Correction
+
+Delivery Correction está implementada verticalmente mediante la intención explícita `CorrectDeliveryQuantity`. Retrae una cantidad positiva exacta del `DeliveredQuantity` efectivo vigente; puede reducirlo hasta cero, nunca lo incrementa y rechaza cantidades inválidas o superiores a la entrega efectiva sin clipping silencioso.
+
+```text
+POST /api/order-operations/orders/{orderId}/incorporations/{incorporationId}/contents/{contentOrdinal}/correct-delivery
+Body: { "quantity": integer }
+Headers: Idempotency-Key UUID v4 + antiforgery
+```
+
+La Correction modifica únicamente `DeliveryState.DeliveredQuantity`. El `IncorporationContent` confirmado y `PreparationWork` permanecen sin cambios, y la Historia original `QuantityDelivered` no se elimina ni se reinterpreta. Cada efecto crea `DeliveryQuantityCorrected` History con cantidad previa, corregida y resultante, actor y timestamp UTC. State, History y resultado durable se confirman atómicamente.
+
+El Functional Amount deriva inmediatamente del `DeliveredQuantity` efectivo corregido. La cantidad corregida vuelve a quedar ordinariamente entregable bajo las mismas reglas vigentes: para Content prepared continúa limitada por `ReadyQuantity`, mientras direct usa el total confirmado. La Correction queda prohibida después de Liquidation/Freeze.
+
+El comando mantiene idempotencia durable sobre el endpoint, target, body, actor y key exactos. El replay devuelve el resultado original sin repetir State ni History; una reutilización incompatible de la key responde conflicto.
+
 ### Errores de Delivery
 
 - `400`: key, body, quantity o target estructuralmente inválido;
@@ -739,6 +755,7 @@ POST /api/orders/{orderId}/close
 - Un `409` es una falla conocida: limpia el intent, informa cambio de Estado o conflicto de idempotencia, refresca y reserva una key nueva para una intención futura. No se trata como éxito.
 - Ante network, timeout o `5xx` conservadoramente incierto no modifica quantities: conserva target, quantity y key, marca `uncertain` y el retry usa exactamente el mismo endpoint, body y key. No ofrece descarte ordinario que habilite una Delivery incompatible.
 - Un `401` vuelve a `unauthenticated`, limpia antiforgery e intents y retorna al login. Un `403` conserva la Identity autenticada y muestra la falla de autorización. Un `404` del GET informa Pedido no encontrado; un `404` del POST rechaza el intent conocido y refresca. Un `400` es un error conocido, no outcome incierto.
+- Cada Content con `DeliveredQuantity > 0` expone la acción explícita “Corregir entrega”. La intención congela endpoint, target, body e `Idempotency-Key`; ante un resultado incierto, el retry reutiliza exactamente esos mismos valores. Tras éxito, el frontend refresca Delivery y Order para mostrar el Estado y Functional Amount autoritativos, sin aritmética optimista.
 
 ### Terminación de Order y PendingComposition frontend
 
@@ -771,9 +788,9 @@ Existen tres capas:
 
 `scripts/verify.cmd` y `scripts/verify.sh` ejecutan la verificación ordinaria. Esta verificación requiere Docker porque las suites backend usan Testcontainers. La opción `--e2e` añade PostgreSQL efímero aislado, backend, Vite y Chromium; no usa la base persistente de `compose.yaml`.
 
-Los totales actuales de Slice 6 son **628 pruebas backend, 216 frontend y 7 escenarios Playwright**. El descubrimiento backend se desglosa en Catalog 51, IdentitiesAndCapabilities 64, Inventory 185, OperationalConfiguration 17 y OrderOperations 311. En S6-I4 se verificaron los totales por descubrimiento (`dotnet test --no-build --no-restore --list-tests`, `vitest list --json` y `playwright test --list`), sin ejecutar las suites completas ni afirmar un nuevo resultado de aprobación. Los artefactos locales de Vitest y Playwright registran su última ejecución sin fallos; no hay un reporte backend persistido que permita atribuir aquí un nuevo 628/628 aprobado. El harness conserva la comprobación `HasPendingModelChanges = false` para los cinco DbContext (5/5); no se volvió a ejecutar en esta tarea documental.
+Los totales actuales verificados son **673/673 pruebas backend, 235/235 frontend y 8/8 escenarios Playwright**. El harness conserva la comprobación `HasPendingModelChanges = false` para los cinco DbContext (5/5). No se volvieron a ejecutar las suites en esta tarea documental.
 
-El baseline integrado mantiene siete escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, inicia el marcador autoritativo, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. Otro escenario verifica que un contexto autorizado ve el marcador remoto y no puede iniciar un segundo; se conserva también el lookup de Pedido inexistente. El escenario operacional de Preparation/Delivery conserva sus actores y cantidades parciales. El escenario de Inventory inicia sesión con una Identity que sólo posee `InventoryConfiguration`, crea un Item y comprueba que no puede operar; luego usa otra Identity que sólo posee `InventoryOperation`, establece la cantidad mediante Count/Reconciliation, registra Entry, ManualExit atravesando cero y Waste, comprueba el saldo vigente negativo y consulta una Historia que contiene los cuatro Movimientos. Esto demuestra capacidades separadas, `null != 0`, balance autoritativo e integración real navegador/backend/PostgreSQL. El fixture no implica bootstrap productivo. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
+El baseline integrado mantiene ocho escenarios Playwright. El recorrido principal crea un `Product` con precio 10, realiza la Primera Confirmación, cambia el precio a 12, inicia el marcador autoritativo, realiza una Confirmación posterior y consulta el `Order`, preservando `Incorporation` 1 a 10 e `Incorporation` 2 a 12. Otro escenario verifica que un contexto autorizado ve el marcador remoto y no puede iniciar un segundo; se conserva también el lookup de Pedido inexistente. El escenario operacional de Preparation/Delivery conserva sus actores y cantidades parciales, y Delivery Correction tiene cobertura vertical de Estado efectivo, Historia, Functional Amount y cantidad nuevamente entregable. El escenario de Inventory inicia sesión con una Identity que sólo posee `InventoryConfiguration`, crea un Item y comprueba que no puede operar; luego usa otra Identity que sólo posee `InventoryOperation`, establece la cantidad mediante Count/Reconciliation, registra Entry, ManualExit atravesando cero y Waste, comprueba el saldo vigente negativo y consulta una Historia que contiene los cuatro Movimientos. Esto demuestra capacidades separadas, `null != 0`, balance autoritativo e integración real navegador/backend/PostgreSQL. El fixture no implica bootstrap productivo. El harness usa PostgreSQL aislado y realiza cleanup de sus procesos y recursos.
 
 Los dos escenarios terminales de Slice 6 recorren Confirmation → Delivery completa de Content directo → Functional Amount 20 → Liquidation → Freeze → Closure explícito. La rama simple declara un medio libre y verifica su trim; la segunda registra cobro gestionado externamente sin medio. Ambas verifican que Liquidation todavía no es Closure, muestran el timestamp recibido, bloquean Composición ordinaria tras Freeze y realizan lookup exacto después de Closure: el Pedido y su Incorporation siguen visibles, sin acciones para continuar, liquidar, cerrar de nuevo o reabrir.
 
@@ -826,6 +843,8 @@ Las migraciones vigentes de Inventory en Slice 5 son:
 
 Slice 6 agregó `20260904152524_AddAuthoritativePendingComposition` (marcador, comandos y columnas legacy nullable de actor), `20260905055531_AddLiquidation` (State, History y comandos) y `20260905101316_AddClosure` (State, History y comandos). No se modificaron migraciones durante esta consolidación documental.
 
+Delivery Correction agregó `20260906000853_AddDeliveryCorrection`, que materializa su History y comandos durables sin modificar `DeliveryState`, `PreparationWork`, `IncorporationContent` ni la Historia original de Delivery.
+
 ## 19. `InternalsVisibleTo`
 
 `InternalsVisibleTo` existe únicamente para consumidores técnicos/test específicos: las suites de integración y `NexoBar.E2E.DatabaseSetup`. No es un mecanismo normal de colaboración productiva entre módulos.
@@ -853,7 +872,6 @@ Fronteras todavía no materializadas, sin que esta enumeración diseñe su soluc
 - auditoría global de seguridad y consumo de autenticación en SSE;
 - Correction ordinaria sobre cantidad todavía Pending/elegible, conforme a reglas aún no definidas;
 - excepciones sobre Work iniciado y Correction de progreso: una Correction no debe reinterpretar silenciosamente cantidades InPreparation o Ready, y modificar trabajo ya iniciado requiere tratamiento excepcional;
-- Delivery Correction y su distinción entre Correction ordinaria y excepcional conforme a la Source aplicable;
 - reversal y exception handling de Delivery;
 - interacción completa entre Delivery y Corrections de Content;
 - errores post-Liquidation intencionalmente sin resolución en el flujo ordinario del MVP; Slice 6 no agrega correcciones económicas, reversals ni un subsistema adicional de Settlement/Payment;
@@ -884,7 +902,7 @@ El checkpoint de seguridad requerido para acciones humanas de Preparation y Deli
 
 ### Correction y coordinación Preparation/Delivery
 
-Delivery Correction no está implementada. Una futura Correction deberá modificar State explícitamente y preservar `QuantityDelivered` histórico; no podrá borrar ni reinterpretar silenciosamente History. La distinción entre Correction ordinaria y excepcional seguirá la Source aplicable, y este documento no diseña endpoint ni política adicional.
+Delivery Correction ordinaria está implementada como retracción exacta de `DeliveredQuantity` efectivo, con Historia propia y preservación de `QuantityDelivered` histórico. Permanecen abiertas las excepciones, reversals y demás Corrections de Delivery no materializadas.
 
 Una futura Correction de Preparation tampoco puede crear silenciosamente `DeliveredQuantity > ReadyQuantity` para un Prepared Content. Las Corrections que afecten cantidad ya Ready o Delivered deberán coordinarse con Delivery; esa política permanece abierta y no se resuelve aquí.
 
@@ -927,7 +945,7 @@ Slice 4 — Delivery mínima operativa materializa:
 - frontend Delivery con intents por Content y tratamiento de incertidumbre;
 - recorrido E2E integrado para Prepared y Direct Content.
 
-**Delivery mínima operativa del Slice 4 cerrada.** Esto no equivale a Delivery completa del MVP: Correction, reversals, History UI, SSE y las demás fronteras de la sección 20 siguen pendientes. Liquidation y Closure se materializaron posteriormente en Slice 6.
+**Delivery mínima operativa del Slice 4 cerrada.** Delivery Correction ordinaria se materializó posteriormente de forma vertical; esto no equivale a Delivery completa del MVP: reversals, excepciones, History UI, SSE y las demás fronteras de la sección 20 siguen pendientes. Liquidation y Closure se materializaron posteriormente en Slice 6.
 
 ## 23. Estado de Slice 5 — Inventory
 
@@ -957,7 +975,7 @@ Los increments materializados son:
 
 El alcance consolidado incluye PendingComposition autoritativa para Orders existentes, retrofit de seguridad y actor de Confirmation, Functional Amount derivado de Delivery efectiva y AppliedPrice, Liquidation completa simple o con cobro externo, Freeze consecuente y Closure explícito terminal. Incluye State e History separados, idempotencia durable, coordinación del mismo Order, frontend con blockers y retry incierto y ambas ramas terminales E2E con consulta exacta después de Closure.
 
-**Normal Order termination happy path of Slice 6 is closed.** Esta declaración se limita al recorrido normal materializado. Permanecen pendientes Delivery Correction, Corrections/excepciones de Preparation aún no implementadas, Cancellation de contenido/completa y Correction de AppliedPrice donde siguen pendientes, otras Corrections/excepciones de Order, SSE activo y persistencia de intención incierta entre recargas. Los errores post-Liquidation permanecen intencionalmente sin resolución en el flujo ordinario del MVP. La limitación de lectura de Liquidation `occurredAt` después de reload continúa registrada en las secciones 12, 16 y 20.
+**Normal Order termination happy path of Slice 6 is closed.** Esta declaración se limita al recorrido normal materializado. Delivery Correction ordinaria está implementada; permanecen pendientes sus excepciones y reversals, Corrections/excepciones de Preparation aún no implementadas, Cancellation de contenido/completa, Correction de AppliedPrice, otras Corrections/excepciones de Order, SSE activo y persistencia de intención incierta entre recargas. Los errores post-Liquidation permanecen intencionalmente sin resolución en el flujo ordinario del MVP. La limitación de lectura de Liquidation `occurredAt` después de reload continúa registrada en las secciones 12, 16 y 20.
 
 ## 25. Protocolo de trabajo
 
