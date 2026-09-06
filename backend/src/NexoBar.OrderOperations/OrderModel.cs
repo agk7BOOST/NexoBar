@@ -253,6 +253,14 @@ internal sealed class ContentQuantityState
     internal Guid IncorporationId { get; private set; }
     internal int ContentOrdinal { get; private set; }
     internal int RemovedByCorrectionQuantity { get; private set; }
+
+    internal void Correct(int quantity, int confirmedQuantity, int eligibleQuantity)
+    {
+        if (quantity <= 0 || quantity > eligibleQuantity ||
+            RemovedByCorrectionQuantity < 0 || quantity > (long)confirmedQuantity - RemovedByCorrectionQuantity)
+            throw new InvalidOperationException("The exact content correction is not eligible.");
+        RemovedByCorrectionQuantity = checked(RemovedByCorrectionQuantity + quantity);
+    }
 }
 
 internal enum DeliveryTransition
@@ -296,6 +304,14 @@ internal sealed class PreparationWork
     internal int PendingQuantity { get; private set; }
     internal int InPreparationQuantity { get; private set; }
     internal int ReadyQuantity { get; private set; }
+
+    internal void CorrectPending(int quantity)
+    {
+        if (quantity <= 0 || quantity > PendingQuantity)
+            throw new InvalidOperationException("The exact correction exceeds Pending quantity.");
+        PendingQuantity -= quantity;
+        TotalQuantity -= quantity;
+    }
 
     internal PreparationStartTransition Start(int quantity)
     {

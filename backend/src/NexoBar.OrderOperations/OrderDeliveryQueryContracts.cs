@@ -18,7 +18,10 @@ internal sealed record OrderDeliveryContentResponse(
     int? ReadyQuantity,
     int DeliveredQuantity,
     int DeliverableQuantity,
-    int RemainingQuantity);
+    int RemainingQuantity,
+    int ConfirmedQuantity,
+    int RemovedByCorrectionQuantity,
+    int CurrentFulfillmentQuantity);
 
 internal sealed record OrderDeliveryQueryResult(
     OrderDeliveryQueryOutcome Outcome,

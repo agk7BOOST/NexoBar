@@ -154,7 +154,10 @@ internal sealed class OrderDeliveryQueryService(
                 ready,
                 delivered,
                 requiresPreparation ? ready!.Value - delivered : total - delivered,
-                total - delivered);
+                total - delivered,
+                row.ConfirmedQuantity.Value,
+                row.RemovedByCorrectionQuantity.Value,
+                total);
         }).ToArray();
 
         var first = persisted[0];
@@ -197,7 +200,7 @@ internal sealed class OrderDeliveryQueryService(
 
         var effective = confirmed - removed;
         var delivered = row.DeliveredQuantity.Value;
-        if (effective <= 0 || delivered < 0 || delivered > effective)
+        if (effective < 0 || delivered < 0 || delivered > effective)
         {
             return true;
         }

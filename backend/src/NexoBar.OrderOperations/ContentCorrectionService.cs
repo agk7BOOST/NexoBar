@@ -6,13 +6,13 @@ using NexoBar.IdentitiesAndCapabilities;
 
 namespace NexoBar.OrderOperations;
 
-internal sealed class DeliveryCorrectionService(
+internal sealed class ContentCorrectionService(
     OrderOperationsDbContext dbContext,
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
     TimeProvider timeProvider)
 {
-    internal async Task<DeliveryCorrectionResult> CorrectAsync(
+    internal async Task<ContentCorrectionResult> CorrectAsync(
         Guid key, Guid orderId, Guid incorporationId, int contentOrdinal, int quantity,
         CancellationToken cancellationToken)
     {
@@ -20,42 +20,42 @@ internal sealed class DeliveryCorrectionService(
         var lockKey = CreateLockKey(key);
         await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         var session = await sessionStabilizer.StabilizeAsync(transaction.GetDbTransaction(), cancellationToken);
-        if (session is null) return new(DeliveryCorrectionOutcome.Unauthenticated);
+        if (session is null) return new(ContentCorrectionOutcome.Unauthenticated);
 
-        var command = await dbContext.DeliveryCorrectionCommands.AsNoTracking()
+        var command = await dbContext.ContentCorrectionCommands.AsNoTracking()
             .SingleOrDefaultAsync(x => x.IdempotencyKey == key, cancellationToken);
         if (command is not null)
         {
             await transaction.CommitAsync(cancellationToken);
             return command.Matches(session.IdentityId, orderId, incorporationId, contentOrdinal, quantity)
-                ? new(DeliveryCorrectionOutcome.Succeeded, command.ToResponse())
-                : new(DeliveryCorrectionOutcome.IdempotencyConflict);
+                ? new(ContentCorrectionOutcome.Succeeded, command.ToResponse())
+                : new(ContentCorrectionOutcome.IdempotencyConflict);
         }
         if (!await capabilityStabilizer.StabilizeResponsibilityAsync(session.IdentityId, transaction.GetDbTransaction(), cancellationToken))
-            return new(DeliveryCorrectionOutcome.Forbidden);
+            return new(ContentCorrectionOutcome.Forbidden);
 
         if (!await dbContext.Orders.FromSqlInterpolated(
                 $"SELECT id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE")
                 .AsNoTracking().AnyAsync(cancellationToken))
-            return new(DeliveryCorrectionOutcome.ContentNotFound);
+            return new(ContentCorrectionOutcome.ContentNotFound);
         if (await dbContext.Liquidations.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
-            return new(DeliveryCorrectionOutcome.OrderFrozen);
+            return new(ContentCorrectionOutcome.OrderFrozen);
         if (!await dbContext.Incorporations.AsNoTracking().AnyAsync(x => x.Id == incorporationId && x.OrderId == orderId, cancellationToken))
-            return new(DeliveryCorrectionOutcome.ContentNotFound);
+            return new(ContentCorrectionOutcome.ContentNotFound);
 
         var content = await dbContext.IncorporationContents.FromSqlInterpolated(
             $"SELECT * FROM order_operations.incorporation_contents WHERE incorporation_id = {incorporationId} AND content_ordinal = {contentOrdinal} FOR SHARE")
             .AsNoTracking().SingleOrDefaultAsync(cancellationToken);
-        if (content is null) return new(DeliveryCorrectionOutcome.ContentNotFound);
+        if (content is null) return new(ContentCorrectionOutcome.ContentNotFound);
         var work = await dbContext.PreparationWork.FromSqlInterpolated(
             $"SELECT * FROM order_operations.preparation_work WHERE incorporation_id = {incorporationId} AND content_ordinal = {contentOrdinal} FOR UPDATE")
-            .AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
         var delivery = await dbContext.DeliveryStates.FromSqlInterpolated(
             $"SELECT * FROM order_operations.delivery_states WHERE incorporation_id = {incorporationId} AND content_ordinal = {contentOrdinal} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
         var quantityState = await dbContext.ContentQuantityStates.FromSqlInterpolated(
             $"SELECT * FROM order_operations.content_quantity_states WHERE incorporation_id = {incorporationId} AND content_ordinal = {contentOrdinal} FOR UPDATE")
-            .AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
         var effectiveQuantity = quantityState is null
             ? (int?)null
             : checked(content.Quantity - quantityState.RemovedByCorrectionQuantity);
@@ -67,41 +67,38 @@ internal sealed class DeliveryCorrectionService(
                 work.InPreparationQuantity < 0 || work.ReadyQuantity < 0 ||
                 (long)work.PendingQuantity + work.InPreparationQuantity + work.ReadyQuantity != work.TotalQuantity ||
                 delivery.DeliveredQuantity > work.ReadyQuantity)))
-            return new(DeliveryCorrectionOutcome.StateInconsistent);
+            return new(ContentCorrectionOutcome.StateInconsistent);
 
-        var previous = delivery.DeliveredQuantity;
-        var transition = delivery.Correct(quantity);
-        if (transition != DeliveryCorrectionTransition.Corrected)
-            return new(transition switch
-            {
-                DeliveryCorrectionTransition.QuantityInvalid => DeliveryCorrectionOutcome.QuantityInvalid,
-                DeliveryCorrectionTransition.NoEffectiveDelivery => DeliveryCorrectionOutcome.NoEffectiveDelivery,
-                DeliveryCorrectionTransition.QuantityExceedsDelivered => DeliveryCorrectionOutcome.QuantityExceedsDelivered,
-                _ => throw new InvalidOperationException("Unknown Delivery Correction transition.")
-            });
+        if (quantity <= 0) return new(ContentCorrectionOutcome.QuantityInvalid);
+        var eligible = work?.PendingQuantity ?? effectiveQuantity!.Value - delivery.DeliveredQuantity;
+        if (quantity > eligible) return new(ContentCorrectionOutcome.QuantityExceedsEligible);
+        var previousRemoved = quantityState.RemovedByCorrectionQuantity;
+        quantityState.Correct(quantity, content.Quantity, eligible);
+        work?.CorrectPending(quantity);
 
         var now = timeProvider.GetUtcNow();
         var occurredAt = new DateTimeOffset(now.Ticks - now.Ticks % TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);
-        var response = new DeliveryCorrectionResponse(orderId, incorporationId, contentOrdinal, Guid.CreateVersion7(occurredAt),
-            quantity, previous, delivery.DeliveredQuantity, occurredAt);
-        dbContext.DeliveryCorrectionHistory.Add(new DeliveryCorrectionHistory(response, session.IdentityId));
-        dbContext.DeliveryCorrectionCommands.Add(new DeliveryCorrectionCommand(key, session.IdentityId, response));
+        var response = new ContentCorrectionResponse(orderId, incorporationId, contentOrdinal, Guid.CreateVersion7(occurredAt),
+            quantity, content.Quantity, previousRemoved, quantityState.RemovedByCorrectionQuantity,
+            effectiveQuantity!.Value, content.Quantity - quantityState.RemovedByCorrectionQuantity, occurredAt);
+        dbContext.ContentCorrectionHistory.Add(new ContentCorrectionHistory(response, session.IdentityId));
+        dbContext.ContentCorrectionCommands.Add(new ContentCorrectionCommand(key, session.IdentityId, response));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new(DeliveryCorrectionOutcome.Succeeded, response);
+        return new(ContentCorrectionOutcome.Succeeded, response);
     }
 
     private static long CreateLockKey(Guid key)
     {
         Span<byte> bytes = stackalloc byte[16];
         key.TryWriteBytes(bytes, bigEndian: true, out _);
-        return 0x44434F5252434D44 ^ BinaryPrimitives.ReadInt64BigEndian(bytes[..8]) ^ BinaryPrimitives.ReadInt64BigEndian(bytes[8..]);
+        return 0x43434F5252434D44 ^ BinaryPrimitives.ReadInt64BigEndian(bytes[..8]) ^ BinaryPrimitives.ReadInt64BigEndian(bytes[8..]);
     }
 }
 
-internal sealed record DeliveryCorrectionResult(DeliveryCorrectionOutcome Outcome, DeliveryCorrectionResponse? Response = null);
-internal enum DeliveryCorrectionOutcome
+internal sealed record ContentCorrectionResult(ContentCorrectionOutcome Outcome, ContentCorrectionResponse? Response = null);
+internal enum ContentCorrectionOutcome
 {
     Succeeded, Unauthenticated, Forbidden, ContentNotFound, QuantityInvalid,
-    NoEffectiveDelivery, QuantityExceedsDelivered, OrderFrozen, IdempotencyConflict, StateInconsistent
+    QuantityExceedsEligible, OrderFrozen, IdempotencyConflict, StateInconsistent
 }

@@ -624,7 +624,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
 
         foreach (var quantities in new[]
                  {
-                     (Total: 0, Pending: 0, Preparing: 0, Ready: 0),
+                     (Total: -1, Pending: 0, Preparing: 0, Ready: 0),
                      (Total: 1, Pending: -1, Preparing: 0, Ready: 2),
                      (Total: 1, Pending: 0, Preparing: -1, Ready: 2),
                      (Total: 1, Pending: 0, Preparing: 2, Ready: -1),

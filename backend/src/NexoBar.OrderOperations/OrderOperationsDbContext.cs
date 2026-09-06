@@ -22,6 +22,8 @@ internal sealed class OrderOperationsDbContext(
     internal DbSet<DeliveryState> DeliveryStates => Set<DeliveryState>();
     internal DbSet<DeliveryHistory> DeliveryHistory => Set<DeliveryHistory>();
     internal DbSet<DeliveryCommand> DeliveryCommands => Set<DeliveryCommand>();
+    internal DbSet<ContentCorrectionHistory> ContentCorrectionHistory => Set<ContentCorrectionHistory>();
+    internal DbSet<ContentCorrectionCommand> ContentCorrectionCommands => Set<ContentCorrectionCommand>();
     internal DbSet<DeliveryCorrectionHistory> DeliveryCorrectionHistory => Set<DeliveryCorrectionHistory>();
     internal DbSet<DeliveryCorrectionCommand> DeliveryCorrectionCommands => Set<DeliveryCorrectionCommand>();
     internal DbSet<PreparationWork> PreparationWork => Set<PreparationWork>();
@@ -55,6 +57,8 @@ internal sealed class OrderOperationsDbContext(
         modelBuilder.ApplyConfiguration(new DeliveryStateConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new ContentCorrectionHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new ContentCorrectionCommandConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryCorrectionHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryCorrectionCommandConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationWorkConfiguration());
@@ -269,7 +273,7 @@ internal sealed class OrderOperationsDbContext(
                 {
                     table.HasCheckConstraint(
                         "CK_order_operations_preparation_work_total_positive",
-                        "total_quantity > 0");
+                        "total_quantity >= 0");
                     table.HasCheckConstraint(
                         "CK_order_operations_preparation_work_quantities_non_negative",
                         "pending_quantity >= 0 AND " +

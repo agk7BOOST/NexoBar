@@ -160,7 +160,7 @@ internal sealed class DeliveryQuantityService(
             quantityState is null ||
             quantityState.RemovedByCorrectionQuantity < 0 ||
             quantityState.RemovedByCorrectionQuantity > content.Quantity ||
-            effectiveQuantity <= 0 ||
+            effectiveQuantity < 0 ||
             IsPreparationWorkInconsistent(work, effectiveQuantity) ||
             deliveryState is null ||
             deliveryState.DeliveredQuantity < 0 ||
@@ -221,7 +221,7 @@ internal sealed class DeliveryQuantityService(
         int contentQuantity) =>
         work is not null &&
         (work.TotalQuantity != contentQuantity ||
-         work.TotalQuantity <= 0 ||
+         work.TotalQuantity < 0 ||
          work.PendingQuantity < 0 ||
          work.InPreparationQuantity < 0 ||
          work.ReadyQuantity < 0 ||

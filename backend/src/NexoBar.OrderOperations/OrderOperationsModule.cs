@@ -38,6 +38,7 @@ public static partial class OrderOperationsModule
         services.AddScoped<OrderDeliveryQueryService>();
         services.AddScoped<DeliveryQuantityService>();
         services.AddScoped<DeliveryCorrectionService>();
+        services.AddScoped<ContentCorrectionService>();
         services.AddScoped<PreparationWorkQueryService>();
         services.AddScoped<PreparationProgressService>();
 
@@ -47,6 +48,14 @@ public static partial class OrderOperationsModule
     public static IEndpointRouteBuilder MapOrderOperationsEndpoints(
         this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapPost("/api/order-operations/orders/{orderId}/incorporations/{incorporationId}/contents/{contentOrdinal}/correct-content-quantity", CorrectContentAsync)
+            .WithName("CorrectContentQuantity")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Accepts<CorrectContentRequest>("application/json")
+            .Produces<ContentCorrectionResponse>()
+            .ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
+            .ProducesProblem(404).ProducesProblem(409).ProducesProblem(500);
         endpoints.MapPost("/api/order-operations/orders/{orderId}/incorporations/{incorporationId}/contents/{contentOrdinal}/correct-delivery", CorrectDeliveryAsync)
             .WithName("CorrectDeliveryQuantity")
             .WithTags("OrderOperations")

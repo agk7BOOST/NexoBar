@@ -79,7 +79,7 @@ internal sealed class PreparationWorkQueryService(
                 work.RemovedQuantity < 0 ||
                 work.RemovedQuantity > work.ConfirmedQuantity ||
                 work.TotalQuantity != work.ConfirmedQuantity - work.RemovedQuantity ||
-                work.TotalQuantity <= 0 ||
+                work.TotalQuantity < 0 ||
                 work.PendingQuantity < 0 ||
                 work.InPreparationQuantity < 0 ||
                 work.ReadyQuantity < 0 ||

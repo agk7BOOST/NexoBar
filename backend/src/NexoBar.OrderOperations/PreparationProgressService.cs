@@ -153,7 +153,7 @@ internal sealed class PreparationProgressService(
         var effective = contentState?.Removed is null
             ? (int?)null
             : contentState.Confirmed - contentState.Removed.Value;
-        if (contentState is null || effective <= 0 || contentState.Removed < 0 ||
+        if (contentState is null || contentState.Confirmed <= 0 || effective < 0 || contentState.Removed < 0 ||
             contentState.Removed > contentState.Confirmed || contentState.Delivered is null ||
             contentState.Delivered < 0 || contentState.Delivered > effective ||
             work.TotalQuantity != effective || work.PendingQuantity < 0 ||
