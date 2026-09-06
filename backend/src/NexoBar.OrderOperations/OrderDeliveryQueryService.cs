@@ -55,6 +55,18 @@ internal sealed class OrderDeliveryQueryService(
                     ContentOrdinal = (int?)stateValue.ContentOrdinal
                 } into states
             from state in states.DefaultIfEmpty()
+            join quantityStateValue in dbContext.ContentQuantityStates.AsNoTracking()
+                on new
+                {
+                    IncorporationId = (Guid?)content.IncorporationId,
+                    ContentOrdinal = (int?)content.ContentOrdinal
+                }
+                equals new
+                {
+                    IncorporationId = (Guid?)quantityStateValue.IncorporationId,
+                    ContentOrdinal = (int?)quantityStateValue.ContentOrdinal
+                } into quantityStates
+            from quantityState in quantityStates.DefaultIfEmpty()
             join workValue in dbContext.PreparationWork.AsNoTracking()
                 on new
                 {
@@ -76,12 +88,16 @@ internal sealed class OrderDeliveryQueryService(
                 (int?)content.ContentOrdinal,
                 (Guid?)content.ProductId,
                 (int?)content.Quantity,
+                quantityState == null ? null : quantityState.RemovedByCorrectionQuantity,
                 content == null
                     ? null
                     : content.RequiresPreparationAtConfirmation,
                 content.Instruction,
                 state == null ? null : state.DeliveredQuantity,
                 work == null ? null : work.Id,
+                work == null ? null : work.TotalQuantity,
+                work == null ? null : work.PendingQuantity,
+                work == null ? null : work.InPreparationQuantity,
                 work == null ? null : work.ReadyQuantity))
             .ToArrayAsync(cancellationToken);
 
@@ -122,7 +138,7 @@ internal sealed class OrderDeliveryQueryService(
 
         var contentsResponse = contentRows.Select(row =>
         {
-            var total = row.TotalQuantity!.Value;
+            var total = row.ConfirmedQuantity!.Value - row.RemovedByCorrectionQuantity!.Value;
             var delivered = row.DeliveredQuantity!.Value;
             var requiresPreparation = row.RequiresPreparationAtConfirmation!.Value;
             var ready = requiresPreparation ? row.ReadyQuantity!.Value : (int?)null;
@@ -157,7 +173,8 @@ internal sealed class OrderDeliveryQueryService(
         if (row.IncorporationId is null ||
             row.IncorporationOrdinal is null ||
             row.ProductId is null ||
-            row.TotalQuantity is null ||
+            row.ConfirmedQuantity is null ||
+            row.RemovedByCorrectionQuantity is null ||
             row.RequiresPreparationAtConfirmation is null ||
             row.DeliveredQuantity is null)
         {
@@ -171,14 +188,28 @@ internal sealed class OrderDeliveryQueryService(
             return true;
         }
 
+        var confirmed = row.ConfirmedQuantity.Value;
+        var removed = row.RemovedByCorrectionQuantity.Value;
+        if (confirmed <= 0 || removed < 0 || removed > confirmed)
+        {
+            return true;
+        }
+
+        var effective = confirmed - removed;
         var delivered = row.DeliveredQuantity.Value;
-        if (delivered < 0 || delivered > row.TotalQuantity.Value)
+        if (effective <= 0 || delivered < 0 || delivered > effective)
         {
             return true;
         }
 
         return requiresPreparation &&
-            (row.ReadyQuantity is null || delivered > row.ReadyQuantity.Value);
+            (row.WorkTotalQuantity != effective ||
+             row.WorkPendingQuantity < 0 ||
+             row.WorkInPreparationQuantity < 0 ||
+             row.ReadyQuantity < 0 ||
+             (long)row.WorkPendingQuantity!.Value + row.WorkInPreparationQuantity!.Value +
+                 row.ReadyQuantity!.Value != effective ||
+             delivered > row.ReadyQuantity.Value);
     }
 
     private sealed record DeliverySnapshotRow(
@@ -188,10 +219,14 @@ internal sealed class OrderDeliveryQueryService(
         int? IncorporationOrdinal,
         int? ContentOrdinal,
         Guid? ProductId,
-        int? TotalQuantity,
+        int? ConfirmedQuantity,
+        int? RemovedByCorrectionQuantity,
         bool? RequiresPreparationAtConfirmation,
         string? Instruction,
         int? DeliveredQuantity,
         Guid? WorkId,
+        int? WorkTotalQuantity,
+        int? WorkPendingQuantity,
+        int? WorkInPreparationQuantity,
         int? ReadyQuantity);
 }

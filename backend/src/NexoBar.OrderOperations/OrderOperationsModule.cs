@@ -527,6 +527,11 @@ public static partial class OrderOperationsModule
                 "The supplied Idempotency-Key identifies an incompatible Preparation command.",
                 "order_operations.preparation_start.idempotency_key_conflict"),
             PreparationProgressOutcome.OrderFrozen => FrozenOrderProblem(),
+            PreparationProgressOutcome.StateInconsistent => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Preparation state is inconsistent",
+                "The target Work cannot be mutated because its current State is inconsistent.",
+                "order_operations.preparation.state_inconsistent"),
             _ => throw new UnreachableException()
         };
     }
@@ -621,6 +626,11 @@ public static partial class OrderOperationsModule
                 "The supplied Idempotency-Key identifies an incompatible Preparation command.",
                 "order_operations.preparation_ready.idempotency_key_conflict"),
             PreparationProgressOutcome.OrderFrozen => FrozenOrderProblem(),
+            PreparationProgressOutcome.StateInconsistent => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Preparation state is inconsistent",
+                "The target Work cannot be mutated because its current State is inconsistent.",
+                "order_operations.preparation.state_inconsistent"),
             _ => throw new UnreachableException()
         };
     }
@@ -1143,6 +1153,11 @@ public static partial class OrderOperationsModule
                 "Product reference is inconsistent",
                 "Preparation Work references a Product that Catalog cannot resolve.",
                 "order_operations.preparation_work.product_reference_inconsistent"),
+            PreparationWorkQueryOutcome.StateInconsistent => Problem(
+                StatusCodes.Status500InternalServerError,
+                "Preparation state is inconsistent",
+                "Preparation Work cannot be represented from its current State.",
+                "order_operations.preparation.state_inconsistent"),
             _ => throw new UnreachableException()
         };
     }

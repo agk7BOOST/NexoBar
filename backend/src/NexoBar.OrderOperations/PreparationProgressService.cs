@@ -130,6 +130,40 @@ internal sealed class PreparationProgressService(
             return PreparationProgressResult.OrderFrozen();
         }
 
+        var contentState = await (
+            from content in dbContext.IncorporationContents.AsNoTracking()
+            where content.IncorporationId == work.IncorporationId &&
+                content.ContentOrdinal == work.ContentOrdinal
+            join quantityStateValue in dbContext.ContentQuantityStates.AsNoTracking()
+                on new { content.IncorporationId, content.ContentOrdinal }
+                equals new { quantityStateValue.IncorporationId, quantityStateValue.ContentOrdinal }
+                into quantityStates
+            from quantityState in quantityStates.DefaultIfEmpty()
+            join deliveryValue in dbContext.DeliveryStates.AsNoTracking()
+                on new { content.IncorporationId, content.ContentOrdinal }
+                equals new { deliveryValue.IncorporationId, deliveryValue.ContentOrdinal }
+                into deliveries
+            from delivery in deliveries.DefaultIfEmpty()
+            select new
+            {
+                Confirmed = content.Quantity,
+                Removed = quantityState == null ? (int?)null : quantityState.RemovedByCorrectionQuantity,
+                Delivered = delivery == null ? (int?)null : delivery.DeliveredQuantity
+            }).SingleOrDefaultAsync(cancellationToken);
+        var effective = contentState?.Removed is null
+            ? (int?)null
+            : contentState.Confirmed - contentState.Removed.Value;
+        if (contentState is null || effective <= 0 || contentState.Removed < 0 ||
+            contentState.Removed > contentState.Confirmed || contentState.Delivered is null ||
+            contentState.Delivered < 0 || contentState.Delivered > effective ||
+            work.TotalQuantity != effective || work.PendingQuantity < 0 ||
+            work.InPreparationQuantity < 0 || work.ReadyQuantity < 0 ||
+            (long)work.PendingQuantity + work.InPreparationQuantity + work.ReadyQuantity != effective ||
+            contentState.Delivered > work.ReadyQuantity)
+        {
+            return PreparationProgressResult.StateInconsistent();
+        }
+
         var transition = Apply(progressCommand, work, quantity);
         if (transition == PreparationProgressTransition.QuantityInvalid)
         {
@@ -283,6 +317,9 @@ internal sealed record PreparationProgressResult(
 
     internal static PreparationProgressResult OrderFrozen() =>
         new(PreparationProgressOutcome.OrderFrozen, null);
+
+    internal static PreparationProgressResult StateInconsistent() =>
+        new(PreparationProgressOutcome.StateInconsistent, null);
 }
 
 internal enum PreparationProgressOutcome
@@ -294,7 +331,8 @@ internal enum PreparationProgressOutcome
     QuantityInvalid,
     AvailableQuantityInsufficient,
     IdempotencyConflict,
-    OrderFrozen
+    OrderFrozen,
+    StateInconsistent
 }
 
 internal enum PreparationProgressCommand

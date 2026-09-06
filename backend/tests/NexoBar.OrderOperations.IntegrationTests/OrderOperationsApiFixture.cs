@@ -51,6 +51,7 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
     {
         await using var scope = application!.Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        await dbContext.Database.MigrateAsync(cancellationToken);
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
@@ -67,6 +68,7 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 order_operations.delivery_commands,
                 order_operations.delivery_history,
                 order_operations.delivery_states,
+                order_operations.content_quantity_states,
                 order_operations.preparation_commands,
                 order_operations.preparation_history,
                 order_operations.subsequent_confirmation_command_contents,
@@ -530,6 +532,31 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             .DeliveryStates.CountAsync(cancellationToken);
     }
 
+    internal async Task<IReadOnlyList<ContentQuantityState>> ReadContentQuantityStatesAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .ContentQuantityStates.AsNoTracking()
+            .OrderBy(state => state.IncorporationId)
+            .ThenBy(state => state.ContentOrdinal)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    internal async Task<int> CountContentQuantityStatesAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .ContentQuantityStates.CountAsync(cancellationToken);
+    }
+
+    internal async Task<int> CountPendingCompositionsAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>()
+            .PendingCompositions.CountAsync(cancellationToken);
+    }
+
     internal async Task<IReadOnlyList<DeliveryHistory>> ReadDeliveryHistoryAsync(
         CancellationToken cancellationToken)
     {
@@ -883,6 +910,32 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
               DROP TRIGGER IF EXISTS fail_delivery_state
                   ON order_operations.delivery_states;
               DROP FUNCTION IF EXISTS order_operations.fail_delivery_state();
+              """;
+        await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+    }
+
+    internal async Task SetContentQuantityStateFailureAsync(
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        var sql = enabled
+            ? """
+              CREATE OR REPLACE FUNCTION order_operations.fail_content_quantity_state()
+              RETURNS trigger LANGUAGE plpgsql AS $$
+              BEGIN
+                  RAISE EXCEPTION 'controlled content quantity state failure';
+              END;
+              $$;
+              CREATE TRIGGER fail_content_quantity_state
+              BEFORE INSERT ON order_operations.content_quantity_states
+              FOR EACH ROW EXECUTE FUNCTION order_operations.fail_content_quantity_state();
+              """
+            : """
+              DROP TRIGGER IF EXISTS fail_content_quantity_state
+                  ON order_operations.content_quantity_states;
+              DROP FUNCTION IF EXISTS order_operations.fail_content_quantity_state();
               """;
         await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
     }

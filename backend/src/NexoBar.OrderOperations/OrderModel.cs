@@ -239,6 +239,22 @@ internal sealed class DeliveryState
     }
 }
 
+internal sealed class ContentQuantityState
+{
+    private ContentQuantityState() { }
+
+    internal ContentQuantityState(Guid incorporationId, int contentOrdinal)
+    {
+        IncorporationId = incorporationId;
+        ContentOrdinal = contentOrdinal;
+        RemovedByCorrectionQuantity = 0;
+    }
+
+    internal Guid IncorporationId { get; private set; }
+    internal int ContentOrdinal { get; private set; }
+    internal int RemovedByCorrectionQuantity { get; private set; }
+}
+
 internal enum DeliveryTransition
 {
     Delivered,

@@ -32,6 +32,9 @@ internal sealed record PreparationWorkQueryResult(
 
     internal static PreparationWorkQueryResult ProductReferenceInconsistent() =>
         new(PreparationWorkQueryOutcome.ProductReferenceInconsistent, null);
+
+    internal static PreparationWorkQueryResult StateInconsistent() =>
+        new(PreparationWorkQueryOutcome.StateInconsistent, null);
 }
 
 internal enum PreparationWorkQueryOutcome
@@ -39,5 +42,6 @@ internal enum PreparationWorkQueryOutcome
     Succeeded,
     Unauthenticated,
     Forbidden,
-    ProductReferenceInconsistent
+    ProductReferenceInconsistent,
+    StateInconsistent
 }

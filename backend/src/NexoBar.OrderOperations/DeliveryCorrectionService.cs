@@ -53,9 +53,17 @@ internal sealed class DeliveryCorrectionService(
         var delivery = await dbContext.DeliveryStates.FromSqlInterpolated(
             $"SELECT * FROM order_operations.delivery_states WHERE incorporation_id = {incorporationId} AND content_ordinal = {contentOrdinal} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
-        if (content.Quantity <= 0 || content.RequiresPreparationAtConfirmation != (work is not null) ||
-            delivery is null || delivery.DeliveredQuantity < 0 || delivery.DeliveredQuantity > content.Quantity ||
-            (work is not null && (work.TotalQuantity != content.Quantity || work.PendingQuantity < 0 ||
+        var quantityState = await dbContext.ContentQuantityStates.FromSqlInterpolated(
+            $"SELECT * FROM order_operations.content_quantity_states WHERE incorporation_id = {incorporationId} AND content_ordinal = {contentOrdinal} FOR UPDATE")
+            .AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+        var effectiveQuantity = quantityState is null
+            ? (int?)null
+            : checked(content.Quantity - quantityState.RemovedByCorrectionQuantity);
+        if (content.Quantity <= 0 || quantityState is null ||
+            quantityState.RemovedByCorrectionQuantity < 0 || quantityState.RemovedByCorrectionQuantity > content.Quantity ||
+            effectiveQuantity <= 0 || content.RequiresPreparationAtConfirmation != (work is not null) ||
+            delivery is null || delivery.DeliveredQuantity < 0 || delivery.DeliveredQuantity > effectiveQuantity ||
+            (work is not null && (work.TotalQuantity != effectiveQuantity || work.PendingQuantity < 0 ||
                 work.InPreparationQuantity < 0 || work.ReadyQuantity < 0 ||
                 (long)work.PendingQuantity + work.InPreparationQuantity + work.ReadyQuantity != work.TotalQuantity ||
                 delivery.DeliveredQuantity > work.ReadyQuantity)))

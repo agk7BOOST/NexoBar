@@ -44,6 +44,11 @@ internal sealed class PreparationWorkQueryService(
                 on incorporation.OrderId equals order.Id
             join history in dbContext.ConfirmationHistory.AsNoTracking()
                 on incorporation.Id equals history.IncorporationId
+            join quantityState in dbContext.ContentQuantityStates.AsNoTracking()
+                on new { work.IncorporationId, work.ContentOrdinal }
+                equals new { quantityState.IncorporationId, quantityState.ContentOrdinal }
+                into quantityStates
+            from quantityState in quantityStates.DefaultIfEmpty()
             where work.PreparationResponsibilityId == preparationResponsibilityId
             orderby history.OccurredAt,
                 work.IncorporationId,
@@ -63,8 +68,26 @@ internal sealed class PreparationWorkQueryService(
                 work.PendingQuantity,
                 work.InPreparationQuantity,
                 work.ReadyQuantity,
+                RemovedQuantity = (int?)quantityState.RemovedByCorrectionQuantity,
+                ConfirmedQuantity = content.Quantity,
                 ConfirmedAt = history.OccurredAt
             }).ToArrayAsync(cancellationToken);
+
+        if (persisted.Any(work =>
+                work.RemovedQuantity is null ||
+                work.ConfirmedQuantity <= 0 ||
+                work.RemovedQuantity < 0 ||
+                work.RemovedQuantity > work.ConfirmedQuantity ||
+                work.TotalQuantity != work.ConfirmedQuantity - work.RemovedQuantity ||
+                work.TotalQuantity <= 0 ||
+                work.PendingQuantity < 0 ||
+                work.InPreparationQuantity < 0 ||
+                work.ReadyQuantity < 0 ||
+                (long)work.PendingQuantity + work.InPreparationQuantity + work.ReadyQuantity !=
+                    work.TotalQuantity))
+        {
+            return PreparationWorkQueryResult.StateInconsistent();
+        }
 
         var productIds = persisted.Select(work => work.ProductId).Distinct().ToArray();
         var productNames = productIds.Length == 0

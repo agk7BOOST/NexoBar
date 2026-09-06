@@ -39,6 +39,9 @@ public sealed class DeliveryStatePersistenceTests(OrderOperationsApiFixture fixt
 
         var states = await fixture.ReadDeliveryStatesAsync(token);
         Assert.Equal(3, states.Count);
+        var quantityStates = await fixture.ReadContentQuantityStatesAsync(token);
+        Assert.Equal(3, quantityStates.Count);
+        Assert.All(quantityStates, state => Assert.Equal(0, state.RemovedByCorrectionQuantity));
         Assert.All(states, state => Assert.Equal(0, state.DeliveredQuantity));
         Assert.All(states, state =>
             Assert.Equal(confirmed.FirstIncorporation.Id, state.IncorporationId));
@@ -56,6 +59,7 @@ public sealed class DeliveryStatePersistenceTests(OrderOperationsApiFixture fixt
         using var replay = await PostFirstAsync(request, key, token);
         Assert.Equal(HttpStatusCode.Created, replay.StatusCode);
         Assert.Equal(3, await fixture.CountDeliveryStatesAsync(token));
+        Assert.Equal(3, await fixture.CountContentQuantityStatesAsync(token));
         Assert.Equal(2, await fixture.CountPreparationWorkAsync(token));
     }
 
@@ -97,6 +101,9 @@ public sealed class DeliveryStatePersistenceTests(OrderOperationsApiFixture fixt
 
         var states = await fixture.ReadDeliveryStatesAsync(token);
         Assert.Equal(3, states.Count);
+        var quantityStates = await fixture.ReadContentQuantityStatesAsync(token);
+        Assert.Equal(3, quantityStates.Count);
+        Assert.All(quantityStates, state => Assert.Equal(0, state.RemovedByCorrectionQuantity));
         Assert.All(states, state => Assert.Equal(0, state.DeliveredQuantity));
         var subsequentStates = states
             .Where(state => state.IncorporationId == subsequent.Incorporation.Id)
@@ -112,6 +119,7 @@ public sealed class DeliveryStatePersistenceTests(OrderOperationsApiFixture fixt
             token);
         Assert.Equal(HttpStatusCode.Created, replay.StatusCode);
         Assert.Equal(3, await fixture.CountDeliveryStatesAsync(token));
+        Assert.Equal(3, await fixture.CountContentQuantityStatesAsync(token));
         Assert.Equal(2, await fixture.CountPreparationWorkAsync(token));
     }
 
@@ -272,6 +280,60 @@ public sealed class DeliveryStatePersistenceTests(OrderOperationsApiFixture fixt
         finally
         {
             await fixture.SetDeliveryStateFailureAsync(false, token);
+        }
+    }
+
+    [Fact]
+    public async Task Quantity_state_failure_rolls_back_first_confirmation_atomically()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var product = await fixture.CreateProductAsync("Agua", "3", token);
+        var request = new FirstConfirmationRequest(
+            "Mesa 7",
+            [new FirstConfirmationItemRequest(product.Id, 2)]);
+        await fixture.SetContentQuantityStateFailureAsync(true, token);
+        try
+        {
+            using var failed = await PostFirstAsync(request, Guid.NewGuid(), token);
+            Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
+            Assert.Equal(PersistenceCounts.Empty, await fixture.CountEffectsAsync(token));
+            Assert.Equal(0, await fixture.CountDeliveryStatesAsync(token));
+            Assert.Equal(0, await fixture.CountContentQuantityStatesAsync(token));
+        }
+        finally
+        {
+            await fixture.SetContentQuantityStateFailureAsync(false, token);
+        }
+    }
+
+    [Fact]
+    public async Task Quantity_state_failure_rolls_back_subsequent_content_and_pending_consumption()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var product = await fixture.CreateProductAsync("Agua", "3", token);
+        using var firstResponse = await PostFirstAsync(
+            new FirstConfirmationRequest("Mesa 7", [new FirstConfirmationItemRequest(product.Id, 1)]),
+            Guid.NewGuid(), token);
+        var first = Assert.IsType<FirstConfirmationResponse>(
+            await firstResponse.Content.ReadFromJsonAsync<FirstConfirmationResponse>(token));
+        await fixture.SetContentQuantityStateFailureAsync(true, token);
+        try
+        {
+            using var failed = await PostSubsequentAsync(
+                first.OperationalReference,
+                new SubsequentConfirmationRequest(Guid.Empty, [new SubsequentConfirmationItemRequest(product.Id, 2)]),
+                Guid.NewGuid(), token);
+            Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
+            Assert.Equal(1, await fixture.CountPendingCompositionsAsync(token));
+            Assert.Equal(1, await fixture.CountContentQuantityStatesAsync(token));
+            Assert.Equal(new SubsequentPersistenceCounts(1, 1, 1, 0, 0),
+                await fixture.CountSubsequentEffectsAsync(token));
+        }
+        finally
+        {
+            await fixture.SetContentQuantityStateFailureAsync(false, token);
         }
     }
 

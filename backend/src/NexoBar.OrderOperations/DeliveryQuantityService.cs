@@ -149,18 +149,29 @@ internal sealed class DeliveryQuantityService(
                 FOR UPDATE
                 """)
             .SingleOrDefaultAsync(cancellationToken);
+        var quantityState = await dbContext.ContentQuantityStates
+            .FromSqlInterpolated(
+                $"SELECT * FROM order_operations.content_quantity_states WHERE incorporation_id = {incorporationId} AND content_ordinal = {contentOrdinal} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken);
+        var effectiveQuantity = quantityState is null
+            ? -1
+            : checked(content.Quantity - quantityState.RemovedByCorrectionQuantity);
         if (content.Quantity <= 0 ||
-            IsPreparationWorkInconsistent(work, content.Quantity) ||
+            quantityState is null ||
+            quantityState.RemovedByCorrectionQuantity < 0 ||
+            quantityState.RemovedByCorrectionQuantity > content.Quantity ||
+            effectiveQuantity <= 0 ||
+            IsPreparationWorkInconsistent(work, effectiveQuantity) ||
             deliveryState is null ||
             deliveryState.DeliveredQuantity < 0 ||
-            deliveryState.DeliveredQuantity > content.Quantity ||
+            deliveryState.DeliveredQuantity > effectiveQuantity ||
             (work is not null && deliveryState.DeliveredQuantity > work.ReadyQuantity))
         {
             LogInconsistent(incorporationId, contentOrdinal);
             return DeliveryQuantityResult.StateInconsistent();
         }
 
-        var maximumQuantity = work?.ReadyQuantity ?? content.Quantity;
+        var maximumQuantity = work?.ReadyQuantity ?? effectiveQuantity;
         var deliverableQuantity = maximumQuantity - deliveryState.DeliveredQuantity;
         var transition = deliveryState.Deliver(quantity, deliverableQuantity);
         if (transition == DeliveryTransition.QuantityInvalid)

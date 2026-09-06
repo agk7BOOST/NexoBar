@@ -18,6 +18,7 @@ internal sealed class OrderOperationsDbContext(
         Set<PendingCompositionCommand>();
     internal DbSet<Incorporation> Incorporations => Set<Incorporation>();
     internal DbSet<IncorporationContent> IncorporationContents => Set<IncorporationContent>();
+    internal DbSet<ContentQuantityState> ContentQuantityStates => Set<ContentQuantityState>();
     internal DbSet<DeliveryState> DeliveryStates => Set<DeliveryState>();
     internal DbSet<DeliveryHistory> DeliveryHistory => Set<DeliveryHistory>();
     internal DbSet<DeliveryCommand> DeliveryCommands => Set<DeliveryCommand>();
@@ -50,6 +51,7 @@ internal sealed class OrderOperationsDbContext(
         modelBuilder.ApplyConfiguration(new PendingCompositionCommandConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationContentConfiguration());
+        modelBuilder.ApplyConfiguration(new ContentQuantityStateConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryStateConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryCommandConfiguration());
@@ -94,6 +96,35 @@ internal sealed class OrderOperationsDbContext(
                     state.ContentOrdinal
                 })
                 .HasConstraintName("FK_order_operations_delivery_states_content")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class ContentQuantityStateConfiguration :
+        IEntityTypeConfiguration<ContentQuantityState>
+    {
+        public void Configure(EntityTypeBuilder<ContentQuantityState> builder)
+        {
+            builder.ToTable(
+                "content_quantity_states",
+                table => table.HasCheckConstraint(
+                    "CK_content_quantity_states_removed_non_negative",
+                    "removed_by_correction_quantity >= 0"));
+            builder.HasKey(state => new { state.IncorporationId, state.ContentOrdinal })
+                .HasName("PK_content_quantity_states");
+            builder.Property(state => state.IncorporationId)
+                .HasColumnName("incorporation_id").ValueGeneratedNever();
+            builder.Property(state => state.ContentOrdinal)
+                .HasColumnName("content_ordinal").ValueGeneratedNever();
+            builder.Property(state => state.RemovedByCorrectionQuantity)
+                .HasColumnName("removed_by_correction_quantity").IsRequired();
+            builder.HasOne<IncorporationContent>().WithOne()
+                .HasForeignKey<ContentQuantityState>(state => new
+                {
+                    state.IncorporationId,
+                    state.ContentOrdinal
+                })
+                .HasConstraintName("FK_content_quantity_states_content")
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }

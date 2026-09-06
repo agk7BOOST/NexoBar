@@ -388,6 +388,33 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
         Assert.Equal(expected.Order(), schema.EnumerateObject().Select(property => property.Name).Order());
     }
 
+    [Fact]
+    public async Task Missing_content_quantity_state_is_reported_as_inconsistent()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var product = await fixture.CreateProductAsync("Agua", "3", token);
+        var confirmation = await ConfirmFirstAsync("Mesa inconsistente", token, (product.Id, 2, null));
+        var state = Assert.Single(await fixture.ReadContentQuantityStatesAsync(token));
+        await ExecuteAsync(
+            "DELETE FROM order_operations.content_quantity_states " +
+            "WHERE incorporation_id = @incorporation_id AND content_ordinal = @content_ordinal",
+            token,
+            ("incorporation_id", state.IncorporationId),
+            ("content_ordinal", state.ContentOrdinal));
+        var actor = await fixture.CreateDeliveryActorAsync(true, false, null, token);
+        using var client = await fixture.LoginAsync(actor, token);
+
+        using var response = await client.GetAsync(
+            DeliveryUrl(confirmation.OperationalReference), token);
+
+        await AssertProblemAsync(
+            response,
+            HttpStatusCode.InternalServerError,
+            "order_operations.delivery.state_inconsistent",
+            token);
+    }
+
     private async Task<FirstConfirmationResponse> ConfirmFirstAsync(
         string context,
         CancellationToken token,

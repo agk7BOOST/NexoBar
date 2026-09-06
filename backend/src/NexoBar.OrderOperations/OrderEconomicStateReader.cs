@@ -18,6 +18,11 @@ internal sealed class OrderEconomicStateReader(OrderOperationsDbContext dbContex
                 equals new { stateValue.IncorporationId, stateValue.ContentOrdinal }
                 into states
             from state in states.DefaultIfEmpty()
+            join quantityStateValue in dbContext.ContentQuantityStates.AsNoTracking()
+                on new { content.IncorporationId, content.ContentOrdinal }
+                equals new { quantityStateValue.IncorporationId, quantityStateValue.ContentOrdinal }
+                into quantityStates
+            from quantityState in quantityStates.DefaultIfEmpty()
             join workValue in dbContext.PreparationWork.AsNoTracking()
                 on new { content.IncorporationId, content.ContentOrdinal }
                 equals new { workValue.IncorporationId, workValue.ContentOrdinal }
@@ -25,6 +30,7 @@ internal sealed class OrderEconomicStateReader(OrderOperationsDbContext dbContex
             from work in works.DefaultIfEmpty()
             select new EconomicContentRow(
                 content.Quantity,
+                quantityState == null ? null : quantityState.RemovedByCorrectionQuantity,
                 content.AppliedPrice,
                 content.RequiresPreparationAtConfirmation,
                 state == null ? null : state.DeliveredQuantity,
@@ -40,7 +46,7 @@ internal sealed class OrderEconomicStateReader(OrderOperationsDbContext dbContex
             (amount, row) => checked(
                 amount + (row.DeliveredQuantity ?? 0) * row.AppliedPrice));
         var unresolved = !inconsistent && rows.Any(row =>
-            row.DeliveredQuantity != row.Quantity);
+            row.DeliveredQuantity != row.Quantity - row.RemovedByCorrectionQuantity);
         return new OrderEconomicState(functionalAmount, unresolved, inconsistent);
     }
 
@@ -48,9 +54,12 @@ internal sealed class OrderEconomicStateReader(OrderOperationsDbContext dbContex
     {
         if (row.Quantity <= 0 ||
             row.AppliedPrice < 0 ||
+            row.RemovedByCorrectionQuantity is null ||
+            row.RemovedByCorrectionQuantity < 0 ||
+            row.RemovedByCorrectionQuantity > row.Quantity ||
             row.DeliveredQuantity is null ||
             row.DeliveredQuantity < 0 ||
-            row.DeliveredQuantity > row.Quantity)
+            row.DeliveredQuantity > row.Quantity - row.RemovedByCorrectionQuantity)
         {
             return true;
         }
@@ -66,7 +75,7 @@ internal sealed class OrderEconomicStateReader(OrderOperationsDbContext dbContex
             return false;
         }
 
-        return row.WorkTotalQuantity != row.Quantity ||
+        return row.WorkTotalQuantity != row.Quantity - row.RemovedByCorrectionQuantity ||
             row.WorkPendingQuantity < 0 ||
             row.WorkInPreparationQuantity < 0 ||
             row.WorkReadyQuantity < 0 ||
@@ -78,6 +87,7 @@ internal sealed class OrderEconomicStateReader(OrderOperationsDbContext dbContex
 
     private sealed record EconomicContentRow(
         int Quantity,
+        int? RemovedByCorrectionQuantity,
         decimal AppliedPrice,
         bool RequiresPreparationAtConfirmation,
         int? DeliveredQuantity,
