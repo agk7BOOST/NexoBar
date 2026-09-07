@@ -17,7 +17,7 @@ Cada Work tiene PK por `Id` y una FK compuesta `(incorporation_id, content_ordin
 
 Una Confirmación puede crear varios Work para el mismo Product cuando pertenecen a Contents con instruction diferente. Cada Work conserva el snapshot de responsabilidad y las cantidades `total`, `pending`, `inPreparation` y `ready`. No existe `WorkCreated History`.
 
-Las cantidades son actualmente enteros exactos. Según [Q/R/F de S7-I2](confirmation.md#q-r-y-f-s7-i2), al confirmar `R = 0`, `total = F = Q`, `pending = total`, `inPreparation = 0` y `ready = 0`. Lectura y progreso validan `TotalQuantity = F`; State faltante o incoherencia con la obligación vigente son inconsistencias. El Estado autoritativo satisface:
+Las cantidades son actualmente enteros exactos. Según [Q/R/F y Content Correction ordinaria](confirmation.md#q-r-y-f-s7-i2-content-correction-ordinaria-s7-i3d), al confirmar `R = 0`, `total = F = Q`, `pending = total`, `inPreparation = 0` y `ready = 0`. La corrección ordinaria de un Content preparado solo reduce `PendingQuantity` y `TotalQuantity` de forma atómica mientras incrementa `R`; no afecta `InPreparationQuantity`, `ReadyQuantity` ni `DeliveredQuantity`. Lectura y progreso validan `TotalQuantity = F`; State faltante o incoherencia con la obligación vigente son inconsistencias. El Estado autoritativo satisface:
 
 ```text
 TotalQuantity > 0
@@ -46,7 +46,7 @@ GET /api/order-operations/preparation/work
 - La consulta requiere una Session válida, una Identity activa, `Responsibility.Preparation` y la `PreparationEnablement` exacta. Authentication/Session/Identity no utilizable responde `401`; ausencia de Preparation o de la habilitación exacta responde un `403` común que no revela cuál falta.
 - La autorización consulta Estado vigente dentro de la misma transacción PostgreSQL física que la lectura de Work y usa `FOR SHARE` sobre el Estado positivo; no usa capability claims.
 - Una consulta autorizada sin Work devuelve `200 []`.
-- Cada respuesta incluye `workId`, `preparationResponsibilityId`, `operationalReference` opaca, `context` vigente, `incorporationId`, `incorporationOrdinal`, `productId`, `productOperationalName`, `instruction` nullable, las cuatro cantidades y `confirmedAt`. `productId` e `instruction` proceden de `IncorporationContent`.
+- Cada respuesta incluye `workId`, `preparationResponsibilityId`, `operationalReference` opaca, `context` vigente, `incorporationId`, `incorporationOrdinal`, `contentOrdinal`, `productId`, `productOperationalName`, `instruction` nullable, las cuatro cantidades y `confirmedAt`. `contentOrdinal`, `productId` e `instruction` proceden de `IncorporationContent`; `(incorporationId, contentOrdinal)` permite al frontend correlacionar exactamente Content Correction.
 - `context` procede del `Order` actual. `confirmedAt` procede de la Confirmación que originó la `Incorporation`; no existe un `createdAt` artificial.
 - `ProductId` sigue siendo la identidad autoritativa. `productOperationalName` es presentación **actual/vigente** obtenida mediante una capacidad batch estrecha de `Catalog` que entrega solo `ProductId + OperationalName`; no es un snapshot de nombre en Confirmation o Work. Renombrar un Product cambia la presentación futura del Work activo, sin alterar `appliedPrice`, instruction, Preparation Responsibility, cantidades ni Historia. Los Products retirados continúan resolviéndose. Una referencia faltante es inconsistencia técnica y no cae a mostrar el UUID.
 - Esta decisión no agregó migración ni snapshot de nombre.

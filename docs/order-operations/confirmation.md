@@ -15,7 +15,7 @@ La primera Confirmación crea el `Order` y su primera `Incorporation`; cada Conf
 - First y Subsequent Confirmation requieren autenticación, Session válida, Identity activa y antiforgery. Una intención nueva exige `OrderOperationsAndBasicClosure`, estabilizada transaccionalmente. El actor procede de la Identity autenticada y se atribuye tanto al comando como a `ConfirmationHistory`.
 - Las columnas legacy `actor_identity_id` de comandos de Confirmación e Historia permanecen nullable para preservar la verdad histórica: no se atribuyen actores ficticios a registros anteriores. Los nuevos comandos sí registran actor; el matching de replay lo incluye. El replay exige sesión válida e Identity activa, pero no reexige la responsabilidad para un efecto ya confirmado.
 
-### Q, R y F: S7-I2
+### Q, R y F: S7-I2; Content Correction ordinaria: S7-I3D
 
 S7-I2 está implementado, verificado y committed. Esta sección es la referencia técnica de la base Q/R/F, conforme a la confirmación vigente del usuario y al código de `790d2f1`.
 
@@ -24,10 +24,14 @@ S7-I2 está implementado, verificado y committed. Esta sección es la referencia
 - First y Subsequent Confirmation crean ese Estado atómicamente con Content y las demás consecuencias, con `R = 0`; inicialmente `F = Q`. State faltante es inconsistencia: no existe fallback a `R = 0`.
 - El cumplimiento operacional usa F cuando representa obligación vigente. La cantidad confirmada Q conserva su significado histórico; no se sustituye globalmente por F.
 - El Importe funcional sigue siendo `DeliveredQuantity × AppliedPrice` por Content, sumado exactamente; no usa F como cantidad económica ni precio vigente de Catalog.
-- No existe todavía comando de Content Correction, cantidad de Cancellation ni Estado de precio efectivo. Sus límites futuros viven en [pendientes](pending.md).
+- Content Correction ordinaria corrige una cantidad confirmada erróneamente; no es Cancellation. Se identifica exactamente por `(IncorporationId, ContentOrdinal)`, incrementa atómicamente `R` y nunca modifica `Q`, el Content, el Work ni la Historia existente. Puede llevar `F` a cero, preservando esos registros y `PendingComposition`.
+- La corrección directa solo puede afectar `F - DeliveredQuantity`. La corrección de un Content preparado solo puede afectar `PendingQuantity`: reduce atómicamente `PendingQuantity` y `TotalQuantity` en la misma cantidad en que aumenta `R`; nunca afecta `InPreparationQuantity`, `ReadyQuantity` ni `DeliveredQuantity`. Las correcciones de Preparation sobre trabajo iniciado siguen pendientes.
+- La corrección ordinaria no cambia el Importe funcional, que continúa derivándose de Delivery efectiva. Sí puede cambiar la elegibilidad de Liquidation. Está prohibida después de Freeze.
+- El frontend expone Content Correction explícita con esa identidad exacta, maneja incertidumbre/retry y refresca desde el Estado autoritativo. La lectura de Preparation expone `ContentOrdinal` para esa correlación. El recorrido vertical está cubierto por E2E.
+- Cancellation, cantidad de Cancellation y Estado de precio efectivo no existen todavía. Sus límites futuros viven en [pendientes](pending.md).
 - `PreparationWork.TotalQuantity > 0` permanece vigente. La base Q/R/F no habilita Work de total cero ni decide una futura transición para ese caso.
 
-Evidencia de creación/modelo: [OrderModel](../../backend/src/NexoBar.OrderOperations/OrderModel.cs) y [ConfirmedContentFactory](../../backend/src/NexoBar.OrderOperations/ConfirmedContentFactory.cs). La [migración y sus protecciones](migrations.md#base-qrf-s7-i2) son parte de S7-I2.
+S7-I3D está verticalmente implementado y verificado: backend 741/741, OrderOperations 424/424, frontend 265/265 y Playwright 9/9. Evidencia de creación/modelo: [OrderModel](../../backend/src/NexoBar.OrderOperations/OrderModel.cs) y [ConfirmedContentFactory](../../backend/src/NexoBar.OrderOperations/ConfirmedContentFactory.cs). La [migración y sus protecciones](migrations.md#base-qrf-s7-i2) son parte de S7-I2.
 
 ### IncorporationContent, snapshot histórico y líneas homogéneas
 
