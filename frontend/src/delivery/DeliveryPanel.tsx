@@ -1,3 +1,10 @@
+import { maximumContentCorrection } from "./contentCorrection.ts";
+import { getOrder } from "../orderOperations/orderOperationsClient.ts";
+import { listPreparationDestinations } from "../identity/sessionClient.ts";
+import {
+  listPreparationWork,
+  type PreparationWork,
+} from "../preparation/preparationClient.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   discardAntiforgeryToken,
@@ -6,6 +13,7 @@ import {
 } from "../identity/sessionClient.ts";
 import {
   correctDelivery,
+  correctContentQuantity,
   deliverQuantity,
   DeliveryProblemError,
   getOrderDelivery,
@@ -14,17 +22,20 @@ import {
 } from "./deliveryClient.ts";
 
 interface DeliveryPanelProps {
+  refreshSequence?: number;
   operationalReference: string | null;
   onUnauthorized: () => void;
   ordinaryMutationsBlocked?: boolean;
+  onBusyChange?: (reference: string, busy: boolean) => void;
   onOrderChanged?: (reference: string) => void;
 }
 
 type DeliveryIntentPhase = "submitting" | "uncertain";
 
 interface DeliveryIntent {
+  operationalReference: string;
   phase: DeliveryIntentPhase;
-  kind: "delivery" | "correction";
+  kind: "delivery" | "correction" | "contentCorrection";
   orderId: string;
   antiforgeryToken?: string;
   incorporationId: string;
@@ -59,10 +70,21 @@ function contentDescription(item: OrderDeliveryContent): string {
 
 export function DeliveryPanel({
   operationalReference,
+  refreshSequence,
   onUnauthorized,
   ordinaryMutationsBlocked = false,
   onOrderChanged,
+  onBusyChange,
 }: DeliveryPanelProps) {
+  const [works, setWorks] = useState<PreparationWork[]>([]);
+  const [correctionStateAvailable, setCorrectionStateAvailable] =
+    useState(false);
+  const [contentCorrectionInputs, setContentCorrectionInputs] = useState<
+    Record<string, string>
+  >({});
+  const [contentCorrectionOpen, setContentCorrectionOpen] = useState<
+    Record<string, boolean>
+  >({});
   const [delivery, setDelivery] = useState<OrderDelivery | null>(null);
   const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>(
     {},
@@ -87,6 +109,21 @@ export function DeliveryPanel({
   const [message, setMessage] = useState<string | null>(null);
   const requestSequence = useRef(0);
   const intentsRef = useRef<Record<string, DeliveryIntent>>({});
+  const reportedBusyReferences = useRef(new Set<string>());
+
+  useEffect(() => {
+    const busy = new Set(
+      Object.values(intents).map((intent) => intent.operationalReference),
+    );
+    if (operationalReference && Object.keys(synchronizing).length > 0)
+      busy.add(operationalReference);
+    for (const reference of new Set([
+      ...reportedBusyReferences.current,
+      ...busy,
+    ]))
+      onBusyChange?.(reference, busy.has(reference));
+    reportedBusyReferences.current = busy;
+  }, [intents, synchronizing, operationalReference, onBusyChange]);
 
   const cancelRequests = useCallback(() => {
     requestSequence.current++;
@@ -173,12 +210,53 @@ export function DeliveryPanel({
     ): Promise<boolean> => {
       const sequence = ++requestSequence.current;
       setIsLoading(true);
+      setCorrectionStateAvailable(false);
       if (!options.preserveMessage) setMessage(null);
       if (options.clearDelivery) setDelivery(null);
 
       try {
         const loaded = await getOrderDelivery(reference);
         if (sequence !== requestSequence.current) return false;
+        let available = false;
+        let preparation: PreparationWork[] = [];
+        if (
+          loaded.contents.every((item) => item.confirmedQuantity !== undefined)
+        ) {
+          try {
+            const order = await getOrder(reference);
+            if (order.isFrozen || order.isClosed)
+              setFrozenOrders((current) => ({ ...current, [reference]: true }));
+            available =
+              !order.liquidationBlockers.includes("state_inconsistent");
+            if (
+              loaded.contents.some(
+                (item) => item.requiresPreparationAtConfirmation,
+              )
+            ) {
+              const destinations = await listPreparationDestinations();
+              preparation = (
+                await Promise.all(
+                  destinations.map((destination) =>
+                    listPreparationWork(
+                      destination.preparationResponsibilityId,
+                    ),
+                  ),
+                )
+              ).flat();
+            }
+          } catch (error) {
+            const status =
+              (error as { status?: number }).status ??
+              (error as { problem?: { status?: number } }).problem?.status;
+            if (status === 401) {
+              handleUnauthorized();
+              return false;
+            }
+          }
+        }
+        if (sequence !== requestSequence.current) return false;
+        setWorks(preparation);
+        setCorrectionStateAvailable(available);
         setAuthoritativeDelivery(loaded);
         return true;
       } catch (error) {
@@ -225,7 +303,7 @@ export function DeliveryPanel({
       window.clearTimeout(scheduledRefresh);
       cancelRequests();
     };
-  }, [cancelRequests, operationalReference, refreshDelivery]);
+  }, [cancelRequests, operationalReference, refreshDelivery, refreshSequence]);
 
   const executeIntent = useCallback(
     async (intent: DeliveryIntent, reference: string) => {
@@ -260,9 +338,14 @@ export function DeliveryPanel({
           antiforgeryToken,
         };
         const result =
-          intent.kind === "correction"
-            ? await correctDelivery({ ...command, orderId: intent.orderId })
-            : await deliverQuantity(command);
+          intent.kind === "contentCorrection"
+            ? await correctContentQuantity({
+                ...command,
+                orderId: intent.orderId,
+              })
+            : intent.kind === "correction"
+              ? await correctDelivery({ ...command, orderId: intent.orderId })
+              : await deliverQuantity(command);
 
         if (
           result.incorporationId !== intent.incorporationId ||
@@ -272,6 +355,7 @@ export function DeliveryPanel({
         }
 
         clearIntent(key);
+        setContentCorrectionOpen((current) => ({ ...current, [key]: false }));
         if (intent.kind === "correction") {
           setCorrectionOpen((current) => ({ ...current, [key]: false }));
           setCorrectionInputs((current) => ({ ...current, [key]: "" }));
@@ -293,9 +377,11 @@ export function DeliveryPanel({
             setContentMessage(key, {
               kind: "uncertain",
               text:
-                intent.kind === "correction"
-                  ? "No se pudo confirmar el resultado de la corrección de entrega."
-                  : "No se pudo confirmar el resultado de la entrega.",
+                intent.kind === "contentCorrection"
+                  ? "No se pudo confirmar el resultado de la corrección de cantidad confirmada."
+                  : intent.kind === "correction"
+                    ? "No se pudo confirmar el resultado de la corrección de entrega."
+                    : "No se pudo confirmar el resultado de la entrega.",
               detail:
                 error.status >= 500
                   ? "No se pudo procesar la entrega por un problema técnico."
@@ -333,7 +419,10 @@ export function DeliveryPanel({
           if (error.status === 403) {
             setContentMessage(key, {
               kind: "error",
-              text: forbiddenMessage,
+              text:
+                intent.kind === "contentCorrection"
+                  ? "Esta Identity no tiene autorización para corregir la cantidad confirmada."
+                  : forbiddenMessage,
             });
             return;
           }
@@ -358,9 +447,11 @@ export function DeliveryPanel({
           setContentMessage(key, {
             kind: "error",
             text:
-              error.status === 400
-                ? "No se pudo realizar la entrega. Revisá la cantidad e intentá nuevamente."
-                : "No se pudo realizar la entrega.",
+              intent.kind === "contentCorrection"
+                ? "No se pudo corregir la cantidad confirmada. Revisá la cantidad e intentá nuevamente."
+                : error.status === 400
+                  ? "No se pudo realizar la entrega. Revisá la cantidad e intentá nuevamente."
+                  : "No se pudo realizar la entrega.",
           });
           return;
         }
@@ -369,9 +460,11 @@ export function DeliveryPanel({
         setContentMessage(key, {
           kind: "uncertain",
           text:
-            intent.kind === "correction"
-              ? "No se pudo confirmar el resultado de la corrección de entrega."
-              : "No se pudo confirmar el resultado de la entrega.",
+            intent.kind === "contentCorrection"
+              ? "No se pudo confirmar el resultado de la corrección de cantidad confirmada."
+              : intent.kind === "correction"
+                ? "No se pudo confirmar el resultado de la corrección de entrega."
+                : "No se pudo confirmar el resultado de la entrega.",
         });
       }
     },
@@ -389,7 +482,7 @@ export function DeliveryPanel({
   const submitNewIntent = useCallback(
     (
       item: OrderDeliveryContent,
-      kind: "delivery" | "correction" = "delivery",
+      kind: "delivery" | "correction" | "contentCorrection" = "delivery",
     ) => {
       if (operationalReference === null || mutationsBlocked) return;
       const key = contentKey(item);
@@ -401,12 +494,19 @@ export function DeliveryPanel({
       }
 
       const maximum =
-        kind === "correction"
-          ? item.deliveredQuantity
-          : item.deliverableQuantity;
+        kind === "contentCorrection"
+          ? correctionStateAvailable
+            ? (maximumContentCorrection(item, works) ?? 0)
+            : 0
+          : kind === "correction"
+            ? item.deliveredQuantity
+            : item.deliverableQuantity;
       const rawQuantity =
-        (kind === "correction" ? correctionInputs[key] : quantityInputs[key]) ??
-        "";
+        (kind === "contentCorrection"
+          ? contentCorrectionInputs[key]
+          : kind === "correction"
+            ? correctionInputs[key]
+            : quantityInputs[key]) ?? "";
       const quantity = Number(rawQuantity);
       if (
         !/^\d+$/.test(rawQuantity) ||
@@ -422,6 +522,7 @@ export function DeliveryPanel({
       }
 
       const intent: DeliveryIntent = {
+        operationalReference,
         phase: "submitting",
         kind,
         orderId: delivery!.orderId,
@@ -440,6 +541,9 @@ export function DeliveryPanel({
       operationalReference,
       quantityInputs,
       correctionInputs,
+      contentCorrectionInputs,
+      correctionStateAvailable,
+      works,
       delivery,
       setContentMessage,
       setIntent,
@@ -460,7 +564,10 @@ export function DeliveryPanel({
       };
       setContentMessage(key, null);
       setIntent(submittingIntent);
-      void executeIntent(submittingIntent, operationalReference);
+      void executeIntent(
+        submittingIntent,
+        submittingIntent.operationalReference,
+      );
     },
     [executeIntent, operationalReference, setContentMessage, setIntent],
   );
@@ -523,7 +630,18 @@ export function DeliveryPanel({
                   mutationsBlocked ||
                   intent !== undefined ||
                   synchronizing[key] !== undefined;
-                const isFullyDelivered = item.remainingQuantity === 0;
+                const isFullyDelivered =
+                  item.totalQuantity > 0 && item.remainingQuantity === 0;
+                const correctionMaximum = correctionStateAvailable
+                  ? maximumContentCorrection(item, works)
+                  : null;
+                const requested = contentCorrectionInputs[key] ?? "";
+                const validCorrection =
+                  /^\d+$/.test(requested) &&
+                  Number.isSafeInteger(Number(requested)) &&
+                  Number(requested) > 0 &&
+                  correctionMaximum !== null &&
+                  Number(requested) <= correctionMaximum;
                 const fieldId = `delivery-quantity-${item.incorporationId}-${item.contentOrdinal}`;
                 const messageId = `delivery-message-${item.incorporationId}-${item.contentOrdinal}`;
                 const description = contentDescription(item);
@@ -626,6 +744,106 @@ export function DeliveryPanel({
                       </form>
                     )}
 
+                    <div className="content-correction">
+                      <dl className="delivery-quantities">
+                        <div>
+                          <dt>Q · Cantidad confirmada original</dt>
+                          <dd>{item.confirmedQuantity ?? "No disponible"}</dd>
+                        </div>
+                        <div>
+                          <dt>R · Retirada por corrección</dt>
+                          <dd>
+                            {item.removedByCorrectionQuantity ??
+                              "No disponible"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>F · Obligación vigente</dt>
+                          <dd>
+                            {item.currentFulfillmentQuantity ?? "No disponible"}
+                          </dd>
+                        </div>
+                      </dl>
+                      {item.currentFulfillmentQuantity === 0 && (
+                        <p>Sin obligación vigente</p>
+                      )}
+                      {correctionMaximum === null ? (
+                        <p>
+                          Corrección de cantidad confirmada: Estado no
+                          disponible o inconsistente.
+                        </p>
+                      ) : (
+                        <p>
+                          Máximo corregible actualmente: {correctionMaximum}
+                        </p>
+                      )}
+                      {!mutationsBlocked &&
+                        correctionMaximum !== null &&
+                        correctionMaximum > 0 && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={isBlocked}
+                              onClick={() =>
+                                setContentCorrectionOpen((current) => ({
+                                  ...current,
+                                  [key]: true,
+                                }))
+                              }
+                            >
+                              Corregir cantidad confirmada
+                            </button>
+                            {contentCorrectionOpen[key] && (
+                              <form
+                                noValidate
+                                onSubmit={(event) => {
+                                  event.preventDefault();
+                                  submitNewIntent(item, "contentCorrection");
+                                }}
+                              >
+                                <p>
+                                  La cantidad confirmada fue incorrecta. Indicá
+                                  cuánto retirar de la obligación vigente.
+                                </p>
+                                <label
+                                  htmlFor={fieldId + "-content-correction"}
+                                >
+                                  Cantidad a retirar (x) — {description}
+                                </label>
+                                <input
+                                  id={fieldId + "-content-correction"}
+                                  type="number"
+                                  min="1"
+                                  max={correctionMaximum}
+                                  step="1"
+                                  value={requested}
+                                  disabled={isBlocked}
+                                  onChange={(event) =>
+                                    setContentCorrectionInputs((current) => ({
+                                      ...current,
+                                      [key]: event.target.value,
+                                    }))
+                                  }
+                                />
+                                <p>
+                                  Cantidad solicitada (x): {requested || "—"}
+                                </p>
+                                <p>
+                                  F resultante (prevista):{" "}
+                                  {validCorrection
+                                    ? item.currentFulfillmentQuantity! -
+                                      Number(requested)
+                                    : "—"}
+                                </p>
+                                <button type="submit" disabled={isBlocked}>
+                                  Confirmar corrección de cantidad confirmada
+                                </button>
+                              </form>
+                            )}
+                          </>
+                        )}
+                    </div>
+
                     {!mutationsBlocked && item.deliveredQuantity > 0 && (
                       <div className="delivery-action">
                         <button
@@ -698,9 +916,11 @@ export function DeliveryPanel({
 
                     {intent?.phase === "submitting" && (
                       <p role="status">
-                        {intent.kind === "correction"
-                          ? "Confirmando corrección de entrega…"
-                          : "Confirmando entrega…"}
+                        {intent.kind === "contentCorrection"
+                          ? "Confirmando corrección de cantidad confirmada…"
+                          : intent.kind === "correction"
+                            ? "Confirmando corrección de entrega…"
+                            : "Confirmando entrega…"}
                       </p>
                     )}
                     {synchronizing[key] !== undefined && (

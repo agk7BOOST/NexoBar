@@ -209,6 +209,10 @@ try
         new DeliveryState(incorporation.Id, 1),
         new DeliveryState(incorporation.Id, 2),
         new DeliveryState(incorporation.Id, 3));
+    orderOperations.ContentQuantityStates.AddRange(
+        new ContentQuantityState(incorporation.Id, 1),
+        new ContentQuantityState(incorporation.Id, 2),
+        new ContentQuantityState(incorporation.Id, 3));
     orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
         Guid.CreateVersion7(),
         incorporation.Id,

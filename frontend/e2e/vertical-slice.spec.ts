@@ -727,6 +727,54 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
   await expect(history).toContainText("Saldo resultante-1 kg");
 });
 
+test("Content Correction conserva Q, reduce F y permite cumplir y Liquidar", async ({
+  page,
+}) => {
+  const { productName, operationalReference } =
+    await createConfirmedOrder(page);
+  await page
+    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .click();
+  const content = page
+    .getByRole("region", { name: `Entrega del Pedido ${operationalReference}` })
+    .getByRole("article", {
+      name: `${productName}, sin instrucción, incorporación 1`,
+    });
+  const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
+  const amount = ending
+    .getByText("Importe funcional actual")
+    .locator("..")
+    .locator("dd");
+  await content
+    .getByRole("button", { name: "Corregir cantidad confirmada", exact: true })
+    .click();
+  await content.getByLabel(/^Cantidad a retirar \(x\)/).fill("1");
+  await expect(content).toContainText("Máximo corregible actualmente: 2");
+  await expect(content).toContainText("F resultante (prevista): 1");
+  await content
+    .getByRole("button", {
+      name: "Confirmar corrección de cantidad confirmada",
+    })
+    .click();
+  await expect(content).toContainText("Q · Cantidad confirmada original2");
+  await expect(content).toContainText("R · Retirada por corrección1");
+  await expect(content).toContainText("F · Obligación vigente1");
+  await expect(amount).toHaveText(/^0(?:\.0+)?$/);
+  await content.getByRole("button", { name: /^Entregar / }).click();
+  await expect(content).toContainText("Delivered1");
+  await expect(amount).toHaveText(/^10(?:\.0+)?$/);
+  await ending.getByLabel("Medio de pago declarado").fill("Efectivo");
+  await ending.getByRole("button", { name: "Liquidar", exact: true }).click();
+  await expect(ending.getByText(/Pedido congelado/)).toBeVisible();
+  await expect(
+    content.getByRole("button", {
+      name: "Corregir cantidad confirmada",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(content).toContainText("Q · Cantidad confirmada original2");
+});
+
 test("Delivery Correction reduce importe, permite reentrega y desaparece al Liquidar", async ({
   page,
 }) => {

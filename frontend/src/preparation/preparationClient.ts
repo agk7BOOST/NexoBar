@@ -4,6 +4,7 @@ export interface PreparationWork {
   operationalReference: string;
   context: string;
   incorporationId: string;
+  contentOrdinal?: number;
   incorporationOrdinal: number;
   productId: string;
   productOperationalName: string;

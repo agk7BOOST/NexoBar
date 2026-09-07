@@ -16,6 +16,9 @@ import {
 } from "./preparationClient.ts";
 
 interface PreparationPanelProps {
+  refreshSequence?: number;
+  onBusyOrdersChange?: (references: string[]) => void;
+  onWorkChanged?: () => void;
   isOrderBlocked?: (reference: string) => boolean;
   onUnauthorized: () => void;
 }
@@ -24,6 +27,7 @@ type PreparationCommandKind = "start" | "ready";
 type PreparationIntentPhase = "submitting" | "uncertain";
 
 interface PreparationIntent {
+  operationalReference: string;
   phase: PreparationIntentPhase;
   kind: PreparationCommandKind;
   workId: string;
@@ -93,6 +97,9 @@ function updatedWork(
 export function PreparationPanel({
   onUnauthorized,
   isOrderBlocked,
+  refreshSequence,
+  onBusyOrdersChange,
+  onWorkChanged,
 }: PreparationPanelProps) {
   const [destinations, setDestinations] = useState<PreparationDestination[]>(
     [],
@@ -111,6 +118,11 @@ export function PreparationPanel({
   const [message, setMessage] = useState<string | null>(null);
   const workRequestSequence = useRef(0);
   const selectedIdRef = useRef("");
+  useEffect(() => {
+    onBusyOrdersChange?.(
+      Object.values(intents).map((intent) => intent.operationalReference),
+    );
+  }, [intents, onBusyOrdersChange]);
   const intentsRef = useRef<Record<string, PreparationIntent>>({});
 
   const cancelWorkRequests = useCallback(() => {
@@ -263,7 +275,11 @@ export function PreparationPanel({
       window.clearTimeout(scheduledRefresh);
       cancelWorkRequests();
     };
-  }, [cancelWorkRequests, refreshPreparationWorkForSelectedDestination]);
+  }, [
+    cancelWorkRequests,
+    refreshPreparationWorkForSelectedDestination,
+    refreshSequence,
+  ]);
 
   const applyCommandResult = useCallback((result: PreparationCommandResult) => {
     setWork((current) =>
@@ -310,6 +326,7 @@ export function PreparationPanel({
         setWorkMessage(intent.workId, null);
         applyCommandResult(result);
         void refreshPreparationWorkForSelectedDestination();
+        onWorkChanged?.();
       } catch (error) {
         if (
           (error instanceof PreparationProblemError ||
@@ -401,6 +418,7 @@ export function PreparationPanel({
       clearIntent,
       handleUnauthorized,
       refreshPreparationWorkForSelectedDestination,
+      onWorkChanged,
       setIntent,
       setWorkMessage,
     ],
@@ -427,6 +445,7 @@ export function PreparationPanel({
       }
 
       const intent: PreparationIntent = {
+        operationalReference: item.operationalReference,
         phase: "submitting",
         kind,
         workId: item.workId,
@@ -640,9 +659,13 @@ export function PreparationPanel({
                           <dd>{item.readyQuantity}</dd>
                         </div>
                       </dl>
-                      {item.readyQuantity === item.totalQuantity && (
-                        <p className="fully-ready">Todo listo</p>
+                      {item.totalQuantity === 0 && (
+                        <p>Sin obligación vigente</p>
                       )}
+                      {item.totalQuantity > 0 &&
+                        item.readyQuantity === item.totalQuantity && (
+                          <p className="fully-ready">Todo listo</p>
+                        )}
                     </td>
                     <td>
                       <div className="preparation-actions">

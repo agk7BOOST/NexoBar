@@ -29,6 +29,7 @@ interface OrderLookupProps {
   onUnauthorized?: () => void;
   identityId?: string;
   onOrderState?: (order: OrderResponse) => void;
+  isOrderMutationBusy?: (reference: string) => boolean;
   onEndingBusy?: (reference: string, busy: boolean) => void;
 }
 
@@ -57,6 +58,7 @@ export function OrderLookup({
   identityId,
   onOrderState,
   onEndingBusy,
+  isOrderMutationBusy,
 }: OrderLookupProps) {
   const [operationalReference, setOperationalReference] = useState("");
   const [order, setOrder] = useState<OrderResponse | null>(null);
@@ -186,7 +188,10 @@ export function OrderLookup({
               <button
                 type="button"
                 onClick={() => onContinueOrder(order.operationalReference)}
-                disabled={endingBusy}
+                disabled={
+                  endingBusy ||
+                  isOrderMutationBusy?.(order.operationalReference)
+                }
               >
                 Continuar este Pedido
               </button>
@@ -195,7 +200,11 @@ export function OrderLookup({
           <OrderEnding
             key={`${identityId ?? "anonymous"}:${order.operationalReference}`}
             order={order}
-            canAct={identityId !== undefined && !isLoading}
+            canAct={
+              identityId !== undefined &&
+              !isLoading &&
+              !isOrderMutationBusy?.(order.operationalReference)
+            }
             occurredAt={liquidationTimes[order.operationalReference] ?? null}
             onOccurredAt={(timestamp) =>
               setLiquidationTimes((current) => ({

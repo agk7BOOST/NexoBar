@@ -43,6 +43,20 @@ function App() {
   const [terminalOrders, setTerminalOrders] = useState<Record<string, boolean>>(
     {},
   );
+  const [deliveryBusy, setDeliveryBusy] = useState<Record<string, boolean>>({});
+  const [preparationBusy, setPreparationBusy] = useState<string[]>([]);
+  const [preparationRefresh, setPreparationRefresh] = useState(0);
+  const [deliveryRefresh, setDeliveryRefresh] = useState(0);
+  const rememberDeliveryBusy = useCallback(
+    (reference: string, busy: boolean) => {
+      setDeliveryBusy((current) => ({ ...current, [reference]: busy }));
+    },
+    [],
+  );
+  const refreshAfterPreparation = useCallback(
+    () => setDeliveryRefresh((current) => current + 1),
+    [],
+  );
   const [endingOrders, setEndingOrders] = useState<Record<string, boolean>>({});
   const rememberOrderState = useCallback((order: OrderResponse) => {
     setTerminalOrders((current) => ({
@@ -113,6 +127,8 @@ function App() {
     discardAntiforgeryToken();
     setAuthState({ status: "unauthenticated" });
     setEndingOrders({});
+    setDeliveryBusy({});
+    setPreparationBusy([]);
   }, []);
 
   function activateOrder(operationalReference: string) {
@@ -126,6 +142,7 @@ function App() {
   }
 
   const requestOrderRefresh = useCallback((operationalReference: string) => {
+    setPreparationRefresh((current) => current + 1);
     setRequestedLookup((current) => ({
       operationalReference,
       sequence: (current?.sequence ?? 0) + 1,
@@ -162,10 +179,14 @@ function App() {
             onLoggedOut={returnToLogin}
           />
           <PreparationPanel
+            refreshSequence={preparationRefresh}
+            onBusyOrdersChange={setPreparationBusy}
+            onWorkChanged={refreshAfterPreparation}
             onUnauthorized={returnToLogin}
             isOrderBlocked={(reference) =>
               terminalOrders[reference] === true ||
-              endingOrders[reference] === true
+              endingOrders[reference] === true ||
+              deliveryBusy[reference] === true
             }
           />
           <InventoryPanel onUnauthorized={returnToLogin} />
@@ -180,7 +201,9 @@ function App() {
             ordinaryMutationsBlocked={
               activeOperationalReference !== null &&
               (terminalOrders[activeOperationalReference] === true ||
-                endingOrders[activeOperationalReference] === true)
+                endingOrders[activeOperationalReference] === true ||
+                deliveryBusy[activeOperationalReference] === true ||
+                preparationBusy.includes(activeOperationalReference))
             }
           />
         </>
@@ -212,16 +235,23 @@ function App() {
         onUnauthorized={returnToLogin}
         onOrderState={rememberOrderState}
         onEndingBusy={rememberEndingBusy}
+        isOrderMutationBusy={(reference) =>
+          deliveryBusy[reference] === true ||
+          preparationBusy.includes(reference)
+        }
       />
 
       {authState.status === "authenticated" && (
         <DeliveryPanel
+          refreshSequence={deliveryRefresh}
+          onBusyChange={rememberDeliveryBusy}
           operationalReference={deliveryOperationalReference}
           onUnauthorized={returnToLogin}
           ordinaryMutationsBlocked={
             deliveryOperationalReference !== null &&
             (terminalOrders[deliveryOperationalReference] === true ||
-              endingOrders[deliveryOperationalReference] === true)
+              endingOrders[deliveryOperationalReference] === true ||
+              preparationBusy.includes(deliveryOperationalReference))
           }
           onOrderChanged={requestOrderRefresh}
         />
