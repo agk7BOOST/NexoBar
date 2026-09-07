@@ -384,7 +384,7 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
             "productOperationalName", "instruction", "totalQuantity",
             "requiresPreparationAtConfirmation", "readyQuantity", "deliveredQuantity",
             "deliverableQuantity", "remainingQuantity",
-            "confirmedQuantity", "removedByCorrectionQuantity", "currentFulfillmentQuantity"
+            "confirmedQuantity", "removedByCorrectionQuantity", "cancelledQuantity", "currentFulfillmentQuantity"
         };
         Assert.Equal(expected.Order(), schema.EnumerateObject().Select(property => property.Name).Order());
     }

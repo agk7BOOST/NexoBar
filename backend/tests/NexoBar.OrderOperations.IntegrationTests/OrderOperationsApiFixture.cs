@@ -55,6 +55,8 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                order_operations.content_cancellation_commands,
+                order_operations.content_cancellation_history,
                 order_operations.content_correction_commands,
                 order_operations.content_correction_history,
                 order_operations.delivery_correction_commands,

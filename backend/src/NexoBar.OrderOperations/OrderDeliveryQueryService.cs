@@ -89,6 +89,7 @@ internal sealed class OrderDeliveryQueryService(
                 (Guid?)content.ProductId,
                 (int?)content.Quantity,
                 quantityState == null ? null : quantityState.RemovedByCorrectionQuantity,
+                quantityState == null ? null : quantityState.CancelledQuantity,
                 content == null
                     ? null
                     : content.RequiresPreparationAtConfirmation,
@@ -138,7 +139,7 @@ internal sealed class OrderDeliveryQueryService(
 
         var contentsResponse = contentRows.Select(row =>
         {
-            var total = row.ConfirmedQuantity!.Value - row.RemovedByCorrectionQuantity!.Value;
+            var total = row.ConfirmedQuantity!.Value - row.RemovedByCorrectionQuantity!.Value - row.CancelledQuantity!.Value;
             var delivered = row.DeliveredQuantity!.Value;
             var requiresPreparation = row.RequiresPreparationAtConfirmation!.Value;
             var ready = requiresPreparation ? row.ReadyQuantity!.Value : (int?)null;
@@ -157,6 +158,7 @@ internal sealed class OrderDeliveryQueryService(
                 total - delivered,
                 row.ConfirmedQuantity.Value,
                 row.RemovedByCorrectionQuantity.Value,
+                row.CancelledQuantity!.Value,
                 total);
         }).ToArray();
 
@@ -177,7 +179,7 @@ internal sealed class OrderDeliveryQueryService(
             row.IncorporationOrdinal is null ||
             row.ProductId is null ||
             row.ConfirmedQuantity is null ||
-            row.RemovedByCorrectionQuantity is null ||
+            row.RemovedByCorrectionQuantity is null || row.CancelledQuantity is null ||
             row.RequiresPreparationAtConfirmation is null ||
             row.DeliveredQuantity is null)
         {
@@ -193,12 +195,13 @@ internal sealed class OrderDeliveryQueryService(
 
         var confirmed = row.ConfirmedQuantity.Value;
         var removed = row.RemovedByCorrectionQuantity.Value;
-        if (confirmed <= 0 || removed < 0 || removed > confirmed)
+        if (confirmed <= 0 || removed < 0 || row.CancelledQuantity < 0 ||
+            (long)removed + row.CancelledQuantity > confirmed)
         {
             return true;
         }
 
-        var effective = confirmed - removed;
+        var effective = confirmed - removed - row.CancelledQuantity.Value;
         var delivered = row.DeliveredQuantity.Value;
         if (effective < 0 || delivered < 0 || delivered > effective)
         {
@@ -224,6 +227,7 @@ internal sealed class OrderDeliveryQueryService(
         Guid? ProductId,
         int? ConfirmedQuantity,
         int? RemovedByCorrectionQuantity,
+        int? CancelledQuantity,
         bool? RequiresPreparationAtConfirmation,
         string? Instruction,
         int? DeliveredQuantity,

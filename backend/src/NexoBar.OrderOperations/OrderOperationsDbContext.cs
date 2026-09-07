@@ -24,6 +24,8 @@ internal sealed class OrderOperationsDbContext(
     internal DbSet<DeliveryCommand> DeliveryCommands => Set<DeliveryCommand>();
     internal DbSet<ContentCorrectionHistory> ContentCorrectionHistory => Set<ContentCorrectionHistory>();
     internal DbSet<ContentCorrectionCommand> ContentCorrectionCommands => Set<ContentCorrectionCommand>();
+    internal DbSet<ContentCancellationHistory> ContentCancellationHistory => Set<ContentCancellationHistory>();
+    internal DbSet<ContentCancellationCommand> ContentCancellationCommands => Set<ContentCancellationCommand>();
     internal DbSet<DeliveryCorrectionHistory> DeliveryCorrectionHistory => Set<DeliveryCorrectionHistory>();
     internal DbSet<DeliveryCorrectionCommand> DeliveryCorrectionCommands => Set<DeliveryCorrectionCommand>();
     internal DbSet<PreparationWork> PreparationWork => Set<PreparationWork>();
@@ -59,6 +61,8 @@ internal sealed class OrderOperationsDbContext(
         modelBuilder.ApplyConfiguration(new DeliveryCommandConfiguration());
         modelBuilder.ApplyConfiguration(new ContentCorrectionHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new ContentCorrectionCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new ContentCancellationHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new ContentCancellationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryCorrectionHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryCorrectionCommandConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationWorkConfiguration());
@@ -114,6 +118,8 @@ internal sealed class OrderOperationsDbContext(
                 table => table.HasCheckConstraint(
                     "CK_content_quantity_states_removed_non_negative",
                     "removed_by_correction_quantity >= 0"));
+            builder.ToTable("content_quantity_states", table => table.HasCheckConstraint(
+                "CK_content_quantity_states_cancelled_non_negative", "cancelled_quantity >= 0"));
             builder.HasKey(state => new { state.IncorporationId, state.ContentOrdinal })
                 .HasName("PK_content_quantity_states");
             builder.Property(state => state.IncorporationId)
@@ -122,6 +128,8 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("content_ordinal").ValueGeneratedNever();
             builder.Property(state => state.RemovedByCorrectionQuantity)
                 .HasColumnName("removed_by_correction_quantity").IsRequired();
+            builder.Property(state => state.CancelledQuantity)
+                .HasColumnName("cancelled_quantity").IsRequired();
             builder.HasOne<IncorporationContent>().WithOne()
                 .HasForeignKey<ContentQuantityState>(state => new
                 {

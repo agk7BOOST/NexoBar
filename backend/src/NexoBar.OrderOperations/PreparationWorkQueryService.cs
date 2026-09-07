@@ -70,16 +70,18 @@ internal sealed class PreparationWorkQueryService(
                 work.InPreparationQuantity,
                 work.ReadyQuantity,
                 RemovedQuantity = (int?)quantityState.RemovedByCorrectionQuantity,
+                CancelledQuantity = (int?)quantityState.CancelledQuantity,
                 ConfirmedQuantity = content.Quantity,
                 ConfirmedAt = history.OccurredAt
             }).ToArrayAsync(cancellationToken);
 
         if (persisted.Any(work =>
-                work.RemovedQuantity is null ||
+                work.RemovedQuantity is null || work.CancelledQuantity is null || work.CancelledQuantity < 0 ||
+                (long?)work.RemovedQuantity + work.CancelledQuantity > work.ConfirmedQuantity ||
                 work.ConfirmedQuantity <= 0 ||
                 work.RemovedQuantity < 0 ||
                 work.RemovedQuantity > work.ConfirmedQuantity ||
-                work.TotalQuantity != work.ConfirmedQuantity - work.RemovedQuantity ||
+                work.TotalQuantity != work.ConfirmedQuantity - work.RemovedQuantity - work.CancelledQuantity ||
                 work.TotalQuantity < 0 ||
                 work.PendingQuantity < 0 ||
                 work.InPreparationQuantity < 0 ||

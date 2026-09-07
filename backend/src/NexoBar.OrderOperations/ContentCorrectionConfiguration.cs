@@ -14,8 +14,8 @@ internal sealed class ContentCorrectionHistoryConfiguration : IEntityTypeConfigu
                 "corrected_quantity > 0 AND confirmed_quantity > 0 AND previous_removed_by_correction_quantity >= 0 AND " +
                 "resulting_fulfillment_quantity >= 0 AND " +
                 "previous_removed_by_correction_quantity::bigint + corrected_quantity::bigint = resulting_removed_by_correction_quantity::bigint AND " +
-                "confirmed_quantity::bigint - previous_removed_by_correction_quantity::bigint = previous_fulfillment_quantity::bigint AND " +
-                "confirmed_quantity::bigint - resulting_removed_by_correction_quantity::bigint = resulting_fulfillment_quantity::bigint");
+                "previous_fulfillment_quantity::bigint - corrected_quantity::bigint = resulting_fulfillment_quantity::bigint AND " +
+                "confirmed_quantity::bigint - previous_removed_by_correction_quantity::bigint >= previous_fulfillment_quantity::bigint");
         });
         builder.HasKey(x => x.Id).HasName("PK_content_correction_history");
         builder.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
@@ -51,8 +51,8 @@ internal sealed class ContentCorrectionCommandConfiguration : IEntityTypeConfigu
                 "corrected_quantity > 0 AND confirmed_quantity > 0 AND previous_removed_by_correction_quantity >= 0 AND " +
                 "resulting_fulfillment_quantity >= 0 AND " +
                 "previous_removed_by_correction_quantity::bigint + corrected_quantity::bigint = resulting_removed_by_correction_quantity::bigint AND " +
-                "confirmed_quantity::bigint - previous_removed_by_correction_quantity::bigint = previous_fulfillment_quantity::bigint AND " +
-                "confirmed_quantity::bigint - resulting_removed_by_correction_quantity::bigint = resulting_fulfillment_quantity::bigint");
+                "previous_fulfillment_quantity::bigint - corrected_quantity::bigint = resulting_fulfillment_quantity::bigint AND " +
+                "confirmed_quantity::bigint - previous_removed_by_correction_quantity::bigint >= previous_fulfillment_quantity::bigint");
         });
         builder.HasKey(x => x.IdempotencyKey).HasName("PK_content_correction_commands");
         builder.Property(x => x.IdempotencyKey).HasColumnName("idempotency_key").ValueGeneratedNever();

@@ -58,8 +58,10 @@ internal sealed class ContentCorrectionService(
             .SingleOrDefaultAsync(cancellationToken);
         var effectiveQuantity = quantityState is null
             ? (int?)null
-            : checked(content.Quantity - quantityState.RemovedByCorrectionQuantity);
+            : checked(content.Quantity - quantityState.RemovedByCorrectionQuantity - quantityState.CancelledQuantity);
         if (content.Quantity <= 0 || quantityState is null ||
+            quantityState.CancelledQuantity < 0 ||
+            (long)quantityState.RemovedByCorrectionQuantity + quantityState.CancelledQuantity > content.Quantity ||
             quantityState.RemovedByCorrectionQuantity < 0 || quantityState.RemovedByCorrectionQuantity > content.Quantity ||
             effectiveQuantity < 0 || content.RequiresPreparationAtConfirmation != (work is not null) ||
             delivery is null || delivery.DeliveredQuantity < 0 || delivery.DeliveredQuantity > effectiveQuantity ||
@@ -80,7 +82,7 @@ internal sealed class ContentCorrectionService(
         var occurredAt = new DateTimeOffset(now.Ticks - now.Ticks % TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);
         var response = new ContentCorrectionResponse(orderId, incorporationId, contentOrdinal, Guid.CreateVersion7(occurredAt),
             quantity, content.Quantity, previousRemoved, quantityState.RemovedByCorrectionQuantity,
-            effectiveQuantity!.Value, content.Quantity - quantityState.RemovedByCorrectionQuantity, occurredAt);
+            effectiveQuantity!.Value, content.Quantity - quantityState.RemovedByCorrectionQuantity - quantityState.CancelledQuantity, occurredAt);
         dbContext.ContentCorrectionHistory.Add(new ContentCorrectionHistory(response, session.IdentityId));
         dbContext.ContentCorrectionCommands.Add(new ContentCorrectionCommand(key, session.IdentityId, response));
         await dbContext.SaveChangesAsync(cancellationToken);

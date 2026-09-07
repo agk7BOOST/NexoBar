@@ -7,10 +7,10 @@ using Npgsql;
 namespace NexoBar.OrderOperations.IntegrationTests;
 
 [Collection(OrderOperationsApiCollection.Name)]
-public sealed class ContentCorrectionPreservationTests(OrderOperationsApiFixture fixture)
+public sealed class ContentCancellationPreservationTests(OrderOperationsApiFixture fixture)
 {
     [Fact]
-    public async Task Confirmation_replays_stay_original_and_pending_composition_survives_correction()
+    public async Task Confirmation_replays_stay_original_and_pending_composition_survives_cancellation()
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
@@ -44,8 +44,8 @@ public sealed class ContentCorrectionPreservationTests(OrderOperationsApiFixture
         foreach (var content in contents)
         {
             var target = new DeliveryTarget(order.OperationalReference, content.IncorporationId, content.ContentOrdinal, null);
-            using var corrected = await ContentCorrectionTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), content.IncorporationId == order.FirstIncorporation.Id ? 3 : 4, token);
-            await ContentCorrectionTestSupport.SuccessAsync(corrected, token);
+            using var cancelled = await ContentCancellationTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), content.IncorporationId == order.FirstIncorporation.Id ? 3 : 4, token);
+            await ContentCancellationTestSupport.SuccessAsync(cancelled, token);
         }
         using var firstReplay = await First();
         using var subsequentReplay = await Subsequent();
@@ -71,8 +71,8 @@ public sealed class ContentCorrectionPreservationTests(OrderOperationsApiFixture
         var target = await DeliveryQuantityTestSupport.CreatePreparedAsync(fixture, 3, 0, token);
         var work = Assert.Single(await fixture.ReadPreparationWorkAsync(token));
         using var preparer = await fixture.LoginAsync(await fixture.CreatePreparationActorAsync(true, work.PreparationResponsibilityId, token), token);
-        using var correction = await ContentCorrectionTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), 3, token);
-        await ContentCorrectionTestSupport.SuccessAsync(correction, token);
+        using var cancellation = await ContentCancellationTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), 3, token);
+        await ContentCancellationTestSupport.SuccessAsync(cancellation, token);
         using var read = await preparer.GetAsync($"/api/order-operations/preparation/work?preparationResponsibilityId={work.PreparationResponsibilityId}", token);
         read.EnsureSuccessStatusCode();
         var result = Assert.Single((await read.Content.ReadFromJsonAsync<PreparationWorkResponse[]>(token))!);
@@ -80,34 +80,10 @@ public sealed class ContentCorrectionPreservationTests(OrderOperationsApiFixture
         using var start = await PreparationStartTestSupport.PostAsync(preparer, work.Id, Guid.NewGuid(), 1, token);
         using var ready = await PreparationReadyTestSupport.PostAsync(preparer, work.Id, Guid.NewGuid(), 1, token);
         using var deliver = await DeliveryQuantityTestSupport.PostAsync(fixture.OrderOperationsClient, target.IncorporationId, target.ContentOrdinal, Guid.NewGuid(), 1, token);
-        using var again = await ContentCorrectionTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), 1, token);
+        using var again = await ContentCancellationTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), 1, token);
         Assert.All(new[] { start, ready, deliver, again }, response => Assert.Equal(HttpStatusCode.Conflict, response.StatusCode));
         using var liquidation = await LiquidationTestSupport.PostExternalAsync(fixture.OrderOperationsClient, target.OperationalReference, Guid.NewGuid(), token);
         await LiquidationTestSupport.ReadSuccessAsync(liquidation, token);
     }
 
-    [Fact]
-    public async Task Migration_round_trip_preserves_existing_state_and_rejects_loss_of_correction_history()
-    {
-        var token = TestContext.Current.CancellationToken;
-        await fixture.ResetAsync(token);
-        var target = await DeliveryQuantityTestSupport.CreatePreparedAsync(fixture, 3, 0, token);
-        var work = await fixture.ReadPreparationWorkAsync(token);
-        var contents = await fixture.ReadConfirmedContentsAsync(token);
-        try
-        {
-            await fixture.MigrateOrderOperationsAsync("20260906120000_AddContentQuantityState", token);
-            await fixture.MigrateOrderOperationsAsync("20260906163222_AddContentCorrection", token);
-            await fixture.MigrateOrderOperationsAsync("20260907054805_AddContentCancellation", token);
-            Assert.Equal(work, await fixture.ReadPreparationWorkAsync(token));
-            Assert.Equal(contents, await fixture.ReadConfirmedContentsAsync(token));
-            Assert.False(await fixture.HasPendingModelChangesAsync());
-            using var correction = await ContentCorrectionTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), 3, token);
-            await ContentCorrectionTestSupport.SuccessAsync(correction, token);
-            await Assert.ThrowsAsync<PostgresException>(() => fixture.MigrateOrderOperationsAsync("20260906120000_AddContentQuantityState", token));
-            await ContentCorrectionTestSupport.CountsAsync(fixture, 1, token);
-            Assert.Equal(0, Assert.Single(await fixture.ReadPreparationWorkAsync(token)).TotalQuantity);
-        }
-        finally { await fixture.MigrateOrderOperationsAsync("20260907054805_AddContentCancellation", token); }
-    }
 }

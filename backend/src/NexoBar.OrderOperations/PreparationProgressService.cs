@@ -148,13 +148,15 @@ internal sealed class PreparationProgressService(
             {
                 Confirmed = content.Quantity,
                 Removed = quantityState == null ? (int?)null : quantityState.RemovedByCorrectionQuantity,
+                Cancelled = quantityState == null ? (int?)null : quantityState.CancelledQuantity,
                 Delivered = delivery == null ? (int?)null : delivery.DeliveredQuantity
             }).SingleOrDefaultAsync(cancellationToken);
         var effective = contentState?.Removed is null
             ? (int?)null
-            : contentState.Confirmed - contentState.Removed.Value;
+            : contentState.Confirmed - contentState.Removed.Value - contentState.Cancelled;
         if (contentState is null || contentState.Confirmed <= 0 || effective < 0 || contentState.Removed < 0 ||
-            contentState.Removed > contentState.Confirmed || contentState.Delivered is null ||
+            contentState.Cancelled is null || contentState.Cancelled < 0 ||
+            (long?)contentState.Removed + contentState.Cancelled > contentState.Confirmed || contentState.Delivered is null ||
             contentState.Delivered < 0 || contentState.Delivered > effective ||
             work.TotalQuantity != effective || work.PendingQuantity < 0 ||
             work.InPreparationQuantity < 0 || work.ReadyQuantity < 0 ||

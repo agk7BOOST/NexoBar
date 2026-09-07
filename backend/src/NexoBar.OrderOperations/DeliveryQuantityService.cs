@@ -155,9 +155,11 @@ internal sealed class DeliveryQuantityService(
             .SingleOrDefaultAsync(cancellationToken);
         var effectiveQuantity = quantityState is null
             ? -1
-            : checked(content.Quantity - quantityState.RemovedByCorrectionQuantity);
+            : checked(content.Quantity - quantityState.RemovedByCorrectionQuantity - quantityState.CancelledQuantity);
         if (content.Quantity <= 0 ||
             quantityState is null ||
+            quantityState.CancelledQuantity < 0 ||
+            (long)quantityState.RemovedByCorrectionQuantity + quantityState.CancelledQuantity > content.Quantity ||
             quantityState.RemovedByCorrectionQuantity < 0 ||
             quantityState.RemovedByCorrectionQuantity > content.Quantity ||
             effectiveQuantity < 0 ||

@@ -1,4 +1,6 @@
 using System.Text;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
 namespace NexoBar.OrderOperations.IntegrationTests;
@@ -21,9 +23,13 @@ public sealed class ContentQuantityStateMigrationTests(OrderOperationsApiFixture
             await SeedContentsAsync(incorporationId, token);
             await fixture.MigrateOrderOperationsAsync(CurrentMigration, token);
 
-            var states = await fixture.ReadContentQuantityStatesAsync(token);
-            Assert.Equal(2, states.Count);
-            Assert.All(states, state => Assert.Equal(0, state.RemovedByCorrectionQuantity));
+            // Read only columns present at this historical migration.
+            await using var scope = fixture.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+            var removedQuantities = await db.ContentQuantityStates.AsNoTracking()
+                .Select(state => state.RemovedByCorrectionQuantity).ToArrayAsync(token);
+            Assert.Equal(2, removedQuantities.Length);
+            Assert.All(removedQuantities, removed => Assert.Equal(0, removed));
             Assert.All(new[]
             {
                 "content_quantity_states",

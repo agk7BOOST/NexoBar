@@ -253,11 +253,21 @@ internal sealed class ContentQuantityState
     internal Guid IncorporationId { get; private set; }
     internal int ContentOrdinal { get; private set; }
     internal int RemovedByCorrectionQuantity { get; private set; }
+    internal int CancelledQuantity { get; private set; }
+
+    internal void Cancel(int quantity, int confirmedQuantity, int eligibleQuantity)
+    {
+        if (quantity <= 0 || quantity > eligibleQuantity || RemovedByCorrectionQuantity < 0 ||
+            CancelledQuantity < 0 || quantity > (long)confirmedQuantity - RemovedByCorrectionQuantity - CancelledQuantity)
+            throw new InvalidOperationException("The exact content cancellation is not eligible.");
+        CancelledQuantity = checked(CancelledQuantity + quantity);
+    }
 
     internal void Correct(int quantity, int confirmedQuantity, int eligibleQuantity)
     {
         if (quantity <= 0 || quantity > eligibleQuantity ||
-            RemovedByCorrectionQuantity < 0 || quantity > (long)confirmedQuantity - RemovedByCorrectionQuantity)
+            RemovedByCorrectionQuantity < 0 || CancelledQuantity < 0 ||
+            quantity > (long)confirmedQuantity - RemovedByCorrectionQuantity - CancelledQuantity)
             throw new InvalidOperationException("The exact content correction is not eligible.");
         RemovedByCorrectionQuantity = checked(RemovedByCorrectionQuantity + quantity);
     }
@@ -309,6 +319,14 @@ internal sealed class PreparationWork
     {
         if (quantity <= 0 || quantity > PendingQuantity)
             throw new InvalidOperationException("The exact correction exceeds Pending quantity.");
+        PendingQuantity -= quantity;
+        TotalQuantity -= quantity;
+    }
+
+    internal void CancelPending(int quantity)
+    {
+        if (quantity <= 0 || quantity > PendingQuantity)
+            throw new InvalidOperationException("The exact cancellation exceeds Pending quantity.");
         PendingQuantity -= quantity;
         TotalQuantity -= quantity;
     }
