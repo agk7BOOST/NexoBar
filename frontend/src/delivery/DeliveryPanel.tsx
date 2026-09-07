@@ -1,3 +1,4 @@
+import { maximumContentCancellation } from "./contentCancellation.ts";
 import { maximumContentCorrection } from "./contentCorrection.ts";
 import { getOrder } from "../orderOperations/orderOperationsClient.ts";
 import { listPreparationDestinations } from "../identity/sessionClient.ts";
@@ -14,6 +15,7 @@ import {
 import {
   correctDelivery,
   correctContentQuantity,
+  cancelContentQuantity,
   deliverQuantity,
   DeliveryProblemError,
   getOrderDelivery,
@@ -35,7 +37,7 @@ type DeliveryIntentPhase = "submitting" | "uncertain";
 interface DeliveryIntent {
   operationalReference: string;
   phase: DeliveryIntentPhase;
-  kind: "delivery" | "correction" | "contentCorrection";
+  kind: "delivery" | "correction" | "contentCorrection" | "cancellation";
   orderId: string;
   antiforgeryToken?: string;
   incorporationId: string;
@@ -76,6 +78,12 @@ export function DeliveryPanel({
   onOrderChanged,
   onBusyChange,
 }: DeliveryPanelProps) {
+  const [cancellationInputs, setCancellationInputs] = useState<
+    Record<string, string>
+  >({});
+  const [cancellationOpen, setCancellationOpen] = useState<
+    Record<string, boolean>
+  >({});
   const [works, setWorks] = useState<PreparationWork[]>([]);
   const [correctionStateAvailable, setCorrectionStateAvailable] =
     useState(false);
@@ -338,14 +346,19 @@ export function DeliveryPanel({
           antiforgeryToken,
         };
         const result =
-          intent.kind === "contentCorrection"
-            ? await correctContentQuantity({
+          intent.kind === "cancellation"
+            ? await cancelContentQuantity({
                 ...command,
                 orderId: intent.orderId,
               })
-            : intent.kind === "correction"
-              ? await correctDelivery({ ...command, orderId: intent.orderId })
-              : await deliverQuantity(command);
+            : intent.kind === "contentCorrection"
+              ? await correctContentQuantity({
+                  ...command,
+                  orderId: intent.orderId,
+                })
+              : intent.kind === "correction"
+                ? await correctDelivery({ ...command, orderId: intent.orderId })
+                : await deliverQuantity(command);
 
         if (
           result.incorporationId !== intent.incorporationId ||
@@ -355,6 +368,8 @@ export function DeliveryPanel({
         }
 
         clearIntent(key);
+        setCancellationOpen((current) => ({ ...current, [key]: false }));
+        setCancellationInputs((current) => ({ ...current, [key]: "" }));
         setContentCorrectionOpen((current) => ({ ...current, [key]: false }));
         if (intent.kind === "correction") {
           setCorrectionOpen((current) => ({ ...current, [key]: false }));
@@ -377,14 +392,18 @@ export function DeliveryPanel({
             setContentMessage(key, {
               kind: "uncertain",
               text:
-                intent.kind === "contentCorrection"
-                  ? "No se pudo confirmar el resultado de la corrección de cantidad confirmada."
-                  : intent.kind === "correction"
-                    ? "No se pudo confirmar el resultado de la corrección de entrega."
-                    : "No se pudo confirmar el resultado de la entrega.",
+                intent.kind === "cancellation"
+                  ? "No se pudo confirmar el resultado de la cancelación de cantidad pendiente."
+                  : intent.kind === "contentCorrection"
+                    ? "No se pudo confirmar el resultado de la corrección de cantidad confirmada."
+                    : intent.kind === "correction"
+                      ? "No se pudo confirmar el resultado de la corrección de entrega."
+                      : "No se pudo confirmar el resultado de la entrega.",
               detail:
                 error.status >= 500
-                  ? "No se pudo procesar la entrega por un problema técnico."
+                  ? intent.kind === "cancellation"
+                    ? "La cancelación no tiene un resultado confirmado por un problema técnico."
+                    : "No se pudo procesar la entrega por un problema técnico."
                   : undefined,
             });
             return;
@@ -420,9 +439,11 @@ export function DeliveryPanel({
             setContentMessage(key, {
               kind: "error",
               text:
-                intent.kind === "contentCorrection"
-                  ? "Esta Identity no tiene autorización para corregir la cantidad confirmada."
-                  : forbiddenMessage,
+                intent.kind === "cancellation"
+                  ? "Esta Identity no tiene autorización para cancelar la cantidad pendiente."
+                  : intent.kind === "contentCorrection"
+                    ? "Esta Identity no tiene autorización para corregir la cantidad confirmada."
+                    : forbiddenMessage,
             });
             return;
           }
@@ -447,11 +468,13 @@ export function DeliveryPanel({
           setContentMessage(key, {
             kind: "error",
             text:
-              intent.kind === "contentCorrection"
-                ? "No se pudo corregir la cantidad confirmada. Revisá la cantidad e intentá nuevamente."
-                : error.status === 400
-                  ? "No se pudo realizar la entrega. Revisá la cantidad e intentá nuevamente."
-                  : "No se pudo realizar la entrega.",
+              intent.kind === "cancellation"
+                ? "No se pudo cancelar la cantidad pendiente. Revisá la cantidad e intentá nuevamente."
+                : intent.kind === "contentCorrection"
+                  ? "No se pudo corregir la cantidad confirmada. Revisá la cantidad e intentá nuevamente."
+                  : error.status === 400
+                    ? "No se pudo realizar la entrega. Revisá la cantidad e intentá nuevamente."
+                    : "No se pudo realizar la entrega.",
           });
           return;
         }
@@ -460,11 +483,13 @@ export function DeliveryPanel({
         setContentMessage(key, {
           kind: "uncertain",
           text:
-            intent.kind === "contentCorrection"
-              ? "No se pudo confirmar el resultado de la corrección de cantidad confirmada."
-              : intent.kind === "correction"
-                ? "No se pudo confirmar el resultado de la corrección de entrega."
-                : "No se pudo confirmar el resultado de la entrega.",
+            intent.kind === "cancellation"
+              ? "No se pudo confirmar el resultado de la cancelación de cantidad pendiente."
+              : intent.kind === "contentCorrection"
+                ? "No se pudo confirmar el resultado de la corrección de cantidad confirmada."
+                : intent.kind === "correction"
+                  ? "No se pudo confirmar el resultado de la corrección de entrega."
+                  : "No se pudo confirmar el resultado de la entrega.",
         });
       }
     },
@@ -482,7 +507,11 @@ export function DeliveryPanel({
   const submitNewIntent = useCallback(
     (
       item: OrderDeliveryContent,
-      kind: "delivery" | "correction" | "contentCorrection" = "delivery",
+      kind:
+        | "delivery"
+        | "correction"
+        | "contentCorrection"
+        | "cancellation" = "delivery",
     ) => {
       if (operationalReference === null || mutationsBlocked) return;
       const key = contentKey(item);
@@ -494,23 +523,29 @@ export function DeliveryPanel({
       }
 
       const maximum =
-        kind === "contentCorrection"
+        kind === "cancellation"
           ? correctionStateAvailable
-            ? (maximumContentCorrection(item, works) ?? 0)
+            ? (maximumContentCancellation(item, works) ?? 0)
             : 0
-          : kind === "correction"
-            ? item.deliveredQuantity
-            : item.deliverableQuantity;
+          : kind === "contentCorrection"
+            ? correctionStateAvailable
+              ? (maximumContentCorrection(item, works) ?? 0)
+              : 0
+            : kind === "correction"
+              ? item.deliveredQuantity
+              : item.deliverableQuantity;
       const rawQuantity =
-        (kind === "contentCorrection"
-          ? contentCorrectionInputs[key]
-          : kind === "correction"
-            ? correctionInputs[key]
-            : quantityInputs[key]) ?? "";
+        (kind === "cancellation"
+          ? cancellationInputs[key]
+          : kind === "contentCorrection"
+            ? contentCorrectionInputs[key]
+            : kind === "correction"
+              ? correctionInputs[key]
+              : quantityInputs[key]) ?? "";
       const quantity = Number(rawQuantity);
       if (
         !/^\d+$/.test(rawQuantity) ||
-        !Number.isInteger(quantity) ||
+        !Number.isSafeInteger(quantity) ||
         quantity <= 0 ||
         quantity > maximum
       ) {
@@ -542,6 +577,7 @@ export function DeliveryPanel({
       quantityInputs,
       correctionInputs,
       contentCorrectionInputs,
+      cancellationInputs,
       correctionStateAvailable,
       works,
       delivery,
@@ -635,6 +671,16 @@ export function DeliveryPanel({
                 const correctionMaximum = correctionStateAvailable
                   ? maximumContentCorrection(item, works)
                   : null;
+                const cancellationMaximum = correctionStateAvailable
+                  ? maximumContentCancellation(item, works)
+                  : null;
+                const cancellationRequested = cancellationInputs[key] ?? "";
+                const validCancellation =
+                  /^\d+$/.test(cancellationRequested) &&
+                  Number.isSafeInteger(Number(cancellationRequested)) &&
+                  Number(cancellationRequested) > 0 &&
+                  cancellationMaximum !== null &&
+                  Number(cancellationRequested) <= cancellationMaximum;
                 const requested = contentCorrectionInputs[key] ?? "";
                 const validCorrection =
                   /^\d+$/.test(requested) &&
@@ -758,6 +804,10 @@ export function DeliveryPanel({
                           </dd>
                         </div>
                         <div>
+                          <dt>C · Cantidad cancelada</dt>
+                          <dd>{item.cancelledQuantity ?? "No disponible"}</dd>
+                        </div>
+                        <div>
                           <dt>F · Obligación vigente</dt>
                           <dd>
                             {item.currentFulfillmentQuantity ?? "No disponible"}
@@ -844,6 +894,83 @@ export function DeliveryPanel({
                         )}
                     </div>
 
+                    <div className="content-cancellation">
+                      <p>
+                        Cancelación: la cantidad fue confirmada válidamente,
+                        pero ya no se necesita.
+                      </p>
+                      {cancellationMaximum === null ? (
+                        <p>
+                          Cancelación de cantidad pendiente: Estado no
+                          disponible o inconsistente.
+                        </p>
+                      ) : (
+                        <p>
+                          Máximo cancelable actualmente: {cancellationMaximum}
+                        </p>
+                      )}
+                      {!mutationsBlocked &&
+                        cancellationMaximum !== null &&
+                        cancellationMaximum > 0 && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={isBlocked}
+                              onClick={() =>
+                                setCancellationOpen((current) => ({
+                                  ...current,
+                                  [key]: true,
+                                }))
+                              }
+                            >
+                              Cancelar cantidad pendiente
+                            </button>
+                            {cancellationOpen[key] && (
+                              <form
+                                noValidate
+                                onSubmit={(event) => {
+                                  event.preventDefault();
+                                  submitNewIntent(item, "cancellation");
+                                }}
+                              >
+                                <label htmlFor={fieldId + "-cancellation"}>
+                                  Cantidad a cancelar (x) — {description}
+                                </label>
+                                <input
+                                  id={fieldId + "-cancellation"}
+                                  type="number"
+                                  min="1"
+                                  max={cancellationMaximum}
+                                  step="1"
+                                  value={cancellationRequested}
+                                  disabled={isBlocked}
+                                  onChange={(event) =>
+                                    setCancellationInputs((current) => ({
+                                      ...current,
+                                      [key]: event.target.value,
+                                    }))
+                                  }
+                                />
+                                <p>
+                                  Cantidad solicitada para cancelar (x):{" "}
+                                  {cancellationRequested || "—"}
+                                </p>
+                                <p>
+                                  F resultante tras cancelar (prevista):{" "}
+                                  {validCancellation
+                                    ? item.currentFulfillmentQuantity! -
+                                      Number(cancellationRequested)
+                                    : "—"}
+                                </p>
+                                <button type="submit" disabled={isBlocked}>
+                                  Confirmar cancelación de cantidad pendiente
+                                </button>
+                              </form>
+                            )}
+                          </>
+                        )}
+                    </div>
+
                     {!mutationsBlocked && item.deliveredQuantity > 0 && (
                       <div className="delivery-action">
                         <button
@@ -916,11 +1043,13 @@ export function DeliveryPanel({
 
                     {intent?.phase === "submitting" && (
                       <p role="status">
-                        {intent.kind === "contentCorrection"
-                          ? "Confirmando corrección de cantidad confirmada…"
-                          : intent.kind === "correction"
-                            ? "Confirmando corrección de entrega…"
-                            : "Confirmando entrega…"}
+                        {intent.kind === "cancellation"
+                          ? "Confirmando cancelación de cantidad pendiente…"
+                          : intent.kind === "contentCorrection"
+                            ? "Confirmando corrección de cantidad confirmada…"
+                            : intent.kind === "correction"
+                              ? "Confirmando corrección de entrega…"
+                              : "Confirmando entrega…"}
                       </p>
                     )}
                     {synchronizing[key] !== undefined && (

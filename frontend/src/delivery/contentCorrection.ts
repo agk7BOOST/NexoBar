@@ -8,13 +8,14 @@ export function maximumContentCorrection(
 ): number | null {
   const q = item.confirmedQuantity;
   const r = item.removedByCorrectionQuantity;
+  const c = item.cancelledQuantity ?? 0;
   const f = item.currentFulfillmentQuantity;
   if (
-    ![q, r, f, item.deliveredQuantity].every(
+    ![q, r, c, f, item.deliveredQuantity].every(
       (n) => Number.isSafeInteger(n) && n! >= 0,
     ) ||
     q! <= 0 ||
-    q! - r! !== f ||
+    q! - r! - c !== f ||
     item.totalQuantity !== f ||
     item.deliveredQuantity > f! ||
     item.remainingQuantity !== f! - item.deliveredQuantity

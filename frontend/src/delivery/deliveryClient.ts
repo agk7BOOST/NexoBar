@@ -1,4 +1,5 @@
 export interface OrderDeliveryContent {
+  cancelledQuantity?: number;
   confirmedQuantity?: number;
   removedByCorrectionQuantity?: number;
   currentFulfillmentQuantity?: number;
@@ -52,6 +53,48 @@ export async function correctContentQuantity(
     !isNonNegativeInteger(value.resultingFulfillmentQuantity)
   )
     throw new Error("Content Correction response was not interpretable.");
+  return {
+    incorporationId: command.incorporationId,
+    contentOrdinal: command.contentOrdinal,
+  };
+}
+
+export async function cancelContentQuantity(
+  command: CorrectDeliveryCommand,
+): Promise<{ incorporationId: string; contentOrdinal: number }> {
+  const response = await fetch(
+    `/api/order-operations/orders/${encodeURIComponent(command.orderId)}/incorporations/${encodeURIComponent(command.incorporationId)}/contents/${command.contentOrdinal}/cancel-content-quantity`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": command.idempotencyKey,
+        "X-NexoBar-CSRF": command.antiforgeryToken,
+      },
+      body: JSON.stringify({ quantity: command.quantity }),
+    },
+  );
+  if (!response.ok) {
+    if ([401, 403, 408].includes(response.status) || response.status >= 500)
+      throw new DeliveryProblemError(response.status);
+    throw new DeliveryProblemError(
+      response.status,
+      await readProblem(response),
+    );
+  }
+  const value: unknown = await response.json();
+  if (
+    !isRecord(value) ||
+    value.orderId !== command.orderId ||
+    value.incorporationId !== command.incorporationId ||
+    value.contentOrdinal !== command.contentOrdinal ||
+    value.cancelledQuantity !== command.quantity ||
+    !isNonNegativeInteger(value.confirmedQuantity) ||
+    !isNonNegativeInteger(value.resultingCancelledQuantity) ||
+    !isNonNegativeInteger(value.resultingFulfillmentQuantity)
+  )
+    throw new Error("Content Cancellation response was not interpretable.");
   return {
     incorporationId: command.incorporationId,
     contentOrdinal: command.contentOrdinal,

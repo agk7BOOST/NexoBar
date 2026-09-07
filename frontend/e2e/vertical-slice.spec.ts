@@ -822,3 +822,53 @@ test("Delivery Correction reduce importe, permite reentrega y desaparece al Liqu
     content.getByRole("button", { name: /^Corregir entrega / }),
   ).toHaveCount(0);
 });
+
+test("Content Cancellation conserva Q, aumenta C y permite cumplir y Liquidar", async ({
+  page,
+}) => {
+  const { productName, operationalReference } =
+    await createConfirmedOrder(page);
+  await page
+    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .click();
+  const content = page
+    .getByRole("region", { name: `Entrega del Pedido ${operationalReference}` })
+    .getByRole("article", {
+      name: `${productName}, sin instrucción, incorporación 1`,
+    });
+  const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
+  const amount = ending
+    .getByText("Importe funcional actual")
+    .locator("..")
+    .locator("dd");
+  await content
+    .getByRole("button", { name: "Cancelar cantidad pendiente", exact: true })
+    .click();
+  await content.getByLabel(/^Cantidad a cancelar \(x\)/).fill("1");
+  await expect(content).toContainText("Máximo cancelable actualmente: 2");
+  await expect(content).toContainText(
+    "F resultante tras cancelar (prevista): 1",
+  );
+  await content
+    .getByRole("button", {
+      name: "Confirmar cancelación de cantidad pendiente",
+    })
+    .click();
+  await expect(content).toContainText("Q · Cantidad confirmada original2");
+  await expect(content).toContainText("C · Cantidad cancelada1");
+  await expect(content).toContainText("F · Obligación vigente1");
+  await expect(amount).toHaveText(/^0(?:\.0+)?$/);
+  await content.getByRole("button", { name: /^Entregar / }).click();
+  await expect(content).toContainText("Delivered1");
+  await expect(amount).toHaveText(/^10(?:\.0+)?$/);
+  await ending.getByLabel("Medio de pago declarado").fill("Efectivo");
+  await ending.getByRole("button", { name: "Liquidar", exact: true }).click();
+  await expect(ending.getByText(/Pedido congelado/)).toBeVisible();
+  await expect(
+    content.getByRole("button", {
+      name: "Cancelar cantidad pendiente",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(content).toContainText("Q · Cantidad confirmada original2");
+});
