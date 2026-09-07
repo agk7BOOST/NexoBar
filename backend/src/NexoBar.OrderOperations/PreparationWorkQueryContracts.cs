@@ -7,6 +7,7 @@ internal sealed record PreparationWorkResponse(
     string Context,
     Guid IncorporationId,
     int IncorporationOrdinal,
+    int ContentOrdinal,
     Guid ProductId,
     string ProductOperationalName,
     string? Instruction,

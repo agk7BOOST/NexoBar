@@ -174,6 +174,20 @@ public sealed class ConfirmationInstructionApiTests(OrderOperationsApiFixture fi
             new string?[] { null, "sin cebolla", "sin tomate" },
             queriedWork.Select(work => work.Instruction).ToArray());
         Assert.All(queriedWork, work => Assert.Equal(productId, work.ProductId));
+        Assert.Equal(3, queriedWork.Select(work =>
+            (work.IncorporationId, work.ContentOrdinal)).Distinct().Count());
+        Assert.All(queriedWork, work =>
+        {
+            var persisted = Assert.Single(works, candidate => candidate.Id == work.WorkId);
+            Assert.Equal(persisted.IncorporationId, work.IncorporationId);
+            Assert.Equal(persisted.ContentOrdinal, work.ContentOrdinal);
+            Assert.Equal(persisted.Instruction, work.Instruction);
+            Assert.Equal(persisted.PreparationResponsibilityId, work.PreparationResponsibilityId);
+            Assert.Equal(persisted.TotalQuantity, work.TotalQuantity);
+            Assert.Equal(persisted.PendingQuantity, work.PendingQuantity);
+            Assert.Equal(persisted.InPreparationQuantity, work.InPreparationQuantity);
+            Assert.Equal(persisted.ReadyQuantity, work.ReadyQuantity);
+        });
     }
 
     [Fact]

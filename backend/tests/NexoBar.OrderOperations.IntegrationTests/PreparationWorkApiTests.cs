@@ -455,8 +455,20 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         using var response = await client.GetAsync(WorkUrl(responsibility), token);
 
         response.EnsureSuccessStatusCode();
-        Assert.Equal(2, Assert.IsType<PreparationWorkResponse[]>(
-            await response.Content.ReadFromJsonAsync<PreparationWorkResponse[]>(token)).Length);
+        var queriedWork = Assert.IsType<PreparationWorkResponse[]>(
+            await response.Content.ReadFromJsonAsync<PreparationWorkResponse[]>(token));
+        Assert.Equal(2, queriedWork.Length);
+        Assert.Equal(2, queriedWork.Select(work => work.IncorporationId).Distinct().Count());
+        Assert.All(queriedWork, work => Assert.Equal(1, work.ContentOrdinal));
+        Assert.Equal(2, queriedWork.Select(work =>
+            (work.IncorporationId, work.ContentOrdinal)).Distinct().Count());
+        var persistedWork = await fixture.ReadPreparationWorkAsync(token);
+        Assert.All(queriedWork, work =>
+        {
+            var persisted = Assert.Single(persistedWork, candidate => candidate.Id == work.WorkId);
+            Assert.Equal(persisted.IncorporationId, work.IncorporationId);
+            Assert.Equal(persisted.ContentOrdinal, work.ContentOrdinal);
+        });
         Assert.Equal(1, observation.CallCount);
         Assert.Equal([product.Id], observation.RequestedProductIds);
     }
@@ -713,6 +725,10 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         Assert.Equal("string", operationalReference.GetProperty("type").GetString());
         Assert.False(operationalReference.TryGetProperty("format", out _));
         Assert.True(schema.GetProperty("properties").TryGetProperty("context", out _));
+        var contentOrdinal = schema.GetProperty("properties").GetProperty("contentOrdinal");
+        Assert.Contains("integer", contentOrdinal.GetProperty("type").EnumerateArray()
+            .Select(value => value.GetString()));
+        Assert.Equal("int32", contentOrdinal.GetProperty("format").GetString());
         Assert.True(schema.GetProperty("properties")
             .TryGetProperty("productOperationalName", out _));
         Assert.True(schema.GetProperty("properties").TryGetProperty(
