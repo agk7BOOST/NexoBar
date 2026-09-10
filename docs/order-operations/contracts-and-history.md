@@ -20,11 +20,11 @@ Este documento conserva las estructuras de Historia, matching durable y contrato
 
 INT-03 define Pending/InPreparation/Ready/Total como obligación de cumplimiento actual, no producción histórica acumulada. INT-05 sitúa la procedencia de Cancellation tras trabajo real en Historia semántica, sin introducir `CancelledFromInPreparation` ni `CancelledFromReady` en State.
 
-La Historia debe explicar que el trabajo realmente empezó o llegó a Ready y que posteriormente cesó esa obligación, distinguiendo intervención desde InPreparation de intervención desde Ready. Debe distinguir OperationalIntervention de Cancellation ordinaria, Content Correction, Preparation Correction y Delivery Correction. No se reescriben ni reinterpretan los Start/Ready originales como errores de registro.
+La Historia implementada en S7-I6D registra que el trabajo realmente empezó o llegó a Ready y que posteriormente cesó esa obligación, distinguiendo intervención desde InPreparation de intervención desde Ready. OperationalIntervention tiene Historia semántica distinta de Cancellation ordinaria, Content Correction, Preparation Correction y Delivery Correction. No se reescriben ni reinterpretan los Start/Ready originales como errores de registro.
 
 C más los buckets actuales permite leer la obligación operacional vigente sin replay de Historia, pero no identifica por sí solo si la cantidad fue cancelada en Pending, InPreparation o Ready. Esa procedencia se conserva en Historia; no se agregan contadores de etapa para obtenerla desde State.
 
-Se deben preferir dos intenciones explícitas de intervención, una para InPreparation y otra para Ready, en lugar de un editor genérico de Estado. Las [transiciones INT-01/02 y límites INT-04/06/07](preparation.md#operationalintervention--decisiones-aprobadas-s7-int-d) están aprobados; su implementación sigue pendiente. Esta decisión no materializa aún esquema de eventos, endpoints ni query/API/UI de Historia.
+Existen dos intenciones explícitas de intervención, una para InPreparation y otra para Ready, con idempotencia durable UUID v4. Las [transiciones INT-01/02 y límites INT-04/06/07](preparation.md#operationalintervention--decisiones-aprobadas-s7-int-d) están implementados verticalmente en S7-I6D, incluida la lectura estrecha del target. Ambas intenciones preservan Q, R, Delivered y Functional Amount; C sigue siendo la única deducción por cancelación. Este registro no afirma una query/API/UI de Historia implementada.
 
 ## Contratos e idempotencia
 

@@ -27,7 +27,7 @@ ReadyQuantity >= 0
 PendingQuantity + InPreparationQuantity + ReadyQuantity == TotalQuantity
 ```
 
-El Work nace con `TotalQuantity > 0`. Content Correction o Cancellation ordinarias pueden llevar `F` y Total a cero consumiendo Pending y preservando la fila Work. Las transiciones aprobadas sobre trabajo real `InPreparation` o `Ready` se definen en [OperationalIntervention](#operationalintervention--decisiones-aprobadas-s7-int-d); su implementación sigue pendiente.
+El Work nace con `TotalQuantity > 0`. Content Correction o Cancellation ordinarias pueden llevar `F` y Total a cero consumiendo Pending y preservando la fila Work. Las transiciones sobre trabajo real `InPreparation` o `Ready` se definen en [OperationalIntervention](#operationalintervention--decisiones-aprobadas-s7-int-d) y están implementadas verticalmente en S7-I6D.
 
 No existe un `Status` persistido. Son derivaciones, no columnas:
 
@@ -94,7 +94,7 @@ Ready es parcial. Cuando `ReadyQuantity == TotalQuantity`, el Work está complet
 
 Preparation Progress Correction está implementada verticalmente mediante dos comandos explícitos: Correct Start y Correct Ready.
 
-Preparation Correction significa que el progreso de Preparation registrado fue erróneo. No cambia una obligación que era correcta y después dejó de ser requerida; ese caso corresponde a OperationalIntervention, con semántica aprobada en S7-INT-D e implementación pendiente. Tampoco es Content Correction, Content Cancellation ni Delivery Correction.
+Preparation Correction significa que el progreso de Preparation registrado fue erróneo. No cambia una obligación que era correcta y después dejó de ser requerida; ese caso corresponde a OperationalIntervention, con semántica aprobada en S7-INT-D e implementada verticalmente en S7-I6D. Tampoco es Content Correction, Content Cancellation ni Delivery Correction.
 
 La corrección es por cantidad sobre el Estado actual del Work. No selecciona ni referencia un evento histórico Start o Ready original. La Historia original de Start/Ready permanece preservada y cada Correction registra su propia Historia semántica distinta, sin requerir una referencia al evento original.
 
@@ -120,7 +120,7 @@ Si Ready y Start fueron registrados erróneamente, se ejecutan dos comandos expl
 
 ### OperationalIntervention — decisiones aprobadas S7-INT-D
 
-INT-01..07 son decisiones aprobadas; esta sección no afirma implementación de comandos, lecturas ni persistencia de intervención.
+INT-01..INT-07 están implementadas verticalmente en S7-I6D: backend, autorización, lectura estrecha, frontend y un E2E vertical dirigido. Este registro documenta el estado implementado informado para S7-I6D, sin agregar decisiones a S7-INT-D.
 
 **INT-01 — Cancelar cantidad real InPreparation.** Para una cantidad entera positiva exacta `x <= InPreparationQuantity`, la intervención aplica atómicamente:
 
@@ -150,11 +150,29 @@ F = Q - R - C  (disminuye en x)
 
 **INT-05 — Procedencia en Historia.** La distinción entre intervención desde InPreparation o Ready pertenece a Historia semántica; no se introducen contadores State `CancelledFromInPreparation` ni `CancelledFromReady`. La Historia de intervención se distingue de Cancellation ordinaria, Content Correction, Preparation Correction y Delivery Correction, preservando los Start/Ready originales. Véase [Estado e Historia de intervención](contracts-and-history.md#operationalintervention--historia-y-estado-aprobados-s7-int-d).
 
-**INT-06 — Autoridad de intervención.** Una intervención nueva requiere `OperationalIntervention`; no exige adicionalmente `Preparation` ni `PreparationEnablement`. Su lectura debe tener alcance estrecho suficiente para entender el target exacto, sin conceder Start, Ready, Preparation Correction ni autoridad general sobre colas de destinos. Esta frontera no cambia la autorización de los comandos y consultas ordinarios de Preparation. Véase [autoridad de Identity](../identities-and-capabilities/security.md#operationalintervention--frontera-aprobada-int-06).
+**INT-06 — Autoridad de intervención.** Una intervención nueva requiere Session utilizable, Identity activa, responsabilidad `OperationalIntervention`, antiforgery e idempotencia durable con UUID v4; no exige adicionalmente `Preparation` ni `PreparationEnablement`. Existe una lectura estrecha del target exacto bajo autoridad de intervención, sin conceder Start, Ready, Preparation Correction ni autoridad general sobre colas de destinos. Esta frontera no cambia la autorización de los comandos y consultas ordinarios de Preparation. Véase [autoridad de Identity](../identities-and-capabilities/security.md#operationalintervention--frontera-aprobada-int-06).
 
 **INT-07 — Alcance parcial.** La intervención parcial puede coexistir con PendingComposition y no lo consume ni descarta. Está prohibida después de Liquidation/Freeze y no cambia Functional Amount. No implica desperdicio, descarte ni recuperación físicos; no modifica Inventory ni implementa Cancellation completa de Order. Véanse [terminación](ending.md) y [pendientes](pending.md).
 
-La implementación debe preferir dos intenciones explícitas de intervención, una para InPreparation y otra para Ready, en lugar de un editor genérico de Estado. Estas decisiones no fijan nombres de endpoints ni afirman contratos implementados.
+La implementación tiene dos intenciones explícitas de intervención: desde InPreparation y desde Ready, con las transiciones exactas INT-01/02. Ambas preservan Q, R, Delivered, Functional Amount y la Historia original de Preparation Start/Ready. C sigue siendo la única deducción por cancelación y no se agregaron contadores State de intervención. Con P = Pending, I = InPreparation, Y = Ready, T = Total y D = Delivered, permanecen las invariantes `F = Q - R - C`, `P + I + Y = T = F` y `0 <= D <= Y`. La intervención no liquida ni cierra automáticamente el Order.
+
+#### Frontend de OperationalIntervention — S7-I6D
+
+Existe una superficie distinta «Intervención operacional» que usa únicamente la lectura estrecha de intervención. Expone acciones explícitas equivalentes a «Cancelar cantidad ya iniciada» y «Cancelar cantidad ya lista», mostrando los límites exactos `0 < x <= InPreparationQuantity` y `0 < x <= ReadyQuantity - DeliveredQuantity`, respectivamente.
+
+La superficie refresca desde la autoridad backend, no realiza mutaciones optimistas de State y preserva el reintento exacto de una intención incierta. No presenta intervención como Correction/Undo ni implica efectos de desperdicio, descarte, recuperación o inventario.
+
+#### Checkpoint E2E vertical dirigido — S7-I6D
+
+Un E2E vertical dirigido verifica el recorrido:
+
+```text
+Start 2 → Ready 2 → Delivery 1 → intervención desde Ready 1
+→ C=1, F=T=1, Ready=1, Delivered=1, Deliverable=0
+→ Functional Amount=7 → Liquidation exitosa → Freeze
+```
+
+El actor de intervención tiene `OperationalIntervention`, sin `Preparation` ni `PreparationEnablement`. El harness E2E ahora permite reenviar argumentos de Playwright después de `--` para ejecutar casos focalizados, preservando la ejecución de la suite completa por defecto. Este checkpoint registra la evidencia informada para S7-I6D; no implica una nueva ejecución durante esta actualización documental.
 
 ### Autorización, actores y concurrencia
 

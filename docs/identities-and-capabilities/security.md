@@ -30,9 +30,9 @@ GeneralConfiguration
 
 ### OperationalIntervention — frontera aprobada INT-06
 
-Una intervención nueva sobre trabajo real InPreparation o Ready requiere `OperationalIntervention`. No exige adicionalmente `Preparation` ni `PreparationEnablement`; no se aplica autorización dual por actuar sobre ese Work. Esta decisión de S7-INT-D está aprobada y su implementación sigue pendiente.
+Una intervención nueva sobre trabajo real InPreparation o Ready requiere Session utilizable, Identity activa, responsabilidad `OperationalIntervention`, antiforgery e idempotencia durable UUID v4. No exige adicionalmente `Preparation` ni `PreparationEnablement`; no se aplica autorización dual por actuar sobre ese Work. Esta frontera de S7-INT-D está implementada verticalmente en S7-I6D.
 
-La intervención debe contar con una lectura de alcance estrecho suficiente para entender el target exacto bajo su autoridad de intervención. Esa lectura no concede Start, Ready, Preparation Correction ni autoridad general sobre colas de destinos. No amplía la consulta ordinaria de Preparation ni el listado de destinos habilitados de la Identity actual. Las [transiciones y límites INT-01..07](../order-operations/preparation.md#operationalintervention--decisiones-aprobadas-s7-int-d) pertenecen a OrderOperations.
+La intervención cuenta con una lectura de alcance estrecho del target exacto bajo su autoridad de intervención. Esa lectura no concede Start, Ready, Preparation Correction ni autoridad general sobre colas de destinos. No amplía la consulta ordinaria de Preparation ni el listado de destinos habilitados de la Identity actual. Las [transiciones y límites INT-01..07](../order-operations/preparation.md#operationalintervention--decisiones-aprobadas-s7-int-d) pertenecen a OrderOperations. El checkpoint E2E vertical dirigido usa un actor con `OperationalIntervention` sin `Preparation` ni `PreparationEnablement`.
 
 ### Credencial local
 
