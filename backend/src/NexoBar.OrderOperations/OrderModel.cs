@@ -331,6 +331,22 @@ internal sealed class PreparationWork
         TotalQuantity -= quantity;
     }
 
+    internal void InterveneInPreparation(int quantity)
+    {
+        if (quantity <= 0 || quantity > InPreparationQuantity)
+            throw new InvalidOperationException("The exact intervention exceeds InPreparation quantity.");
+        InPreparationQuantity -= quantity;
+        TotalQuantity -= quantity;
+    }
+
+    internal void InterveneReady(int quantity, int deliveredQuantity)
+    {
+        if (quantity <= 0 || deliveredQuantity < 0 || quantity > ReadyQuantity - deliveredQuantity)
+            throw new InvalidOperationException("The exact intervention exceeds undelivered Ready quantity.");
+        ReadyQuantity -= quantity;
+        TotalQuantity -= quantity;
+    }
+
     internal PreparationStartTransition Start(int quantity)
     {
         if (quantity <= 0)

@@ -42,6 +42,8 @@ public static partial class OrderOperationsModule
         services.AddScoped<ContentCancellationService>();
         services.AddScoped<PreparationWorkQueryService>();
         services.AddScoped<PreparationProgressService>();
+        services.AddScoped<OperationalInterventionService>();
+        services.AddScoped<OperationalInterventionQueryService>();
 
         return services;
     }
@@ -49,6 +51,7 @@ public static partial class OrderOperationsModule
     public static IEndpointRouteBuilder MapOrderOperationsEndpoints(
         this IEndpointRouteBuilder endpoints)
     {
+        MapOperationalInterventionEndpoints(endpoints);
         endpoints.MapPost("/api/order-operations/orders/{orderId}/incorporations/{incorporationId}/contents/{contentOrdinal}/cancel-content-quantity", CancelContentAsync)
             .WithName("CancelContentQuantity")
             .WithTags("OrderOperations")

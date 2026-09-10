@@ -341,7 +341,7 @@ internal sealed class OrderOperationsDbContext(
                         "quantity > 0");
                     table.HasCheckConstraint(
                         "CK_preparation_history_result_total_positive",
-                        "resulting_total_quantity > 0");
+                        "resulting_total_quantity >= 0");
                     table.HasCheckConstraint(
                         "CK_preparation_history_result_non_negative",
                         "resulting_pending_quantity >= 0 AND " +
@@ -411,7 +411,7 @@ internal sealed class OrderOperationsDbContext(
                         "quantity > 0");
                     table.HasCheckConstraint(
                         "CK_preparation_commands_result_total_positive",
-                        "result_total_quantity > 0");
+                        "result_total_quantity >= 0");
                     table.HasCheckConstraint(
                         "CK_preparation_commands_result_non_negative",
                         "result_pending_quantity >= 0 AND " +

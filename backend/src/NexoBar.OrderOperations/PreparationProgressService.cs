@@ -310,7 +310,7 @@ internal sealed class PreparationProgressService(
             _ => throw new ArgumentOutOfRangeException(nameof(progressCommand))
         };
 
-    private static long CreateTransactionLockKey(Guid idempotencyKey)
+    internal static long CreateTransactionLockKey(Guid idempotencyKey)
     {
         Span<byte> bytes = stackalloc byte[16];
         idempotencyKey.TryWriteBytes(bytes, bigEndian: true, out _);
