@@ -21,11 +21,11 @@ Slice 6 agregó `20260904152524_AddAuthoritativePendingComposition` (marcador, c
 
 Delivery Correction agregó `20260906000853_AddDeliveryCorrection`, que materializa su History y comandos durables sin modificar `DeliveryState`, `PreparationWork`, `IncorporationContent` ni la Historia original de Delivery.
 
-## Base QRF S7-I2
+## Base Q/R/F S7-I2
 
 `20260906120000_AddContentQuantityState` está implementada. Crea `content_quantity_states`, PK/FK 1:1 al Content y restricción `removed_by_correction_quantity >= 0`; hace backfill en cero para Contents existentes. El Down rechaza eliminar la tabla si existe R distinto de cero. Ese backfill de migración no autoriza un fallback runtime ante State faltante.
 
-Evidencia: [migración](../../backend/src/NexoBar.OrderOperations/Migrations/20260906120000_AddContentQuantityState.cs), [pruebas de migración](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/ContentQuantityStateMigrationTests.cs) y [pruebas de dominio/modelo](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/ContentQuantityStateDomainTests.cs). La semántica de [Q/R/F](confirmation.md#q-r-y-f-s7-i2) vive en Confirmation.
+Evidencia: [migración](../../backend/src/NexoBar.OrderOperations/Migrations/20260906120000_AddContentQuantityState.cs), [pruebas de migración](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/ContentQuantityStateMigrationTests.cs) y [pruebas de dominio/modelo](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/ContentQuantityStateDomainTests.cs). La semántica vigente de [Q/R/C/F](confirmation.md#q-r-c-y-f-s7-i2-content-correction-ordinaria-s7-i3d-content-cancellation-ordinaria-s7-i4d) vive en Confirmation; este apartado conserva únicamente la migración base de S7-I2.
 
 ## Deuda de identificadores
 

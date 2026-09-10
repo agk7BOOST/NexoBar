@@ -47,7 +47,7 @@ No expone Status, WorkId, destination ni `appliedPrice`.
 
 ### Fórmulas y Delivery parcial
 
-La obligación actual `totalQuantity` es F, según [Q/R/F de S7-I2](confirmation.md#q-r-y-f-s7-i2); Q permanece en el Content confirmado.
+La obligación actual `totalQuantity` es F, según [Q/R/C/F](confirmation.md#q-r-c-y-f-s7-i2-content-correction-ordinaria-s7-i3d-content-cancellation-ordinaria-s7-i4d); Q permanece en el Content confirmado.
 
 Para Prepared Content:
 
@@ -161,6 +161,6 @@ El comando mantiene idempotencia durable sobre el endpoint, target, body, actor 
 - `403`: intención nueva sin `OrderOperationsAndBasicClosure`;
 - `404`: Content target inexistente;
 - `409`: cantidad entregable insuficiente, Content completamente entregado bajo una key nueva, conflicto de idempotencia u otro conflicto de dominio conocido;
-- `500`: Estado inconsistente, incluido flag/Work contradictorio, `DeliveryState` o `ContentQuantityState` faltante, R fuera de rango, `delivered > F`, Prepared `delivered > Ready` o inconsistencia estructural del Work.
+- `500`: Estado inconsistente, incluido flag/Work contradictorio, `DeliveryState` o `ContentQuantityState` faltante, R o C fuera de rango, `delivered > F`, Prepared `delivered > Ready` o inconsistencia estructural del Work.
 
 No hay clipping ni auto-repair.

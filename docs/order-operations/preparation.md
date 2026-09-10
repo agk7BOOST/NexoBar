@@ -17,15 +17,17 @@ Cada Work tiene PK por `Id` y una FK compuesta `(incorporation_id, content_ordin
 
 Una Confirmación puede crear varios Work para el mismo Product cuando pertenecen a Contents con instruction diferente. Cada Work conserva el snapshot de responsabilidad y las cantidades `total`, `pending`, `inPreparation` y `ready`. No existe `WorkCreated History`.
 
-Las cantidades son actualmente enteros exactos. Según [Q/R/F y Content Correction ordinaria](confirmation.md#q-r-y-f-s7-i2-content-correction-ordinaria-s7-i3d), al confirmar `R = 0`, `total = F = Q`, `pending = total`, `inPreparation = 0` y `ready = 0`. La corrección ordinaria de un Content preparado solo reduce `PendingQuantity` y `TotalQuantity` de forma atómica mientras incrementa `R`; no afecta `InPreparationQuantity`, `ReadyQuantity` ni `DeliveredQuantity`. Lectura y progreso validan `TotalQuantity = F`; State faltante o incoherencia con la obligación vigente son inconsistencias. El Estado autoritativo satisface:
+Las cantidades son actualmente enteros exactos. Según [Q/R/C/F, Content Correction y Content Cancellation ordinarias](confirmation.md#q-r-c-y-f-s7-i2-content-correction-ordinaria-s7-i3d-content-cancellation-ordinaria-s7-i4d), al confirmar `R = 0`, `C = 0`, `total = F = Q`, `pending = total`, `inPreparation = 0` y `ready = 0`. Correction y Cancellation ordinarias de un Content preparado solo reducen `PendingQuantity` y `TotalQuantity` de forma atómica, respectivamente al incrementar `R` o `C`; no afectan `InPreparationQuantity`, `ReadyQuantity` ni `DeliveredQuantity`. Lectura y progreso validan `TotalQuantity = F`; State faltante o incoherencia con la obligación vigente son inconsistencias. El Estado autoritativo satisface:
 
 ```text
-TotalQuantity > 0
+TotalQuantity >= 0
 PendingQuantity >= 0
 InPreparationQuantity >= 0
 ReadyQuantity >= 0
 PendingQuantity + InPreparationQuantity + ReadyQuantity == TotalQuantity
 ```
+
+El Work nace con `TotalQuantity > 0`. Puede quedar en cero solo cuando Cancellation ordinaria consume todo su bucket Pending y lleva `F` a cero; no habilita Cancellation ni intervención sobre cantidad `InPreparation` o `Ready`.
 
 No existe un `Status` persistido. Son derivaciones, no columnas:
 

@@ -15,23 +15,27 @@ La primera Confirmación crea el `Order` y su primera `Incorporation`; cada Conf
 - First y Subsequent Confirmation requieren autenticación, Session válida, Identity activa y antiforgery. Una intención nueva exige `OrderOperationsAndBasicClosure`, estabilizada transaccionalmente. El actor procede de la Identity autenticada y se atribuye tanto al comando como a `ConfirmationHistory`.
 - Las columnas legacy `actor_identity_id` de comandos de Confirmación e Historia permanecen nullable para preservar la verdad histórica: no se atribuyen actores ficticios a registros anteriores. Los nuevos comandos sí registran actor; el matching de replay lo incluye. El replay exige sesión válida e Identity activa, pero no reexige la responsabilidad para un efecto ya confirmado.
 
-### Q, R y F: S7-I2; Content Correction ordinaria: S7-I3D
+### Q, R, C y F: S7-I2; Content Correction ordinaria: S7-I3D; Content Cancellation ordinaria: S7-I4D
 
 S7-I2 está implementado, verificado y committed. Esta sección es la referencia técnica de la base Q/R/F, conforme a la confirmación vigente del usuario y al código de `790d2f1`.
 
 - `IncorporationContent` conserva condiciones confirmadas inmutables: `Quantity = Q` es la cantidad original confirmada; `AppliedPrice`, instruction y snapshot de preparación no se reinterpretan.
-- Cada Content tiene exactamente un `ContentQuantityState`, con la misma identidad `(IncorporationId, ContentOrdinal)`, que contiene `RemovedByCorrectionQuantity = R`. La obligación vigente es `F = Q - R`.
-- First y Subsequent Confirmation crean ese Estado atómicamente con Content y las demás consecuencias, con `R = 0`; inicialmente `F = Q`. State faltante es inconsistencia: no existe fallback a `R = 0`.
+- Cada Content tiene exactamente un `ContentQuantityState`, con la misma identidad `(IncorporationId, ContentOrdinal)`, que conserva `RemovedByCorrectionQuantity = R` y la cantidad cancelada `C`. La obligación vigente es `F = Q - R - C`.
+- First y Subsequent Confirmation crean ese Estado atómicamente con Content y las demás consecuencias, con `R = 0`, `C = 0`; inicialmente `F = Q`. State faltante es inconsistencia: no existe fallback a cero.
 - El cumplimiento operacional usa F cuando representa obligación vigente. La cantidad confirmada Q conserva su significado histórico; no se sustituye globalmente por F.
 - El Importe funcional sigue siendo `DeliveredQuantity × AppliedPrice` por Content, sumado exactamente; no usa F como cantidad económica ni precio vigente de Catalog.
 - Content Correction ordinaria corrige una cantidad confirmada erróneamente; no es Cancellation. Se identifica exactamente por `(IncorporationId, ContentOrdinal)`, incrementa atómicamente `R` y nunca modifica `Q`, el Content, el Work ni la Historia existente. Puede llevar `F` a cero, preservando esos registros y `PendingComposition`.
 - La corrección directa solo puede afectar `F - DeliveredQuantity`. La corrección de un Content preparado solo puede afectar `PendingQuantity`: reduce atómicamente `PendingQuantity` y `TotalQuantity` en la misma cantidad en que aumenta `R`; nunca afecta `InPreparationQuantity`, `ReadyQuantity` ni `DeliveredQuantity`. Las correcciones de Preparation sobre trabajo iniciado siguen pendientes.
-- La corrección ordinaria no cambia el Importe funcional, que continúa derivándose de Delivery efectiva. Sí puede cambiar la elegibilidad de Liquidation. Está prohibida después de Freeze.
-- El frontend expone Content Correction explícita con esa identidad exacta, maneja incertidumbre/retry y refresca desde el Estado autoritativo. La lectura de Preparation expone `ContentOrdinal` para esa correlación. El recorrido vertical está cubierto por E2E.
-- Cancellation, cantidad de Cancellation y Estado de precio efectivo no existen todavía. Sus límites futuros viven en [pendientes](pending.md).
-- `PreparationWork.TotalQuantity > 0` permanece vigente. La base Q/R/F no habilita Work de total cero ni decide una futura transición para ese caso.
+- Content Cancellation ordinaria expresa que el Content fue confirmado válidamente pero después dejó de ser requerido; no corrige la Confirmación. Se identifica exactamente por `(IncorporationId, ContentOrdinal)`, incrementa atómicamente `C` y preserva `Q`, `R`, el Content, la Historia y `PendingComposition`. La cantidad es un entero positivo exacto, sin clamp silencioso, y puede llevar `F` a cero.
+- En un Content preparado, Cancellation ordinaria solo puede afectar `PendingQuantity`: reduce atómicamente `PendingQuantity` y `TotalQuantity` en la misma cantidad en que aumenta `C`; `InPreparationQuantity`, `ReadyQuantity` y `DeliveredQuantity` no cambian. En un Content directo, la cantidad cancelable está limitada a `F - DeliveredQuantity`; nunca cancela contenido ya entregado. Cancellation que afecte trabajo `InPreparation` o `Ready` sigue pendiente.
+- Content Correction y Content Cancellation ordinarias no cambian el Importe funcional, que continúa derivándose de Delivery efectiva. Ambas pueden cambiar la elegibilidad de Liquidation y están prohibidas después de Liquidation/Freeze.
+- El frontend expone Content Correction y `Cancelar cantidad pendiente` como acciones separadas. Cancellation usa la identidad exacta `(IncorporationId, ContentOrdinal)`, refresca desde el Estado autoritativo tras éxito y, ante incertidumbre, conserva y reintenta la intención exacta. La lectura de Preparation expone `ContentOrdinal` para esa correlación. El recorrido vertical incluye E2E de Cancellation hasta Liquidation/Freeze.
+- La Cancellation completa de Order, la Cancellation/intervención sobre trabajo iniciado o listo, Preparation Correction, OperationalIntervention, Applied Price Correction, reparación post-Liquidation y SSE siguen en [pendientes](pending.md).
+- Un `PreparationWork` nace con `TotalQuantity > 0`; Cancellation ordinaria puede reducirlo a cero junto con `PendingQuantity` cuando `F` llega a cero. No decide transiciones para trabajo `InPreparation` o `Ready`.
 
 S7-I3D está verticalmente implementado y verificado: backend 741/741, OrderOperations 424/424, frontend 265/265 y Playwright 9/9. Evidencia de creación/modelo: [OrderModel](../../backend/src/NexoBar.OrderOperations/OrderModel.cs) y [ConfirmedContentFactory](../../backend/src/NexoBar.OrderOperations/ConfirmedContentFactory.cs). La [migración y sus protecciones](migrations.md#base-qrf-s7-i2) son parte de S7-I2.
+
+S7-I4D está verticalmente implementado. Los totales de verificación no se reiteran aquí porque este documento no conserva un checkpoint verificado de S7-I4D.
 
 ### IncorporationContent, snapshot histórico y líneas homogéneas
 

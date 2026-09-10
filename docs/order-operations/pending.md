@@ -1,13 +1,13 @@
 # Fronteras abiertas de OrderOperations
 
-No implementar estas fronteras a partir de conveniencias técnicas. La [base Q/R/F de S7-I2](confirmation.md#q-r-y-f-s7-i2) ya está implementada; no es deuda pendiente.
+No implementar estas fronteras a partir de conveniencias técnicas. La base Q/R/F de S7-I2 y su extensión [Q/R/C/F](confirmation.md#q-r-c-y-f-s7-i2-content-correction-ordinaria-s7-i3d-content-cancellation-ordinaria-s7-i4d) ya están implementadas; no son deuda pendiente.
 
 - Preparation Correction sobre Work iniciado y Correction de progreso: una Correction no debe reinterpretar silenciosamente cantidades InPreparation o Ready, y modificar trabajo ya iniciado requiere tratamiento excepcional;
 - intervención y demás excepciones de Order diferidas;
 - reversal y exception handling de Delivery;
 - interacción completa entre Delivery y Corrections de Content;
 - errores post-Liquidation intencionalmente sin resolución en el flujo ordinario del MVP; Slice 6 no agrega correcciones económicas, reversals ni un subsistema adicional de Settlement/Payment;
-- Cancellation de contenido y Cancellation completa siguen pendientes;
+- Cancellation completa de Order sigue pendiente;
 - price correction (`AppliedPrice`) sigue pendiente;
 - query/API/UI de Historia de Delivery;
 - cantidades fraccionarias de Preparation;
@@ -18,7 +18,10 @@ No implementar estas fronteras a partir de conveniencias técnicas. La [base Q/R
 - prioridad/SLA y owner/assignment de Preparation;
 - query/API/UI de Historia de Preparation;
 
-- cantidad de Cancellation y Estado de precio efectivo: todavía no existen;
+- Cancellation/intervención que afecte trabajo `InPreparation` o `Ready` sigue pendiente; la Cancellation ordinaria de Pending ya está implementada;
+- OperationalIntervention sigue pendiente;
+- Applied Price Correction sigue pendiente;
+- reparación post-Liquidation sigue pendiente;
 - futuros casos de obligación efectiva cero: no se habilita `PreparationWork.TotalQuantity = 0`, cuya invariante positiva sigue vigente;
 - Correcciones de instruction;
 - edición de una instruction ya confirmada;
@@ -29,4 +32,4 @@ El checkpoint de seguridad requerido para acciones humanas de Preparation y Deli
 
 Delivery Correction ordinaria está implementada como retracción exacta de `DeliveredQuantity` efectivo, con Historia propia y preservación de `QuantityDelivered` histórico. Permanecen abiertas las excepciones, reversals y demás Corrections de Delivery no materializadas.
 
-Content Correction ordinaria ya está implementada verticalmente para cantidad Direct elegible y para `PendingQuantity` de un Content preparado; sus reglas vigentes viven en [Confirmation](confirmation.md#q-r-y-f-s7-i2-content-correction-ordinaria-s7-i3d). Una Correction de Preparation sobre cantidad ya iniciada tampoco puede crear silenciosamente `DeliveredQuantity > ReadyQuantity` para un Prepared Content. Las Corrections que afecten cantidad ya `InPreparation`, `Ready` o `Delivered` deberán coordinarse con Delivery; esa política permanece abierta y no se resuelve aquí.
+Content Correction ordinaria ya está implementada verticalmente para cantidad Direct elegible y para `PendingQuantity` de un Content preparado. Content Cancellation ordinaria también está implementada verticalmente, exclusivamente para cantidad Direct no entregada o `PendingQuantity` preparado. Sus reglas vigentes viven en [Confirmation](confirmation.md#q-r-c-y-f-s7-i2-content-correction-ordinaria-s7-i3d-content-cancellation-ordinaria-s7-i4d). Una Correction de Preparation o Cancellation/intervención sobre cantidad ya iniciada tampoco puede crear silenciosamente `DeliveredQuantity > ReadyQuantity` para un Prepared Content. Las operaciones que afecten cantidad ya `InPreparation`, `Ready` o `Delivered` deberán coordinarse con Delivery; esa política permanece abierta y no se resuelve aquí.

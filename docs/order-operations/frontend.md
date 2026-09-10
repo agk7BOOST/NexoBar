@@ -16,3 +16,9 @@
 - Ante network, timeout o `5xx` incierto se conserva en memoria el mismo endpoint, body e Idempotency-Key para retry exacto; se bloquean acciones incompatibles. Un conflicto conocido refresca Estado y no se presenta como éxito. Si falla el refresco, se exige actualizar antes de continuar.
 - El timestamp de Liquidation recibido por comando se muestra mientras está disponible localmente. Después de reload, el GET de Order no devuelve ese `occurredAt`: la UI informa que la fecha no está disponible en esa consulta, sin fabricar un timestamp.
 - No hay SSE activo ni persistencia de la intención incierta entre recargas; no hay cola offline ni retry automático en background.
+
+### Content Cancellation frontend
+
+- El frontend ofrece `Cancelar cantidad pendiente` separadamente de Content Correction y dirige ambas acciones al Content exacto mediante `(IncorporationId, ContentOrdinal)`.
+- Tras una Cancellation exitosa refresca el Estado autoritativo; no ajusta cantidades, Importe funcional ni elegibilidad de Liquidation de forma optimista.
+- Ante network, timeout o `5xx` incierto conserva endpoint, body e `Idempotency-Key` de la Cancellation y ofrece retry de esa intención exacta. Mientras exista la incertidumbre no inicia una segunda mutación incompatible sobre el mismo Content.
