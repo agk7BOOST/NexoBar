@@ -9,14 +9,14 @@ Este documento conserva las estructuras de Historia, matching durable y contrato
 - `PreparationWork` representa Estado operacional vigente y no se reconstruye ordinariamente desde Historia.
 - `DeliveryState` representa Estado operacional vigente y `QuantityDelivered` explica cada incremento sin reconstruirlo ordinariamente desde Historia.
 - La query de Preparation usa `Order.Context` vigente; no debe confundirse con `ConfirmationHistory.confirmedContext`.
-- El progreso humano materializa Historia separada con los eventos `PreparationQuantityStarted` y `PreparationQuantityReady`. Cada registro conserva `HistoryId` UUID v7, `WorkId`, `Quantity`, `ActorIdentityId`, `OccurredAt` UTC y el resultado de las cuatro cantidades: `TotalQuantity`, `PendingQuantity`, `InPreparationQuantity` y `ReadyQuantity`.
+- El progreso humano materializa Historia separada con los eventos `PreparationQuantityStarted` y `PreparationQuantityReady`. Preparation Correction materializa su propia Historia semántica, distinta de progreso, Content Correction, Content Cancellation, Delivery Correction y OperationalIntervention. Cada registro conserva `HistoryId` UUID v7, `WorkId`, `Quantity`, `ActorIdentityId`, `OccurredAt` UTC y el resultado de las cuatro cantidades: `TotalQuantity`, `PendingQuantity`, `InPreparationQuantity` y `ReadyQuantity`. Una Preparation Correction no requiere referencia a un evento Start o Ready anterior.
 - No existen eventos `WorkCreated`, `Progress` genérico ni `WorkCompleted`. La Historia de Preparation no conserva `SessionId`, snapshot de nombre del Product ni duplicación de instruction.
 - No existe todavía query, API ni UI de Historia de Preparation.
 - No existe todavía query ni UI de Historia de Delivery.
 - Tampoco está materializado Change Context.
 - Esta separación no constituye Event Sourcing.
 
-Los comandos humanos de Preparation usan un namespace durable local de `OrderOperations`. La intención persistida contiene `IdempotencyKey` UUID v4, `ActorIdentityId`, `CommandKind`, `WorkId`, `Quantity` y un resultado estable. Los kinds actuales son `StartPreparationQuantity` y `MarkPreparationQuantityReady`.
+Los comandos humanos de Preparation usan un namespace durable local de `OrderOperations`. La intención persistida contiene `IdempotencyKey` UUID v4, `ActorIdentityId`, `CommandKind`, `WorkId`, `Quantity` y un resultado estable. Los kinds materializados actuales son `StartPreparationQuantity` y `MarkPreparationQuantityReady`; las Preparation Corrections aprobadas incorporarán kinds explícitos propios, sin reutilizar ni reinterpretar esos progresos.
 
 - mismo actor/key/kind/work/quantity produce replay;
 - la misma key con actor, kind, work o quantity incompatible produce `409`;

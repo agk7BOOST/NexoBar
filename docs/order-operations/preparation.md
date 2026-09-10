@@ -90,11 +90,37 @@ ReadyQuantity += quantity
 
 Ready es parcial. Cuando `ReadyQuantity == TotalQuantity`, el Work está completamente listo por derivación; no se emite un evento adicional `WorkCompleted`. Ready no implica Delivered, Completed ni cierre del Order.
 
+### Preparation Correction ordinaria
+
+Preparation Correction significa que el progreso de Preparation registrado fue erróneo. No cambia una obligación que era correcta y después dejó de ser requerida; ese caso corresponde a OperationalIntervention, que permanece pendiente. Tampoco es Content Correction, Content Cancellation ni Delivery Correction.
+
+La corrección es por cantidad sobre el Estado actual del Work. No selecciona ni referencia un evento histórico Start o Ready original. Cada Correction registra su propia Historia semántica.
+
+Una Start Correction exige una cantidad entera positiva exacta `x <= InPreparationQuantity` y revierte únicamente el registro erróneo de Start:
+
+```text
+InPreparationQuantity -= x
+PendingQuantity += x
+```
+
+`ReadyQuantity`, `DeliveredQuantity`, `TotalQuantity` y `Q/R/C/F` no cambian.
+
+Una Ready Correction exige una cantidad entera positiva exacta `x <= ReadyQuantity - DeliveredQuantity` y revierte únicamente el registro erróneo de Ready:
+
+```text
+ReadyQuantity -= x
+InPreparationQuantity += x
+```
+
+`PendingQuantity`, `DeliveredQuantity`, `TotalQuantity` y `Q/R/C/F` no cambian. El límite preserva `DeliveredQuantity <= ReadyQuantity`; una Preparation Correction no retrae ni cancela Delivery.
+
+Si Ready y Start fueron registrados erróneamente, se ejecutan dos comandos explícitos y ordenados: primero Ready Correction (`Ready -> InPreparation`) y después Start Correction (`InPreparation -> Pending`). No existe una Correction directa `Ready -> Pending`, cascada ni reversión automática de múltiples transiciones históricas.
+
 ### Autorización, actores y concurrencia
 
 No existe owner ni assignee de `PreparationWork`. Cualquier Identity actualmente autorizada para el destino puede actuar sobre cantidad elegible. Una intención nueva requiere Session válida, Identity activa, `Responsibility.Preparation` vigente y la `PreparationEnablement` exacta para `Work.PreparationResponsibilityId`. El actor procede de `AuthenticatedContext.IdentityId` y el destino se obtiene del Work; el cliente no aporta actor, destination ni capability. No se usan claims de capability.
 
-Por tanto, es válido que Identity A ejecute `Start(1)` e Identity B ejecute `Ready(1)` si ambas satisfacen la autorización vigente. La Historia conserva el actor de cada acción; quien inició una cantidad no necesita ser quien la marca Ready.
+Por tanto, es válido que Identity A ejecute `Start(1)` e Identity B ejecute `Ready(1)` si ambas satisfacen la autorización vigente. Preparation Correction usa la misma autorización: cualquier Identity activa con `Responsibility.Preparation` y la `PreparationEnablement` exacta puede corregir cantidad elegible; no queda restringida al actor que registró el progreso original. La Historia conserva el actor de cada acción.
 
 Start y Ready comparten este patrón de transacción corta:
 
@@ -115,7 +141,7 @@ BEGIN READ COMMITTED
 → COMMIT
 ```
 
-No hay locks de Work de larga duración, distributed lock, lock global de Preparation ni ownership claim. Dos preparadores pueden actuar concurrentemente sobre el mismo Work; `Work FOR UPDATE` serializa las mutaciones y cada intención se valida contra el Estado estabilizado. Con `Pending = 5`, dos `Start(2)` pueden confirmar secuencialmente. Con `Pending = 3`, solo uno confirma y el otro obtiene `409`; la segunda intención no se recorta. Se aplica el mismo criterio a Ready. Start y Ready concurrentes también se serializan coherentemente por Work.
+No hay locks de Work de larga duración, distributed lock, lock global de Preparation ni ownership claim. Dos preparadores pueden actuar concurrentemente sobre el mismo Work; `Work FOR UPDATE` serializa las mutaciones y cada intención se valida contra el Estado estabilizado. Con `Pending = 5`, dos `Start(2)` pueden confirmar secuencialmente. Con `Pending = 3`, solo uno confirma y el otro obtiene `409`; la segunda intención no se recorta. Se aplica el mismo criterio a Ready y a Preparation Correction. Start, Ready y sus Corrections revalidan el bucket fuente; Ready Correction además revalida `ReadyQuantity - DeliveredQuantity`. Todas quedan prohibidas después de Liquidation/Freeze.
 
 ### Errores de progreso
 
