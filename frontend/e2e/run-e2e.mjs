@@ -11,6 +11,10 @@ const repositoryRoot = path.dirname(frontendDirectory);
 const composeFile = path.join(repositoryRoot, "compose.e2e.yaml");
 const composeProject = `nexobar-e2e-${process.pid}-${randomUUID().slice(0, 8)}`;
 const composeArguments = ["compose", "-f", composeFile, "-p", composeProject];
+const cliArguments = process.argv.slice(2);
+const playwrightDelimiter = cliArguments.indexOf("--");
+const playwrightArguments =
+  playwrightDelimiter === -1 ? [] : cliArguments.slice(playwrightDelimiter + 1);
 
 function invocation(command, args) {
   if (process.platform !== "win32" || command !== "npm") {
@@ -194,7 +198,11 @@ async function main() {
     );
 
     console.log("[e2e] Running Chromium scenarios...");
-    await run("npm", ["run", "test:e2e:playwright"], {
+    const playwrightCommand = ["run", "test:e2e:playwright"];
+    if (playwrightArguments.length > 0) {
+      playwrightCommand.push("--", ...playwrightArguments);
+    }
+    await run("npm", playwrightCommand, {
       cwd: frontendDirectory,
       env: e2eEnvironment,
       label: "Playwright E2E",
