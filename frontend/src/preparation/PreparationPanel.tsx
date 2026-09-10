@@ -7,6 +7,8 @@ import {
   type PreparationDestination,
 } from "../identity/sessionClient.ts";
 import {
+  correctPreparationReady,
+  correctPreparationStart,
   listPreparationWork,
   markPreparationQuantityReady,
   PreparationProblemError,
@@ -23,7 +25,8 @@ interface PreparationPanelProps {
   onUnauthorized: () => void;
 }
 
-type PreparationCommandKind = "start" | "ready";
+type PreparationCommandKind =
+  "start" | "ready" | "correct-start" | "correct-ready";
 type PreparationIntentPhase = "submitting" | "uncertain";
 
 interface PreparationIntent {
@@ -33,11 +36,14 @@ interface PreparationIntent {
   workId: string;
   quantity: number;
   idempotencyKey: string;
+  antiforgeryToken?: string;
 }
 
 interface QuantityInputs {
   start: string;
   ready: string;
+  "correct-start": string;
+  "correct-ready": string;
 }
 
 interface WorkMessage {
@@ -58,18 +64,45 @@ function sourceQuantity(
   item: PreparationWork,
   kind: PreparationCommandKind,
 ): number {
-  return kind === "start" ? item.pendingQuantity : item.inPreparationQuantity;
+  switch (kind) {
+    case "start":
+      return item.pendingQuantity;
+    case "ready":
+    case "correct-start":
+      return item.inPreparationQuantity;
+    case "correct-ready":
+      return Math.max(
+        0,
+        item.readyQuantity - (item.deliveredQuantity ?? item.readyQuantity),
+      );
+  }
 }
 
 function actionName(kind: PreparationCommandKind): string {
-  return kind === "start" ? "iniciar" : "marcar listo";
+  switch (kind) {
+    case "start":
+      return "iniciar";
+    case "ready":
+      return "marcar listo";
+    case "correct-start":
+      return "corregir el inicio";
+    case "correct-ready":
+      return "corregir listo";
+  }
 }
 
 function inputLabel(
   item: PreparationWork,
   kind: PreparationCommandKind,
 ): string {
-  const action = kind === "start" ? "iniciar" : "marcar lista";
+  const action =
+    kind === "start"
+      ? "iniciar"
+      : kind === "ready"
+        ? "marcar lista"
+        : kind === "correct-start"
+          ? "corregir inicio"
+          : "corregir listo";
   return `Cantidad a ${action} de ${item.productOperationalName}, incorporación ${item.incorporationOrdinal}, ${item.context}, ${item.instruction ?? "sin instrucción"}`;
 }
 
@@ -77,7 +110,14 @@ function buttonLabel(
   item: PreparationWork,
   kind: PreparationCommandKind,
 ): string {
-  const action = kind === "start" ? "Iniciar" : "Marcar listo";
+  const action =
+    kind === "start"
+      ? "Iniciar"
+      : kind === "ready"
+        ? "Marcar listo"
+        : kind === "correct-start"
+          ? "Corregir inicio"
+          : "Corregir listo";
   return `${action} ${item.productOperationalName}, incorporación ${item.incorporationOrdinal}, ${item.context}, ${item.instruction ?? "sin instrucción"}`;
 }
 
@@ -183,6 +223,18 @@ export function PreparationPanel({
               ? String(intent.quantity)
               : item.inPreparationQuantity > 0
                 ? String(item.inPreparationQuantity)
+                : "",
+          "correct-start":
+            intent?.kind === "correct-start"
+              ? String(intent.quantity)
+              : item.inPreparationQuantity > 0
+                ? String(item.inPreparationQuantity)
+                : "",
+          "correct-ready":
+            intent?.kind === "correct-ready"
+              ? String(intent.quantity)
+              : sourceQuantity(item, "correct-ready") > 0
+                ? String(sourceQuantity(item, "correct-ready"))
                 : "",
         };
       }
@@ -295,35 +347,44 @@ export function PreparationPanel({
           result.inPreparationQuantity > 0
             ? String(result.inPreparationQuantity)
             : "",
+        "correct-start":
+          result.inPreparationQuantity > 0
+            ? String(result.inPreparationQuantity)
+            : "",
+        "correct-ready": current[result.workId]?.["correct-ready"] ?? "",
       },
     }));
   }, []);
 
   const executeIntent = useCallback(
     async (intent: PreparationIntent) => {
+      let exactIntent = intent;
       try {
-        const antiforgeryToken = await getAntiforgeryToken();
+        const antiforgeryToken =
+          intent.antiforgeryToken ?? (await getAntiforgeryToken());
+        exactIntent = { ...intent, antiforgeryToken };
+        setIntent(exactIntent);
+        const command = {
+          workId: exactIntent.workId,
+          quantity: exactIntent.quantity,
+          idempotencyKey: exactIntent.idempotencyKey,
+          antiforgeryToken,
+        };
         const result =
-          intent.kind === "start"
-            ? await startPreparationQuantity({
-                workId: intent.workId,
-                quantity: intent.quantity,
-                idempotencyKey: intent.idempotencyKey,
-                antiforgeryToken,
-              })
-            : await markPreparationQuantityReady({
-                workId: intent.workId,
-                quantity: intent.quantity,
-                idempotencyKey: intent.idempotencyKey,
-                antiforgeryToken,
-              });
+          exactIntent.kind === "start"
+            ? await startPreparationQuantity(command)
+            : exactIntent.kind === "ready"
+              ? await markPreparationQuantityReady(command)
+              : exactIntent.kind === "correct-start"
+                ? await correctPreparationStart(command)
+                : await correctPreparationReady(command);
 
-        if (result.workId !== intent.workId) {
+        if (result.workId !== exactIntent.workId) {
           throw new Error("Preparation returned another Work.");
         }
 
-        clearIntent(intent.workId);
-        setWorkMessage(intent.workId, null);
+        clearIntent(exactIntent.workId);
+        setWorkMessage(exactIntent.workId, null);
         applyCommandResult(result);
         void refreshPreparationWorkForSelectedDestination();
         onWorkChanged?.();
@@ -339,21 +400,21 @@ export function PreparationPanel({
 
         if (error instanceof PreparationProblemError) {
           if (error.status === 408 || error.status >= 500) {
-            setIntent({ ...intent, phase: "uncertain" });
-            setWorkMessage(intent.workId, {
+            setIntent({ ...exactIntent, phase: "uncertain" });
+            setWorkMessage(exactIntent.workId, {
               kind: "uncertain",
               text: "No se pudo confirmar el resultado.",
             });
             return;
           }
 
-          clearIntent(intent.workId);
+          clearIntent(exactIntent.workId);
 
           if (error.status === 409) {
             const isIdempotencyConflict =
               error.problem.code?.endsWith(".idempotency_key_conflict") ===
               true;
-            setWorkMessage(intent.workId, {
+            setWorkMessage(exactIntent.workId, {
               kind: "error",
               text: isIdempotencyConflict
                 ? "La operación no coincide con el intento original."
@@ -366,7 +427,7 @@ export function PreparationPanel({
           }
 
           if (error.status === 403) {
-            setWorkMessage(intent.workId, {
+            setWorkMessage(exactIntent.workId, {
               kind: "error",
               text: forbiddenMessage,
             });
@@ -374,7 +435,7 @@ export function PreparationPanel({
           }
 
           if (error.status === 404) {
-            setWorkMessage(intent.workId, null);
+            setWorkMessage(exactIntent.workId, null);
             setMessage("El trabajo ya no está disponible.");
             void refreshPreparationWorkForSelectedDestination({
               preserveMessage: true,
@@ -385,7 +446,7 @@ export function PreparationPanel({
           const antiforgeryInvalid =
             error.problem.code?.endsWith(".antiforgery_invalid") === true;
           if (antiforgeryInvalid) discardAntiforgeryToken();
-          setWorkMessage(intent.workId, {
+          setWorkMessage(exactIntent.workId, {
             kind: "error",
             text: antiforgeryInvalid
               ? "No se pudo validar la solicitud. Volvé a intentarlo."
@@ -395,8 +456,8 @@ export function PreparationPanel({
         }
 
         if (error instanceof SessionProblemError) {
-          clearIntent(intent.workId);
-          setWorkMessage(intent.workId, {
+          clearIntent(exactIntent.workId);
+          setWorkMessage(exactIntent.workId, {
             kind: "error",
             text:
               error.status === 403
@@ -406,8 +467,8 @@ export function PreparationPanel({
           return;
         }
 
-        setIntent({ ...intent, phase: "uncertain" });
-        setWorkMessage(intent.workId, {
+        setIntent({ ...exactIntent, phase: "uncertain" });
+        setWorkMessage(exactIntent.workId, {
           kind: "uncertain",
           text: "No se pudo confirmar el resultado.",
         });
@@ -485,10 +546,28 @@ export function PreparationPanel({
       isOrderBlocked?.(item.operationalReference) === true;
     const fieldId = `preparation-${kind}-quantity-${item.workId}`;
     const messageId = `preparation-message-${item.workId}`;
+    const isCorrection = kind === "correct-start" || kind === "correct-ready";
+    if (isCorrection && isOrderBlocked?.(item.operationalReference) === true)
+      return null;
+    const rawQuantity = quantityInputs[item.workId]?.[kind] ?? "";
+    const previewQuantity = Number(rawQuantity);
+    const hasPreview =
+      rawQuantity.trim() !== "" &&
+      Number.isInteger(previewQuantity) &&
+      previewQuantity > 0 &&
+      previewQuantity <= availableQuantity;
+    const actionLabel =
+      kind === "start"
+        ? "Iniciar"
+        : kind === "ready"
+          ? "Marcar listo"
+          : kind === "correct-start"
+            ? "Corregir inicio"
+            : "Corregir listo";
     return (
       <form
         className="preparation-action"
-        aria-label={`${kind === "start" ? "Iniciar" : "Marcar listo"} ${item.productOperationalName}, incorporación ${item.incorporationOrdinal}, ${item.instruction ?? "sin instrucción"}`}
+        aria-label={`${actionLabel} ${item.productOperationalName}, incorporación ${item.incorporationOrdinal}, ${item.instruction ?? "sin instrucción"}`}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
@@ -496,7 +575,13 @@ export function PreparationPanel({
         }}
       >
         <label htmlFor={fieldId}>
-          {kind === "start" ? "Cantidad a iniciar" : "Cantidad a marcar lista"}
+          {kind === "start"
+            ? "Cantidad a iniciar"
+            : kind === "ready"
+              ? "Cantidad a marcar lista"
+              : kind === "correct-start"
+                ? "Cantidad cuyo inicio corregir"
+                : "Cantidad lista a corregir"}
         </label>
         <input
           id={fieldId}
@@ -515,6 +600,8 @@ export function PreparationPanel({
               [item.workId]: {
                 start: current[item.workId]?.start ?? "",
                 ready: current[item.workId]?.ready ?? "",
+                "correct-start": current[item.workId]?.["correct-start"] ?? "",
+                "correct-ready": current[item.workId]?.["correct-ready"] ?? "",
                 [kind]: value,
               },
             }));
@@ -525,8 +612,29 @@ export function PreparationPanel({
           disabled={isWorkBlocked}
           aria-label={buttonLabel(item, kind)}
         >
-          {kind === "start" ? "Iniciar" : "Marcar listo"}
+          {actionLabel}
         </button>
+        {isCorrection && hasPreview && (
+          <p className="preparation-correction-preview">
+            Vista previa:{" "}
+            {kind === "correct-start" ? (
+              <>
+                En preparación {item.inPreparationQuantity} →{" "}
+                {item.inPreparationQuantity - previewQuantity}; Pendiente{" "}
+                {item.pendingQuantity} →{" "}
+                {item.pendingQuantity + previewQuantity}
+              </>
+            ) : (
+              <>
+                Listo {item.readyQuantity} →{" "}
+                {item.readyQuantity - previewQuantity}; En preparación{" "}
+                {item.inPreparationQuantity} →{" "}
+                {item.inPreparationQuantity + previewQuantity}
+              </>
+            )}
+            .
+          </p>
+        )}
       </form>
     );
   }
@@ -671,6 +779,21 @@ export function PreparationPanel({
                       <div className="preparation-actions">
                         {renderAction(item, "start")}
                         {renderAction(item, "ready")}
+                        {(sourceQuantity(item, "correct-start") > 0 ||
+                          sourceQuantity(item, "correct-ready") > 0) &&
+                          isOrderBlocked?.(item.operationalReference) !==
+                            true && (
+                            <div className="preparation-corrections">
+                              <p>
+                                Correcciones de progreso registrado por error.
+                                No son Cancellation, Content Correction,
+                                Delivery Correction, OperationalIntervention ni
+                                un deshacer genérico.
+                              </p>
+                              {renderAction(item, "correct-start")}
+                              {renderAction(item, "correct-ready")}
+                            </div>
+                          )}
                         {intent?.phase === "submitting" && (
                           <p role="status">Confirmando operación…</p>
                         )}

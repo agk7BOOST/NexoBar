@@ -13,6 +13,7 @@ export interface PreparationWork {
   pendingQuantity: number;
   inPreparationQuantity: number;
   readyQuantity: number;
+  deliveredQuantity?: number;
   confirmedAt: string;
 }
 
@@ -106,7 +107,7 @@ async function readCommandResult(
 }
 
 async function sendQuantityCommand(
-  endpoint: "start" | "ready",
+  endpoint: "start" | "ready" | "correct-start" | "correct-ready",
   command: PreparationQuantityCommand,
 ): Promise<PreparationCommandResult> {
   const response = await fetch(
@@ -154,4 +155,16 @@ export function markPreparationQuantityReady(
   command: PreparationQuantityCommand,
 ): Promise<PreparationCommandResult> {
   return sendQuantityCommand("ready", command);
+}
+
+export function correctPreparationStart(
+  command: PreparationQuantityCommand,
+): Promise<PreparationCommandResult> {
+  return sendQuantityCommand("correct-start", command);
+}
+
+export function correctPreparationReady(
+  command: PreparationQuantityCommand,
+): Promise<PreparationCommandResult> {
+  return sendQuantityCommand("correct-ready", command);
 }
