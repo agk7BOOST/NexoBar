@@ -21,6 +21,7 @@ import { PreparationPanel } from "./preparation/PreparationPanel.tsx";
 import { DeliveryPanel } from "./delivery/DeliveryPanel.tsx";
 import { InventoryPanel } from "./inventory/InventoryPanel.tsx";
 import type { OrderResponse } from "./orderOperations/orderOperationsClient.ts";
+import { OperationalInterventionPanel } from "./orderOperations/OperationalInterventionPanel.tsx";
 
 type AuthState =
   | { status: "loading" }
@@ -178,6 +179,7 @@ function App() {
             identity={authState.identity}
             onLoggedOut={returnToLogin}
           />
+          <OperationalInterventionPanel key={authState.identity.identityId} onUnauthorized={returnToLogin} />
           <PreparationPanel
             refreshSequence={preparationRefresh}
             onBusyOrdersChange={setPreparationBusy}

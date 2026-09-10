@@ -86,6 +86,29 @@ button:disabled {
   box-shadow: 0 1px 2px rgb(16 24 40 / 5%);
 }
 
+.operational-intervention > section {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #d9e0e7;
+}
+
+.operational-intervention table {
+  width: 100%;
+  margin: 1rem 0;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.operational-intervention th,
+.operational-intervention td {
+  padding: 0.4rem;
+  border-bottom: 1px solid #d9e0e7;
+}
+
+.operational-intervention dd {
+  overflow-wrap: anywhere;
+}
+
 form {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
