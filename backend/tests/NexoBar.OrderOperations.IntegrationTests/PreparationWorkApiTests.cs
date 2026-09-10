@@ -13,6 +13,45 @@ namespace NexoBar.OrderOperations.IntegrationTests;
 public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
 {
     [Fact]
+    public async Task Preparation_query_exposes_exact_content_delivery_and_reflects_delivery_correction()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var first = await DeliveryQuantityTestSupport.CreatePreparedAsync(fixture, 5, 0, token, "Mismo producto");
+        var firstWork = Assert.Single(await fixture.ReadPreparationWorkAsync(token));
+        await fixture.SetPreparationQuantitiesAsync(firstWork.Id, 0, 0, 5, token);
+        var responsibility = firstWork.PreparationResponsibilityId;
+        var product = (await fixture.ReadConfirmedContentsAsync(token)).Single().ProductId;
+        await fixture.CreatePreparedWorkAsync(responsibility, token, 5, "Otro nombre");
+        var works = await fixture.ReadPreparationWorkAsync(token);
+        var secondWork = Assert.Single(works, work => work.Id != firstWork.Id);
+        await fixture.SetPreparationQuantitiesAsync(secondWork.Id, 0, 0, 5, token);
+        var preparationActor = await fixture.CreatePreparationActorAsync(true, responsibility, token);
+        using var preparationClient = await fixture.LoginAsync(preparationActor, token);
+
+        async Task<PreparationWorkResponse> Read(Guid workId)
+        {
+            using var response = await preparationClient.GetAsync(WorkUrl(responsibility), token);
+            response.EnsureSuccessStatusCode();
+            return Assert.Single(
+                Assert.IsType<PreparationWorkResponse[]>(await response.Content.ReadFromJsonAsync<PreparationWorkResponse[]>(token)),
+                item => item.WorkId == workId);
+        }
+
+        Assert.Equal(0, (await Read(firstWork.Id)).DeliveredQuantity);
+        await DeliveryCorrectionTestSupport.DeliverAsync(fixture, first, 3, token);
+        Assert.Equal(3, (await Read(firstWork.Id)).DeliveredQuantity);
+        Assert.Equal(0, (await Read(secondWork.Id)).DeliveredQuantity);
+        using (var correction = await DeliveryCorrectionTestSupport.PostAsync(
+                   fixture.OrderOperationsClient, first, Guid.NewGuid(), 1, token))
+        {
+            await DeliveryCorrectionTestSupport.SuccessAsync(correction, token);
+        }
+        Assert.Equal(2, (await Read(firstWork.Id)).DeliveredQuantity);
+        Assert.Equal(product, (await fixture.ReadConfirmedContentsAsync(token)).First().ProductId);
+    }
+
+    [Fact]
     public async Task Mixed_first_confirmation_creates_content_and_work_only_for_prepared_products()
     {
         var token = TestContext.Current.CancellationToken;
@@ -738,6 +777,10 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
             "string",
             instruction.GetProperty("type").EnumerateArray()
                 .Select(value => value.GetString()));
+        var delivered = schema.GetProperty("properties").GetProperty("deliveredQuantity");
+        Assert.Contains("integer", delivered.GetProperty("type").EnumerateArray()
+            .Select(value => value.GetString()));
+        Assert.Equal("int32", delivered.GetProperty("format").GetString());
     }
 
     private async Task InsertWorkAsync(

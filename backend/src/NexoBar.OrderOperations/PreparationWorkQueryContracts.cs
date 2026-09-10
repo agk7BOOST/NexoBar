@@ -15,6 +15,7 @@ internal sealed record PreparationWorkResponse(
     int PendingQuantity,
     int InPreparationQuantity,
     int ReadyQuantity,
+    int DeliveredQuantity,
     DateTimeOffset ConfirmedAt);
 
 internal sealed record PreparationWorkQueryResult(

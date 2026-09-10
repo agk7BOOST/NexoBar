@@ -49,6 +49,11 @@ internal sealed class PreparationWorkQueryService(
                 equals new { quantityState.IncorporationId, quantityState.ContentOrdinal }
                 into quantityStates
             from quantityState in quantityStates.DefaultIfEmpty()
+            join deliveryStateValue in dbContext.DeliveryStates.AsNoTracking()
+                on new { work.IncorporationId, work.ContentOrdinal }
+                equals new { deliveryStateValue.IncorporationId, deliveryStateValue.ContentOrdinal }
+                into deliveryStates
+            from deliveryState in deliveryStates.DefaultIfEmpty()
             where work.PreparationResponsibilityId == preparationResponsibilityId
             orderby history.OccurredAt,
                 work.IncorporationId,
@@ -71,17 +76,19 @@ internal sealed class PreparationWorkQueryService(
                 work.ReadyQuantity,
                 RemovedQuantity = (int?)quantityState.RemovedByCorrectionQuantity,
                 CancelledQuantity = (int?)quantityState.CancelledQuantity,
+                DeliveredQuantity = (int?)deliveryState.DeliveredQuantity,
                 ConfirmedQuantity = content.Quantity,
                 ConfirmedAt = history.OccurredAt
             }).ToArrayAsync(cancellationToken);
 
         if (persisted.Any(work =>
-                work.RemovedQuantity is null || work.CancelledQuantity is null || work.CancelledQuantity < 0 ||
+                work.RemovedQuantity is null || work.CancelledQuantity is null || work.DeliveredQuantity is null || work.CancelledQuantity < 0 ||
                 (long?)work.RemovedQuantity + work.CancelledQuantity > work.ConfirmedQuantity ||
                 work.ConfirmedQuantity <= 0 ||
                 work.RemovedQuantity < 0 ||
                 work.RemovedQuantity > work.ConfirmedQuantity ||
                 work.TotalQuantity != work.ConfirmedQuantity - work.RemovedQuantity - work.CancelledQuantity ||
+                work.DeliveredQuantity < 0 || work.DeliveredQuantity > work.ReadyQuantity ||
                 work.TotalQuantity < 0 ||
                 work.PendingQuantity < 0 ||
                 work.InPreparationQuantity < 0 ||
@@ -121,6 +128,7 @@ internal sealed class PreparationWorkQueryService(
             work.PendingQuantity,
             work.InPreparationQuantity,
             work.ReadyQuantity,
+            work.DeliveredQuantity.GetValueOrDefault(),
             work.ConfirmedAt)).ToArray();
         await transaction.CommitAsync(cancellationToken);
         return PreparationWorkQueryResult.Succeeded(response);
