@@ -38,6 +38,12 @@ internal sealed class PreparationProgressService(
             quantity,
             cancellationToken);
 
+    internal Task<PreparationProgressResult> CorrectStartAsync(Guid idempotencyKey, Guid workId, int quantity, CancellationToken cancellationToken) =>
+        ExecuteAsync(PreparationProgressCommand.CorrectStart, idempotencyKey, workId, quantity, cancellationToken);
+
+    internal Task<PreparationProgressResult> CorrectReadyAsync(Guid idempotencyKey, Guid workId, int quantity, CancellationToken cancellationToken) =>
+        ExecuteAsync(PreparationProgressCommand.CorrectReady, idempotencyKey, workId, quantity, cancellationToken);
+
     private async Task<PreparationProgressResult> ExecuteAsync(
         PreparationProgressCommand progressCommand,
         Guid idempotencyKey,
@@ -166,7 +172,7 @@ internal sealed class PreparationProgressService(
             return PreparationProgressResult.StateInconsistent();
         }
 
-        var transition = Apply(progressCommand, work, quantity);
+        var transition = Apply(progressCommand, work, quantity, contentState.Delivered.Value);
         if (transition == PreparationProgressTransition.QuantityInvalid)
         {
             return PreparationProgressResult.QuantityInvalid();
@@ -214,7 +220,8 @@ internal sealed class PreparationProgressService(
     private static PreparationProgressTransition Apply(
         PreparationProgressCommand progressCommand,
         PreparationWork work,
-        int quantity) =>
+        int quantity,
+        int deliveredQuantity) =>
         progressCommand switch
         {
             PreparationProgressCommand.StartQuantity => work.Start(quantity) switch
@@ -236,6 +243,20 @@ internal sealed class PreparationProgressService(
                     PreparationProgressTransition.AvailableQuantityInsufficient,
                 _ => throw new ArgumentOutOfRangeException(nameof(progressCommand))
             },
+            PreparationProgressCommand.CorrectStart => work.CorrectStart(quantity) switch
+            {
+                PreparationStartCorrectionTransition.Corrected => PreparationProgressTransition.Succeeded,
+                PreparationStartCorrectionTransition.QuantityInvalid => PreparationProgressTransition.QuantityInvalid,
+                PreparationStartCorrectionTransition.InPreparationQuantityInsufficient => PreparationProgressTransition.AvailableQuantityInsufficient,
+                _ => throw new ArgumentOutOfRangeException(nameof(progressCommand))
+            },
+            PreparationProgressCommand.CorrectReady => work.CorrectReady(quantity, deliveredQuantity) switch
+            {
+                PreparationReadyCorrectionTransition.Corrected => PreparationProgressTransition.Succeeded,
+                PreparationReadyCorrectionTransition.QuantityInvalid => PreparationProgressTransition.QuantityInvalid,
+                PreparationReadyCorrectionTransition.ReadyQuantityInsufficient => PreparationProgressTransition.AvailableQuantityInsufficient,
+                _ => throw new ArgumentOutOfRangeException(nameof(progressCommand))
+            },
             _ => throw new ArgumentOutOfRangeException(nameof(progressCommand))
         };
 
@@ -253,6 +274,8 @@ internal sealed class PreparationProgressService(
                 historyId, workId, quantity, actorIdentityId, occurredAt, result),
             PreparationProgressCommand.MarkQuantityReady => PreparationHistory.QuantityReady(
                 historyId, workId, quantity, actorIdentityId, occurredAt, result),
+            PreparationProgressCommand.CorrectStart => PreparationHistory.StartCorrected(historyId, workId, quantity, actorIdentityId, occurredAt, result),
+            PreparationProgressCommand.CorrectReady => PreparationHistory.ReadyCorrected(historyId, workId, quantity, actorIdentityId, occurredAt, result),
             _ => throw new ArgumentOutOfRangeException(nameof(progressCommand))
         };
 
@@ -270,6 +293,8 @@ internal sealed class PreparationProgressService(
             PreparationProgressCommand.MarkQuantityReady =>
                 PreparationCommand.MarkQuantityReady(
                     idempotencyKey, actorIdentityId, workId, quantity, result),
+            PreparationProgressCommand.CorrectStart => PreparationCommand.CorrectStart(idempotencyKey, actorIdentityId, workId, quantity, result),
+            PreparationProgressCommand.CorrectReady => PreparationCommand.CorrectReady(idempotencyKey, actorIdentityId, workId, quantity, result),
             _ => throw new ArgumentOutOfRangeException(nameof(progressCommand))
         };
 
@@ -280,6 +305,8 @@ internal sealed class PreparationProgressService(
                 PreparationCommand.StartQuantityCommandKind,
             PreparationProgressCommand.MarkQuantityReady =>
                 PreparationCommand.MarkQuantityReadyCommandKind,
+            PreparationProgressCommand.CorrectStart => PreparationCommand.CorrectStartCommandKind,
+            PreparationProgressCommand.CorrectReady => PreparationCommand.CorrectReadyCommandKind,
             _ => throw new ArgumentOutOfRangeException(nameof(progressCommand))
         };
 
@@ -340,7 +367,9 @@ internal enum PreparationProgressOutcome
 internal enum PreparationProgressCommand
 {
     StartQuantity,
-    MarkQuantityReady
+    MarkQuantityReady,
+    CorrectStart,
+    CorrectReady
 }
 
 internal enum PreparationProgressTransition

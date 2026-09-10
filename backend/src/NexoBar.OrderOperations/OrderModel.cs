@@ -364,6 +364,25 @@ internal sealed class PreparationWork
         ReadyQuantity += quantity;
         return PreparationReadyTransition.MarkedReady;
     }
+
+    internal PreparationStartCorrectionTransition CorrectStart(int quantity)
+    {
+        if (quantity <= 0) return PreparationStartCorrectionTransition.QuantityInvalid;
+        if (InPreparationQuantity < quantity) return PreparationStartCorrectionTransition.InPreparationQuantityInsufficient;
+        InPreparationQuantity -= quantity;
+        PendingQuantity += quantity;
+        return PreparationStartCorrectionTransition.Corrected;
+    }
+
+    internal PreparationReadyCorrectionTransition CorrectReady(int quantity, int deliveredQuantity)
+    {
+        if (quantity <= 0) return PreparationReadyCorrectionTransition.QuantityInvalid;
+        if (deliveredQuantity < 0 || ReadyQuantity - deliveredQuantity < quantity)
+            return PreparationReadyCorrectionTransition.ReadyQuantityInsufficient;
+        ReadyQuantity -= quantity;
+        InPreparationQuantity += quantity;
+        return PreparationReadyCorrectionTransition.Corrected;
+    }
 }
 
 internal enum PreparationStartTransition
@@ -379,6 +398,9 @@ internal enum PreparationReadyTransition
     QuantityInvalid,
     InPreparationQuantityInsufficient
 }
+
+internal enum PreparationStartCorrectionTransition { Corrected, QuantityInvalid, InPreparationQuantityInsufficient }
+internal enum PreparationReadyCorrectionTransition { Corrected, QuantityInvalid, ReadyQuantityInsufficient }
 
 internal sealed class ConfirmationHistory
 {

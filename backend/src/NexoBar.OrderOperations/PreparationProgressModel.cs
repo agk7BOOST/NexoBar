@@ -4,6 +4,8 @@ internal sealed class PreparationHistory
 {
     internal const string QuantityStartedEventKind = "PreparationQuantityStarted";
     internal const string QuantityReadyEventKind = "PreparationQuantityReady";
+    internal const string StartCorrectedEventKind = "PreparationStartCorrected";
+    internal const string ReadyCorrectedEventKind = "PreparationReadyCorrected";
 
     private PreparationHistory() { }
 
@@ -63,6 +65,12 @@ internal sealed class PreparationHistory
             occurredAt,
             result);
 
+    internal static PreparationHistory StartCorrected(Guid id, Guid workId, int quantity, Guid actorIdentityId, DateTimeOffset occurredAt, PreparationCommandResult result) =>
+        Create(id, workId, StartCorrectedEventKind, quantity, actorIdentityId, occurredAt, result);
+
+    internal static PreparationHistory ReadyCorrected(Guid id, Guid workId, int quantity, Guid actorIdentityId, DateTimeOffset occurredAt, PreparationCommandResult result) =>
+        Create(id, workId, ReadyCorrectedEventKind, quantity, actorIdentityId, occurredAt, result);
+
     private static PreparationHistory Create(
         Guid id,
         Guid workId,
@@ -100,6 +108,8 @@ internal sealed class PreparationCommand
     internal const string StartQuantityCommandKind = "StartPreparationQuantity";
     internal const string MarkQuantityReadyCommandKind =
         "MarkPreparationQuantityReady";
+    internal const string CorrectStartCommandKind = "CorrectPreparationStart";
+    internal const string CorrectReadyCommandKind = "CorrectPreparationReady";
 
     private PreparationCommand() { }
 
@@ -151,6 +161,12 @@ internal sealed class PreparationCommand
             workId,
             quantity,
             result);
+
+    internal static PreparationCommand CorrectStart(Guid idempotencyKey, Guid actorIdentityId, Guid workId, int quantity, PreparationCommandResult result) =>
+        new(idempotencyKey, actorIdentityId, CorrectStartCommandKind, workId, quantity, result);
+
+    internal static PreparationCommand CorrectReady(Guid idempotencyKey, Guid actorIdentityId, Guid workId, int quantity, PreparationCommandResult result) =>
+        new(idempotencyKey, actorIdentityId, CorrectReadyCommandKind, workId, quantity, result);
 
     internal Guid IdempotencyKey { get; private set; }
     internal Guid ActorIdentityId { get; private set; }

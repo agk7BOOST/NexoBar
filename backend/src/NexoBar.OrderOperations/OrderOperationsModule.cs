@@ -127,6 +127,28 @@ public static partial class OrderOperationsModule
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         endpoints.MapPost(
+                "/api/order-operations/preparation/work/{workId}/correct-start",
+                CorrectPreparationStartAsync)
+            .WithName("CorrectPreparationStart")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Accepts<CorrectPreparationProgressRequest>("application/json")
+            .Produces<PreparationCorrectionResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
+            .ProducesProblem(404).ProducesProblem(409).ProducesProblem(500);
+
+        endpoints.MapPost(
+                "/api/order-operations/preparation/work/{workId}/correct-ready",
+                CorrectPreparationReadyAsync)
+            .WithName("CorrectPreparationReady")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Accepts<CorrectPreparationProgressRequest>("application/json")
+            .Produces<PreparationCorrectionResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
+            .ProducesProblem(404).ProducesProblem(409).ProducesProblem(500);
+
+        endpoints.MapPost(
                 "/api/order-operations/incorporations/{incorporationId}/contents/{contentOrdinal}/deliver",
                 DeliverQuantityAsync)
             .WithName("DeliverQuantity")
@@ -653,6 +675,68 @@ public static partial class OrderOperationsModule
         };
     }
 
+    private static Task<IResult> CorrectPreparationStartAsync(
+        string workId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        CorrectPreparationProgressRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        PreparationProgressService service,
+        CancellationToken cancellationToken) =>
+        CorrectPreparationAsync(
+            workId, idempotencyKey, request, httpContext, antiforgery,
+            service.CorrectStartAsync, "preparation_start_correction", cancellationToken);
+
+    private static Task<IResult> CorrectPreparationReadyAsync(
+        string workId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        CorrectPreparationProgressRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        PreparationProgressService service,
+        CancellationToken cancellationToken) =>
+        CorrectPreparationAsync(
+            workId, idempotencyKey, request, httpContext, antiforgery,
+            service.CorrectReadyAsync, "preparation_ready_correction", cancellationToken);
+
+    private static async Task<IResult> CorrectPreparationAsync(
+        string workId,
+        string? idempotencyKey,
+        CorrectPreparationProgressRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        Func<Guid, Guid, int, CancellationToken, Task<PreparationProgressResult>> execute,
+        string operation,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(workId, out var parsedWorkId))
+            return Problem(400, "Invalid Preparation Work", "workId must contain a UUID.", $"order_operations.{operation}.work_id_invalid");
+        if (idempotencyKey is null)
+            return Problem(400, "Idempotency-Key is required", "Preparation Correction requires an Idempotency-Key containing a UUID v4.", $"order_operations.{operation}.idempotency_key_required");
+        if (!Guid.TryParse(idempotencyKey, out var commandId) || !IsUuidVersion4(commandId))
+            return Problem(400, "Invalid Idempotency-Key", "Idempotency-Key must contain a UUID v4.", $"order_operations.{operation}.idempotency_key_invalid");
+        try { await antiforgery.ValidateRequestAsync(httpContext); }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(400, "Antiforgery validation failed", "A valid antiforgery cookie and request token are required.", $"order_operations.{operation}.antiforgery_invalid");
+        }
+
+        var result = await execute(commandId, parsedWorkId, request.Quantity, cancellationToken);
+        return result.Outcome switch
+        {
+            PreparationProgressOutcome.Succeeded => Results.Ok(ToCorrectionResponse(result.Response!)),
+            PreparationProgressOutcome.Unauthenticated => Problem(401, "Invalid session", "The current session is invalid or expired.", "identities_and_capabilities.invalid_session"),
+            PreparationProgressOutcome.Forbidden => Problem(403, "Preparation access forbidden", "The current Identity is not authorized for Preparation.", "order_operations.preparation.forbidden"),
+            PreparationProgressOutcome.WorkNotFound => Problem(404, "Preparation Work not found", "No accessible Preparation Work exists with the supplied identifier.", "order_operations.preparation_work.not_found"),
+            PreparationProgressOutcome.QuantityInvalid => Problem(400, "Invalid quantity", "quantity must be a positive integer.", $"order_operations.{operation}.quantity_invalid"),
+            PreparationProgressOutcome.AvailableQuantityInsufficient => Problem(409, "Preparation quantity is insufficient", "The requested quantity exceeds the currently correctable quantity.", $"order_operations.{operation}.quantity_insufficient"),
+            PreparationProgressOutcome.IdempotencyConflict => Problem(409, "Idempotency-Key was already used for another intention", "The supplied Idempotency-Key identifies an incompatible Preparation command.", $"order_operations.{operation}.idempotency_key_conflict"),
+            PreparationProgressOutcome.OrderFrozen => FrozenOrderProblem(),
+            PreparationProgressOutcome.StateInconsistent => Problem(500, "Preparation state is inconsistent", "The target Work cannot be mutated because its current State is inconsistent.", "order_operations.preparation.state_inconsistent"),
+            _ => throw new UnreachableException()
+        };
+    }
+
     private static async Task<IResult> DeliverQuantityAsync(
         string incorporationId,
         string contentOrdinal,
@@ -789,6 +873,17 @@ public static partial class OrderOperationsModule
             result.ReadyQuantity);
 
     private static MarkPreparationQuantityReadyResponse ToReadyResponse(
+        PreparationCommandResult result) =>
+        new(
+            result.WorkId,
+            result.HistoryId,
+            result.OccurredAt,
+            result.TotalQuantity,
+            result.PendingQuantity,
+            result.InPreparationQuantity,
+            result.ReadyQuantity);
+
+    private static PreparationCorrectionResponse ToCorrectionResponse(
         PreparationCommandResult result) =>
         new(
             result.WorkId,
