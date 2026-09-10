@@ -48,7 +48,7 @@ GET /api/order-operations/preparation/work
 - La consulta requiere una Session válida, una Identity activa, `Responsibility.Preparation` y la `PreparationEnablement` exacta. Authentication/Session/Identity no utilizable responde `401`; ausencia de Preparation o de la habilitación exacta responde un `403` común que no revela cuál falta.
 - La autorización consulta Estado vigente dentro de la misma transacción PostgreSQL física que la lectura de Work y usa `FOR SHARE` sobre el Estado positivo; no usa capability claims.
 - Una consulta autorizada sin Work devuelve `200 []`.
-- Cada respuesta incluye `workId`, `preparationResponsibilityId`, `operationalReference` opaca, `context` vigente, `incorporationId`, `incorporationOrdinal`, `contentOrdinal`, `productId`, `productOperationalName`, `instruction` nullable, las cuatro cantidades y `confirmedAt`. `contentOrdinal`, `productId` e `instruction` proceden de `IncorporationContent`; `(incorporationId, contentOrdinal)` permite al frontend correlacionar exactamente Content Correction.
+- Cada respuesta incluye `workId`, `preparationResponsibilityId`, `operationalReference` opaca, `context` vigente, `incorporationId`, `incorporationOrdinal`, `contentOrdinal`, `productId`, `productOperationalName`, `instruction` nullable, `TotalQuantity`, `PendingQuantity`, `InPreparationQuantity`, `ReadyQuantity`, `DeliveredQuantity` y `confirmedAt`. `DeliveredQuantity` se incorpora a este read para calcular el límite de Ready Correction sin exigir autorización sobre Delivery. `contentOrdinal`, `productId` e `instruction` proceden de `IncorporationContent`; `(incorporationId, contentOrdinal)` permite al frontend correlacionar exactamente Content Correction.
 - `context` procede del `Order` actual. `confirmedAt` procede de la Confirmación que originó la `Incorporation`; no existe un `createdAt` artificial.
 - `ProductId` sigue siendo la identidad autoritativa. `productOperationalName` es presentación **actual/vigente** obtenida mediante una capacidad batch estrecha de `Catalog` que entrega solo `ProductId + OperationalName`; no es un snapshot de nombre en Confirmation o Work. Renombrar un Product cambia la presentación futura del Work activo, sin alterar `appliedPrice`, instruction, Preparation Responsibility, cantidades ni Historia. Los Products retirados continúan resolviéndose. Una referencia faltante es inconsistencia técnica y no cae a mostrar el UUID.
 - Esta decisión no agregó migración ni snapshot de nombre.
@@ -92,9 +92,11 @@ Ready es parcial. Cuando `ReadyQuantity == TotalQuantity`, el Work está complet
 
 ### Preparation Correction ordinaria
 
+Preparation Progress Correction está implementada verticalmente mediante dos comandos explícitos: Correct Start y Correct Ready.
+
 Preparation Correction significa que el progreso de Preparation registrado fue erróneo. No cambia una obligación que era correcta y después dejó de ser requerida; ese caso corresponde a OperationalIntervention, que permanece pendiente. Tampoco es Content Correction, Content Cancellation ni Delivery Correction.
 
-La corrección es por cantidad sobre el Estado actual del Work. No selecciona ni referencia un evento histórico Start o Ready original. Cada Correction registra su propia Historia semántica.
+La corrección es por cantidad sobre el Estado actual del Work. No selecciona ni referencia un evento histórico Start o Ready original. La Historia original de Start/Ready permanece preservada y cada Correction registra su propia Historia semántica distinta, sin requerir una referencia al evento original.
 
 Una Start Correction exige una cantidad entera positiva exacta `x <= InPreparationQuantity` y revierte únicamente el registro erróneo de Start:
 
@@ -103,7 +105,7 @@ InPreparationQuantity -= x
 PendingQuantity += x
 ```
 
-`ReadyQuantity`, `DeliveredQuantity`, `TotalQuantity` y `Q/R/C/F` no cambian.
+`ReadyQuantity`, `DeliveredQuantity`, `TotalQuantity`, `Q/R/C/F`, Functional Amount, Content y destination no cambian.
 
 Una Ready Correction exige una cantidad entera positiva exacta `x <= ReadyQuantity - DeliveredQuantity` y revierte únicamente el registro erróneo de Ready:
 
@@ -112,7 +114,7 @@ ReadyQuantity -= x
 InPreparationQuantity += x
 ```
 
-`PendingQuantity`, `DeliveredQuantity`, `TotalQuantity` y `Q/R/C/F` no cambian. El límite preserva `DeliveredQuantity <= ReadyQuantity`; una Preparation Correction no retrae ni cancela Delivery.
+`PendingQuantity`, `DeliveredQuantity`, `TotalQuantity`, `Q/R/C/F`, Functional Amount, Content y destination no cambian. El límite preserva `DeliveredQuantity <= ReadyQuantity`; una Preparation Correction no retrae ni cancela Delivery.
 
 Si Ready y Start fueron registrados erróneamente, se ejecutan dos comandos explícitos y ordenados: primero Ready Correction (`Ready -> InPreparation`) y después Start Correction (`InPreparation -> Pending`). No existe una Correction directa `Ready -> Pending`, cascada ni reversión automática de múltiples transiciones históricas.
 
