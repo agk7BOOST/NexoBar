@@ -15,6 +15,12 @@ La elegibilidad de Liquidation exige ausencia de PendingComposition, cumplimient
 
 Liquidation `occurredAt` está persistido y disponible en el resultado del comando y en History, pero el read actual de Order no lo expone después de reload. El frontend no lo fabrica. Esto es una limitación de lectura/presentación pendiente, no ausencia del hecho histórico.
 
+### OperationalIntervention — límite aprobado INT-07
+
+La intervención parcial aprobada en [S7-INT-D](preparation.md#operationalintervention--decisiones-aprobadas-s7-int-d), todavía pendiente de implementación, está prohibida después de Liquidation/Freeze. No cambia Delivery efectiva ni Functional Amount. Puede coexistir con PendingComposition sin consumirlo ni descartarlo; el marcador sigue bloqueando Liquidation bajo las reglas vigentes.
+
+INT-07 no implementa Cancellation completa de Order ni reparación post-Liquidation. Tampoco implica desperdicio, descarte o recuperación físicos ni modifica Inventory.
+
 ### Liquidation, Closure y completitud
 
 `Delivered != Liquidated != Closed`. Slice 6 materializa Liquidation, Freeze como consecuencia y Closure explícito en OrderOperations. Delivery sigue siendo una dimensión distinta y sus nuevas mutaciones ordinarias quedan bloqueadas tras Liquidation. El read expone `isLiquidated`, `isFrozen` e `isClosed` como dimensiones diferenciadas; no constituyen un Status global único.

@@ -26,7 +26,13 @@ InventoryConfiguration
 GeneralConfiguration
 ```
 
-`ResponsibilityAssignment` tiene PK compuesta `(IdentityId, ResponsibilityCode)`. `PreparationEnablement` tiene PK compuesta `(IdentityId, PreparationResponsibilityId)`; el destino es un UUID externo opaco, sin FK cross-module, y su vigencia se representa por existencia. La habilitación es independiente de la asignación `Preparation`: preparar o actuar sobre un destino requiere simultáneamente una Identity activa, `Responsibility.Preparation` y la `PreparationEnablement` exacta.
+`ResponsibilityAssignment` tiene PK compuesta `(IdentityId, ResponsibilityCode)`. `PreparationEnablement` tiene PK compuesta `(IdentityId, PreparationResponsibilityId)`; el destino es un UUID externo opaco, sin FK cross-module, y su vigencia se representa por existencia. La habilitación es independiente de la asignación `Preparation`: Start, Ready, Preparation Correction y la consulta de la cola de un destino requieren simultáneamente una Identity activa, `Responsibility.Preparation` y la `PreparationEnablement` exacta. OperationalIntervention tiene la frontera independiente aprobada en INT-06.
+
+### OperationalIntervention — frontera aprobada INT-06
+
+Una intervención nueva sobre trabajo real InPreparation o Ready requiere `OperationalIntervention`. No exige adicionalmente `Preparation` ni `PreparationEnablement`; no se aplica autorización dual por actuar sobre ese Work. Esta decisión de S7-INT-D está aprobada y su implementación sigue pendiente.
+
+La intervención debe contar con una lectura de alcance estrecho suficiente para entender el target exacto bajo su autoridad de intervención. Esa lectura no concede Start, Ready, Preparation Correction ni autoridad general sobre colas de destinos. No amplía la consulta ordinaria de Preparation ni el listado de destinos habilitados de la Identity actual. Las [transiciones y límites INT-01..07](../order-operations/preparation.md#operationalintervention--decisiones-aprobadas-s7-int-d) pertenecen a OrderOperations.
 
 ### Credencial local
 

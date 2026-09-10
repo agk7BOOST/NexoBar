@@ -27,7 +27,7 @@ ReadyQuantity >= 0
 PendingQuantity + InPreparationQuantity + ReadyQuantity == TotalQuantity
 ```
 
-El Work nace con `TotalQuantity > 0`. Puede quedar en cero solo cuando Cancellation ordinaria consume todo su bucket Pending y lleva `F` a cero; no habilita Cancellation ni intervención sobre cantidad `InPreparation` o `Ready`.
+El Work nace con `TotalQuantity > 0`. Content Correction o Cancellation ordinarias pueden llevar `F` y Total a cero consumiendo Pending y preservando la fila Work. Las transiciones aprobadas sobre trabajo real `InPreparation` o `Ready` se definen en [OperationalIntervention](#operationalintervention--decisiones-aprobadas-s7-int-d); su implementación sigue pendiente.
 
 No existe un `Status` persistido. Son derivaciones, no columnas:
 
@@ -94,7 +94,7 @@ Ready es parcial. Cuando `ReadyQuantity == TotalQuantity`, el Work está complet
 
 Preparation Progress Correction está implementada verticalmente mediante dos comandos explícitos: Correct Start y Correct Ready.
 
-Preparation Correction significa que el progreso de Preparation registrado fue erróneo. No cambia una obligación que era correcta y después dejó de ser requerida; ese caso corresponde a OperationalIntervention, que permanece pendiente. Tampoco es Content Correction, Content Cancellation ni Delivery Correction.
+Preparation Correction significa que el progreso de Preparation registrado fue erróneo. No cambia una obligación que era correcta y después dejó de ser requerida; ese caso corresponde a OperationalIntervention, con semántica aprobada en S7-INT-D e implementación pendiente. Tampoco es Content Correction, Content Cancellation ni Delivery Correction.
 
 La corrección es por cantidad sobre el Estado actual del Work. No selecciona ni referencia un evento histórico Start o Ready original. La Historia original de Start/Ready permanece preservada y cada Correction registra su propia Historia semántica distinta, sin requerir una referencia al evento original.
 
@@ -118,9 +118,47 @@ InPreparationQuantity += x
 
 Si Ready y Start fueron registrados erróneamente, se ejecutan dos comandos explícitos y ordenados: primero Ready Correction (`Ready -> InPreparation`) y después Start Correction (`InPreparation -> Pending`). No existe una Correction directa `Ready -> Pending`, cascada ni reversión automática de múltiples transiciones históricas.
 
+### OperationalIntervention — decisiones aprobadas S7-INT-D
+
+INT-01..07 son decisiones aprobadas; esta sección no afirma implementación de comandos, lecturas ni persistencia de intervención.
+
+**INT-01 — Cancelar cantidad real InPreparation.** Para una cantidad entera positiva exacta `x <= InPreparationQuantity`, la intervención aplica atómicamente:
+
+```text
+C += x
+InPreparationQuantity -= x
+TotalQuantity -= x
+F = Q - R - C  (disminuye en x)
+```
+
+`PendingQuantity`, `ReadyQuantity`, `DeliveredQuantity`, Q y R permanecen sin cambios. El Start original sigue siendo históricamente verdadero. La cantidad no vuelve a Pending.
+
+**INT-02 — Cancelar cantidad real Ready.** Para una cantidad entera positiva exacta `x <= ReadyQuantity - DeliveredQuantity`, la intervención aplica atómicamente:
+
+```text
+C += x
+ReadyQuantity -= x
+TotalQuantity -= x
+F = Q - R - C  (disminuye en x)
+```
+
+`PendingQuantity`, `InPreparationQuantity`, `DeliveredQuantity`, Q y R permanecen sin cambios. La intervención nunca retrae Delivery y conserva `DeliveredQuantity <= ReadyQuantity`; los hechos originales de Start/Ready permanecen verdaderos en Historia.
+
+**INT-03 — Obligación vigente.** Pending, InPreparation, Ready y Total representan la obligación de cumplimiento actual, no producción histórica acumulada. Se conserva `PendingQuantity + InPreparationQuantity + ReadyQuantity = TotalQuantity = F`. Reducir un bucket mediante intervención expresa que cesó la obligación, sin negar el trabajo real anterior conservado en Historia.
+
+**INT-04 — Una sola cantidad cancelada.** `CancelledQuantity` C incluye Cancellation ordinaria desde Pending y Cancellation mediante OperationalIntervention. `F = Q - R - C` sigue siendo autoritativa; no se agrega otra deducción. Véase [Q/R/C/F](confirmation.md#q-r-c-y-f-s7-i2-content-correction-ordinaria-s7-i3d-content-cancellation-ordinaria-s7-i4d).
+
+**INT-05 — Procedencia en Historia.** La distinción entre intervención desde InPreparation o Ready pertenece a Historia semántica; no se introducen contadores State `CancelledFromInPreparation` ni `CancelledFromReady`. La Historia de intervención se distingue de Cancellation ordinaria, Content Correction, Preparation Correction y Delivery Correction, preservando los Start/Ready originales. Véase [Estado e Historia de intervención](contracts-and-history.md#operationalintervention--historia-y-estado-aprobados-s7-int-d).
+
+**INT-06 — Autoridad de intervención.** Una intervención nueva requiere `OperationalIntervention`; no exige adicionalmente `Preparation` ni `PreparationEnablement`. Su lectura debe tener alcance estrecho suficiente para entender el target exacto, sin conceder Start, Ready, Preparation Correction ni autoridad general sobre colas de destinos. Esta frontera no cambia la autorización de los comandos y consultas ordinarios de Preparation. Véase [autoridad de Identity](../identities-and-capabilities/security.md#operationalintervention--frontera-aprobada-int-06).
+
+**INT-07 — Alcance parcial.** La intervención parcial puede coexistir con PendingComposition y no lo consume ni descarta. Está prohibida después de Liquidation/Freeze y no cambia Functional Amount. No implica desperdicio, descarte ni recuperación físicos; no modifica Inventory ni implementa Cancellation completa de Order. Véanse [terminación](ending.md) y [pendientes](pending.md).
+
+La implementación debe preferir dos intenciones explícitas de intervención, una para InPreparation y otra para Ready, en lugar de un editor genérico de Estado. Estas decisiones no fijan nombres de endpoints ni afirman contratos implementados.
+
 ### Autorización, actores y concurrencia
 
-No existe owner ni assignee de `PreparationWork`. Cualquier Identity actualmente autorizada para el destino puede actuar sobre cantidad elegible. Una intención nueva requiere Session válida, Identity activa, `Responsibility.Preparation` vigente y la `PreparationEnablement` exacta para `Work.PreparationResponsibilityId`. El actor procede de `AuthenticatedContext.IdentityId` y el destino se obtiene del Work; el cliente no aporta actor, destination ni capability. No se usan claims de capability.
+No existe owner ni assignee de `PreparationWork`. Para Start, Ready y Preparation Correction, cualquier Identity actualmente autorizada para el destino puede actuar sobre cantidad elegible. Una intención nueva de esas capacidades requiere Session válida, Identity activa, `Responsibility.Preparation` vigente y la `PreparationEnablement` exacta para `Work.PreparationResponsibilityId`. El actor procede de `AuthenticatedContext.IdentityId` y el destino se obtiene del Work; el cliente no aporta actor, destination ni capability. No se usan claims de capability. OperationalIntervention tiene la frontera independiente aprobada en INT-06.
 
 Por tanto, es válido que Identity A ejecute `Start(1)` e Identity B ejecute `Ready(1)` si ambas satisfacen la autorización vigente. Preparation Correction usa la misma autorización: cualquier Identity activa con `Responsibility.Preparation` y la `PreparationEnablement` exacta puede corregir cantidad elegible; no queda restringida al actor que registró el progreso original. La Historia conserva el actor de cada acción.
 
