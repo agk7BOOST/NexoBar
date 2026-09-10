@@ -79,12 +79,14 @@ try
     var preparer = new Identity("Preparador E2E", true);
     var secondPreparer = new Identity("Preparadora E2E B", true);
     var deliverer = new Identity("Delivery E2E", true);
+    var interventionOperator = new Identity("Intervención E2E", true);
     var inventoryConfigurator = new Identity("Configurador Inventario E2E", true);
     var inventoryOperator = new Identity("Operador Inventario E2E", true);
     identitiesAndCapabilities.Identities.AddRange(
         preparer,
         secondPreparer,
         deliverer,
+        interventionOperator,
         inventoryConfigurator,
         inventoryOperator);
     identitiesAndCapabilities.ResponsibilityAssignments.AddRange(
@@ -97,6 +99,9 @@ try
         new ResponsibilityAssignment(
             deliverer.Id,
             FunctionalResponsibility.OrderOperationsAndBasicClosure),
+        new ResponsibilityAssignment(
+            interventionOperator.Id,
+            FunctionalResponsibility.OperationalIntervention),
         new ResponsibilityAssignment(
             inventoryConfigurator.Id,
             FunctionalResponsibility.InventoryConfiguration),
@@ -127,6 +132,12 @@ try
             CancellationToken.None);
     await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
         .ProvisionAsync(
+            interventionOperator.Id,
+            "intervention-e2e",
+            "intervention-e2e-secret",
+            CancellationToken.None);
+    await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+        .ProvisionAsync(
             inventoryConfigurator.Id,
             "inventory-config-e2e",
             "inventory-config-e2e-secret",
@@ -150,17 +161,21 @@ try
         Guid.CreateVersion7(),
         "Bebida E2E directa",
         5m);
-    catalog.Products.AddRange(authorizedProduct, otherProduct, directProduct);
+    var interventionProduct = new Product(
+        Guid.CreateVersion7(),
+        "Papas E2E intervención",
+        7m);
+    catalog.Products.AddRange(authorizedProduct, otherProduct, directProduct, interventionProduct);
     await catalog.SaveChangesAsync();
     await catalog.Database.ExecuteSqlInterpolatedAsync(
         $"""
         UPDATE catalog.products
         SET requires_preparation = TRUE,
             preparation_responsibility_id = CASE
-                WHEN id = {authorizedProduct.Id} THEN {kitchen.Id}
+                WHEN id IN ({authorizedProduct.Id}, {interventionProduct.Id}) THEN {kitchen.Id}
                 ELSE {bar.Id}
             END
-        WHERE id IN ({authorizedProduct.Id}, {otherProduct.Id})
+        WHERE id IN ({authorizedProduct.Id}, {otherProduct.Id}, {interventionProduct.Id})
         """);
 
     var order = new Order(Guid.CreateVersion7(), "Mesa seguridad E2E");
@@ -217,6 +232,32 @@ try
         Guid.CreateVersion7(),
         incorporation.Id,
         order.Context,
+        deliverer.Id,
+        DateTimeOffset.UtcNow));
+    await orderOperations.SaveChangesAsync();
+
+    // Dedicated single-content Order for the OperationalIntervention scenario.
+    var interventionOrder = new Order(Guid.CreateVersion7(), "Mesa intervención E2E");
+    var interventionIncorporation = new Incorporation(
+        Guid.CreateVersion7(), interventionOrder.Id, 1);
+    orderOperations.Orders.Add(interventionOrder);
+    orderOperations.Incorporations.Add(interventionIncorporation);
+    orderOperations.IncorporationContents.Add(new IncorporationContent(
+        interventionIncorporation.Id,
+        1,
+        interventionProduct.Id,
+        2,
+        true,
+        7m,
+        "Sin sal"));
+    orderOperations.PreparationWork.Add(new PreparationWork(
+        Guid.CreateVersion7(), interventionIncorporation.Id, 1, kitchen.Id, 2));
+    orderOperations.DeliveryStates.Add(new DeliveryState(interventionIncorporation.Id, 1));
+    orderOperations.ContentQuantityStates.Add(new ContentQuantityState(interventionIncorporation.Id, 1));
+    orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
+        Guid.CreateVersion7(),
+        interventionIncorporation.Id,
+        interventionOrder.Context,
         deliverer.Id,
         DateTimeOffset.UtcNow));
     await orderOperations.SaveChangesAsync();
