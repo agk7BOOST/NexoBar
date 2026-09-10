@@ -26,6 +26,25 @@ C más los buckets actuales permite leer la obligación operacional vigente sin 
 
 Existen dos intenciones explícitas de intervención, una para InPreparation y otra para Ready, con idempotencia durable UUID v4. Las [transiciones INT-01/02 y límites INT-04/06/07](preparation.md#operationalintervention--decisiones-aprobadas-s7-int-d) están implementados verticalmente en S7-I6D, incluida la lectura estrecha del target. Ambas intenciones preservan Q, R, Delivered y Functional Amount; C sigue siendo la única deducción por cancelación. Este registro no afirma una query/API/UI de Historia implementada.
 
+## Complete Order Cancellation — Historia e idempotencia aprobadas S7-CAN-D
+
+Se registra una única decisión semántica Order-level de Complete Cancellation, distinguible de cancelaciones parciales independientes, OperationalIntervention, Content Correction, Liquidation y Closure. Su resultado/Historia conserva:
+
+- Order;
+- actor;
+- timestamp UTC;
+- Estado terminal resultante;
+- si existía PendingComposition y fue descartado dentro de la decisión (CAN-01);
+- consecuencias semánticas por Content/etapa afectada suficientes para explicar la procedencia de la cantidad cancelada.
+
+Se preservan las Historias originales de Confirmation, Start, Ready y Delivery. La procedencia desde Direct/Pending, InPreparation o Ready pertenece a las consecuencias semánticas; no se duplican representaciones históricas equivalentes innecesariamente ni se reconstruye el Estado ordinario por event sourcing. Descartar ediciones no confirmadas no produce hechos ficticios de Cancellation de cantidad. CAN-04 tampoco produce hechos de Content Cancellation/intervención con cantidad cero cuando todos los F ya eran cero; sí conserva la decisión terminal Order-level.
+
+El comando es una sola intención durable de alcance Order con `Idempotency-Key` UUID v4. State, descarte de PendingComposition cuando exista, Historia y resultado durable forman una única operación atómica; no es un batch visible al cliente de comandos o claves de idempotencia hijos independientes.
+
+**CAN-05:** replay exacto con la misma key durable devuelve el resultado original y no crea nuevo Estado ni Historia. Una intención nueva con otra key sobre un Order ya completamente cancelado se rechaza como terminal, sin segunda cancelación. Todos F=0 sin el hecho/Estado terminal no equivalen a una Complete Cancellation previa.
+
+Las [reglas de terminación CAN-01..05](ending.md#complete-order-cancellation--decisiones-aprobadas-s7-can-d) y la [autorización CAN-02](../identities-and-capabilities/security.md#complete-order-cancellation--autoridad-aprobada-can-02) están aprobadas; este registro no afirma implementación, nombres de endpoints ni esquema físico de persistencia.
+
 ## Contratos e idempotencia
 
 Los comandos humanos de Preparation usan un namespace durable local de `OrderOperations`. La intención persistida contiene `IdempotencyKey` UUID v4, `ActorIdentityId`, `CommandKind`, `WorkId`, `Quantity` y un resultado estable. Los kinds materializados actuales son `StartPreparationQuantity` y `MarkPreparationQuantityReady`; las Preparation Corrections aprobadas incorporarán kinds explícitos propios, sin reutilizar ni reinterpretar esos progresos.

@@ -1,6 +1,26 @@
 # Liquidation, Freeze y Closure
 
+### Complete Order Cancellation — decisiones aprobadas S7-CAN-D
+
+Complete Order Cancellation es una intención explícita de alcance Order: «toda la obligación de cumplimiento actual de este Order deja de ser requerida». Es una terminación excepcional distinta del recorrido ordinario Liquidation/Closure. S7-CAN-D registra decisiones aprobadas; no afirma su implementación.
+
+El éxito exige ausencia de Delivery efectiva en todos los Contents y un Order abierto, sin Liquidation/Freeze, Closure ni Complete Cancellation previa. No invoca Delivery Correction automáticamente. Las [transiciones de cantidades](confirmation.md#complete-order-cancellation--cantidades-aprobadas-s7-can-d) preservan Q y R, dejan todos F y D efectivos en cero y, para cada Content preparado, P=I=Y=T=0. C contabiliza exactamente la obligación restante cancelada. Functional Amount es cero porque Delivery efectiva es cero; Cancellation no crea movimientos financieros ni refunds.
+
+**CAN-01 — PendingComposition.** La cancelación completa descarta atómicamente cualquier PendingComposition existente como parte de la decisión terminal. No lo confirma, no crea Content, no exige un comando público Discard previo ni emite Cancellation ficticia de cantidad por ediciones no confirmadas. Su existencia y descarte forman parte del resultado/Historia semánticos según [CAN-01 e Historia](contracts-and-history.md#complete-order-cancellation--historia-e-idempotencia-aprobadas-s7-can-d).
+
+**CAN-02 — Autorización.** Exige `OrderOperationsAndBasicClosure` y, cuando el plan incluye cantidad actual InPreparation o Ready, también `OperationalIntervention` del mismo actor. La condición se evalúa después de estabilizar/bloquear el Estado vigente. Session, Identity, antiforgery y key, junto con la exclusión de Preparation/PreparationEnablement, se detallan en [seguridad](../identities-and-capabilities/security.md#complete-order-cancellation--autoridad-aprobada-can-02).
+
+**CAN-03 — Estado terminal explícito.** Se introduce conceptualmente un `OrderCancellationState` estrecho que representa la terminación por Complete Order Cancellation. No es un `OrderStatus` genérico, Liquidation, Closure ni Freeze. Todos F=0 por sí solos no identifican Complete Cancellation. Una vez existe ese Estado, el Order ya no está abierto: no admite nuevas Incorporations, Start de PendingComposition ni mutaciones operacionales ordinarias. El acceso histórico y de lectura permanece disponible.
+
+Después del éxito no se liquida ni se cierra el Order, no se crea Freeze, no se requiere Liquidation de importe cero ni se crea Closure automáticamente. El Order es terminal por `OrderCancellationState` mismo; tampoco procede posteriormente por el recorrido ordinario Liquidation/Closure.
+
+**CAN-04 — F ya puede ser cero.** Un Order todavía abierto y no terminal, sin Delivery efectiva, Liquidation, Closure ni Complete Cancellation previa, puede cancelarse completamente aunque todos los F actuales sean cero. Se crea el Estado/Historia terminal Order-level y se descarta PendingComposition atómicamente si existe. No se crean hechos de Content Cancellation o intervención de cantidad cero.
+
+**CAN-05 — Repetición terminal.** Replay exacto con la misma key durable devuelve el resultado original sin nuevo Estado ni Historia. Una nueva intención con otra key contra un Order ya completamente cancelado se rechaza por terminalidad; no crea una segunda cancelación. Véase [idempotencia](contracts-and-history.md#complete-order-cancellation--historia-e-idempotencia-aprobadas-s7-can-d).
+
 ### Functional Amount, Liquidation, Freeze y Closure — Slice 6
+
+Este apartado describe el recorrido ordinario implementado. La terminación excepcional aprobada en S7-CAN-D queda fuera de ese recorrido: un Order completamente cancelado no es elegible para Liquidation ni Closure, aunque D=F=0.
 
 `OrderEconomicStateReader` deriva el Importe funcional del Estado vigente: suma de Delivery efectiva (`DeliveredQuantity`) × `AppliedPrice` histórico de cada Content. Usa aritmética `decimal` exacta y comprobada, con representación HTTP decimal string; no usa el precio actual de Catalog ni replay de History. Al liquidar se persiste un snapshot del importe completo.
 

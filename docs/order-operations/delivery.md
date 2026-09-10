@@ -154,6 +154,14 @@ El Functional Amount deriva inmediatamente del `DeliveredQuantity` efectivo corr
 
 El comando mantiene idempotencia durable sobre el endpoint, target, body, actor y key exactos. El replay devuelve el resultado original sin repetir State ni History; una reutilización incompatible de la key responde conflicto.
 
+### Complete Order Cancellation — regla aprobada S7-CAN-D
+
+[Complete Order Cancellation](ending.md#complete-order-cancellation--decisiones-aprobadas-s7-can-d) se rechaza siempre que exista cualquier DeliveredQuantity efectivo mayor que cero en el Order. No invoca Delivery Correction automáticamente ni cancela únicamente el remanente mientras denomina al Order completamente cancelado.
+
+Una Delivery histórica explícita y válidamente corregida hasta D efectivo igual a cero no bloquea por sí sola la cancelación completa. Esto no convierte Delivery Correction en un paso requerido para cancelar una entrega verdadera. La Historia original de Delivery y de su Correction se preserva.
+
+El éxito de Cancellation deja D=0 y Functional Amount=0 sin crear movimientos financieros ni refunds. CAN-03 rechaza nuevas mutaciones ordinarias, incluidas Delivery y Delivery Correction, una vez existe OrderCancellationState; las lecturas y el acceso histórico permanecen disponibles. Estas reglas están aprobadas; este apartado no afirma implementación de Complete Cancellation.
+
 ### Errores de Delivery
 
 - `400`: key, body, quantity o target estructuralmente inválido;

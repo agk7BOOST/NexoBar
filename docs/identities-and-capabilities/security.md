@@ -34,6 +34,14 @@ Una intervención nueva sobre trabajo real InPreparation o Ready requiere Sessio
 
 La intervención cuenta con una lectura de alcance estrecho del target exacto bajo su autoridad de intervención. Esa lectura no concede Start, Ready, Preparation Correction ni autoridad general sobre colas de destinos. No amplía la consulta ordinaria de Preparation ni el listado de destinos habilitados de la Identity actual. Las [transiciones y límites INT-01..07](../order-operations/preparation.md#operationalintervention--decisiones-aprobadas-s7-int-d) pertenecen a OrderOperations. El checkpoint E2E vertical dirigido usa un actor con `OperationalIntervention` sin `Preparation` ni `PreparationEnablement`.
 
+### Complete Order Cancellation — autoridad aprobada CAN-02
+
+Una nueva Complete Order Cancellation siempre exige Session utilizable, Identity activa, responsabilidad `OrderOperationsAndBasicClosure`, antiforgery e `Idempotency-Key` UUID v4.
+
+Si el plan incluye cualquier cantidad actual InPreparation o Ready, el mismo actor debe tener además `OperationalIntervention` vigente. Esta condición se evalúa sobre el Estado real del Order después de su estabilización/bloqueo; no depende de una afirmación del cliente ni de preparación histórica ya sin cantidad vigente. Cancelar solo Direct/Pending requiere únicamente `OrderOperationsAndBasicClosure` como responsabilidad.
+
+No se exige `Preparation` ni `PreparationEnablement`. La autorización condicional dual pertenece a Complete Order Cancellation; no cambia INT-06 para intervenciones parciales. Véanse [CAN-01..05 y lifecycle](../order-operations/ending.md#complete-order-cancellation--decisiones-aprobadas-s7-can-d) y [replay terminal CAN-05](../order-operations/contracts-and-history.md#complete-order-cancellation--historia-e-idempotencia-aprobadas-s7-can-d). CAN-02 es una decisión aprobada, no una declaración de implementación.
+
 ### Credencial local
 
 `LocalCredential` está separada de `Identity` en una relación 1:1 (como máximo una credencial por Identity). Contiene `LoginIdentifier`, `NormalizedLoginIdentifier` unique y `SecretVerifier`; el locator no exige email. El login identifier aplica trim exterior y normalización invariant de case. El secret no se normaliza.

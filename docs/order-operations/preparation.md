@@ -156,6 +156,12 @@ F = Q - R - C  (disminuye en x)
 
 La implementación tiene dos intenciones explícitas de intervención: desde InPreparation y desde Ready, con las transiciones exactas INT-01/02. Ambas preservan Q, R, Delivered, Functional Amount y la Historia original de Preparation Start/Ready. C sigue siendo la única deducción por cancelación y no se agregaron contadores State de intervención. Con P = Pending, I = InPreparation, Y = Ready, T = Total y D = Delivered, permanecen las invariantes `F = Q - R - C`, `P + I + Y = T = F` y `0 <= D <= Y`. La intervención no liquida ni cierra automáticamente el Order.
 
+#### Complete Order Cancellation y Preparation — S7-CAN-D
+
+Las decisiones aprobadas de [Complete Order Cancellation](ending.md#complete-order-cancellation--decisiones-aprobadas-s7-can-d), aún pendientes de implementación, aplican INT-01/02 a toda cantidad actual InPreparation/Ready dentro de una única decisión atómica Order-level. Con D=0 en todo el Order, cada Work termina con Pending, InPreparation, Ready y Total en cero; C aumenta exactamente por la obligación cancelada. Start/Ready originales permanecen verdaderos. No se transforma trabajo real en un error de registro ni se atribuyen efectos físicos o de Inventory.
+
+CAN-02 exige `OrderOperationsAndBasicClosure` y además `OperationalIntervention` del mismo actor si el plan contiene I>0 o Y>0 después de estabilizar/bloquear el Estado; no exige Preparation ni PreparationEnablement. Esta autorización corresponde al comando completo y no cambia la frontera INT-06 de la intervención parcial. CAN-01 descarta PendingComposition atómicamente en la cancelación completa; la intervención parcial sigue preservándolo. CAN-03 rechaza nuevas mutaciones ordinarias de Preparation, incluidas sus Corrections e intervenciones, después de la terminación por cancelación completa.
+
 #### Frontend de OperationalIntervention — S7-I6D
 
 Existe una superficie distinta «Intervención operacional» que usa únicamente la lectura estrecha de intervención. Expone acciones explícitas equivalentes a «Cancelar cantidad ya iniciada» y «Cancelar cantidad ya lista», mostrando los límites exactos `0 < x <= InPreparationQuantity` y `0 < x <= ReadyQuantity - DeliveredQuantity`, respectivamente.
