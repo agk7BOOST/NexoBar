@@ -6,7 +6,6 @@ No implementar estas fronteras a partir de conveniencias técnicas. La base Q/R/
 - reversal y exception handling de Delivery;
 - interacción completa entre Delivery y Corrections de Content;
 - errores post-Liquidation intencionalmente sin resolución en el flujo ordinario del MVP; Slice 6 no agrega correcciones económicas, reversals ni un subsistema adicional de Settlement/Payment;
-- price correction (`AppliedPrice`) sigue pendiente;
 - query/API/UI de Historia de Delivery;
 - cantidades fraccionarias de Preparation;
 - cantidades fraccionarias de Delivery, mientras continúen abiertas;
@@ -18,7 +17,6 @@ No implementar estas fronteras a partir de conveniencias técnicas. La base Q/R/
 
 - semántica física de desperdicio, descarte y recuperación pendiente; INT-07 no implica esos efectos ni modifica Inventory;
 - efectos de Inventory y refunds/reversals de pagos permanecen pendientes y fuera del alcance de S7-I7D;
-- Applied Price Correction sigue pendiente;
 - reparación post-Liquidation sigue pendiente;
 - Correcciones de instruction;
 - edición de una instruction ya confirmada;
@@ -31,7 +29,13 @@ Complete Order Cancellation CAN-01..05 está implementada verticalmente. Sus [ca
 
 La terminalidad usa actualmente 11 guards manuales repartidos en 10 servicios de OrderOperations. No hay defecto de corrección demostrado. El riesgo es omitir un guard al introducir un nuevo comando mutante; todo trabajo futuro de mutación debe considerar explícitamente `OrderCancellationState`. No se debe introducir un framework genérico de estados terminales solo para eliminar esta duplicación.
 
-Permanecen diferidos: disposición física, desperdicio o recuperación; efectos de Inventory; refunds o reversals de pagos; Applied Price Correction; reparación post-Liquidation; y SSE.
+Permanecen diferidos: disposición física, desperdicio o recuperación; efectos de Inventory; refunds o reversals de pagos; reparación post-Liquidation; y SSE.
+
+### Applied Price Correction — decisiones cerradas, implementación pendiente S7-PRICE-D
+
+Las decisiones aprobadas separan `AppliedPrice` original confirmado de `EffectiveAppliedPrice` actual por Content, adoptan el precio actual válido de Catalog sólo mediante una intención explícita y preservan cantidades, Delivery y PendingComposition. También cierran sucesión, no-op, autorización, Historia/idempotencia y fronteras de Liquidation/Freeze, Closure y Complete Order Cancellation. Véanse [Confirmation](confirmation.md#applied-price-correction--decisiones-aprobadas-s7-price-d), [Historia](contracts-and-history.md#applied-price-correction--historia-e-idempotencia-aprobadas-s7-price-d), [autorización](../identities-and-capabilities/security.md#applied-price-correction--autoridad-aprobada-s7-price-d) y [lifecycle](ending.md#functional-amount-liquidation-freeze-y-closure--slice-6).
+
+Siguen fuera de alcance: edición libre de precios en Orders; descuentos, promociones o precios de cortesía; impuestos; recargos; refunds o reversals de pagos; reparación post-Liquidation; efectos físicos o de Inventory; y SSE.
 
 ### Correction y coordinación Preparation/Delivery
 
