@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { OrderEnding } from "./OrderEnding.tsx";
+import { AppliedPriceCorrection } from "./AppliedPriceCorrection.tsx";
 import { CompleteCancellation } from "./CompleteCancellation.tsx";
 import {
   evaluateCompleteCancellation,
@@ -72,6 +73,7 @@ export function OrderLookup({
   const [isLoading, setIsLoading] = useState(false);
   const [endingBusy, setEndingBusy] = useState(false);
   const [cancellationBusy, setCancellationBusy] = useState(false);
+  const [priceBusy, setPriceBusy] = useState(false);
   const [evaluation, setEvaluation] =
     useState<CompleteCancellationEvaluation | null>(null);
   const [evaluationError, setEvaluationError] = useState<string | null>(null);
@@ -187,12 +189,12 @@ export function OrderLookup({
           name="operationalReference"
           value={operationalReference}
           onChange={(event) => setOperationalReference(event.target.value)}
-          disabled={isLoading || endingBusy || cancellationBusy}
+          disabled={isLoading || endingBusy || cancellationBusy || priceBusy}
           required
         />
         <button
           type="submit"
-          disabled={isLoading || endingBusy || cancellationBusy}
+          disabled={isLoading || endingBusy || cancellationBusy || priceBusy}
         >
           {isLoading ? "Buscando…" : "Buscar Pedido"}
         </button>
@@ -234,6 +236,7 @@ export function OrderLookup({
                 disabled={
                   endingBusy ||
                   cancellationBusy ||
+                  priceBusy ||
                   isOrderMutationBusy?.(order.operationalReference)
                 }
               >
@@ -247,6 +250,7 @@ export function OrderLookup({
             canAct={
               identityId !== undefined &&
               !cancellationBusy &&
+              !priceBusy &&
               !isLoading &&
               !isOrderMutationBusy?.(order.operationalReference)
             }
@@ -274,6 +278,7 @@ export function OrderLookup({
               identityId !== undefined &&
               !isLoading &&
               !endingBusy &&
+              !priceBusy &&
               !isOrderMutationBusy?.(order.operationalReference)
             }
             onRefresh={() => lookup(order.operationalReference, true, true)}
@@ -285,11 +290,28 @@ export function OrderLookup({
             }}
           />
 
+          {identityId !== undefined && (
+            <AppliedPriceCorrection
+              key={`price:${identityId}:${order.operationalReference}`}
+              orderId={order.operationalReference}
+              canAct={!isLoading && !endingBusy && !cancellationBusy && !isOrderMutationBusy?.(order.operationalReference)}
+              isTerminal={order.isLiquidated || order.isFrozen || order.isClosed || isOrderCompletelyCancelled(order) || evaluation?.isTerminal === true}
+              onRefresh={() => lookup(order.operationalReference, true)}
+              onUnauthorized={() => onUnauthorized?.()}
+              onBusyChange={(busy) => {
+                endingBusyRef.current = busy;
+                setPriceBusy(busy);
+                onEndingBusy?.(order.operationalReference, busy);
+              }}
+            />
+          )}
+
           {onOpenDelivery && (
             <button
               type="button"
               className="secondary-button"
               onClick={() => onOpenDelivery(order.operationalReference)}
+              disabled={priceBusy}
             >
               Abrir entrega de este Pedido
             </button>
