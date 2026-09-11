@@ -6,9 +6,15 @@ import {
   useState,
 } from "react";
 import { OrderEnding } from "./OrderEnding.tsx";
+import { CompleteCancellation } from "./CompleteCancellation.tsx";
+import {
+  evaluateCompleteCancellation,
+  type CompleteCancellationEvaluation,
+} from "./completeCancellationClient.ts";
 import type { Product } from "../catalog/catalogClient.ts";
 import {
   getOrder,
+  isOrderCompletelyCancelled,
   OrderLookupNetworkError,
   OrderOperationsProblemError,
   type OrderOperationsProblemDetails,
@@ -65,6 +71,10 @@ export function OrderLookup({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [endingBusy, setEndingBusy] = useState(false);
+  const [cancellationBusy, setCancellationBusy] = useState(false);
+  const [evaluation, setEvaluation] =
+    useState<CompleteCancellationEvaluation | null>(null);
+  const [evaluationError, setEvaluationError] = useState<string | null>(null);
   const [liquidationTimes, setLiquidationTimes] = useState<
     Record<string, string>
   >({});
@@ -78,18 +88,45 @@ export function OrderLookup({
   );
 
   const lookup = useCallback(
-    async (reference: string, preserveOrder = false): Promise<boolean> => {
+    async (
+      reference: string,
+      preserveOrder = false,
+      requireEvaluation = false,
+    ): Promise<boolean> => {
       if (endingBusyRef.current && !preserveOrder) return false;
       const request = ++sequence.current;
       setIsLoading(true);
       if (!preserveOrder) setOrder(null);
       setErrorMessage(null);
+      setEvaluation(null);
+      setEvaluationError(null);
 
       try {
         const loaded = await getOrder(reference);
         if (request !== sequence.current) return false;
         setOrder(loaded);
         onOrderState?.(loaded);
+        if (identityId !== undefined) {
+          try {
+            const evaluated = await evaluateCompleteCancellation(reference);
+            if (request !== sequence.current) return false;
+            setEvaluation(evaluated);
+          } catch (error) {
+            if (request !== sequence.current) return false;
+            if (
+              error instanceof OrderOperationsProblemError &&
+              error.problem.status === 401
+            )
+              onUnauthorized?.();
+            setEvaluationError(
+              error instanceof OrderOperationsProblemError &&
+                error.problem.status === 403
+                ? "Esta Identity no tiene autorización para evaluar la cancelación completa."
+                : "No se pudo evaluar la cancelación completa. Actualizá el Pedido antes de cancelar.",
+            );
+            return !requireEvaluation;
+          }
+        }
         return true;
       } catch (error) {
         if (request !== sequence.current) return false;
@@ -108,7 +145,7 @@ export function OrderLookup({
         if (request === sequence.current) setIsLoading(false);
       }
     },
-    [onOrderState, onUnauthorized],
+    [onOrderState, onUnauthorized, identityId],
   );
 
   useEffect(() => {
@@ -132,6 +169,7 @@ export function OrderLookup({
     order !== null &&
     !order.isFrozen &&
     !order.isClosed &&
+    !isOrderCompletelyCancelled(order) &&
     order.operationalReference === activeOperationalReference;
 
   return (
@@ -149,10 +187,13 @@ export function OrderLookup({
           name="operationalReference"
           value={operationalReference}
           onChange={(event) => setOperationalReference(event.target.value)}
-          disabled={isLoading || endingBusy}
+          disabled={isLoading || endingBusy || cancellationBusy}
           required
         />
-        <button type="submit" disabled={isLoading || endingBusy}>
+        <button
+          type="submit"
+          disabled={isLoading || endingBusy || cancellationBusy}
+        >
           {isLoading ? "Buscando…" : "Buscar Pedido"}
         </button>
       </form>
@@ -180,6 +221,8 @@ export function OrderLookup({
 
           {!order.isFrozen &&
             !order.isClosed &&
+            !isOrderCompletelyCancelled(order) &&
+            !evaluation?.isTerminal &&
             (isDisplayedOrderActive ? (
               <p className="active-order-indicator" role="status">
                 Este Pedido está activo para una nueva Incorporación.
@@ -190,6 +233,7 @@ export function OrderLookup({
                 onClick={() => onContinueOrder(order.operationalReference)}
                 disabled={
                   endingBusy ||
+                  cancellationBusy ||
                   isOrderMutationBusy?.(order.operationalReference)
                 }
               >
@@ -202,6 +246,7 @@ export function OrderLookup({
             order={order}
             canAct={
               identityId !== undefined &&
+              !cancellationBusy &&
               !isLoading &&
               !isOrderMutationBusy?.(order.operationalReference)
             }
@@ -217,6 +262,25 @@ export function OrderLookup({
             onBusyChange={(busy) => {
               endingBusyRef.current = busy;
               setEndingBusy(busy);
+              onEndingBusy?.(order.operationalReference, busy);
+            }}
+          />
+
+          <CompleteCancellation
+            key={`cancellation:${identityId ?? "anonymous"}:${order.operationalReference}`}
+            evaluation={evaluation}
+            evaluationError={evaluationError}
+            canAct={
+              identityId !== undefined &&
+              !isLoading &&
+              !endingBusy &&
+              !isOrderMutationBusy?.(order.operationalReference)
+            }
+            onRefresh={() => lookup(order.operationalReference, true, true)}
+            onUnauthorized={() => onUnauthorized?.()}
+            onBusyChange={(busy) => {
+              endingBusyRef.current = busy;
+              setCancellationBusy(busy);
               onEndingBusy?.(order.operationalReference, busy);
             }}
           />

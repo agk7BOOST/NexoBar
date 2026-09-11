@@ -27,7 +27,7 @@ function quantities(target: InterventionTarget) {
   ] as const;
 }
 
-export function OperationalInterventionPanel({ onUnauthorized }: { onUnauthorized: () => void }) {
+export function OperationalInterventionPanel({ onUnauthorized, isOrderBlocked }: { onUnauthorized: () => void; isOrderBlocked?: (reference: string) => boolean }) {
   const [incorporation, setIncorporation] = useState("");
   const [ordinal, setOrdinal] = useState("");
   const [lookup, setLookup] = useState<InterventionLookup | null>(null);
@@ -140,7 +140,7 @@ export function OperationalInterventionPanel({ onUnauthorized }: { onUnauthorize
   }
 
   async function begin(stage: InterventionStage) {
-    if (busy.current || target === null || target.isFrozen) return;
+    if (busy.current || target === null || target.isFrozen || isOrderBlocked?.(target.orderId)) return;
     const quantity = Number(amounts[stage]);
     const maximum = stage === "ready" ? target.readyQuantity - target.deliveredQuantity : target.inPreparationQuantity;
     if (!Number.isInteger(quantity) || quantity <= 0 || quantity > maximum) return;
@@ -164,6 +164,7 @@ export function OperationalInterventionPanel({ onUnauthorized }: { onUnauthorize
   }
 
   const locked = phase !== "idle";
+  const mutationLocked = locked || (target !== null && isOrderBlocked?.(target.orderId) === true);
   return (
     <section className="panel operational-intervention" aria-label="Intervención operacional">
       <h2>Intervención operacional</h2>
@@ -208,14 +209,14 @@ export function OperationalInterventionPanel({ onUnauthorized }: { onUnauthorize
               <p>{stage === "ready" ? "Esta cantidad realmente llegó a lista. La cantidad entregada permanece sin cambios." : "Esta preparación realmente comenzó. La cantidad pendiente permanece sin cambios."}</p>
               <label htmlFor={`intervention-${stage}`}>Cantidad ya {stage === "ready" ? "lista" : "iniciada"} a cancelar</label>
               <input id={`intervention-${stage}`} type="number" min="1" max={maximum} step="1" value={amounts[stage]}
-                disabled={locked} onChange={e => setAmounts(current => ({ ...current, [stage]: e.target.value }))} />
+                disabled={mutationLocked} onChange={e => setAmounts(current => ({ ...current, [stage]: e.target.value }))} />
               <p>Máximo: {maximum}. Ingresá una cantidad entera positiva.</p>
               {valid && <table aria-label={`Vista previa: ${labels[stage]}`}>
                 <caption>Vista previa de la obligación vigente</caption>
                 <thead><tr><th scope="col">Cantidad</th><th scope="col">Actual</th><th scope="col">Después</th></tr></thead>
                 <tbody>{quantities(target).map(([label, value], i) => <tr key={label}><th scope="row">{label}</th><td>{value}</td><td>{quantities(preview)[i][1]}</td></tr>)}</tbody>
               </table>}
-              <button type="button" disabled={locked || !valid} onClick={() => void begin(stage)}>{labels[stage]}</button>
+              <button type="button" disabled={mutationLocked || !valid} onClick={() => void begin(stage)}>{labels[stage]}</button>
             </section>;
           })}
         {!target.isFrozen && target.inPreparationQuantity === 0 && target.readyQuantity === target.deliveredQuantity &&

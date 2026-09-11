@@ -20,7 +20,7 @@ import {
 import { PreparationPanel } from "./preparation/PreparationPanel.tsx";
 import { DeliveryPanel } from "./delivery/DeliveryPanel.tsx";
 import { InventoryPanel } from "./inventory/InventoryPanel.tsx";
-import type { OrderResponse } from "./orderOperations/orderOperationsClient.ts";
+import { isOrderCompletelyCancelled, type OrderResponse } from "./orderOperations/orderOperationsClient.ts";
 import { OperationalInterventionPanel } from "./orderOperations/OperationalInterventionPanel.tsx";
 
 type AuthState =
@@ -48,6 +48,7 @@ function App() {
   const [preparationBusy, setPreparationBusy] = useState<string[]>([]);
   const [preparationRefresh, setPreparationRefresh] = useState(0);
   const [deliveryRefresh, setDeliveryRefresh] = useState(0);
+  const [endingRefresh, setEndingRefresh] = useState(0);
   const rememberDeliveryBusy = useCallback(
     (reference: string, busy: boolean) => {
       setDeliveryBusy((current) => ({ ...current, [reference]: busy }));
@@ -62,11 +63,16 @@ function App() {
   const rememberOrderState = useCallback((order: OrderResponse) => {
     setTerminalOrders((current) => ({
       ...current,
-      [order.operationalReference]: order.isFrozen || order.isClosed,
+      [order.operationalReference]: order.isFrozen || order.isClosed || isOrderCompletelyCancelled(order),
     }));
   }, []);
   const rememberEndingBusy = useCallback((reference: string, busy: boolean) => {
     setEndingOrders((current) => ({ ...current, [reference]: busy }));
+    if (!busy) {
+      setEndingRefresh(current => current + 1);
+      setPreparationRefresh(current => current + 1);
+      setDeliveryRefresh(current => current + 1);
+    }
   }, []);
 
   const reloadProducts = useCallback(async () => {
@@ -179,7 +185,8 @@ function App() {
             identity={authState.identity}
             onLoggedOut={returnToLogin}
           />
-          <OperationalInterventionPanel key={authState.identity.identityId} onUnauthorized={returnToLogin} />
+          <OperationalInterventionPanel key={authState.identity.identityId} onUnauthorized={returnToLogin}
+            isOrderBlocked={reference => terminalOrders[reference] === true || endingOrders[reference] === true} />
           <PreparationPanel
             refreshSequence={preparationRefresh}
             onBusyOrdersChange={setPreparationBusy}
@@ -193,6 +200,7 @@ function App() {
           />
           <InventoryPanel onUnauthorized={returnToLogin} />
           <OrderWorkflow
+            endingRefreshSequence={endingRefresh}
             products={products}
             activeOperationalReference={activeOperationalReference}
             requestedTarget={requestedTarget}

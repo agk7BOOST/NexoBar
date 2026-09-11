@@ -80,6 +80,7 @@ interface OrderWorkflowProps {
   onOrderChanged: (operationalReference: string) => void;
   onUnauthorized: () => void;
   ordinaryMutationsBlocked?: boolean;
+  endingRefreshSequence?: number;
 }
 
 function confirmationErrorMessage(
@@ -134,6 +135,7 @@ export function OrderWorkflow({
   onOrderChanged,
   onUnauthorized,
   ordinaryMutationsBlocked = false,
+  endingRefreshSequence = 0,
 }: OrderWorkflowProps) {
   const [composition, setComposition] = useState<CompositionLine[]>([]);
   const [context, setContext] = useState("");
@@ -295,7 +297,7 @@ export function OrderWorkflow({
       void reconcilePending(activeOperationalReference);
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [activeOperationalReference, reconcilePending]);
+  }, [activeOperationalReference, reconcilePending, endingRefreshSequence]);
 
   function applyAddToComposition(product: Product, anotherLine: boolean) {
     if (anotherLine) {

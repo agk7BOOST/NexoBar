@@ -100,6 +100,10 @@ export interface OrderResponse {
   closedAt: string | null;
 }
 
+export function isOrderCompletelyCancelled(order: OrderResponse): boolean {
+  return order.liquidationBlockers.includes("order_completely_cancelled");
+}
+
 export interface OrderOperationsProblemDetails {
   type?: string;
   title?: string;

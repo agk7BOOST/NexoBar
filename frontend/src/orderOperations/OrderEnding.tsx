@@ -6,6 +6,7 @@ import {
 } from "../identity/sessionClient.ts";
 import {
   OrderOperationsProblemError,
+  isOrderCompletelyCancelled,
   type OrderResponse,
 } from "./orderOperationsClient.ts";
 import {
@@ -16,6 +17,7 @@ import {
 } from "./orderEndingClient.ts";
 
 const blockers: Record<string, string> = {
+  order_completely_cancelled: "El pedido terminó por cancelación completa. No admite Liquidación ni Cierre.",
   pending_composition:
     "Hay una Composición pendiente. Confirmala o descartala antes de Liquidar.",
   unresolved_fulfillment:
@@ -161,7 +163,7 @@ export function OrderEnding({
   }
 
   function begin(kind: OrderEndingKind) {
-    if (busy.current || !canAct || order.isClosed) return;
+    if (busy.current || !canAct || order.isClosed || isOrderCompletelyCancelled(order)) return;
     if (
       kind === "close"
         ? !order.isClosureEligible || !order.isLiquidated
@@ -266,7 +268,7 @@ export function OrderEnding({
           )}
         </dl>
       )}
-      {!order.isLiquidated && !order.isClosed && !order.isFrozen && (
+      {!order.isLiquidated && !order.isClosed && !order.isFrozen && !isOrderCompletelyCancelled(order) && (
         <>
           <p>Después de Liquidar, el Pedido quedará congelado.</p>
           <form
@@ -313,7 +315,7 @@ export function OrderEnding({
           </div>
         </>
       )}
-      {order.isLiquidated && order.isClosureEligible && !order.isClosed && (
+      {order.isLiquidated && order.isClosureEligible && !order.isClosed && !isOrderCompletelyCancelled(order) && (
         <button
           type="button"
           disabled={disabled}
