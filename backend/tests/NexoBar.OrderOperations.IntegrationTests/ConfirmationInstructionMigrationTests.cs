@@ -15,7 +15,7 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
     private const string CurrentMigration =
         "20260830230000_AddConfirmationInstructions";
     private const string LatestMigration =
-        "20260910222430_AddCompleteOrderCancellation";
+        "20260911160042_AddAppliedPriceCorrection";
 
     [Fact]
     public async Task Migration_preserves_I3A_data_replay_queries_and_has_safe_down()
@@ -60,6 +60,13 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
                     .ToArrayAsync(token);
                 Assert.All(contents, content => Assert.Null(content.Instruction));
                 Assert.Equal([1, 1], contents.Select(x => x.ContentOrdinal).ToArray());
+                var prices = await dbContext.ContentAppliedPriceStates.AsNoTracking().ToArrayAsync(token);
+                Assert.Equal(contents.Length, prices.Length);
+                Assert.All(contents, content => Assert.Equal(content.AppliedPrice,
+                    Assert.Single(prices, price => price.IncorporationId == content.IncorporationId &&
+                        price.ContentOrdinal == content.ContentOrdinal).EffectiveAppliedPrice));
+                Assert.Empty(await dbContext.AppliedPriceCorrectionHistory.ToArrayAsync(token));
+                Assert.Empty(await dbContext.AppliedPriceCorrectionCommands.ToArrayAsync(token));
                 Assert.All(
                     await dbContext.FirstConfirmationCommandContents.AsNoTracking()
                         .ToArrayAsync(token),
@@ -96,6 +103,7 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
 
             using var orderResponse = await fixture.Client.GetAsync(
                 $"/api/order-operations/orders/{orderId:D}", token);
+            Assert.Equal(HttpStatusCode.OK, orderResponse.StatusCode);
             var order = Assert.IsType<OrderQueryResponse>(
                 await orderResponse.Content.ReadFromJsonAsync<OrderQueryResponse>(token));
             Assert.All(order.Incorporations.SelectMany(x => x.Items),

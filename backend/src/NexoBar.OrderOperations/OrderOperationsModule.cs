@@ -39,6 +39,7 @@ public static partial class OrderOperationsModule
         services.AddScoped<OrderDeliveryQueryService>();
         services.AddScoped<DeliveryQuantityService>();
         services.AddScoped<DeliveryCorrectionService>();
+        services.AddScoped<AppliedPriceCorrectionService>();
         services.AddScoped<ContentCorrectionService>();
         services.AddScoped<ContentCancellationService>();
         services.AddScoped<PreparationWorkQueryService>();
@@ -54,6 +55,7 @@ public static partial class OrderOperationsModule
     {
         MapOperationalInterventionEndpoints(endpoints);
         MapCompleteCancellationEndpoints(endpoints);
+        MapAppliedPriceCorrectionEndpoints(endpoints);
         endpoints.MapPost("/api/order-operations/orders/{orderId}/incorporations/{incorporationId}/contents/{contentOrdinal}/cancel-content-quantity", CancelContentAsync)
             .WithName("CancelContentQuantity")
             .WithTags("OrderOperations")

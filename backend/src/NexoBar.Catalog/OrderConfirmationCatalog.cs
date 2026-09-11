@@ -12,6 +12,20 @@ public interface IOrderConfirmationCatalog
         CancellationToken cancellationToken);
 }
 
+public interface IOrderAppliedPriceCatalog
+{
+    Task<OrderAppliedPriceCatalogProduct?> ReadCurrentProductAsync(
+        Guid productId,
+        DbTransaction transaction,
+        CancellationToken cancellationToken);
+}
+
+public sealed record OrderAppliedPriceCatalogProduct(
+    Guid ProductId,
+    decimal Price,
+    bool IsActive,
+    bool IsAvailable);
+
 public sealed record OrderConfirmationCatalogProduct(
     Guid ProductId,
     decimal Price,
@@ -21,7 +35,7 @@ public sealed record OrderConfirmationCatalogProduct(
     Guid? PreparationResponsibilityId);
 
 internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext) :
-    IOrderConfirmationCatalog
+    IOrderConfirmationCatalog, IOrderAppliedPriceCatalog
 {
     public async Task<IReadOnlyList<OrderConfirmationCatalogProduct>> ReadProductsAsync(
         IReadOnlyCollection<Guid> productIds,
@@ -71,5 +85,16 @@ internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext) :
                 product.RequiresPreparation,
                 product.PreparationResponsibilityId))
             .ToArray();
+    }
+
+    public async Task<OrderAppliedPriceCatalogProduct?> ReadCurrentProductAsync(
+        Guid productId,
+        DbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var products = await ReadProductsAsync([productId], transaction, cancellationToken);
+        return products.SingleOrDefault() is { } product
+            ? new OrderAppliedPriceCatalogProduct(product.ProductId, product.Price, product.IsActive, product.IsAvailable)
+            : null;
     }
 }

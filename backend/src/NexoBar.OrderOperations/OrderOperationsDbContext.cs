@@ -23,6 +23,9 @@ internal sealed class OrderOperationsDbContext(
     internal DbSet<Incorporation> Incorporations => Set<Incorporation>();
     internal DbSet<IncorporationContent> IncorporationContents => Set<IncorporationContent>();
     internal DbSet<ContentQuantityState> ContentQuantityStates => Set<ContentQuantityState>();
+    internal DbSet<ContentAppliedPriceState> ContentAppliedPriceStates => Set<ContentAppliedPriceState>();
+    internal DbSet<AppliedPriceCorrectionHistory> AppliedPriceCorrectionHistory => Set<AppliedPriceCorrectionHistory>();
+    internal DbSet<AppliedPriceCorrectionCommand> AppliedPriceCorrectionCommands => Set<AppliedPriceCorrectionCommand>();
     internal DbSet<DeliveryState> DeliveryStates => Set<DeliveryState>();
     internal DbSet<DeliveryHistory> DeliveryHistory => Set<DeliveryHistory>();
     internal DbSet<DeliveryCommand> DeliveryCommands => Set<DeliveryCommand>();
@@ -61,6 +64,9 @@ internal sealed class OrderOperationsDbContext(
         modelBuilder.ApplyConfiguration(new IncorporationConfiguration());
         modelBuilder.ApplyConfiguration(new IncorporationContentConfiguration());
         modelBuilder.ApplyConfiguration(new ContentQuantityStateConfiguration());
+        modelBuilder.ApplyConfiguration(new ContentAppliedPriceStateConfiguration());
+        modelBuilder.ApplyConfiguration(new AppliedPriceCorrectionHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new AppliedPriceCorrectionCommandConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryStateConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new DeliveryCommandConfiguration());

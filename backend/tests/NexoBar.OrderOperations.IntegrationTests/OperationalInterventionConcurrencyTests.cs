@@ -134,8 +134,12 @@ public sealed partial class OperationalInterventionTests
     public async Task Concurrent_identical_key_has_one_durable_effect(bool ready)
     {
         var s = await Setup(); using var client = s.Client; var key = Guid.NewGuid();
+        // Establish the authenticated antiforgery cookie before concurrent token requests.
+        await OrderOperationsApiFixture.GetAntiforgeryTokenAsync(client, Token);
         var responses = await Task.WhenAll(Intervene(client, s.Target, ready, 2, key), Intervene(client, s.Target, ready, 2, key));
         using var a = responses[0]; using var b = responses[1];
+        Assert.True(a.IsSuccessStatusCode, await a.Content.ReadAsStringAsync(Token));
+        Assert.True(b.IsSuccessStatusCode, await b.Content.ReadAsStringAsync(Token));
         Assert.Equal(await Success(a), await Success(b));
         Assert.Equal(3, (await fixture.ReadPreparationHistoryAsync(Token)).Count);
         Assert.Equal(3, (await fixture.ReadPreparationCommandsAsync(Token)).Count);

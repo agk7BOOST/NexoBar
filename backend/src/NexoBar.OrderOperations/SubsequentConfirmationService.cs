@@ -199,6 +199,7 @@ internal sealed class SubsequentConfirmationService(
             }
             dbContext.DeliveryStates.Add(creation.DeliveryState);
             dbContext.ContentQuantityStates.Add(creation.QuantityState);
+            dbContext.ContentAppliedPriceStates.Add(creation.AppliedPriceState);
             dbContext.SubsequentConfirmationCommandContents.Add(
                 new SubsequentConfirmationCommandContent(
                     idempotencyKey,

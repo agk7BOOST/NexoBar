@@ -152,6 +152,7 @@ internal sealed class FirstConfirmationService(
             }
             dbContext.DeliveryStates.Add(creation.DeliveryState);
             dbContext.ContentQuantityStates.Add(creation.QuantityState);
+            dbContext.ContentAppliedPriceStates.Add(creation.AppliedPriceState);
             dbContext.FirstConfirmationCommandContents.Add(
                 new FirstConfirmationCommandContent(
                     idempotencyKey,

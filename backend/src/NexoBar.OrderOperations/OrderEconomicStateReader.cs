@@ -23,6 +23,11 @@ internal sealed class OrderEconomicStateReader(OrderOperationsDbContext dbContex
                 equals new { quantityStateValue.IncorporationId, quantityStateValue.ContentOrdinal }
                 into quantityStates
             from quantityState in quantityStates.DefaultIfEmpty()
+            join priceStateValue in dbContext.ContentAppliedPriceStates.AsNoTracking()
+                on new { content.IncorporationId, content.ContentOrdinal }
+                equals new { priceStateValue.IncorporationId, priceStateValue.ContentOrdinal }
+                into priceStates
+            from priceState in priceStates.DefaultIfEmpty()
             join workValue in dbContext.PreparationWork.AsNoTracking()
                 on new { content.IncorporationId, content.ContentOrdinal }
                 equals new { workValue.IncorporationId, workValue.ContentOrdinal }
@@ -33,6 +38,7 @@ internal sealed class OrderEconomicStateReader(OrderOperationsDbContext dbContex
                 quantityState == null ? null : quantityState.RemovedByCorrectionQuantity,
                 quantityState == null ? null : quantityState.CancelledQuantity,
                 content.AppliedPrice,
+                priceState == null ? null : priceState.EffectiveAppliedPrice,
                 content.RequiresPreparationAtConfirmation,
                 state == null ? null : state.DeliveredQuantity,
                 work == null ? null : work.TotalQuantity,
@@ -45,7 +51,7 @@ internal sealed class OrderEconomicStateReader(OrderOperationsDbContext dbContex
         var functionalAmount = rows.Aggregate(
             0m,
             (amount, row) => checked(
-                amount + (row.DeliveredQuantity ?? 0) * row.AppliedPrice));
+                amount + (row.DeliveredQuantity ?? 0) * (row.EffectiveAppliedPrice ?? 0m)));
         var unresolved = !inconsistent && rows.Any(row =>
             row.DeliveredQuantity != row.Quantity - row.RemovedByCorrectionQuantity - row.CancelledQuantity);
         return new OrderEconomicState(functionalAmount, unresolved, inconsistent);
@@ -54,7 +60,7 @@ internal sealed class OrderEconomicStateReader(OrderOperationsDbContext dbContex
     private static bool IsInconsistent(EconomicContentRow row)
     {
         if (row.Quantity <= 0 ||
-            row.AppliedPrice < 0 ||
+            row.AppliedPrice < 0 || row.EffectiveAppliedPrice is null || row.EffectiveAppliedPrice < 0 ||
             row.CancelledQuantity is null || row.CancelledQuantity < 0 ||
             (long?)row.RemovedByCorrectionQuantity + row.CancelledQuantity > row.Quantity ||
             row.RemovedByCorrectionQuantity is null ||
@@ -93,6 +99,7 @@ internal sealed class OrderEconomicStateReader(OrderOperationsDbContext dbContex
         int? RemovedByCorrectionQuantity,
         int? CancelledQuantity,
         decimal AppliedPrice,
+        decimal? EffectiveAppliedPrice,
         bool RequiresPreparationAtConfirmation,
         int? DeliveredQuantity,
         int? WorkTotalQuantity,

@@ -22,6 +22,7 @@ internal static class ConfirmedContentFactory
             instruction);
         var deliveryState = new DeliveryState(incorporationId, contentOrdinal);
         var quantityState = new ContentQuantityState(incorporationId, contentOrdinal);
+        var appliedPriceState = new ContentAppliedPriceState(incorporationId, contentOrdinal, product.Price);
 
         if (!requiresPreparationAtConfirmation)
         {
@@ -37,7 +38,7 @@ internal static class ConfirmedContentFactory
                     "A Product that does not require preparation cannot have a Preparation Responsibility.");
             }
 
-            return new ConfirmedContentCreation(content, null, deliveryState, quantityState);
+            return new ConfirmedContentCreation(content, null, deliveryState, quantityState, appliedPriceState);
         }
 
         var responsibilityId = product.PreparationResponsibilityId
@@ -49,7 +50,7 @@ internal static class ConfirmedContentFactory
             contentOrdinal,
             responsibilityId,
             quantity);
-        return new ConfirmedContentCreation(content, work, deliveryState, quantityState);
+        return new ConfirmedContentCreation(content, work, deliveryState, quantityState, appliedPriceState);
     }
 }
 
@@ -57,4 +58,5 @@ internal sealed record ConfirmedContentCreation(
     IncorporationContent Content,
     PreparationWork? PreparationWork,
     DeliveryState DeliveryState,
-    ContentQuantityState QuantityState);
+    ContentQuantityState QuantityState,
+    ContentAppliedPriceState AppliedPriceState);
