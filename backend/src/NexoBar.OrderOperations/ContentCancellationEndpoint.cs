@@ -51,6 +51,7 @@ public static partial class OrderOperationsModule
             ContentCancellationOutcome.ContentNotFound => ContentCancellationProblem(404, "content_not_found", "The confirmed-content target does not exist in this Order."),
             ContentCancellationOutcome.QuantityInvalid => ContentCancellationProblem(400, "quantity_invalid", "quantity must be a positive integer."),
             ContentCancellationOutcome.QuantityExceedsEligible => ContentCancellationProblem(409, "quantity_exceeds_eligible", "The exact cancellation exceeds current eligible content quantity."),
+            ContentCancellationOutcome.OrderCancelled => CancelledOrderProblem(),
             ContentCancellationOutcome.OrderFrozen => FrozenOrderProblem(),
             ContentCancellationOutcome.IdempotencyConflict => ContentCancellationProblem(409, "idempotency_key_conflict", "The key identifies an incompatible Content Cancellation intent."),
             ContentCancellationOutcome.StateInconsistent => ContentCancellationProblem(500, "state_inconsistent", "The current fulfillment State is inconsistent."),

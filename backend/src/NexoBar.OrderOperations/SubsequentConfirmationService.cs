@@ -103,6 +103,9 @@ internal sealed class SubsequentConfirmationService(
             return SubsequentConfirmationResult.OrderNotFound();
         }
 
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
+            return SubsequentConfirmationResult.OrderCancelled();
+
         if (await dbContext.Liquidations.AsNoTracking().AnyAsync(
                 liquidation => liquidation.OrderId == orderId,
                 cancellationToken))
@@ -407,6 +410,9 @@ internal sealed record SubsequentConfirmationResult(
     internal static SubsequentConfirmationResult PendingCompositionStale() =>
         new(SubsequentConfirmationOutcome.PendingCompositionStale, null, null);
 
+    internal static SubsequentConfirmationResult OrderCancelled() =>
+        new(SubsequentConfirmationOutcome.OrderCancelled, null, null);
+
     internal static SubsequentConfirmationResult OrderFrozen() =>
         new(SubsequentConfirmationOutcome.OrderFrozen, null, null);
 
@@ -430,6 +436,7 @@ internal enum SubsequentConfirmationOutcome
     InstructionRequiresPreparation,
     IdempotencyConflict,
     PendingCompositionStale,
+    OrderCancelled,
     OrderFrozen,
     Unauthenticated,
     Forbidden

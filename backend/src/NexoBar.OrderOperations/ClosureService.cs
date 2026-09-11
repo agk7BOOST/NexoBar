@@ -49,6 +49,9 @@ internal sealed class ClosureService(
             return new(ClosureOutcome.OrderNotFound);
         }
 
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
+            return new(ClosureOutcome.OrderCancelled);
+
         var state = await stateReader.ReadAsync(orderId, cancellationToken);
         if (state.IsInconsistent)
         {
@@ -92,5 +95,5 @@ internal sealed record ClosureResult(ClosureOutcome Outcome, ClosureResponse? Re
 internal enum ClosureOutcome
 {
     Succeeded, Unauthenticated, Forbidden, OrderNotFound, NotLiquidated,
-    AlreadyClosed, IdempotencyConflict, StateInconsistent
+    OrderCancelled, AlreadyClosed, IdempotencyConflict, StateInconsistent
 }

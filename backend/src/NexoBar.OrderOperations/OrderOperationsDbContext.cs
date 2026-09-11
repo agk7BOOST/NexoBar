@@ -6,6 +6,10 @@ namespace NexoBar.OrderOperations;
 internal sealed class OrderOperationsDbContext(
     DbContextOptions<OrderOperationsDbContext> options) : DbContext(options)
 {
+    internal DbSet<OrderCancellationState> OrderCancellationStates => Set<OrderCancellationState>();
+    internal DbSet<CompleteCancellationHistory> CompleteCancellationHistory => Set<CompleteCancellationHistory>();
+    internal DbSet<CompleteCancellationDetail> CompleteCancellationDetails => Set<CompleteCancellationDetail>();
+    internal DbSet<CompleteCancellationCommand> CompleteCancellationCommands => Set<CompleteCancellationCommand>();
     internal DbSet<Order> Orders => Set<Order>();
     internal DbSet<Closure> Closures => Set<Closure>();
     internal DbSet<ClosureHistory> ClosureHistory => Set<ClosureHistory>();
@@ -43,6 +47,7 @@ internal sealed class OrderOperationsDbContext(
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        CompleteCancellationConfiguration.Configure(modelBuilder);
         modelBuilder.HasDefaultSchema("order_operations");
         modelBuilder.ApplyConfiguration(new OrderConfiguration());
         modelBuilder.ApplyConfiguration(new ClosureConfiguration());

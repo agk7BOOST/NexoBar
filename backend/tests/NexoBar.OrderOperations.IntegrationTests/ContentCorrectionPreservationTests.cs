@@ -98,7 +98,7 @@ public sealed class ContentCorrectionPreservationTests(OrderOperationsApiFixture
         {
             await fixture.MigrateOrderOperationsAsync("20260906120000_AddContentQuantityState", token);
             await fixture.MigrateOrderOperationsAsync("20260906163222_AddContentCorrection", token);
-            await fixture.MigrateOrderOperationsAsync("20260907054805_AddContentCancellation", token);
+            await fixture.MigrateOrderOperationsAsync("20260910222430_AddCompleteOrderCancellation", token);
             Assert.Equal(work, await fixture.ReadPreparationWorkAsync(token));
             Assert.Equal(contents, await fixture.ReadConfirmedContentsAsync(token));
             Assert.False(await fixture.HasPendingModelChangesAsync());
@@ -108,6 +108,6 @@ public sealed class ContentCorrectionPreservationTests(OrderOperationsApiFixture
             await ContentCorrectionTestSupport.CountsAsync(fixture, 1, token);
             Assert.Equal(0, Assert.Single(await fixture.ReadPreparationWorkAsync(token)).TotalQuantity);
         }
-        finally { await fixture.MigrateOrderOperationsAsync("20260907054805_AddContentCancellation", token); }
+        finally { await fixture.MigrateOrderOperationsAsync("20260910222430_AddCompleteOrderCancellation", token); }
     }
 }

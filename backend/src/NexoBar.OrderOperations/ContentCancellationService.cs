@@ -38,6 +38,9 @@ internal sealed class ContentCancellationService(
                 $"SELECT id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE")
                 .AsNoTracking().AnyAsync(cancellationToken))
             return new(ContentCancellationOutcome.ContentNotFound);
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
+            return new(ContentCancellationOutcome.OrderCancelled);
+
         if (await dbContext.Liquidations.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
             return new(ContentCancellationOutcome.OrderFrozen);
         if (!await dbContext.Incorporations.AsNoTracking().AnyAsync(x => x.Id == incorporationId && x.OrderId == orderId, cancellationToken))
@@ -101,5 +104,5 @@ internal sealed record ContentCancellationResult(ContentCancellationOutcome Outc
 internal enum ContentCancellationOutcome
 {
     Succeeded, Unauthenticated, Forbidden, ContentNotFound, QuantityInvalid,
-    QuantityExceedsEligible, OrderFrozen, IdempotencyConflict, StateInconsistent
+    QuantityExceedsEligible, OrderCancelled, OrderFrozen, IdempotencyConflict, StateInconsistent
 }

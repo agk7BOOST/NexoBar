@@ -129,6 +129,9 @@ internal sealed class PreparationProgressService(
             return PreparationProgressResult.WorkNotFound();
         }
 
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId.Value, cancellationToken))
+            return PreparationProgressResult.OrderCancelled();
+
         if (await dbContext.Liquidations.AsNoTracking().AnyAsync(
                 liquidation => liquidation.OrderId == orderId.Value,
                 cancellationToken))
@@ -344,6 +347,9 @@ internal sealed record PreparationProgressResult(
     internal static PreparationProgressResult IdempotencyConflict() =>
         new(PreparationProgressOutcome.IdempotencyConflict, null);
 
+    internal static PreparationProgressResult OrderCancelled() =>
+        new(PreparationProgressOutcome.OrderCancelled, null);
+
     internal static PreparationProgressResult OrderFrozen() =>
         new(PreparationProgressOutcome.OrderFrozen, null);
 
@@ -360,6 +366,7 @@ internal enum PreparationProgressOutcome
     QuantityInvalid,
     AvailableQuantityInsufficient,
     IdempotencyConflict,
+    OrderCancelled,
     OrderFrozen,
     StateInconsistent
 }

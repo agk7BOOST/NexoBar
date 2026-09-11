@@ -59,6 +59,9 @@ internal sealed class PendingCompositionService(
             return PendingCompositionCommandResult.OrderNotFound();
         }
 
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
+            return PendingCompositionCommandResult.OrderCancelled();
+
         if (await IsFrozenAsync(orderId, cancellationToken))
         {
             return PendingCompositionCommandResult.OrderFrozen();
@@ -184,6 +187,9 @@ internal sealed class PendingCompositionService(
             return PendingCompositionCommandResult.OrderNotFound();
         }
 
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
+            return PendingCompositionCommandResult.OrderCancelled();
+
         if (await IsFrozenAsync(orderId, cancellationToken))
         {
             return PendingCompositionCommandResult.OrderFrozen();
@@ -277,6 +283,9 @@ internal sealed record PendingCompositionCommandResult(
     internal static PendingCompositionCommandResult IdempotencyConflict() =>
         new(PendingCompositionCommandOutcome.IdempotencyConflict, null);
 
+    internal static PendingCompositionCommandResult OrderCancelled() =>
+        new(PendingCompositionCommandOutcome.OrderCancelled, null);
+
     internal static PendingCompositionCommandResult OrderFrozen() =>
         new(PendingCompositionCommandOutcome.OrderFrozen, null);
 }
@@ -291,6 +300,7 @@ internal enum PendingCompositionCommandOutcome
     AlreadyExists,
     Stale,
     IdempotencyConflict,
+    OrderCancelled,
     OrderFrozen
 }
 

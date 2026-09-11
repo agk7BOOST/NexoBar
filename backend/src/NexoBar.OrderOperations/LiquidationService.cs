@@ -100,6 +100,9 @@ internal sealed class LiquidationService(
             return LiquidationResult.OrderNotFound();
         }
 
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
+            return LiquidationResult.OrderCancelled();
+
         if (await dbContext.Liquidations.AsNoTracking().AnyAsync(
                 liquidation => liquidation.OrderId == orderId,
                 cancellationToken))
@@ -213,6 +216,9 @@ internal sealed record LiquidationResult(
         new(LiquidationOutcome.Forbidden, null);
     internal static LiquidationResult OrderNotFound() =>
         new(LiquidationOutcome.OrderNotFound, null);
+    internal static LiquidationResult OrderCancelled() =>
+        new(LiquidationOutcome.OrderCancelled, null);
+
     internal static LiquidationResult OrderFrozen() =>
         new(LiquidationOutcome.OrderFrozen, null);
     internal static LiquidationResult PendingComposition() =>
@@ -231,6 +237,7 @@ internal enum LiquidationOutcome
     Unauthenticated,
     Forbidden,
     OrderNotFound,
+    OrderCancelled,
     OrderFrozen,
     PendingComposition,
     UnresolvedFulfillment,

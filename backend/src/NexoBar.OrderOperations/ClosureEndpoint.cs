@@ -47,6 +47,7 @@ public static partial class OrderOperationsModule
             ClosureOutcome.Forbidden => ClosureProblem(403, "forbidden", "OrderOperationsAndBasicClosure is required."),
             ClosureOutcome.OrderNotFound => ClosureProblem(404, "order_not_found", "The Order does not exist."),
             ClosureOutcome.NotLiquidated => ClosureProblem(409, "not_liquidated", "The Order must be Liquidated before Closure."),
+            ClosureOutcome.OrderCancelled => CancelledOrderProblem(),
             ClosureOutcome.AlreadyClosed => ClosureProblem(409, "already_closed", "The Order is already Closed."),
             ClosureOutcome.IdempotencyConflict => ClosureProblem(409, "idempotency_key_conflict", "The key identifies an incompatible Closure command."),
             ClosureOutcome.StateInconsistent => ClosureProblem(409, "state_inconsistent", "The Order has structurally contradictory terminal State."),

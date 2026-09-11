@@ -52,6 +52,7 @@ public static partial class OrderOperationsModule
             DeliveryCorrectionOutcome.QuantityInvalid => DeliveryCorrectionProblem(400, "quantity_invalid", "quantity must be a positive integer."),
             DeliveryCorrectionOutcome.NoEffectiveDelivery => DeliveryCorrectionProblem(409, "no_effective_delivery", "There is no effective delivered quantity to correct."),
             DeliveryCorrectionOutcome.QuantityExceedsDelivered => DeliveryCorrectionProblem(409, "quantity_exceeds_delivered", "The exact correction exceeds current effective delivered quantity."),
+            DeliveryCorrectionOutcome.OrderCancelled => CancelledOrderProblem(),
             DeliveryCorrectionOutcome.OrderFrozen => FrozenOrderProblem(),
             DeliveryCorrectionOutcome.IdempotencyConflict => DeliveryCorrectionProblem(409, "idempotency_key_conflict", "The key identifies an incompatible Delivery Correction intent."),
             DeliveryCorrectionOutcome.StateInconsistent => DeliveryCorrectionProblem(500, "state_inconsistent", "The current fulfillment State is inconsistent."),

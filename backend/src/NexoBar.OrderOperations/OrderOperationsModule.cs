@@ -34,6 +34,7 @@ public static partial class OrderOperationsModule
         services.AddScoped<OrderEconomicStateReader>();
         services.AddScoped<LiquidationService>();
         services.AddScoped<ClosureService>();
+        services.AddScoped<CompleteCancellationService>();
         services.AddScoped<ClosureStateReader>();
         services.AddScoped<OrderDeliveryQueryService>();
         services.AddScoped<DeliveryQuantityService>();
@@ -52,6 +53,7 @@ public static partial class OrderOperationsModule
         this IEndpointRouteBuilder endpoints)
     {
         MapOperationalInterventionEndpoints(endpoints);
+        MapCompleteCancellationEndpoints(endpoints);
         endpoints.MapPost("/api/order-operations/orders/{orderId}/incorporations/{incorporationId}/contents/{contentOrdinal}/cancel-content-quantity", CancelContentAsync)
             .WithName("CancelContentQuantity")
             .WithTags("OrderOperations")
@@ -427,6 +429,7 @@ public static partial class OrderOperationsModule
                 "The current Identity is not authorized for Order Operations and basic Closure.",
                 "order_operations.liquidation.forbidden"),
             LiquidationOutcome.OrderNotFound => PendingCompositionOrderNotFound(),
+            LiquidationOutcome.OrderCancelled => CancelledOrderProblem(),
             LiquidationOutcome.OrderFrozen => FrozenOrderProblem(),
             LiquidationOutcome.PendingComposition => Problem(
                 StatusCodes.Status409Conflict,
@@ -569,6 +572,7 @@ public static partial class OrderOperationsModule
                 "Idempotency-Key was already used for another intention",
                 "The supplied Idempotency-Key identifies an incompatible Preparation command.",
                 "order_operations.preparation_start.idempotency_key_conflict"),
+            PreparationProgressOutcome.OrderCancelled => CancelledOrderProblem(),
             PreparationProgressOutcome.OrderFrozen => FrozenOrderProblem(),
             PreparationProgressOutcome.StateInconsistent => Problem(
                 StatusCodes.Status500InternalServerError,
@@ -668,6 +672,7 @@ public static partial class OrderOperationsModule
                 "Idempotency-Key was already used for another intention",
                 "The supplied Idempotency-Key identifies an incompatible Preparation command.",
                 "order_operations.preparation_ready.idempotency_key_conflict"),
+            PreparationProgressOutcome.OrderCancelled => CancelledOrderProblem(),
             PreparationProgressOutcome.OrderFrozen => FrozenOrderProblem(),
             PreparationProgressOutcome.StateInconsistent => Problem(
                 StatusCodes.Status500InternalServerError,
@@ -734,6 +739,7 @@ public static partial class OrderOperationsModule
             PreparationProgressOutcome.QuantityInvalid => Problem(400, "Invalid quantity", "quantity must be a positive integer.", $"order_operations.{operation}.quantity_invalid"),
             PreparationProgressOutcome.AvailableQuantityInsufficient => Problem(409, "Preparation quantity is insufficient", "The requested quantity exceeds the currently correctable quantity.", $"order_operations.{operation}.quantity_insufficient"),
             PreparationProgressOutcome.IdempotencyConflict => Problem(409, "Idempotency-Key was already used for another intention", "The supplied Idempotency-Key identifies an incompatible Preparation command.", $"order_operations.{operation}.idempotency_key_conflict"),
+            PreparationProgressOutcome.OrderCancelled => CancelledOrderProblem(),
             PreparationProgressOutcome.OrderFrozen => FrozenOrderProblem(),
             PreparationProgressOutcome.StateInconsistent => Problem(500, "Preparation state is inconsistent", "The target Work cannot be mutated because its current State is inconsistent.", "order_operations.preparation.state_inconsistent"),
             _ => throw new UnreachableException()
@@ -859,6 +865,7 @@ public static partial class OrderOperationsModule
                 "Delivery state is inconsistent",
                 "The target Content cannot be mutated because its Delivery state is inconsistent.",
                 "order_operations.delivery.state_inconsistent"),
+            DeliveryQuantityOutcome.OrderCancelled => CancelledOrderProblem(),
             DeliveryQuantityOutcome.OrderFrozen => FrozenOrderProblem(),
             _ => throw new UnreachableException()
         };
@@ -970,6 +977,7 @@ public static partial class OrderOperationsModule
                 "This Order already has a current Pending Composition.",
                 "order.pending_composition_already_exists"),
             PendingCompositionCommandOutcome.IdempotencyConflict => PendingCompositionIdempotencyConflict(),
+            PendingCompositionCommandOutcome.OrderCancelled => CancelledOrderProblem(),
             PendingCompositionCommandOutcome.OrderFrozen => FrozenOrderProblem(),
             _ => throw new UnreachableException()
         };
@@ -1068,6 +1076,7 @@ public static partial class OrderOperationsModule
                 "The supplied PendingCompositionId is not the current Pending Composition for this Order.",
                 "order.pending_composition_stale"),
             PendingCompositionCommandOutcome.IdempotencyConflict => PendingCompositionIdempotencyConflict(),
+            PendingCompositionCommandOutcome.OrderCancelled => CancelledOrderProblem(),
             PendingCompositionCommandOutcome.OrderFrozen => FrozenOrderProblem(),
             _ => throw new UnreachableException()
         };
@@ -1211,6 +1220,7 @@ public static partial class OrderOperationsModule
                 "Pending Composition is stale",
                 "The supplied PendingCompositionId is not the current Pending Composition for this Order.",
                 "order.pending_composition_stale"),
+            SubsequentConfirmationOutcome.OrderCancelled => CancelledOrderProblem(),
             SubsequentConfirmationOutcome.OrderFrozen => FrozenOrderProblem(),
             SubsequentConfirmationOutcome.Unauthenticated => Problem(
                 StatusCodes.Status401Unauthorized,

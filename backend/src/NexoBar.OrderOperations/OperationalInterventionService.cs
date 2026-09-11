@@ -44,6 +44,9 @@ internal sealed class OperationalInterventionService(
         if (!await dbContext.Orders.FromSqlInterpolated(
                 $"SELECT id, context FROM order_operations.orders WHERE id = {target.OrderId} FOR UPDATE")
                 .AsNoTracking().AnyAsync(token)) return PreparationProgressResult.StateInconsistent();
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == target.OrderId, token))
+            return PreparationProgressResult.OrderCancelled();
+
         if (await dbContext.Liquidations.AsNoTracking().AnyAsync(x => x.OrderId == target.OrderId, token))
             return PreparationProgressResult.OrderFrozen();
 

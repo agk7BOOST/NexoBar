@@ -38,6 +38,9 @@ internal sealed class ContentCorrectionService(
                 $"SELECT id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE")
                 .AsNoTracking().AnyAsync(cancellationToken))
             return new(ContentCorrectionOutcome.ContentNotFound);
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
+            return new(ContentCorrectionOutcome.OrderCancelled);
+
         if (await dbContext.Liquidations.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
             return new(ContentCorrectionOutcome.OrderFrozen);
         if (!await dbContext.Incorporations.AsNoTracking().AnyAsync(x => x.Id == incorporationId && x.OrderId == orderId, cancellationToken))
@@ -102,5 +105,5 @@ internal sealed record ContentCorrectionResult(ContentCorrectionOutcome Outcome,
 internal enum ContentCorrectionOutcome
 {
     Succeeded, Unauthenticated, Forbidden, ContentNotFound, QuantityInvalid,
-    QuantityExceedsEligible, OrderFrozen, IdempotencyConflict, StateInconsistent
+    QuantityExceedsEligible, OrderCancelled, OrderFrozen, IdempotencyConflict, StateInconsistent
 }

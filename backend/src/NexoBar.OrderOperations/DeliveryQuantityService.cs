@@ -82,6 +82,9 @@ internal sealed class DeliveryQuantityService(
                 $"SELECT id, context FROM order_operations.orders WHERE id = {orderId.Value} FOR UPDATE")
             .AsNoTracking()
             .AnyAsync(cancellationToken);
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId.Value, cancellationToken))
+            return DeliveryQuantityResult.OrderCancelled();
+
         if (await dbContext.Liquidations.AsNoTracking().AnyAsync(
                 liquidation => liquidation.OrderId == orderId.Value,
                 cancellationToken))
@@ -274,6 +277,9 @@ internal sealed record DeliveryQuantityResult(
     internal static DeliveryQuantityResult StateInconsistent() =>
         new(DeliveryQuantityOutcome.StateInconsistent, null);
 
+    internal static DeliveryQuantityResult OrderCancelled() =>
+        new(DeliveryQuantityOutcome.OrderCancelled, null);
+
     internal static DeliveryQuantityResult OrderFrozen() =>
         new(DeliveryQuantityOutcome.OrderFrozen, null);
 }
@@ -288,5 +294,6 @@ internal enum DeliveryQuantityOutcome
     DeliverableQuantityInsufficient,
     IdempotencyConflict,
     StateInconsistent,
+    OrderCancelled,
     OrderFrozen
 }

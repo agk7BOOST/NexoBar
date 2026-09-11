@@ -70,6 +70,8 @@ internal sealed class OrderQueryService(
         var liquidation = closureState.Liquidation;
         var hasPendingComposition = closureState.HasPendingComposition;
         var blockers = new List<string>();
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
+            blockers.Add("order_completely_cancelled");
         if (liquidation is not null)
         {
             blockers.Add(LiquidationEligibilityBlockers.AlreadyLiquidated);

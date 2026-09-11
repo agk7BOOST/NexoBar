@@ -87,6 +87,7 @@ public static partial class OrderOperationsModule
         PreparationProgressOutcome.QuantityInvalid => InterventionProblem(400, "quantity_invalid", "quantity must be a positive integer."),
         PreparationProgressOutcome.AvailableQuantityInsufficient => InterventionProblem(409, "quantity_exceeds_eligible", "The exact intervention exceeds the current eligible source-stage quantity."),
         PreparationProgressOutcome.IdempotencyConflict => InterventionProblem(409, "idempotency_key_conflict", "The key identifies an incompatible Work command intent."),
+        PreparationProgressOutcome.OrderCancelled => CancelledOrderProblem(),
         PreparationProgressOutcome.OrderFrozen => FrozenOrderProblem(),
         PreparationProgressOutcome.StateInconsistent => InterventionProblem(500, "state_inconsistent", "The current fulfillment State is inconsistent."),
         _ => throw new InvalidOperationException("Unknown OperationalIntervention outcome.")

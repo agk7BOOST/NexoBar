@@ -18,6 +18,7 @@ public sealed partial class OperationalInterventionTests
         await fixture.MigrateOrderOperationsAsync(previous, Token);
         await fixture.MigrateOrderOperationsAsync(current, Token);
         Assert.Equal(original, HistorySnapshot(await fixture.ReadPreparationHistoryAsync(Token)));
+        await fixture.MigrateOrderOperationsAsync("20260910222430_AddCompleteOrderCancellation", Token);
         using var intervention = await Intervene(client, s.Target, ready, 3);
         var result = await Success(intervention);
         var histories = HistorySnapshot(await fixture.ReadPreparationHistoryAsync(Token));
@@ -37,7 +38,11 @@ public sealed partial class OperationalInterventionTests
         }
         await fixture.ResetAsync(Token);
         try { await fixture.MigrateOrderOperationsAsync(previous, Token); }
-        finally { await fixture.MigrateOrderOperationsAsync(current, Token); }
+        finally
+        {
+            await fixture.MigrateOrderOperationsAsync(current, Token);
+            await fixture.MigrateOrderOperationsAsync("20260910222430_AddCompleteOrderCancellation", Token);
+        }
         Assert.False(await fixture.HasPendingModelChangesAsync());
     }
 }

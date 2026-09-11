@@ -38,6 +38,9 @@ internal sealed class DeliveryCorrectionService(
                 $"SELECT id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE")
                 .AsNoTracking().AnyAsync(cancellationToken))
             return new(DeliveryCorrectionOutcome.ContentNotFound);
+        if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
+            return new(DeliveryCorrectionOutcome.OrderCancelled);
+
         if (await dbContext.Liquidations.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))
             return new(DeliveryCorrectionOutcome.OrderFrozen);
         if (!await dbContext.Incorporations.AsNoTracking().AnyAsync(x => x.Id == incorporationId && x.OrderId == orderId, cancellationToken))
@@ -105,5 +108,5 @@ internal sealed record DeliveryCorrectionResult(DeliveryCorrectionOutcome Outcom
 internal enum DeliveryCorrectionOutcome
 {
     Succeeded, Unauthenticated, Forbidden, ContentNotFound, QuantityInvalid,
-    NoEffectiveDelivery, QuantityExceedsDelivered, OrderFrozen, IdempotencyConflict, StateInconsistent
+    NoEffectiveDelivery, QuantityExceedsDelivered, OrderCancelled, OrderFrozen, IdempotencyConflict, StateInconsistent
 }
