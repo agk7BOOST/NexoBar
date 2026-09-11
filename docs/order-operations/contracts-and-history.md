@@ -26,7 +26,7 @@ C más los buckets actuales permite leer la obligación operacional vigente sin 
 
 Existen dos intenciones explícitas de intervención, una para InPreparation y otra para Ready, con idempotencia durable UUID v4. Las [transiciones INT-01/02 y límites INT-04/06/07](preparation.md#operationalintervention--decisiones-aprobadas-s7-int-d) están implementados verticalmente en S7-I6D, incluida la lectura estrecha del target. Ambas intenciones preservan Q, R, Delivered y Functional Amount; C sigue siendo la única deducción por cancelación. Este registro no afirma una query/API/UI de Historia implementada.
 
-## Complete Order Cancellation — Historia e idempotencia aprobadas S7-CAN-D
+## Complete Order Cancellation — Historia e idempotencia implementadas S7-I7D
 
 Se registra una única decisión semántica Order-level de Complete Cancellation, distinguible de cancelaciones parciales independientes, OperationalIntervention, Content Correction, Liquidation y Closure. Su resultado/Historia conserva:
 
@@ -43,7 +43,7 @@ El comando es una sola intención durable de alcance Order con `Idempotency-Key`
 
 **CAN-05:** replay exacto con la misma key durable devuelve el resultado original y no crea nuevo Estado ni Historia. Una intención nueva con otra key sobre un Order ya completamente cancelado se rechaza como terminal, sin segunda cancelación. Todos F=0 sin el hecho/Estado terminal no equivalen a una Complete Cancellation previa.
 
-Las [reglas de terminación CAN-01..05](ending.md#complete-order-cancellation--decisiones-aprobadas-s7-can-d) y la [autorización CAN-02](../identities-and-capabilities/security.md#complete-order-cancellation--autoridad-aprobada-can-02) están aprobadas; este registro no afirma implementación, nombres de endpoints ni esquema físico de persistencia.
+Las [reglas de terminación CAN-01..05](ending.md#complete-order-cancellation--implementación-vertical-s7-i7d) y la [autorización CAN-02](../identities-and-capabilities/security.md#complete-order-cancellation--autoridad-implementada-can-02--s7-i7d) están implementadas verticalmente. Este registro conserva la semántica de la operación, sin convertirla en comandos hijos independientes.
 
 ## Contratos e idempotencia
 

@@ -6,7 +6,6 @@ No implementar estas fronteras a partir de conveniencias técnicas. La base Q/R/
 - reversal y exception handling de Delivery;
 - interacción completa entre Delivery y Corrections de Content;
 - errores post-Liquidation intencionalmente sin resolución en el flujo ordinario del MVP; Slice 6 no agrega correcciones económicas, reversals ni un subsistema adicional de Settlement/Payment;
-- implementación de Complete Order Cancellation pendiente bajo las [decisiones aprobadas S7-CAN-D / CAN-01..05](ending.md#complete-order-cancellation--decisiones-aprobadas-s7-can-d); sus reglas de Delivery, PendingComposition, autorización, Estado terminal, F ya cero, replay e Historia no son decisiones abiertas;
 - price correction (`AppliedPrice`) sigue pendiente;
 - query/API/UI de Historia de Delivery;
 - cantidades fraccionarias de Preparation;
@@ -18,7 +17,7 @@ No implementar estas fronteras a partir de conveniencias técnicas. La base Q/R/
 - query/API/UI de Historia de Preparation;
 
 - semántica física de desperdicio, descarte y recuperación pendiente; INT-07 no implica esos efectos ni modifica Inventory;
-- efectos de Inventory y refunds/reversals de pagos permanecen pendientes y fuera del alcance de S7-CAN-D;
+- efectos de Inventory y refunds/reversals de pagos permanecen pendientes y fuera del alcance de S7-I7D;
 - Applied Price Correction sigue pendiente;
 - reparación post-Liquidation sigue pendiente;
 - Correcciones de instruction;
@@ -26,11 +25,13 @@ No implementar estas fronteras a partir de conveniencias técnicas. La base Q/R/
 
 El checkpoint de seguridad requerido para acciones humanas de Preparation y Delivery está cerrado, pero eso no significa que la seguridad global esté cerrada ni que todos los endpoints backend estén protegidos. `Quantity` en Content no implica identidad física individual. La instruction confirmada no es editable y SSE permanece pendiente.
 
-### Complete Order Cancellation — decisiones cerradas, implementación pendiente
+### Complete Order Cancellation — implementación y deuda acotada S7-I7D
 
-S7-CAN-D aprueba una terminación excepcional mediante `OrderCancellationState`: no se deriva solo de todos F=0 y no usa Liquidation, Closure ni Freeze. No requiere Liquidation por cero ni continúa por Closure ordinario. Exige D efectivo igual a cero en todo el Order, preservando Delivery histórica válidamente corregida; no ejecuta Correction automática. Descarta PendingComposition atómicamente y aplica la autorización condicional CAN-02 sobre el Estado estabilizado. Puede crear el hecho/Estado terminal con todos F ya cero, sin hechos ficticios de cantidad cero. CAN-05 conserva replay exacto y rechaza una nueva intención sobre el Order ya cancelado.
+Complete Order Cancellation CAN-01..05 está implementada verticalmente. Sus [cantidades](confirmation.md#complete-order-cancellation--cantidades-implementadas-s7-i7d), [Historia e idempotencia](contracts-and-history.md#complete-order-cancellation--historia-e-idempotencia-implementadas-s7-i7d) y [lifecycle](ending.md#complete-order-cancellation--implementación-vertical-s7-i7d) no quedan abiertos.
 
-Las [cantidades](confirmation.md#complete-order-cancellation--cantidades-aprobadas-s7-can-d), [Historia e idempotencia](contracts-and-history.md#complete-order-cancellation--historia-e-idempotencia-aprobadas-s7-can-d) y [lifecycle](ending.md#complete-order-cancellation--decisiones-aprobadas-s7-can-d) están definidos; su implementación no se declara completada. La deuda física, de Inventory, refunds/payment reversals, Applied Price Correction, reparación post-Liquidation y SSE sigue diferida.
+La terminalidad usa actualmente 11 guards manuales repartidos en 10 servicios de OrderOperations. No hay defecto de corrección demostrado. El riesgo es omitir un guard al introducir un nuevo comando mutante; todo trabajo futuro de mutación debe considerar explícitamente `OrderCancellationState`. No se debe introducir un framework genérico de estados terminales solo para eliminar esta duplicación.
+
+Permanecen diferidos: disposición física, desperdicio o recuperación; efectos de Inventory; refunds o reversals de pagos; Applied Price Correction; reparación post-Liquidation; y SSE.
 
 ### Correction y coordinación Preparation/Delivery
 
