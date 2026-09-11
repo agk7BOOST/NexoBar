@@ -80,6 +80,8 @@ try
     var secondPreparer = new Identity("Preparadora E2E B", true);
     var deliverer = new Identity("Delivery E2E", true);
     var interventionOperator = new Identity("Intervención E2E", true);
+    // Complete Cancellation's conditional dual authority, without Preparation or enablements.
+    var cancellationOperator = new Identity("Cancelación completa E2E", true);
     var inventoryConfigurator = new Identity("Configurador Inventario E2E", true);
     var inventoryOperator = new Identity("Operador Inventario E2E", true);
     identitiesAndCapabilities.Identities.AddRange(
@@ -87,6 +89,7 @@ try
         secondPreparer,
         deliverer,
         interventionOperator,
+        cancellationOperator,
         inventoryConfigurator,
         inventoryOperator);
     identitiesAndCapabilities.ResponsibilityAssignments.AddRange(
@@ -101,6 +104,12 @@ try
             FunctionalResponsibility.OrderOperationsAndBasicClosure),
         new ResponsibilityAssignment(
             interventionOperator.Id,
+            FunctionalResponsibility.OperationalIntervention),
+        new ResponsibilityAssignment(
+            cancellationOperator.Id,
+            FunctionalResponsibility.OrderOperationsAndBasicClosure),
+        new ResponsibilityAssignment(
+            cancellationOperator.Id,
             FunctionalResponsibility.OperationalIntervention),
         new ResponsibilityAssignment(
             inventoryConfigurator.Id,
@@ -135,6 +144,12 @@ try
             interventionOperator.Id,
             "intervention-e2e",
             "intervention-e2e-secret",
+            CancellationToken.None);
+    await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+        .ProvisionAsync(
+            cancellationOperator.Id,
+            "complete-cancellation-e2e",
+            "complete-cancellation-e2e-secret",
             CancellationToken.None);
     await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
         .ProvisionAsync(
