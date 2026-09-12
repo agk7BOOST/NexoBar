@@ -7,6 +7,7 @@ Consulta solo los temas afectados y sus dependencias explícitas. Los pendientes
 | Área o tarea | Documento propietario |
 | --- | --- |
 | Plataforma, módulos, dependencias y límites del producto | [Arquitectura](architecture/overview.md) |
+| SSE, frescura multiusuario, topología MVP y límites de entrega | [SSE y frescura](architecture/sse-and-freshness.md) |
 | Estado/Historia, EF, PostgreSQL, precisión, migraciones y conexión compartida | [Persistencia](architecture/persistence.md) |
 | HTTP, errores e idempotencia transversal | [HTTP e idempotencia](architecture/http-and-idempotency.md) |
 | Toolchain, Development y visibilidad técnica | [Development](architecture/development.md) |

@@ -11,6 +11,12 @@
 - Ante network/timeout con resultado incierto no cambia cantidades locales: conserva exactamente endpoint, `WorkId`, quantity, body, key y antiforgery token, ofrece retry exacto y bloquea una segunda mutación sobre ese Work hasta resolver. No genera una key nueva durante el retry ni ofrece descarte ordinario.
 - Un `401` devuelve el frontend a `unauthenticated`, limpia antiforgery e intents y vuelve al login. Un `403` conserva la Identity autenticada y muestra la falla de autorización. Un `404` informa “trabajo ya no disponible” y refresca sin revelar una posible pérdida de enablement.
 
+## Frescura SSE de Preparation — Slice 8
+
+El App mantiene una única conexión SSE de la Session con el snapshot de destinos habilitados necesarios. Al abrir o reconectar, el read de cada destino suscripto queda stale y se recarga desde backend. Una señal `preparation.destination.changed` no contiene State para aplicar localmente.
+
+Cada read de destino usa generación propia: la invalidación incrementa la generación antes de programar el refresh, y una respuesta sólo se aplica si aún corresponde a la generación vigente. Hay como máximo un refresh activo; una señal adicional durante él deja pendiente uno posterior. Esto tolera duplicados y evita que una respuesta GET anterior sobrescriba buckets más recientes. La señal nunca resuelve una intención `uncertain`; su retry exacto permanece vigente. Véase [SSE y frescura multiusuario](../architecture/sse-and-freshness.md).
+
 ## Continuidad pendiente de intenciones
 
 - un intent incierto de Preparation vive actualmente solo en memoria: reload o unmount puede perder su key. No hay persistencia en `localStorage` o `sessionStorage`, offline queue ni automatic background retry. El backend conserva idempotencia durable, pero el frontend no garantiza continuidad cross-reload del intent. Es deuda técnica/UX consciente, no una norma.

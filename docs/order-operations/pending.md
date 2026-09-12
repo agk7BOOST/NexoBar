@@ -8,7 +8,7 @@ La auditoría final del baseline vigente no encontró contradicción normativa n
 
 La deuda de terminalidad se mantiene como mantenibilidad: 12 guards manuales de Complete Cancellation en 11 servicios de OrderOperations. No hay guard faltante ni defecto de corrección demostrado. Toda mutación futura de OrderOperations debe considerar explícitamente `OrderCancellationState`; no se introduce un framework de estado terminal para eliminar esta duplicación.
 
-La próxima frontera arquitectónica planificada es **Slice 8 — SSE / multi-user freshness**. No incluye reparación post-Liquidation.
+La próxima frontera de implementación es **Slice 8 — SSE / multi-user freshness**. Sus decisiones aprobadas están en [SSE y frescura multiusuario](../architecture/sse-and-freshness.md): comienza por transporte/infraestructura y el vertical `preparation.destination.changed`; no incluye reparación post-Liquidation, `order.changed` general, Catalog, Inventory ni OperationalConfiguration SSE.
 
 No implementar estas fronteras a partir de conveniencias técnicas. La base Q/R/F de S7-I2 y su extensión [Q/R/C/F](confirmation.md#q-r-c-y-f-s7-i2-content-correction-ordinaria-s7-i3d-content-cancellation-ordinaria-s7-i4d) ya están implementadas; no son deuda pendiente. OperationalIntervention INT-01..INT-07 también está implementada verticalmente en S7-I6D; su alcance y checkpoint E2E dirigido se registran en [Preparation](preparation.md#operationalintervention--decisiones-aprobadas-s7-int-d).
 
@@ -31,7 +31,7 @@ No implementar estas fronteras a partir de conveniencias técnicas. La base Q/R/
 - Correcciones de instruction;
 - edición de una instruction ya confirmada;
 
-El checkpoint de seguridad requerido para acciones humanas de Preparation y Delivery está cerrado, pero eso no significa que la seguridad global esté cerrada ni que todos los endpoints backend estén protegidos. `Quantity` en Content no implica identidad física individual. La instruction confirmada no es editable y SSE permanece pendiente.
+El checkpoint de seguridad requerido para acciones humanas de Preparation y Delivery está cerrado, pero eso no significa que la seguridad global esté cerrada ni que todos los endpoints backend estén protegidos. `Quantity` en Content no implica identidad física individual. La instruction confirmada no es editable. La implementación SSE permanece pendiente, bajo las decisiones aprobadas de [Slice 8](../architecture/sse-and-freshness.md).
 
 ### Complete Order Cancellation — implementación y deuda acotada S7-I7D
 

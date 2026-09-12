@@ -91,6 +91,12 @@ request
 
 `AuthenticatedContext` contiene únicamente `IdentityId` y `SessionId`. No hay responsibility claims, enablement claims, roles ni snapshots de capabilities en la sesión.
 
+### SSE, actividad y autoridad vigente
+
+El stream SSE autenticado usa esta misma Session opaca. Abrirlo, mantenerlo vivo, heartbeatearlo o reconectarlo automáticamente no renueva `LastActivityAt` ni extiende `AbsoluteExpiresAt`. Logout, revocación de Session, desactivación de Identity o cambio de persona actuante invalidan el stream anterior; la nueva Identity abre un stream nuevo y refresca sus reads activos.
+
+Los scopes SSE se autorizan en servidor y se dejan de entregar fail-closed cuando la autoridad vigente ya no los permite. Para el destino de Preparation esto exige Session utilizable, Identity activa, `Responsibility.Preparation` y `PreparationEnablement` exacta. La política transversal, payload y entrega best-effort pertenecen a [SSE y frescura multiusuario](../architecture/sse-and-freshness.md).
+
 ### Estabilización transaccional de autorización
 
 Para operaciones que requieren autoridad estabilizada, el módulo caller abre una transacción PostgreSQL, `IdentitiesAndCapabilities` adopta su `DbTransaction`, revalida y bloquea selectivamente Session e Identity y, cuando corresponde, filas de capabilities; luego el caller ejecuta la consulta o mutación autorizada. Se usa `READ COMMITTED`, transacciones cortas y `FOR SHARE` en el Estado positivo materializado. No hay transacción distribuida.

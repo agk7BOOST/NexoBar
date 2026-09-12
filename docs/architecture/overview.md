@@ -38,6 +38,6 @@ IdentitiesAndCapabilities ──→ OperationalConfiguration
 
 ## Límites transversales del producto
 
-El sistema es connected-to-authority: no existe modo operacional offline con cola diferida de comandos. SSE será el mecanismo primario servidor-cliente para actualización activa cuando corresponda; no es fuente de verdad y sigue pendiente.
+El sistema es connected-to-authority: no existe modo operacional offline con cola diferida de comandos. SSE es el mecanismo primario servidor-cliente para actualización activa cuando corresponda, no es fuente de verdad y sus decisiones de Slice 8 están en [SSE y frescura multiusuario](sse-and-freshness.md). El MVP opera una única instancia backend activa para su fan-out SSE; es una limitación de despliegue, no una invariante de dominio.
 
 Las distinciones de negocio se consultan en sus áreas: [Confirmation](../order-operations/confirmation.md), [Preparation](../order-operations/preparation.md), [Delivery](../order-operations/delivery.md), [terminación](../order-operations/ending.md), [Catalog](../catalog/README.md), [Inventory](../inventory/README.md) e [Identities](../identities-and-capabilities/security.md).

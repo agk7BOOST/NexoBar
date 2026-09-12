@@ -54,6 +54,12 @@ GET /api/order-operations/preparation/work
 - Esta decisión no agregó migración ni snapshot de nombre.
 - El lookup de `Order` permanece separado y no incorpora Work.
 
+### Frescura SSE de destino — Slice 8
+
+El primer vertical SSE invalida exclusivamente el read autorizado de un destino mediante `preparation.destination.changed(destinationId)`. Es una señal post-commit, mínima y no autoritativa: el cliente marca stale y relee `GET /api/order-operations/preparation/work`; no muta buckets desde el payload ni recibe cantidades, actor, precio o Historia.
+
+La señal corresponde cuando el destino sea afectado por Confirmation que crea Work, Start, Ready, sus Corrections, Content Correction/Cancellation ordinaria, OperationalIntervention, Complete Order Cancellation y Delivery/Delivery Correction que cambien límites o State mostrados por esta lectura. La entrega exige de nuevo Session utilizable, Identity activa, `Preparation` y enablement exacto; su pérdida termina o deniega el stream sin revelar el destino. La arquitectura transversal está en [SSE y frescura multiusuario](../architecture/sse-and-freshness.md).
+
 ### Start parcial
 
 ```text
