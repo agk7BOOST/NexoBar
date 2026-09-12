@@ -27,6 +27,10 @@ Delivery Correction agregó `20260906000853_AddDeliveryCorrection`, que material
 
 Evidencia: [migración](../../backend/src/NexoBar.OrderOperations/Migrations/20260906120000_AddContentQuantityState.cs), [pruebas de migración](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/ContentQuantityStateMigrationTests.cs) y [pruebas de dominio/modelo](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/ContentQuantityStateDomainTests.cs). La semántica vigente de [Q/R/C/F](confirmation.md#q-r-c-y-f-s7-i2-content-correction-ordinaria-s7-i3d-content-cancellation-ordinaria-s7-i4d) vive en Confirmation; este apartado conserva únicamente la migración base de S7-I2.
 
+## Applied Price State S7-I8D
+
+La migración de Applied Price State crea el `ContentAppliedPriceState` obligatorio por `(IncorporationId, ContentOrdinal)` y los registros de History/resultados durables de Applied Price Correction. Hace backfill de cada Content confirmado existente con `EffectiveAppliedPrice = IncorporationContent.AppliedPrice`; no inventa History de corrección, actor ni timestamp. Su Down protege State de corrección significativo, Historia y resultados durables: no los elimina ni degrada silenciosamente. Los paths históricos de migración fueron actualizados y verificados.
+
 ## Deuda de identificadores
 
 - una auditoría realizada durante I3B detectó seis nombres de identificadores EF preexistentes de más de 63 bytes en `OrderOperations`. Son ajenos a los cambios de Inventory, no se corrigen en esta unidad documental y quedan señalados para una futura revisión de higiene de schema/migraciones.

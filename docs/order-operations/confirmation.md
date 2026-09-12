@@ -40,15 +40,19 @@ S7-I4D está verticalmente implementado. Los totales de verificación no se reit
 
 INT-05 conserva la procedencia de Cancellation tras trabajo real en [Historia semántica](contracts-and-history.md#operationalintervention--historia-y-estado-aprobados-s7-int-d), sin contadores adicionales por etapa en State. INT-07 permite coexistencia de intervención parcial con PendingComposition sin consumirlo ni descartarlo; no cambia Functional Amount ni permite intervención después de Liquidation/Freeze.
 
-### Applied Price Correction — decisiones aprobadas S7-PRICE-D
+### Applied Price Correction — implementación vertical S7-I8D
 
-**PRICE-CORR-01 — precio confirmado y precio efectivo.** `IncorporationContent.AppliedPrice` permanece inmutable y significa el precio registrado en Confirmation. Cada Content tiene conceptualmente un `ContentAppliedPriceState` estrecho 1:1, identificado por `(IncorporationId, ContentOrdinal)`, con `EffectiveAppliedPrice`. En Confirmation nace con `EffectiveAppliedPrice = IncorporationContent.AppliedPrice`. Los cálculos económicos actuales usan el valor efectivo; Confirmation History y el replay continúan usando el valor original. Los campos históricos existentes llamados `appliedPrice` no cambian silenciosamente de significado.
+**PRICE-CORR-01 — precio confirmado y precio efectivo.** `IncorporationContent.AppliedPrice` permanece inmutable y significa el precio registrado en Confirmation. Cada Content tiene obligatoriamente un `ContentAppliedPriceState` estrecho 1:1, identificado por `(IncorporationId, ContentOrdinal)`, con `EffectiveAppliedPrice`. En Confirmation nace atómicamente con `EffectiveAppliedPrice = IncorporationContent.AppliedPrice`. State faltante es inconsistencia, sin fallback runtime. Los cálculos económicos actuales usan el valor efectivo; Confirmation History y el replay continúan usando el valor original. Los campos históricos existentes llamados `appliedPrice` no cambian silenciosamente de significado.
 
 **PRICE-CORR-02 — intención y colaboración Catalog.** Applied Price Correction apunta a un Content confirmado exacto por `(IncorporationId, ContentOrdinal)`. El cliente no aporta un importe arbitrario. OrderOperations identifica el Product de ese Content y obtiene su precio actual válido mediante colaboración explícita con Catalog, sin acceder a su almacenamiento. Adopta ese valor como `EffectiveAppliedPrice` sólo para ese Content: no modifica Product, precio de Catalog, PriceVersion, otros Contents ni otros Orders. Un cambio de Catalog no repricia automáticamente Orders existentes; aplicar el precio actual de Catalog requiere esta intención explícita.
 
 **PRICE-CORR-03/04 — sucesión y no-op.** Se permiten correcciones sucesivas antes de las fronteras terminales o Freeze; cada una sustituye el precio efectivo vigente y preserva la cadena en Historia, sin alterar el precio original confirmado. Con una intención y key nuevas, si el precio actual válido de Catalog coincide exactamente con `EffectiveAppliedPrice`, se rechaza como «no correction to apply»: no crea Historia, no muta State ni fabrica una corrección. El replay exacto de una corrección ya confirmada devuelve su resultado durable original aunque el precio actual de Catalog haya cambiado después.
 
 **PRICE-CORR-05 — Estado no económico preservado.** La corrección no modifica Q, R, C, F, Pending, InPreparation, Ready, Total, Delivered ni PendingComposition. Puede coexistir con PendingComposition y no ejecuta Delivery Correction, Content Correction, Content Cancellation, Preparation ni una mutación de Catalog.
+
+#### Checkpoint E2E vertical dirigido — S7-I8C
+
+Un Playwright focalizado `1/1 passed` comprueba un Content direct de cantidad 1 confirmado a 10, entregado a 1 y con Importe funcional 10. Un actor con `CatalogConfiguration` cambia Catalog de 10 a 8; un actor distinto con sólo `OrderOperationsAndBasicClosure` observa que `AppliedPrice` original, `EffectiveAppliedPrice` e Importe funcional siguen en 10. La acción explícita sobre el target `(IncorporationId, ContentOrdinal)` adopta 8, conserva el precio original y Delivered=1, y lleva el Importe funcional a 8. Liquidation por 8 y Freeze son observables. El checkpoint prueba que Catalog no repricia Orders automáticamente y que Liquidation usa el precio efectivo adoptado.
 
 ### Complete Order Cancellation — cantidades implementadas S7-I7D
 

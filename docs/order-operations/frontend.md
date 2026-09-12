@@ -22,3 +22,8 @@
 - El frontend ofrece `Cancelar cantidad pendiente` separadamente de Content Correction y dirige ambas acciones al Content exacto mediante `(IncorporationId, ContentOrdinal)`.
 - Tras una Cancellation exitosa refresca el Estado autoritativo; no ajusta cantidades, Importe funcional ni elegibilidad de Liquidation de forma optimista.
 - Ante network, timeout o `5xx` incierto conserva endpoint, body e `Idempotency-Key` de la Cancellation y ofrece retry de esa intención exacta. Mientras exista la incertidumbre no inicia una segunda mutación incompatible sobre el mismo Content.
+
+### Applied Price Correction frontend — S7-I8D
+
+- La acción distinta «Corregir precio aplicado» identifica el Content exacto por `(IncorporationId, ContentOrdinal)`. Muestra separadamente precio confirmado original, precio aplicado efectivo actual y precio vigente de Catalog; no ofrece input monetario libre.
+- La evaluación autoritativa determina disponibilidad y bloqueadores. Tras éxito refresca la evaluación de precio y el Estado económico/de terminación del Order; no trata una mutación optimista de Delivery o importe como autoritativa. Puede reutilizar el read de Delivery para la identidad exacta, pero la elegibilidad de precio procede de su evaluación autoritativa.

@@ -45,11 +45,11 @@ El comando es una sola intención durable de alcance Order con `Idempotency-Key`
 
 Las [reglas de terminación CAN-01..05](ending.md#complete-order-cancellation--implementación-vertical-s7-i7d) y la [autorización CAN-02](../identities-and-capabilities/security.md#complete-order-cancellation--autoridad-implementada-can-02--s7-i7d) están implementadas verticalmente. Este registro conserva la semántica de la operación, sin convertirla en comandos hijos independientes.
 
-## Applied Price Correction — Historia e idempotencia aprobadas S7-PRICE-D
+## Applied Price Correction — Historia e idempotencia implementadas S7-I8D
 
 Applied Price Correction registra un hecho semántico distinto que conserva el Content exacto `(IncorporationId, ContentOrdinal)`, `PreviousEffectiveAppliedPrice`, `ResultingEffectiveAppliedPrice`, el actor autenticado y `OccurredAt` UTC. Preserva la Confirmation original, todas las correcciones de precio previas y la Historia de Delivery. No persiste Functional Amount como duplicación de esta Historia.
 
-La intención durable contiene `IdempotencyKey` UUID v4, `ActorIdentityId`, `CommandKind`, el target exacto y el precio efectivo resultante que el backend obtuvo de Catalog. Mismo actor/key/intención devuelve el resultado durable original sin nuevo State ni Historia; cambiar actor, target o precio resultante con la misma key produce conflicto. El replay confirmado conserva sus reglas normales de Session/Identity y no reevalúa el precio actual de Catalog. Una intención nueva cuyo precio actual de Catalog ya coincide con el efectivo se rechaza sin resultado de corrección durable.
+La intención durable contiene `IdempotencyKey` UUID v4, `ActorIdentityId`, `CommandKind`, el target exacto y el precio efectivo resultante que el backend obtuvo de Catalog. Mismo actor/key/intención devuelve el resultado durable original sin nuevo State ni Historia; cambiar actor, target o precio resultante con la misma key produce conflicto. El replay confirmado conserva sus reglas normales de Session/Identity y no reevalúa el precio actual de Catalog. Una intención nueva cuyo precio actual de Catalog ya coincide con el efectivo se rechaza como no-op, sin resultado ni Historia de corrección durable.
 
 State de precio efectivo, Historia y resultado durable se confirman atómicamente. El Estado vigente se lee sin replay de Historia; esta separación no constituye Event Sourcing.
 

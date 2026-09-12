@@ -42,11 +42,11 @@ Si el plan incluye cualquier cantidad actual InPreparation o Ready, el mismo act
 
 No se exige `Preparation` ni `PreparationEnablement`. La autorización condicional dual pertenece a Complete Order Cancellation; no cambia INT-06 para intervenciones parciales. Véanse [CAN-01..05 y lifecycle](../order-operations/ending.md#complete-order-cancellation--implementación-vertical-s7-i7d) y [replay terminal CAN-05](../order-operations/contracts-and-history.md#complete-order-cancellation--historia-e-idempotencia-implementadas-s7-i7d).
 
-### Applied Price Correction — autoridad aprobada S7-PRICE-D
+### Applied Price Correction — autoridad implementada S7-I8D
 
 Una nueva Applied Price Correction requiere Session utilizable, Identity activa, `OrderOperationsAndBasicClosure`, antiforgery e `Idempotency-Key` UUID v4. No requiere `CatalogConfiguration`, `OperationalIntervention`, `Preparation` ni `PreparationEnablement`.
 
-`CatalogConfiguration` autoriza cambiar Catalog; no autoriza aplicar al Content confirmado el precio actual de Catalog obtenido por colaboración explícita. La Identity que corrige Catalog puede ser distinta de la Identity que aplica la corrección al Order. Véanse las [decisiones de precio](../order-operations/confirmation.md#applied-price-correction--decisiones-aprobadas-s7-price-d) y su [Historia/idempotencia](../order-operations/contracts-and-history.md#applied-price-correction--historia-e-idempotencia-aprobadas-s7-price-d).
+`CatalogConfiguration` autoriza cambiar Catalog; no autoriza aplicar al Content confirmado el precio actual de Catalog obtenido por colaboración explícita. La Identity que corrige Catalog puede ser distinta de la Identity que aplica la corrección al Order. Véanse las [decisiones de precio](../order-operations/confirmation.md#applied-price-correction--implementación-vertical-s7-i8d) y su [Historia/idempotencia](../order-operations/contracts-and-history.md#applied-price-correction--historia-e-idempotencia-implementadas-s7-i8d).
 
 ### Credencial local
 
