@@ -29,17 +29,19 @@ Existe una conexión SSE por App/frontend activo y Session. Lleva un snapshot de
 
 Al abrir inicialmente o reconectar con éxito, el cliente trata los reads suscriptos como stale y los refresca desde la autoridad. Una falla SSE degrada sólo la frescura: comandos y lecturas HTTP ordinarias continúan siendo seguros y utilizables. La reconexión usa backoff acotado con jitter. No se persisten eventos en el cliente, no hay cola offline ni retry automático de comandos.
 
-## SSE-04 — Autorización fail-closed y sesión
+## SSE-04 — Autorización fail-closed
 
 El endpoint SSE usa la Session opaca autenticada existente. Cada scope solicitado se autoriza en servidor y, antes de entregar una notificación, se comprueba que la autoridad actual sigue vigente. La pérdida de autorización deniega o termina el stream sin filtrar notificaciones posteriores ni revelar existencia de recursos no autorizados.
 
 Para un scope de destino de Preparation se exige Session utilizable, Identity activa, responsabilidad `Preparation` y `PreparationEnablement` exacta del destino. La autorización no deriva de claims persistidos en la sesión.
 
+## SSE-05 — La actividad SSE no renueva la Session
+
 Abrir, mantener vivo, heartbeatear o reconectar automáticamente un stream SSE no renueva `LastActivityAt` ni extiende la vida absoluta de la Session. Un navegador abandonado o en background no conserva autoridad por mantener el stream conectado.
 
 Logout, revocación de Session, desactivación de Identity o reemplazo de la persona actuante invalidan la autoridad del stream anterior. La nueva Identity abre su propio stream autorizado y refresca sus reads activos.
 
-## SSE-05 — Cliente autoritativo, carreras e intents inciertos
+## SSE-06 — Cliente autoritativo, carreras y coalescing
 
 Para cada read sensible a SSE, el frontend usa fencing por generación y clave de read:
 
@@ -50,9 +52,11 @@ Para cada read sensible a SSE, el frontend usa fencing por generación y clave d
 
 Este mecanismo coalesce duplicados y evita que un GET antiguo en vuelo sobrescriba un Estado más fresco. No exige un gestor global de State de negocio.
 
+## SSE-07 — SSE no resuelve intents inciertos
+
 Una invalidación SSE nunca demuestra que una intención local haya tenido éxito. Los intents inciertos conservan endpoint, body, key y token exactos; se resuelven únicamente mediante retry idempotente y resultado autoritativo de comando/read. El evento relacionado no los limpia ni finaliza.
 
-## SSE-06 — Primer vertical: Preparation
+## SSE-08 — Primer vertical: Preparation
 
 El primer vertical de Slice 8 usa exclusivamente:
 
