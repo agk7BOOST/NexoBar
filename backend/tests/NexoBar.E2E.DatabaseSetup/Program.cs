@@ -79,6 +79,7 @@ try
     var preparer = new Identity("Preparador E2E", true);
     var secondPreparer = new Identity("Preparadora E2E B", true);
     var deliverer = new Identity("Delivery E2E", true);
+    var priceCatalogConfigurator = new Identity("Catálogo precios E2E", true);
     var interventionOperator = new Identity("Intervención E2E", true);
     // Complete Cancellation's conditional dual authority, without Preparation or enablements.
     var cancellationOperator = new Identity("Cancelación completa E2E", true);
@@ -88,11 +89,15 @@ try
         preparer,
         secondPreparer,
         deliverer,
+        priceCatalogConfigurator,
         interventionOperator,
         cancellationOperator,
         inventoryConfigurator,
         inventoryOperator);
     identitiesAndCapabilities.ResponsibilityAssignments.AddRange(
+        new ResponsibilityAssignment(
+            priceCatalogConfigurator.Id,
+            FunctionalResponsibility.CatalogConfiguration),
         new ResponsibilityAssignment(
             preparer.Id,
             FunctionalResponsibility.Preparation),
@@ -121,6 +126,12 @@ try
         new PreparationEnablement(preparer.Id, kitchen.Id),
         new PreparationEnablement(secondPreparer.Id, kitchen.Id));
     await identitiesAndCapabilities.SaveChangesAsync();
+    await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+        .ProvisionAsync(
+            priceCatalogConfigurator.Id,
+            "price-catalog-e2e",
+            "price-catalog-e2e-secret",
+            CancellationToken.None);
     await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
         .ProvisionAsync(
             preparer.Id,
