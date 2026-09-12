@@ -1,5 +1,15 @@
 # Fronteras abiertas de OrderOperations
 
+## Slice 7 — Corrections, Cancellations and Exceptions: cerrado
+
+Slice 7 está cerrado. El checkpoint vertical consolidado incluye Delivery Correction; `ContentQuantityState` con Q/R/C/F; Content Quantity Correction; Content Cancellation ordinaria; Preparation Progress Correction (Correct Start y Correct Ready); OperationalIntervention para obligación real InPreparation y Ready no entregada; Complete Order Cancellation como terminación excepcional con `OrderCancellationState`, descarte atómico de PendingComposition y autorización condicional `OperationalIntervention`; y Applied Price Correction con `AppliedPrice` original inmutable, `EffectiveAppliedPrice` por Content, adopción explícita del precio vigente de Catalog e Importe funcional basado en el precio efectivo.
+
+La auditoría final del baseline vigente no encontró contradicción normativa ni capacidad de Slice 7 genuinamente ausente. Estado e Historia semántica permanecen separados; idempotencia durable y replay se preservan; Liquidation/Freeze y la terminalidad de Complete Cancellation son coherentes; el frontend conserva el significado de las intenciones backend; y existen checkpoints E2E focalizados para las fronteras verticales principales. Este checkpoint no reproduce las reglas propietarias de cada capacidad.
+
+La deuda de terminalidad se mantiene como mantenibilidad: 12 guards manuales de Complete Cancellation en 11 servicios de OrderOperations. No hay guard faltante ni defecto de corrección demostrado. Toda mutación futura de OrderOperations debe considerar explícitamente `OrderCancellationState`; no se introduce un framework de estado terminal para eliminar esta duplicación.
+
+La próxima frontera arquitectónica planificada es **Slice 8 — SSE / multi-user freshness**. No incluye reparación post-Liquidation.
+
 No implementar estas fronteras a partir de conveniencias técnicas. La base Q/R/F de S7-I2 y su extensión [Q/R/C/F](confirmation.md#q-r-c-y-f-s7-i2-content-correction-ordinaria-s7-i3d-content-cancellation-ordinaria-s7-i4d) ya están implementadas; no son deuda pendiente. OperationalIntervention INT-01..INT-07 también está implementada verticalmente en S7-I6D; su alcance y checkpoint E2E dirigido se registran en [Preparation](preparation.md#operationalintervention--decisiones-aprobadas-s7-int-d).
 
 - demás intervenciones y excepciones de Order diferidas fuera de INT-01..07;
