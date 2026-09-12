@@ -22,6 +22,7 @@ import { DeliveryPanel } from "./delivery/DeliveryPanel.tsx";
 import { InventoryPanel } from "./inventory/InventoryPanel.tsx";
 import { isOrderCompletelyCancelled, type OrderResponse } from "./orderOperations/orderOperationsClient.ts";
 import { OperationalInterventionPanel } from "./orderOperations/OperationalInterventionPanel.tsx";
+import { PreparationSseProvider } from "./notifications/PreparationSseProvider.tsx";
 
 type AuthState =
   | { status: "loading" }
@@ -180,7 +181,10 @@ function App() {
         />
       )}
       {authState.status === "authenticated" && (
-        <>
+        <PreparationSseProvider
+          key={authState.identity.identityId}
+          identityId={authState.identity.identityId}
+        >
           <SessionBar
             identity={authState.identity}
             onLoggedOut={returnToLogin}
@@ -216,7 +220,7 @@ function App() {
                 preparationBusy.includes(activeOperationalReference))
             }
           />
-        </>
+        </PreparationSseProvider>
       )}
 
       <CatalogPanel
