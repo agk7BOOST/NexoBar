@@ -8,6 +8,10 @@ import {
   SessionProblemError,
 } from "../identity/sessionClient.ts";
 import { PreparationPanel } from "./PreparationPanel.tsx";
+// These command/UI tests isolate freshness; the SSE integration has its own tests.
+vi.mock("./PreparationFreshnessSubscription.tsx", () => ({
+  PreparationFreshnessSubscription: () => null,
+}));
 import {
   listPreparationWork,
   markPreparationQuantityReady,

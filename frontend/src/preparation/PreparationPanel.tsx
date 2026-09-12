@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PreparationReadCoordinator } from "./PreparationReadCoordinator.ts";
+import { PreparationFreshnessSubscription } from "./PreparationFreshnessSubscription.tsx";
 import {
   discardAntiforgeryToken,
   getAntiforgeryToken,
@@ -156,7 +158,8 @@ export function PreparationPanel({
   const [isLoadingDestinations, setIsLoadingDestinations] = useState(true);
   const [isLoadingWork, setIsLoadingWork] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const workRequestSequence = useRef(0);
+  const [readCoordinator] = useState(() => new PreparationReadCoordinator());
+  const mounted = useRef(true);
   const selectedIdRef = useRef("");
   useEffect(() => {
     onBusyOrdersChange?.(
@@ -166,8 +169,16 @@ export function PreparationPanel({
   const intentsRef = useRef<Record<string, PreparationIntent>>({});
 
   const cancelWorkRequests = useCallback(() => {
-    workRequestSequence.current++;
-  }, []);
+    readCoordinator.cancel();
+  }, [readCoordinator]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      cancelWorkRequests();
+    };
+  }, [cancelWorkRequests]);
 
   const replaceIntents = useCallback(
     (next: Record<string, PreparationIntent>) => {
@@ -243,81 +254,91 @@ export function PreparationPanel({
   }, []);
 
   const handleUnauthorized = useCallback(() => {
-    workRequestSequence.current++;
+    cancelWorkRequests();
+    mounted.current = false;
+    selectedIdRef.current = "";
+    setSelectedId("");
     discardAntiforgeryToken();
     replaceIntents({});
     setWorkMessages({});
     onUnauthorized();
-  }, [onUnauthorized, replaceIntents]);
+  }, [cancelWorkRequests, onUnauthorized, replaceIntents]);
 
   const refreshPreparationWorkForSelectedDestination = useCallback(
-    async (options: RefreshOptions = {}) => {
-      const sequence = ++workRequestSequence.current;
+    (options: RefreshOptions = {}) => {
+      if (!mounted.current) return;
       setIsLoadingDestinations(true);
       setIsLoadingWork(true);
       if (!options.preserveMessage) setMessage(null);
       if (options.clearWork) setAuthoritativeWork([]);
 
-      try {
-        const loadedDestinations = await listPreparationDestinations();
-        if (sequence !== workRequestSequence.current) return;
+      readCoordinator.invalidate(async (isCurrent) => {
+        try {
+          const loadedDestinations = await listPreparationDestinations();
+          if (!isCurrent()) return;
 
-        const preferredId =
-          options.preferredDestinationId ?? selectedIdRef.current;
-        const preferredStillAvailable = loadedDestinations.some(
-          (destination) =>
-            destination.preparationResponsibilityId === preferredId,
-        );
-        const nextSelectedId = preferredStillAvailable
-          ? preferredId
-          : loadedDestinations.length === 1
-            ? loadedDestinations[0].preparationResponsibilityId
-            : "";
+          const preferredId =
+            options.preferredDestinationId ?? selectedIdRef.current;
+          const preferredStillAvailable = loadedDestinations.some(
+            (destination) =>
+              destination.preparationResponsibilityId === preferredId,
+          );
+          const nextSelectedId = preferredStillAvailable
+            ? preferredId
+            : loadedDestinations.length === 1
+              ? loadedDestinations[0].preparationResponsibilityId
+              : "";
 
-        setDestinations(loadedDestinations);
-        selectedIdRef.current = nextSelectedId;
-        setSelectedId(nextSelectedId);
-        setIsLoadingDestinations(false);
-
-        if (nextSelectedId === "") {
-          setAuthoritativeWork([]);
-          setIsLoadingWork(false);
-          return;
-        }
-
-        const loadedWork = await listPreparationWork(nextSelectedId);
-        if (sequence !== workRequestSequence.current) return;
-        setAuthoritativeWork(loadedWork);
-      } catch (error) {
-        if (sequence !== workRequestSequence.current) return;
-        if (
-          (error instanceof PreparationProblemError ||
-            error instanceof SessionProblemError) &&
-          error.status === 401
-        ) {
-          handleUnauthorized();
-          return;
-        }
-
-        if (
-          (error instanceof PreparationProblemError ||
-            error instanceof SessionProblemError) &&
-          error.status === 403
-        ) {
-          setAuthoritativeWork([]);
-          setMessage(forbiddenMessage);
-        } else {
-          setMessage("No se pudo consultar el trabajo de preparación.");
-        }
-      } finally {
-        if (sequence === workRequestSequence.current) {
+          if (nextSelectedId !== selectedIdRef.current) setAuthoritativeWork([]);
+          setDestinations(loadedDestinations);
+          selectedIdRef.current = nextSelectedId;
+          setSelectedId(nextSelectedId);
           setIsLoadingDestinations(false);
-          setIsLoadingWork(false);
+
+          if (nextSelectedId === "") {
+            setAuthoritativeWork([]);
+            setIsLoadingWork(false);
+            return;
+          }
+
+          const loadedWork = await listPreparationWork(nextSelectedId);
+          if (!isCurrent()) return;
+          setAuthoritativeWork(loadedWork);
+        } catch (error) {
+          if (!isCurrent()) return;
+          if (
+            (error instanceof PreparationProblemError ||
+              error instanceof SessionProblemError) &&
+            error.status === 401
+          ) {
+            handleUnauthorized();
+            return;
+          }
+
+          if (
+            (error instanceof PreparationProblemError ||
+              error instanceof SessionProblemError) &&
+            error.status === 403
+          ) {
+            setAuthoritativeWork([]);
+            setMessage(forbiddenMessage);
+          } else {
+            setMessage("No se pudo consultar el trabajo de preparación.");
+          }
+        } finally {
+          if (isCurrent()) {
+            setIsLoadingDestinations(false);
+            setIsLoadingWork(false);
+          }
         }
-      }
+      });
     },
-    [handleUnauthorized, setAuthoritativeWork],
+    [handleUnauthorized, setAuthoritativeWork, readCoordinator],
   );
+
+  const invalidateDestination = useCallback(() => {
+    refreshPreparationWorkForSelectedDestination({ preserveMessage: true });
+  }, [refreshPreparationWorkForSelectedDestination]);
 
   useEffect(() => {
     const scheduledRefresh = window.setTimeout(() => {
@@ -362,6 +383,7 @@ export function PreparationPanel({
       try {
         const antiforgeryToken =
           intent.antiforgeryToken ?? (await getAntiforgeryToken());
+        if (!mounted.current) return;
         exactIntent = { ...intent, antiforgeryToken };
         setIntent(exactIntent);
         const command = {
@@ -379,6 +401,8 @@ export function PreparationPanel({
                 ? await correctPreparationStart(command)
                 : await correctPreparationReady(command);
 
+        if (!mounted.current) return;
+
         if (result.workId !== exactIntent.workId) {
           throw new Error("Preparation returned another Work.");
         }
@@ -389,6 +413,7 @@ export function PreparationPanel({
         void refreshPreparationWorkForSelectedDestination();
         onWorkChanged?.();
       } catch (error) {
+        if (!mounted.current) return;
         if (
           (error instanceof PreparationProblemError ||
             error instanceof SessionProblemError) &&
@@ -641,6 +666,12 @@ export function PreparationPanel({
 
   return (
     <section className="panel" aria-labelledby="preparation-heading">
+      {selectedId !== "" && (
+        <PreparationFreshnessSubscription
+          destinationId={selectedId}
+          invalidate={invalidateDestination}
+        />
+      )}
       <div className="section-heading">
         <h2 id="preparation-heading">Preparación</h2>
         <button
@@ -673,9 +704,10 @@ export function PreparationPanel({
               selectedIdRef.current = destinationId;
               setSelectedId(destinationId);
               if (destinationId === "") {
-                workRequestSequence.current++;
+                cancelWorkRequests();
                 setAuthoritativeWork([]);
                 setMessage(null);
+                setIsLoadingDestinations(false);
                 setIsLoadingWork(false);
               } else {
                 void refreshPreparationWorkForSelectedDestination({

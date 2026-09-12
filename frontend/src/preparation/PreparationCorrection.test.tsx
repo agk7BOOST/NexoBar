@@ -7,6 +7,9 @@ import {
   listPreparationDestinations,
 } from "../identity/sessionClient.ts";
 import { PreparationPanel } from "./PreparationPanel.tsx";
+vi.mock("./PreparationFreshnessSubscription.tsx", () => ({
+  PreparationFreshnessSubscription: () => null,
+}));
 import {
   correctPreparationReady,
   correctPreparationStart,
