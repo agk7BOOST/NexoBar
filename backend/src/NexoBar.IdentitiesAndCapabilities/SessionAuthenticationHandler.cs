@@ -65,7 +65,8 @@ internal sealed class SessionAuthenticationHandler(
             return AuthenticateResult.Fail("Invalid or expired session.");
         }
 
-        if (now >= session.LastActivityAt + policy.ActivityRefreshInterval)
+        if (Context.GetEndpoint()?.Metadata.GetMetadata<PassiveSessionRequest>() is null &&
+            now >= session.LastActivityAt + policy.ActivityRefreshInterval)
         {
             var inactivityFloor = now - policy.InactivityTimeout;
             var refreshCeiling = now - policy.ActivityRefreshInterval;

@@ -4,6 +4,7 @@ using NexoBar.IdentitiesAndCapabilities;
 using NexoBar.Inventory;
 using NexoBar.OperationalConfiguration;
 using NexoBar.OrderOperations;
+using NexoBar.Host.Notifications;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,7 @@ builder.Services.AddIdentitiesAndCapabilities(builder.Configuration);
 builder.Services.AddInventory(builder.Configuration);
 builder.Services.AddCatalog(builder.Configuration);
 builder.Services.AddOrderOperations(builder.Configuration);
+builder.Services.AddSseTransport(builder.Configuration);
 
 var app = builder.Build();
 
@@ -33,6 +35,7 @@ app.MapInventoryEndpoints();
 app.MapOperationalConfigurationEndpoints();
 app.MapCatalogEndpoints();
 app.MapOrderOperationsEndpoints();
+app.MapSseTransport();
 
 app.Run();
 
