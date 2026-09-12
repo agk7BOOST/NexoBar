@@ -11,7 +11,8 @@ internal sealed class CompleteCancellationService(
     IAuthenticatedSessionStabilizer sessions,
     IOrderOperationsCapabilityStabilizer operations,
     IOperationalInterventionCapabilityStabilizer intervention,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IPreparationDestinationInvalidationPublisher invalidations)
 {
     internal async Task<CompleteCancellationResult> ExecuteAsync(Guid orderId, Guid? key, CancellationToken token)
     {
@@ -58,6 +59,7 @@ internal sealed class CompleteCancellationService(
         }
 
         // Every blocker and the exact plan-dependent authorization have been checked. No discovery below.
+        var affectedDestinations = new HashSet<Guid>();
         foreach (var row in plan.Rows)
         {
             var quantity = row.Content.Quantity - row.Quantities.RemovedByCorrectionQuantity - row.Quantities.CancelledQuantity;
@@ -65,6 +67,7 @@ internal sealed class CompleteCancellationService(
             row.Quantities.Cancel(quantity, row.Content.Quantity, quantity);
             if (row.Work is { } work)
             {
+                affectedDestinations.Add(work.PreparationResponsibilityId);
                 if (work.PendingQuantity > 0) work.CancelPending(work.PendingQuantity);
                 if (work.InPreparationQuantity > 0) work.InterveneInPreparation(work.InPreparationQuantity);
                 if (work.ReadyQuantity > 0) work.InterveneReady(work.ReadyQuantity, 0);
@@ -81,6 +84,7 @@ internal sealed class CompleteCancellationService(
         await dbContext.SaveChangesAsync(token);
         var response = new CompleteCancellationResponse(orderId, fact.Id, occurredAt, true, fact.PendingCompositionDiscarded, plan.Evaluation.Consequences);
         await transaction.CommitAsync(token);
+        invalidations.Publish(affectedDestinations);
         return new(Response: response);
     }
 

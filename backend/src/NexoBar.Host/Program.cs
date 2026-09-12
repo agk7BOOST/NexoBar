@@ -16,6 +16,8 @@ builder.Services.AddInventory(builder.Configuration);
 builder.Services.AddCatalog(builder.Configuration);
 builder.Services.AddOrderOperations(builder.Configuration);
 builder.Services.AddSseTransport(builder.Configuration);
+builder.Services.AddSingleton<IPreparationDestinationInvalidationPublisher,
+    PreparationDestinationInvalidationPublisher>();
 
 var app = builder.Build();
 

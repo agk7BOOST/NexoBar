@@ -12,7 +12,8 @@ internal sealed class FirstConfirmationService(
     OrderOperationsDbContext dbContext,
     IOrderConfirmationCatalog catalog,
     IAuthenticatedSessionStabilizer sessionStabilizer,
-    IOrderOperationsCapabilityStabilizer capabilityStabilizer)
+    IOrderOperationsCapabilityStabilizer capabilityStabilizer,
+    IPreparationDestinationInvalidationPublisher invalidations)
 {
     private const long FirstConfirmationLockNamespace = 0x4F524445524F5000;
 
@@ -133,6 +134,7 @@ internal sealed class FirstConfirmationService(
             incorporationId));
 
         var responseItems = new List<ConfirmedItemResponse>(intent.Items.Count);
+        var affectedDestinations = new HashSet<Guid>();
         for (var index = 0; index < intent.Items.Count; index++)
         {
             var item = intent.Items[index];
@@ -149,6 +151,7 @@ internal sealed class FirstConfirmationService(
             if (creation.PreparationWork is not null)
             {
                 dbContext.PreparationWork.Add(creation.PreparationWork);
+                affectedDestinations.Add(creation.PreparationWork.PreparationResponsibilityId);
             }
             dbContext.DeliveryStates.Add(creation.DeliveryState);
             dbContext.ContentQuantityStates.Add(creation.QuantityState);
@@ -169,6 +172,7 @@ internal sealed class FirstConfirmationService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        invalidations.Publish(affectedDestinations);
 
         return FirstConfirmationResult.Confirmed(
             new FirstConfirmationResponse(

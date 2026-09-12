@@ -12,7 +12,8 @@ internal sealed class DeliveryQuantityService(
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
     TimeProvider timeProvider,
-    ILogger<DeliveryQuantityService> logger)
+    ILogger<DeliveryQuantityService> logger,
+    IPreparationDestinationInvalidationPublisher invalidations)
 {
     private const long DeliveryCommandLockNamespace = 0x44454C56434D4400;
 
@@ -218,6 +219,8 @@ internal sealed class DeliveryQuantityService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        if (work is not null)
+            invalidations.Publish([work.PreparationResponsibilityId]);
         return DeliveryQuantityResult.Succeeded(result);
     }
 

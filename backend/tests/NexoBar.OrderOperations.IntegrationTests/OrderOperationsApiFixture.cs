@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NexoBar.Catalog;
+using NexoBar.Host.Notifications;
 using NexoBar.IdentitiesAndCapabilities;
 using NexoBar.OperationalConfiguration;
 using NexoBar.OrderOperations;
@@ -1206,6 +1207,15 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             {
                 services.RemoveAll<IOrderConfirmationCatalog>();
                 services.AddScoped(_ => replacement);
+            }));
+
+    internal WebApplicationFactory<Program> CreateApplicationWithChangeNotificationPublisher(
+        IChangeNotificationPublisher replacement) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IChangeNotificationPublisher>();
+                services.AddSingleton(replacement);
             }));
 
     internal WebApplicationFactory<Program> CreateApplicationWithCatalogDecorator(

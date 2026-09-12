@@ -10,7 +10,8 @@ internal sealed class ContentCancellationService(
     OrderOperationsDbContext dbContext,
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IPreparationDestinationInvalidationPublisher invalidations)
 {
     internal async Task<ContentCancellationResult> CancelAsync(
         Guid key, Guid orderId, Guid incorporationId, int contentOrdinal, int quantity,
@@ -89,6 +90,8 @@ internal sealed class ContentCancellationService(
         dbContext.ContentCancellationCommands.Add(new ContentCancellationCommand(key, session.IdentityId, response));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        if (work is not null)
+            invalidations.Publish([work.PreparationResponsibilityId]);
         return new(ContentCancellationOutcome.Succeeded, response);
     }
 

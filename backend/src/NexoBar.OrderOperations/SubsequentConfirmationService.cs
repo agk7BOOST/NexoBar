@@ -12,7 +12,8 @@ internal sealed class SubsequentConfirmationService(
     OrderOperationsDbContext dbContext,
     IOrderConfirmationCatalog catalog,
     IAuthenticatedSessionStabilizer sessionStabilizer,
-    IOrderOperationsCapabilityStabilizer capabilityStabilizer)
+    IOrderOperationsCapabilityStabilizer capabilityStabilizer,
+    IPreparationDestinationInvalidationPublisher invalidations)
 {
     private const long SubsequentConfirmationLockNamespace = 0x535542434F4E4600;
 
@@ -180,6 +181,7 @@ internal sealed class SubsequentConfirmationService(
             incorporationId));
 
         var responseItems = new List<ConfirmedItemResponse>(intent.Items.Count);
+        var affectedDestinations = new HashSet<Guid>();
         for (var index = 0; index < intent.Items.Count; index++)
         {
             var item = intent.Items[index];
@@ -196,6 +198,7 @@ internal sealed class SubsequentConfirmationService(
             if (creation.PreparationWork is not null)
             {
                 dbContext.PreparationWork.Add(creation.PreparationWork);
+                affectedDestinations.Add(creation.PreparationWork.PreparationResponsibilityId);
             }
             dbContext.DeliveryStates.Add(creation.DeliveryState);
             dbContext.ContentQuantityStates.Add(creation.QuantityState);
@@ -218,6 +221,7 @@ internal sealed class SubsequentConfirmationService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        invalidations.Publish(affectedDestinations);
 
         return SubsequentConfirmationResult.Confirmed(
             new SubsequentConfirmationResponse(
