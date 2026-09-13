@@ -71,11 +71,11 @@ No incluye cantidades, precios, actor, hechos de Historia ni State completo. No 
 
 Tras commit, se invalida el destino cuando una mutación confirmada lo afecte: Confirmation que crea Work; Start; MarkReady; correcciones Start/Ready; Content Correction; Content Cancellation ordinaria; OperationalIntervention; Complete Order Cancellation; y Delivery o Delivery Correction cuando cambien límites o State mostrados por Preparation.
 
-Siguen sin implementar el vertical `order.changed` de Order activo y SSE de Catalog, Inventory u OperationalConfiguration. El alcance y las fronteras del vertical de Order activo se aprueban en SSE-09; los demás scopes sólo podrán reutilizar la infraestructura mediante una decisión y vertical posterior explícitos.
+El vertical `order.changed` de Order activo está implementado conforme a SSE-09. SSE de Catalog, Inventory u OperationalConfiguration continúa diferido; los demás scopes sólo podrán reutilizar la infraestructura mediante una decisión y vertical posterior explícitos.
 
-## SSE-09 — Vertical aprobado: frescura del Order activo
+## SSE-09 — Vertical implementado: frescura del Order activo
 
-Esta decisión aprueba el siguiente vertical de Slice 8, todavía no implementado. Su scope exacto es:
+El vertical implementado usa exclusivamente este scope:
 
 ```text
 order.active:<orderId>
@@ -98,13 +98,13 @@ Esta frontera no infiere visibilidad universal de Orders, autoridad de escritura
 
 Closure o Complete Order Cancellation permiten entregar sólo la invalidación final a una suscripción que ya estaba autorizada, para reconciliar o retirar Estado que ya poseía. Tras ese commit, `order.active` no puede autorizarse ni renovarse para ese Order; la excepción de invalidación final no concede lectura post-terminal ni Historia.
 
-### ORDER-SSE-03 — Criterio de publicación
+### ORDER-SSE-03 — Criterio de publicación implementado
 
 Tras un commit exitoso se publica `order.changed(orderId)` cuando cambió la comprensión operacional actual de ese Order en una lectura autoritativa actual. El criterio no es que exista un hecho de Historia.
 
-Las familias relevantes, cuando alteren esos reads, incluyen First/Subsequent Confirmation; creación, reemplazo, consumo o descarte de PendingComposition; cambios de Context; progreso y correcciones de Preparation que cambien deliverability o comprensión operacional actual; Delivery y Delivery Correction; Content Correction; Content Cancellation ordinaria; OperationalIntervention; Complete Order Cancellation; Applied Price Correction; Liquidation; y Closure.
+Las mutaciones implementadas que alteran esos reads publican después de commit: Subsequent Confirmation; Start, Discard y consumo de PendingComposition; Start/Ready y correcciones Start/Ready de Preparation; Delivery y Delivery Correction; Content Correction; Content Cancellation ordinaria; OperationalIntervention; Applied Price Correction; Liquidation/Freeze; Complete Order Cancellation; y Closure. No existe comando mutable de Context ni comando de reemplazo de PendingComposition. First Confirmation no publica este scope porque antes de crear el Order no puede existir una suscripción activa previamente autorizada.
 
-Los cambios de Context usados para coordinación y presentación actual del Order invalidan este mismo scope; el MVP no crea un kind SSE de Context separado. Replay exacto, rechazo, no-op y rollback no publican una invalidación nueva. La secuencia continúa siendo `commit → invalidación best-effort`; nunca se publica antes del commit.
+El MVP no crea un kind SSE de Context separado. Replay exacto, rechazo, no-op, conflicto y rollback no publican; un comando lógico publica a lo sumo una vez por Order afectado. La secuencia continúa siendo `commit → invalidación best-effort`; un fallo del publisher después del commit no revierte el éxito de negocio. Las publicaciones de Preparation y Order son independientes y best-effort.
 
 ### ORDER-SSE-04 — Reconciliación de reads activos en frontend
 
@@ -142,4 +142,24 @@ El checkpoint Playwright dirigido usa dos cuentas/Identities distintas, dos Sess
 
 La evidencia focalizada incluye integración backend de invalidación `7/7`, regresión de OrderOperations en ese checkpoint `687/687`, freshness frontend de Preparation `14/14` más pruebas afectadas, y el E2E final `1/1`. Durante ese checkpoint se corrigió una colisión incidental de keys entre hermanos de la composición autenticada de App; no modifica la semántica SSE.
 
-Permanece sin implementar el vertical aprobado `order.changed` para Order activo. S8-I4A queda bloqueado hasta que **S8-I4A0 — retrofit de autorización de lectura de Order activo** alinee los GETs/reads con AD-SEC-05; no se marca el scope SSE como implementado. Continúan diferidos SSE de producto/precio de Catalog, Inventory, OperationalConfiguration, un feed general de Identity/capabilities, listas/búsqueda global de Orders e Historia. No se afirma que todos esos scopes sean necesarios para cerrar Slice 8. La limitación MVP de una sola instancia backend activa continúa vigente; fan-out multi-instancia queda fuera de la implementación actual.
+## Vertical implementado: frescura del Order activo
+
+**Active Order SSE freshness está verticalmente implementado.** El read operacional activo requiere Session utilizable, Identity activa, `OrderOperationsAndBasicClosure` y que el Order siga operacionalmente activo. No hay restricción MVP por creador, owner, asignación, Session, dispositivo o Context. Esta frontera está aplicada consistentemente al lookup general actual, Delivery, PendingComposition, evaluación de Applied Price Correction y rama activa de evaluación de Complete Cancellation. OperationalIntervention conserva su read estrecho y Preparation permanece por destino.
+
+El scope es `order.active:<orderId>` y entrega sólo `{ "kind": "order.changed", "scopeId": "<order UUID>" }` para un Order abierto explícitamente. No es descubrimiento, lista/búsqueda, Historia ni feed tenant/global. La suscripción inicial y la entrega conectada ordinaria revalidan la misma frontera de lectura activa; `OperationalIntervention` o `Preparation` por sí solos no la conceden y los Orders no autorizados/no activos permanecen existence-safe.
+
+`order.changed` normal cubre cambios operacionales no terminales, incluida Liquidation/Freeze: Liquidation no retira visibilidad activa porque Closure sigue pendiente. Sólo Closure y Complete Order Cancellation se entregan como `FinalForPreviouslyAuthorizedScope` interno a un stream ya autorizado, mediante el mismo evento opaco. No revela motivo terminal, no debilita `ActiveOrderReadState`, no permite suscripción nueva/reconectada ni lectura post-terminal, y retira exclusivamente ese scope. Duplicados finales y eventos posteriores del scope retirado se suprimen; otros scopes de la conexión siguen operativos. La pérdida de Session, Identity o responsabilidad invalida el stream completo.
+
+El frontend conserva un `EventSource` por App/Session y agrega únicamente el scope exacto del Order activo al snapshot. Cada owner montado reconcilia su propio GET: Order/Estado económico-terminal, Delivery, PendingComposition, evaluación abierta de Applied Price Correction y State de correcciones/cancelaciones respaldado por Delivery. No relee todos los endpoints de OrderOperations. La invalidación marca stale de inmediato; fencing por generación impide que respuestas o errores viejos sobrescriban State nuevo, hay un refresh activo por read y señales durante él coalescen en un seguimiento. Cambio de Order/Identity cerca reads anteriores y apertura/reconexión reconcilia autoritativamente. El payload sigue siendo no autoritativo.
+
+Después de la invalidación final, un GET activo puede devolver `404` porque el Order salió del alcance operacional. El frontend retira Estado y acciones activas, desmonta la suscripción por lifecycle y no reabre el Order repetidamente; no infiere el motivo terminal desde SSE. `order.changed` tampoco prueba éxito de comando: intents inciertos de Delivery/corrección conservan endpoint, body, key y retry idempotente exactos aunque el State visible se refresque.
+
+Preparation puede publicar simultáneamente `preparation.destination.changed(destinationId)` y `order.changed(orderId)`: sirven consumidores autorizados distintos, sin conceder visibilidad general de Order a Preparation ni de Preparation a operadores de Order.
+
+El checkpoint Playwright dirigido usa dos Identities, Sessions y contextos distintos sobre un Order activo con un Content preparado de cantidad 1: Work `InPreparation=1`, `Ready=0`, `Delivered=0`. A, con sólo `OrderOperationsAndBasicClosure`, abre Delivery y su stream `order.active` con `Deliverable=0`; B, con `Preparation` y enablement exacto, ejecuta MarkReady. B observa `Ready=1`; sin reload, Refresh ni reselección, A observa `Ready=1` y `Deliverable=1`, entrega 1 y termina con `Delivered=1`, `Deliverable=0`. Playwright focalizado: `1/1 passed`.
+
+Evidencia proporcional: autorización de active Order `13/13`; regresión read/API afectada `169/169`; checkpoint de autorización OrderOperations `674/674`; expectativas de migración `2/2`; transporte active Order `49/49`; regresión transporte Preparation `39/39`; publicación Order `13/13`; regresión publicación Preparation `7/7`; checkpoint de publicación OrderOperations `760/762`, con los dos reads de migración originalmente fallidos verificados después individualmente green; frontend active Order `100 passed`; E2E final `1/1`. No se afirma una segunda corrida completa `762/762`.
+
+El transporte/provider frontend conserva nombres específicos de Preparation aunque transporta también scopes de Order activo. Es deuda de mantenibilidad, no semántica; debe considerarse antes de agregar un tercer scope y no se renombra en este vertical.
+
+Slice 8 sigue abierto. Permanecen diferidos Catalog/product freshness, OperationalConfiguration freshness, feed general de Identity/capabilities, listas/búsqueda global de Orders, Historia y fan-out multi-instancia. Inventory es la próxima frontera de frescura a evaluar/implementar antes del cierre de Slice 8. La limitación MVP de una sola instancia activa continúa vigente.

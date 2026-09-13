@@ -19,11 +19,12 @@ La vista o suscripción que ya tenía autorización puede recibir la invalidaci�
 
 La misma frontera rige GETs/reads autoritativos del Estado operacional actual y la suscripción/entrega SSE `order.active`: SSE no puede exponer un alcance mayor que el read equivalente. `OperationalIntervention` conserva sólo sus reads estrechos de target y no concede visibilidad general del Order activo. Preparation continúa bajo `Preparation` más `PreparationEnablement` exacto y sus reads por destino; tampoco concede visibilidad de Order activo.
 
+El retrofit AD-SEC-05 está implementado consistentemente en el lookup general de Order actual, Delivery, PendingComposition, evaluación de Applied Price Correction y la rama activa de evaluación de Complete Cancellation. Todos exigen Session utilizable, Identity activa, `OrderOperationsAndBasicClosure` y que el Order pertenezca al conjunto operacional activo; no conceden Historia ni lectura post-terminal.
+
 ## Pendientes
 
 Este inventario no define políticas nuevas ni afirma seguridad global completa.
 
-- **S8-I4A0 — retrofit de autorización de lectura de Order activo:** aplicar AD-SEC-05 a los GETs/reads autoritativos del Estado operacional actual antes de implementar `order.active` SSE. El lookup general de Order actual carece de esta validación; también deben inventariarse y corregirse los reads operacionales equivalentes que no validen Session utilizable, Identity activa y `OrderOperationsAndBasicClosure`. Esta deuda no está implementada y no autoriza acceso histórico ni una política distinta de visibilidad;
 - retrofit global de autenticación/autorización para endpoints todavía anónimos, según corresponda: Catalog, OperationalConfiguration y otros endpoints funcionales actuales no cubiertos. Confirmaciones ya tienen el retrofit de Slice 6;
 - bootstrap productivo de Identity y credenciales;
 - implementación de recovery extraordinario (`AD-SEC-01`) y UX de recovery ordinario;

@@ -15,7 +15,7 @@
 - Closure tiene una acción explícita `Cerrar Pedido`, disponible según elegibilidad después de Liquidation. Closed muestra el Cierre y su fecha, conserva la consulta y no ofrece continuar, liquidar de nuevo ni reabrir.
 - Ante network, timeout o `5xx` incierto se conserva en memoria el mismo endpoint, body e Idempotency-Key para retry exacto; se bloquean acciones incompatibles. Un conflicto conocido refresca Estado y no se presenta como éxito. Si falla el refresco, se exige actualizar antes de continuar.
 - El timestamp de Liquidation recibido por comando se muestra mientras está disponible localmente. Después de reload, el GET de Order no devuelve ese `occurredAt`: la UI informa que la fecha no está disponible en esa consulta, sin fabricar un timestamp.
-- No hay SSE activo ni persistencia de la intención incierta entre recargas; no hay cola offline ni retry automático en background.
+- Para un Order abierto activamente, SSE usa sólo `order.active:<orderId>` en el único EventSource de App/Session. Sus owners montados refrescan reads autoritativos por invalidación y fencing; la señal no resuelve intenciones inciertas, que conservan retry exacto. Un `404` tras invalidación final retira la vista activa sin reabrir el Order. No hay cola offline ni retry automático de comandos.
 
 ### Content Cancellation frontend
 
