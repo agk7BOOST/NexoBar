@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import {
   useOrderConnectionGeneration,
   useOrderInvalidation,
-} from "./PreparationSseProvider.tsx";
+} from "./NotificationSseProvider.tsx";
 
 /** Each mounted Order read keeps its own authoritative state and refresh policy. */
 export function ActiveOrderFreshnessSubscription({

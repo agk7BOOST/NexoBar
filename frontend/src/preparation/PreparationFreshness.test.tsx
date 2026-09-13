@@ -1,7 +1,7 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PreparationSseProvider } from "../notifications/PreparationSseProvider.tsx";
+import { NotificationSseProvider } from "../notifications/NotificationSseProvider.tsx";
 import { getAntiforgeryToken, listPreparationDestinations, SessionProblemError } from "../identity/sessionClient.ts";
 import { PreparationPanel } from "./PreparationPanel.tsx";
 import { listPreparationWork, startPreparationQuantity, markPreparationQuantityReady, type PreparationWork, type PreparationCommandResult } from "./preparationClient.ts";
@@ -56,9 +56,9 @@ function deferred<T>() {
 }
 function tree(identity = "identity-a", onUnauthorized = vi.fn()) {
   // App uses this same authority key to tear down the whole authenticated subtree.
-  return <PreparationSseProvider key={identity} identityId={identity}>
+  return <NotificationSseProvider key={identity} identityId={identity}>
     <PreparationPanel onUnauthorized={onUnauthorized} />
-  </PreparationSseProvider>;
+  </NotificationSseProvider>;
 }
 async function loaded() {
   const view = render(tree());

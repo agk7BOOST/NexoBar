@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import {
   usePreparationConnectionGeneration,
   usePreparationDestinationInvalidation,
-} from "../notifications/PreparationSseProvider.tsx";
+} from "../notifications/NotificationSseProvider.tsx";
 
 /** Only the actively displayed destination requests freshness interest. */
 export function PreparationFreshnessSubscription({ destinationId, invalidate }: {

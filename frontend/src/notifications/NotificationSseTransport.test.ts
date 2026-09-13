@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PreparationSseTransport } from "./PreparationSseTransport.ts";
+import { NotificationSseTransport } from "./NotificationSseTransport.ts";
 
 const destinationA = "11111111-1111-4111-8111-111111111111";
 const destinationB = "22222222-2222-4222-8222-222222222222";
@@ -39,7 +39,7 @@ class FakeEventSource {
 function createTransport() {
   const sources: FakeEventSource[] = [];
   const urls: string[] = [];
-  const transport = new PreparationSseTransport({
+  const transport = new NotificationSseTransport({
     eventSourceFactory: (url) => {
       urls.push(url);
       const source = new FakeEventSource();
@@ -54,7 +54,7 @@ function createTransport() {
 
 afterEach(() => vi.useRealTimers());
 
-describe("PreparationSseTransport", () => {
+describe("NotificationSseTransport", () => {
   it("keeps no stream without scopes and one stream for its deduplicated snapshot", () => {
     const { transport, sources, urls } = createTransport();
     expect(sources).toHaveLength(0);

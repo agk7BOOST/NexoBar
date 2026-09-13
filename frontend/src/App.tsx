@@ -22,7 +22,7 @@ import { DeliveryPanel } from "./delivery/DeliveryPanel.tsx";
 import { InventoryPanel } from "./inventory/InventoryPanel.tsx";
 import { isOrderCompletelyCancelled, type OrderResponse } from "./orderOperations/orderOperationsClient.ts";
 import { OperationalInterventionPanel } from "./orderOperations/OperationalInterventionPanel.tsx";
-import { PreparationSseProvider } from "./notifications/PreparationSseProvider.tsx";
+import { NotificationSseProvider } from "./notifications/NotificationSseProvider.tsx";
 
 type AuthState =
   | { status: "loading" }
@@ -187,7 +187,7 @@ function App() {
   }
 
   return (
-    <PreparationSseProvider
+    <NotificationSseProvider
       key={`sse-session:${authState.status === "authenticated" ? authState.identity.identityId : "anonymous"}`}
       identityId={
         authState.status === "authenticated" ? authState.identity.identityId : null
@@ -302,7 +302,7 @@ function App() {
         />
       )}
     </main>
-    </PreparationSseProvider>
+    </NotificationSseProvider>
   );
 }
 

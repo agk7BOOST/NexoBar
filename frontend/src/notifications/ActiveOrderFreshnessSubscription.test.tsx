@@ -2,7 +2,7 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PreparationReadCoordinator } from "../preparation/PreparationReadCoordinator.ts";
 import { ActiveOrderFreshnessSubscription } from "./ActiveOrderFreshnessSubscription.tsx";
-import { PreparationSseProvider } from "./PreparationSseProvider.tsx";
+import { NotificationSseProvider } from "./NotificationSseProvider.tsx";
 
 const orderA = "33333333-3333-4333-8333-333333333333";
 const orderB = "44444444-4444-4444-8444-444444444444";
@@ -40,9 +40,9 @@ function Probe({ orderId, invalidate }: { orderId: string | null; invalidate: ()
 }
 
 function tree(orderId: string | null, invalidate = vi.fn()) {
-  return <PreparationSseProvider identityId="identity-a">
+  return <NotificationSseProvider identityId="identity-a">
     <Probe orderId={orderId} invalidate={invalidate} />
-  </PreparationSseProvider>;
+  </NotificationSseProvider>;
 }
 
 function deferred<T>() {

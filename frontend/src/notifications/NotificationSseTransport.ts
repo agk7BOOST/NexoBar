@@ -18,7 +18,7 @@ interface EventSourceConnection {
 
 export type EventSourceFactory = (url: string) => EventSourceConnection;
 
-interface PreparationSseTransportOptions {
+interface NotificationSseTransportOptions {
   eventSourceFactory?: EventSourceFactory;
   setTimeout?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   clearTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
@@ -61,7 +61,7 @@ function isOrderChanged(
 }
 
 /** App-owned, non-authoritative notification transport. */
-export class PreparationSseTransport {
+export class NotificationSseTransport {
   private readonly listeners = new Map<
     string,
     Set<(notification: PreparationDestinationChanged) => void>
@@ -85,7 +85,7 @@ export class PreparationSseTransport {
   private reconnectAttempt = 0;
   private connectedGeneration = 0;
 
-  constructor(options: PreparationSseTransportOptions = {}) {
+  constructor(options: NotificationSseTransportOptions = {}) {
     this.eventSourceFactory = options.eventSourceFactory ?? createBrowserEventSource;
     this.scheduleTimeout = options.setTimeout ?? globalThis.setTimeout;
     this.cancelTimeout = options.clearTimeout ?? globalThis.clearTimeout;

@@ -7,25 +7,25 @@ import {
   type ReactNode,
 } from "react";
 import {
-  PreparationSseTransport,
+  NotificationSseTransport,
   type OrderChanged,
   type PreparationDestinationChanged,
-} from "./PreparationSseTransport.ts";
+} from "./NotificationSseTransport.ts";
 
-const PreparationSseContext = createContext<PreparationSseTransport | null>(null);
+const NotificationSseContext = createContext<NotificationSseTransport | null>(null);
 
-interface PreparationSseProviderProps {
+interface NotificationSseProviderProps {
   identityId: string | null;
   children: ReactNode;
 }
 
-export function PreparationSseProvider({
+export function NotificationSseProvider({
   identityId,
   children,
-}: PreparationSseProviderProps) {
-  const transportRef = useRef<PreparationSseTransport | null>(null);
+}: NotificationSseProviderProps) {
+  const transportRef = useRef<NotificationSseTransport | null>(null);
   if (transportRef.current === null) {
-    transportRef.current = new PreparationSseTransport();
+    transportRef.current = new NotificationSseTransport();
   }
   const transport = transportRef.current;
 
@@ -37,16 +37,16 @@ export function PreparationSseProvider({
   useEffect(() => () => transport.dispose(), [transport]);
 
   return (
-    <PreparationSseContext.Provider value={transport}>
+    <NotificationSseContext.Provider value={transport}>
       {children}
-    </PreparationSseContext.Provider>
+    </NotificationSseContext.Provider>
   );
 }
 
-function usePreparationSseTransport(): PreparationSseTransport {
-  const transport = useContext(PreparationSseContext);
+function useNotificationSseTransport(): NotificationSseTransport {
+  const transport = useContext(NotificationSseContext);
   if (transport === null) {
-    throw new Error("Preparation SSE subscriptions require the App provider.");
+    throw new Error("Notification SSE subscriptions require the App provider.");
   }
   return transport;
 }
@@ -55,7 +55,7 @@ export function usePreparationDestinationInvalidation(
   destinationId: string,
   onInvalidated: (notification: PreparationDestinationChanged) => void,
 ): void {
-  const transport = usePreparationSseTransport();
+  const transport = useNotificationSseTransport();
   useEffect(
     () => transport.subscribe(destinationId, onInvalidated),
     [destinationId, onInvalidated, transport],
@@ -63,7 +63,7 @@ export function usePreparationDestinationInvalidation(
 }
 
 export function usePreparationConnectionGeneration(): number {
-  const transport = usePreparationSseTransport();
+  const transport = useNotificationSseTransport();
   const [generation, setGeneration] = useState(transport.connectionGeneration);
   useEffect(() => transport.onConnected(setGeneration), [transport]);
   return generation;
@@ -73,7 +73,7 @@ export function useOrderInvalidation(
   orderId: string | null,
   onInvalidated: (notification: OrderChanged) => void,
 ): void {
-  const transport = useContext(PreparationSseContext);
+  const transport = useContext(NotificationSseContext);
   useEffect(() => {
     if (transport === null || orderId === null) return;
     return transport.subscribeOrder(orderId, onInvalidated);
@@ -81,7 +81,7 @@ export function useOrderInvalidation(
 }
 
 export function useOrderConnectionGeneration(): number {
-  const transport = useContext(PreparationSseContext);
+  const transport = useContext(NotificationSseContext);
   const [generation, setGeneration] = useState(
     transport?.connectionGeneration ?? 0,
   );
