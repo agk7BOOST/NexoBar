@@ -39,6 +39,12 @@ La Historia autorizada de Movimientos se consulta en orden descendente por `Move
 
 No existe integración automática con `Catalog`, Product, ventas u `OrderOperations`: `Product != InventoryItem`. Order, Confirmation, Preparation y Delivery no crean Movimientos de Inventory automáticamente.
 
+## Frescura operacional aprobada para Slice 8
+
+El vertical pendiente usará exclusivamente el scope SSE estático `inventory.operation` para el listado autoritativo `GET /api/inventory/operations/items`. Exige Session utilizable, Identity activa e `InventoryOperation`; `InventoryConfiguration` no hereda ese scope. La única señal opaca será `inventory.operation.changed`, sin ItemId, cantidades, unidad, revisión, Movimiento, actor, Conteo, Reconciliación ni Historia.
+
+Sólo publican después de commit los cambios nuevos de Estado operacional: creación visible de Item, Entry, Manual Exit, Waste y Reconciliación que crea Movimiento, incluida la fijación inicial de existencia. Conteo, Reconciliación sin discrepancia, replay, rechazo, no-op, conflicto y rollback no publican. `MovementRevision` y la validación backend de Reconciliación siguen siendo autoritativos; SSE no convierte una observación vieja en válida. No hay semántica terminal mientras lifecycle de Item siga diferido. El detalle completo está en [SSE y frescura multiusuario](../architecture/sse-and-freshness.md#sse-10--vertical-aprobado-frescura-operacional-de-inventory).
+
 ## Migraciones
 
 Las migraciones vigentes de Inventory en Slice 5 son:
@@ -52,7 +58,7 @@ Las migraciones vigentes de Inventory en Slice 5 son:
 - Movement Correction de Inventory; la forma final de su relación con Movimientos previos no está decidida aquí;
 - `retire/reactivate/delete` de InventoryItem;
 - Unit Correction de InventoryItem y sus reglas antes/después de existir Historia;
-- actualización activa de Inventory mediante SSE;
+- implementación del vertical SSE operacional aprobado en Slice 8;
 - persistencia cross-reload de intents inciertos de Inventory;
 - política final de reutilización de nombres antes de materializar lifecycle de InventoryItem;
 
