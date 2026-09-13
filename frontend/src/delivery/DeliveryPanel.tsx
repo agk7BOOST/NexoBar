@@ -1,4 +1,6 @@
 import { maximumContentCancellation } from "./contentCancellation.ts";
+import { ActiveOrderFreshnessSubscription } from "../notifications/ActiveOrderFreshnessSubscription.tsx";
+import { PreparationReadCoordinator } from "../preparation/PreparationReadCoordinator.ts";
 import { maximumContentCorrection } from "./contentCorrection.ts";
 import { getOrder } from "../orderOperations/orderOperationsClient.ts";
 import { listPreparationDestinations } from "../identity/sessionClient.ts";
@@ -30,6 +32,7 @@ interface DeliveryPanelProps {
   ordinaryMutationsBlocked?: boolean;
   onBusyChange?: (reference: string, busy: boolean) => void;
   onOrderChanged?: (reference: string) => void;
+  onOrderRetired?: (reference: string) => void;
 }
 
 type DeliveryIntentPhase = "submitting" | "uncertain";
@@ -55,6 +58,7 @@ interface ContentMessage {
 interface RefreshOptions {
   clearDelivery?: boolean;
   preserveMessage?: boolean;
+  terminalOnNotFound?: boolean;
 }
 
 const forbiddenMessage =
@@ -76,6 +80,7 @@ export function DeliveryPanel({
   onUnauthorized,
   ordinaryMutationsBlocked = false,
   onOrderChanged,
+  onOrderRetired,
   onBusyChange,
 }: DeliveryPanelProps) {
   const [cancellationInputs, setCancellationInputs] = useState<
@@ -116,6 +121,7 @@ export function DeliveryPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const requestSequence = useRef(0);
+  const deliveryReadCoordinator = useRef(new PreparationReadCoordinator());
   const intentsRef = useRef<Record<string, DeliveryIntent>>({});
   const reportedBusyReferences = useRef(new Set<string>());
 
@@ -215,6 +221,7 @@ export function DeliveryPanel({
     async (
       reference: string,
       options: RefreshOptions = {},
+      isCurrent: () => boolean = () => true,
     ): Promise<boolean> => {
       const sequence = ++requestSequence.current;
       setIsLoading(true);
@@ -224,7 +231,7 @@ export function DeliveryPanel({
 
       try {
         const loaded = await getOrderDelivery(reference);
-        if (sequence !== requestSequence.current) return false;
+        if (sequence !== requestSequence.current || !isCurrent()) return false;
         let available = false;
         let preparation: PreparationWork[] = [];
         if (
@@ -262,20 +269,26 @@ export function DeliveryPanel({
             }
           }
         }
-        if (sequence !== requestSequence.current) return false;
+        if (sequence !== requestSequence.current || !isCurrent()) return false;
         setWorks(preparation);
         setCorrectionStateAvailable(available);
         setAuthoritativeDelivery(loaded);
         return true;
       } catch (error) {
-        if (sequence !== requestSequence.current) return false;
+        if (sequence !== requestSequence.current || !isCurrent()) return false;
         if (error instanceof DeliveryProblemError && error.status === 401) {
           handleUnauthorized();
           return false;
         }
 
         setDelivery(null);
-        if (error instanceof DeliveryProblemError && error.status === 403) {
+        if (
+          error instanceof DeliveryProblemError &&
+          error.status === 404 &&
+          options.terminalOnNotFound
+        ) {
+          onOrderRetired?.(reference);
+        } else if (error instanceof DeliveryProblemError && error.status === 403) {
           setMessage(forbiddenMessage);
         } else if (
           error instanceof DeliveryProblemError &&
@@ -292,10 +305,10 @@ export function DeliveryPanel({
         }
         return false;
       } finally {
-        if (sequence === requestSequence.current) setIsLoading(false);
+        if (sequence === requestSequence.current && isCurrent()) setIsLoading(false);
       }
     },
-    [handleUnauthorized, setAuthoritativeDelivery],
+    [handleUnauthorized, onOrderRetired, setAuthoritativeDelivery],
   );
 
   useEffect(() => {
@@ -310,8 +323,22 @@ export function DeliveryPanel({
     return () => {
       window.clearTimeout(scheduledRefresh);
       cancelRequests();
+      deliveryReadCoordinator.current.cancel();
     };
   }, [cancelRequests, operationalReference, refreshDelivery, refreshSequence]);
+
+  useEffect(
+    () => () => deliveryReadCoordinator.current.cancel(),
+    [],
+  );
+
+  const invalidateDelivery = useCallback(() => {
+    if (operationalReference === null) return;
+    const reference = operationalReference;
+    deliveryReadCoordinator.current.invalidate(async (isCurrent) => {
+      await refreshDelivery(reference, { terminalOnNotFound: true }, isCurrent);
+    });
+  }, [operationalReference, refreshDelivery]);
 
   const executeIntent = useCallback(
     async (intent: DeliveryIntent, reference: string) => {
@@ -610,6 +637,14 @@ export function DeliveryPanel({
 
   return (
     <section className="panel" aria-labelledby="delivery-heading">
+      <ActiveOrderFreshnessSubscription
+        orderId={
+          delivery?.operationalReference === operationalReference
+            ? delivery.orderId
+            : null
+        }
+        invalidate={invalidateDelivery}
+      />
       <div className="section-heading">
         <h2 id="delivery-heading">Delivery</h2>
         <button

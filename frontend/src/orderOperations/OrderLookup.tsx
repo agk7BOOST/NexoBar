@@ -8,6 +8,8 @@ import {
 import { OrderEnding } from "./OrderEnding.tsx";
 import { AppliedPriceCorrection } from "./AppliedPriceCorrection.tsx";
 import { CompleteCancellation } from "./CompleteCancellation.tsx";
+import { ActiveOrderFreshnessSubscription } from "../notifications/ActiveOrderFreshnessSubscription.tsx";
+import { PreparationReadCoordinator } from "../preparation/PreparationReadCoordinator.ts";
 import {
   evaluateCompleteCancellation,
   type CompleteCancellationEvaluation,
@@ -31,6 +33,7 @@ interface OrderLookupProps {
   products: Product[];
   requestedLookup?: RequestedOrderLookup;
   activeOperationalReference: string | null;
+  activeOrderId?: string | null;
   onContinueOrder: (operationalReference: string) => void;
   onOpenDelivery?: (operationalReference: string) => void;
   onUnauthorized?: () => void;
@@ -38,6 +41,7 @@ interface OrderLookupProps {
   onOrderState?: (order: OrderResponse) => void;
   isOrderMutationBusy?: (reference: string) => boolean;
   onEndingBusy?: (reference: string, busy: boolean) => void;
+  onActiveOrderRetired?: (reference: string) => void;
 }
 
 function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
@@ -59,12 +63,14 @@ export function OrderLookup({
   products,
   requestedLookup,
   activeOperationalReference,
+  activeOrderId = null,
   onContinueOrder,
   onOpenDelivery,
   onUnauthorized,
   identityId,
   onOrderState,
   onEndingBusy,
+  onActiveOrderRetired,
   isOrderMutationBusy,
 }: OrderLookupProps) {
   const [operationalReference, setOperationalReference] = useState("");
@@ -82,9 +88,11 @@ export function OrderLookup({
   >({});
   const endingBusyRef = useRef(false);
   const sequence = useRef(0);
+  const activeReadCoordinator = useRef(new PreparationReadCoordinator());
   useEffect(
     () => () => {
       sequence.current++;
+      activeReadCoordinator.current.cancel();
     },
     [],
   );
@@ -94,6 +102,8 @@ export function OrderLookup({
       reference: string,
       preserveOrder = false,
       requireEvaluation = false,
+      terminalOnNotFound = false,
+      isCurrent: () => boolean = () => true,
     ): Promise<boolean> => {
       if (endingBusyRef.current && !preserveOrder) return false;
       const request = ++sequence.current;
@@ -105,21 +115,32 @@ export function OrderLookup({
 
       try {
         const loaded = await getOrder(reference);
-        if (request !== sequence.current) return false;
+        if (request !== sequence.current || !isCurrent()) return false;
         setOrder(loaded);
         onOrderState?.(loaded);
         if (identityId !== undefined) {
           try {
             const evaluated = await evaluateCompleteCancellation(reference);
-            if (request !== sequence.current) return false;
+            if (request !== sequence.current || !isCurrent()) return false;
             setEvaluation(evaluated);
           } catch (error) {
-            if (request !== sequence.current) return false;
+            if (request !== sequence.current || !isCurrent()) return false;
             if (
               error instanceof OrderOperationsProblemError &&
               error.problem.status === 401
             )
               onUnauthorized?.();
+            if (
+              terminalOnNotFound &&
+              error instanceof OrderOperationsProblemError &&
+              error.problem.status === 404
+            ) {
+              setOrder(null);
+              setEvaluation(null);
+              setEvaluationError(null);
+              onActiveOrderRetired?.(reference);
+              return false;
+            }
             setEvaluationError(
               error instanceof OrderOperationsProblemError &&
                 error.problem.status === 403
@@ -131,9 +152,16 @@ export function OrderLookup({
         }
         return true;
       } catch (error) {
-        if (request !== sequence.current) return false;
+        if (request !== sequence.current || !isCurrent()) return false;
         if (error instanceof OrderOperationsProblemError) {
           if (error.problem.status === 401) onUnauthorized?.();
+          if (terminalOnNotFound && error.problem.status === 404) {
+            setOrder(null);
+            setEvaluation(null);
+            setEvaluationError(null);
+            onActiveOrderRetired?.(reference);
+            return false;
+          }
           setErrorMessage(lookupErrorMessage(error.problem));
         } else {
           setErrorMessage(
@@ -144,7 +172,7 @@ export function OrderLookup({
         }
         return false;
       } finally {
-        if (request === sequence.current) setIsLoading(false);
+        if (request === sequence.current && isCurrent()) setIsLoading(false);
       }
     },
     [onOrderState, onUnauthorized, identityId],
@@ -162,6 +190,23 @@ export function OrderLookup({
     return () => window.clearTimeout(timeout);
   }, [lookup, requestedLookup]);
 
+  const invalidateActiveOrder = useCallback(() => {
+    if (
+      order === null ||
+      order.operationalReference !== activeOperationalReference
+    )
+      return;
+    const reference = order.operationalReference;
+    activeReadCoordinator.current.invalidate(async (isCurrent) => {
+      await lookup(reference, true, false, true, isCurrent);
+    });
+  }, [activeOperationalReference, lookup, order]);
+
+  const activeOrderScopeId =
+    order !== null && order.operationalReference === activeOperationalReference
+      ? activeOrderId
+      : null;
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await lookup(operationalReference);
@@ -176,6 +221,10 @@ export function OrderLookup({
 
   return (
     <section className="panel" aria-labelledby="order-lookup-title">
+      <ActiveOrderFreshnessSubscription
+        orderId={activeOrderScopeId}
+        invalidate={invalidateActiveOrder}
+      />
       <h2 id="order-lookup-title">Consultar Pedido</h2>
       <form
         className="order-lookup-form"

@@ -36,6 +36,7 @@ function App() {
   const [activeOperationalReference, setActiveOperationalReference] = useState<
     string | null
   >(null);
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [requestedLookup, setRequestedLookup] =
     useState<RequestedOrderLookup>();
   const [requestedTarget, setRequestedTarget] = useState<OrderTargetRequest>();
@@ -134,6 +135,10 @@ function App() {
   const returnToLogin = useCallback(() => {
     discardAntiforgeryToken();
     setAuthState({ status: "unauthenticated" });
+    setActiveOperationalReference(null);
+    setActiveOrderId(null);
+    setDeliveryOperationalReference(null);
+    setRequestedTarget(undefined);
     setEndingOrders({});
     setDeliveryBusy({});
     setPreparationBusy([]);
@@ -141,13 +146,30 @@ function App() {
 
   function activateOrder(operationalReference: string) {
     setActiveOperationalReference(operationalReference);
+    setActiveOrderId(null);
     setRequestedTarget(undefined);
   }
 
   function startNewOrder() {
     setActiveOperationalReference(null);
+    setActiveOrderId(null);
     setRequestedTarget(undefined);
   }
+
+  const retireActiveOrder = useCallback((operationalReference: string) => {
+    setActiveOperationalReference((current) =>
+      current === operationalReference ? null : current,
+    );
+    setActiveOrderId(null);
+    setDeliveryOperationalReference((current) =>
+      current === operationalReference ? null : current,
+    );
+    setRequestedTarget(undefined);
+  }, []);
+  const rememberActiveOrderId = useCallback(
+    (_operationalReference: string, orderId: string) => setActiveOrderId(orderId),
+    [],
+  );
 
   const requestOrderRefresh = useCallback((operationalReference: string) => {
     setPreparationRefresh((current) => current + 1);
@@ -165,6 +187,12 @@ function App() {
   }
 
   return (
+    <PreparationSseProvider
+      key={`sse-session:${authState.status === "authenticated" ? authState.identity.identityId : "anonymous"}`}
+      identityId={
+        authState.status === "authenticated" ? authState.identity.identityId : null
+      }
+    >
     <main className="page-shell">
       <header className="page-header">
         <p className="eyebrow">NexoBar</p>
@@ -181,10 +209,7 @@ function App() {
         />
       )}
       {authState.status === "authenticated" && (
-        <PreparationSseProvider
-          key={`preparation-session:${authState.identity.identityId}`}
-          identityId={authState.identity.identityId}
-        >
+        <>
           <SessionBar
             identity={authState.identity}
             onLoggedOut={returnToLogin}
@@ -207,10 +232,13 @@ function App() {
             endingRefreshSequence={endingRefresh}
             products={products}
             activeOperationalReference={activeOperationalReference}
+            activeOrderId={activeOrderId}
             requestedTarget={requestedTarget}
             onActivateOrder={activateOrder}
+            onActiveOrderId={rememberActiveOrderId}
             onStartNewOrder={startNewOrder}
             onOrderChanged={requestOrderRefresh}
+            onActiveOrderRetired={retireActiveOrder}
             onUnauthorized={returnToLogin}
             ordinaryMutationsBlocked={
               activeOperationalReference !== null &&
@@ -220,7 +248,7 @@ function App() {
                 preparationBusy.includes(activeOperationalReference))
             }
           />
-        </PreparationSseProvider>
+        </>
       )}
 
       <CatalogPanel
@@ -239,6 +267,7 @@ function App() {
         products={products}
         requestedLookup={requestedLookup}
         activeOperationalReference={activeOperationalReference}
+        activeOrderId={activeOrderId}
         onContinueOrder={requestContinueOrder}
         onOpenDelivery={setDeliveryOperationalReference}
         identityId={
@@ -249,6 +278,7 @@ function App() {
         onUnauthorized={returnToLogin}
         onOrderState={rememberOrderState}
         onEndingBusy={rememberEndingBusy}
+        onActiveOrderRetired={retireActiveOrder}
         isOrderMutationBusy={(reference) =>
           deliveryBusy[reference] === true ||
           preparationBusy.includes(reference)
@@ -268,9 +298,11 @@ function App() {
               preparationBusy.includes(deliveryOperationalReference))
           }
           onOrderChanged={requestOrderRefresh}
+          onOrderRetired={retireActiveOrder}
         />
       )}
     </main>
+    </PreparationSseProvider>
   );
 }
 

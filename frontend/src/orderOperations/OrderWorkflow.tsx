@@ -13,6 +13,8 @@ import {
   type CompositionLine,
 } from "./composition.ts";
 import { CompositionLineEditor } from "./CompositionLineEditor.tsx";
+import { ActiveOrderFreshnessSubscription } from "../notifications/ActiveOrderFreshnessSubscription.tsx";
+import { PreparationReadCoordinator } from "../preparation/PreparationReadCoordinator.ts";
 import {
   confirmFirst,
   confirmSubsequent,
@@ -74,10 +76,13 @@ export interface OrderTargetRequest {
 interface OrderWorkflowProps {
   products: Product[];
   activeOperationalReference: string | null;
+  activeOrderId?: string | null;
   requestedTarget?: OrderTargetRequest;
   onActivateOrder: (operationalReference: string) => void;
+  onActiveOrderId?: (operationalReference: string, orderId: string) => void;
   onStartNewOrder: () => void;
   onOrderChanged: (operationalReference: string) => void;
+  onActiveOrderRetired?: (operationalReference: string) => void;
   onUnauthorized: () => void;
   ordinaryMutationsBlocked?: boolean;
   endingRefreshSequence?: number;
@@ -129,10 +134,13 @@ function confirmationErrorMessage(
 export function OrderWorkflow({
   products,
   activeOperationalReference,
+  activeOrderId = null,
   requestedTarget,
   onActivateOrder,
+  onActiveOrderId,
   onStartNewOrder,
   onOrderChanged,
+  onActiveOrderRetired,
   onUnauthorized,
   ordinaryMutationsBlocked = false,
   endingRefreshSequence = 0,
@@ -170,6 +178,8 @@ export function OrderWorkflow({
   } | null>(null);
   const localPendingRef = useRef(localPending);
   const activeOrderRef = useRef(activeOperationalReference);
+  const pendingReadCoordinator = useRef(new PreparationReadCoordinator());
+  const pendingReadSequence = useRef(0);
   const [staleComposition, setStaleComposition] = useState(false);
   activeOrderRef.current = activeOperationalReference;
 
@@ -181,14 +191,23 @@ export function OrderWorkflow({
   }
 
   const reconcilePending = useCallback(
-    async (orderId: string): Promise<PendingComposition | null> => {
+    async (
+      orderId: string,
+      isCurrent: () => boolean = () => true,
+      terminalOnNotFound = false,
+    ): Promise<PendingComposition | null> => {
+      const readSequence = ++pendingReadSequence.current;
+      const isCurrentRead = () =>
+        isCurrent() && readSequence === pendingReadSequence.current;
       setIsPendingLoading(true);
       try {
-        const authority = (await getPendingComposition(orderId))
-          .pendingComposition;
-        if (activeOrderRef.current !== orderId) {
+        const current = await getPendingComposition(orderId);
+        const authority = current.pendingComposition;
+        if (!isCurrentRead() || activeOrderRef.current !== orderId) {
           return authority;
         }
+
+        onActiveOrderId?.(orderId, current.orderId);
 
         setPendingAuthority(authority);
         setPendingAuthorityOrderId(orderId);
@@ -209,9 +228,12 @@ export function OrderWorkflow({
         }
         return authority;
       } catch (error) {
+        if (!isCurrentRead()) return null;
         if (error instanceof OrderOperationsProblemError) {
           if (error.problem.status === 401) {
             onUnauthorized();
+          } else if (terminalOnNotFound && error.problem.status === 404) {
+            onActiveOrderRetired?.(orderId);
           } else if (error.problem.status === 403) {
             setConfirmationNotice({
               kind: "functional-error",
@@ -233,12 +255,12 @@ export function OrderWorkflow({
         }
         return null;
       } finally {
-        if (activeOrderRef.current === orderId) {
+        if (isCurrentRead() && activeOrderRef.current === orderId) {
           setIsPendingLoading(false);
         }
       }
     },
-    [composition.length, onUnauthorized],
+    [composition.length, onActiveOrderId, onActiveOrderRetired, onUnauthorized],
   );
 
   const hasUncertainIntention =
@@ -290,6 +312,8 @@ export function OrderWorkflow({
 
   useEffect(() => {
     if (activeOperationalReference === null) {
+      pendingReadCoordinator.current.cancel();
+      pendingReadSequence.current++;
       return;
     }
 
@@ -298,6 +322,19 @@ export function OrderWorkflow({
     }, 0);
     return () => window.clearTimeout(timeoutId);
   }, [activeOperationalReference, reconcilePending, endingRefreshSequence]);
+
+  useEffect(
+    () => () => pendingReadCoordinator.current.cancel(),
+    [],
+  );
+
+  const invalidatePendingComposition = useCallback(() => {
+    const orderId = activeOrderRef.current;
+    if (orderId === null) return;
+    pendingReadCoordinator.current.invalidate(async (isCurrent) => {
+      await reconcilePending(orderId, isCurrent, true);
+    });
+  }, [reconcilePending]);
 
   function applyAddToComposition(product: Product, anotherLine: boolean) {
     if (anotherLine) {
@@ -840,6 +877,10 @@ export function OrderWorkflow({
 
   return (
     <section className="panel" aria-labelledby="composition-title">
+      <ActiveOrderFreshnessSubscription
+        orderId={activeOrderId}
+        invalidate={invalidatePendingComposition}
+      />
       <div className="section-heading">
         <div>
           <p className="eyebrow">

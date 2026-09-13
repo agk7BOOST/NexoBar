@@ -2,6 +2,10 @@ export interface PreparationDestinationChanged {
   destinationId: string;
 }
 
+export interface OrderChanged {
+  orderId: string;
+}
+
 interface EventSourceConnection {
   close(): void;
   onopen: ((event: Event) => void) | null;
@@ -44,11 +48,27 @@ function isPreparationDestinationChanged(
   );
 }
 
+function isOrderChanged(
+  value: unknown,
+): value is { kind: "order.changed"; scopeId: string } {
+  if (value === null || typeof value !== "object") return false;
+  const payload = value as Record<string, unknown>;
+  return (
+    payload.kind === "order.changed" &&
+    typeof payload.scopeId === "string" &&
+    uuidPattern.test(payload.scopeId)
+  );
+}
+
 /** App-owned, non-authoritative notification transport. */
 export class PreparationSseTransport {
   private readonly listeners = new Map<
     string,
     Set<(notification: PreparationDestinationChanged) => void>
+  >();
+  private readonly orderListeners = new Map<
+    string,
+    Set<(notification: OrderChanged) => void>
   >();
   private readonly connectedListeners = new Set<(generation: number) => void>();
   private readonly eventSourceFactory: EventSourceFactory;
@@ -108,6 +128,32 @@ export class PreparationSseTransport {
     };
   }
 
+  subscribeOrder(
+    orderId: string,
+    listener: (notification: OrderChanged) => void,
+  ): () => void {
+    let orderListeners = this.orderListeners.get(orderId);
+    const snapshotChanged = orderListeners === undefined;
+    if (orderListeners === undefined) {
+      orderListeners = new Set();
+      this.orderListeners.set(orderId, orderListeners);
+    }
+    orderListeners.add(listener);
+    if (snapshotChanged) this.replaceConnection();
+
+    let subscribed = true;
+    return () => {
+      if (!subscribed) return;
+      subscribed = false;
+      const currentListeners = this.orderListeners.get(orderId);
+      if (currentListeners === undefined) return;
+      currentListeners.delete(listener);
+      if (currentListeners.size !== 0) return;
+      this.orderListeners.delete(orderId);
+      this.replaceConnection();
+    };
+  }
+
   onConnected(listener: (generation: number) => void): () => void {
     this.connectedListeners.add(listener);
     return () => this.connectedListeners.delete(listener);
@@ -116,13 +162,14 @@ export class PreparationSseTransport {
   dispose(): void {
     this.activeIdentityId = null;
     this.listeners.clear();
+    this.orderListeners.clear();
     this.closeCurrentConnection();
     this.connectedListeners.clear();
   }
 
   private replaceConnection(): void {
     this.closeCurrentConnection();
-    if (this.activeIdentityId !== null && this.listeners.size !== 0) {
+    if (this.activeIdentityId !== null && this.hasScopes()) {
       this.openConnection(this.lifecycleToken);
     }
   }
@@ -184,7 +231,7 @@ export class PreparationSseTransport {
     return (
       token === this.lifecycleToken &&
       this.activeIdentityId !== null &&
-      this.listeners.size !== 0
+      this.hasScopes()
     );
   }
 
@@ -197,6 +244,9 @@ export class PreparationSseTransport {
     for (const destinationId of [...this.listeners.keys()].sort()) {
       query.append("scope", `preparation.destination:${destinationId}`);
     }
+    for (const orderId of [...this.orderListeners.keys()].sort()) {
+      query.append("scope", `order.active:${orderId}`);
+    }
     return `${streamPath}?${query.toString()}`;
   }
 
@@ -207,14 +257,28 @@ export class PreparationSseTransport {
     } catch {
       return;
     }
-    if (!isPreparationDestinationChanged(payload)) return;
-    const destinationListeners = this.listeners.get(payload.scopeId);
-    if (destinationListeners === undefined) return;
-    const notification: PreparationDestinationChanged = {
-      destinationId: payload.scopeId,
-    };
-    for (const listener of destinationListeners) {
-      listener(notification);
+    if (isPreparationDestinationChanged(payload)) {
+      const destinationListeners = this.listeners.get(payload.scopeId);
+      if (destinationListeners === undefined) return;
+      const notification: PreparationDestinationChanged = {
+        destinationId: payload.scopeId,
+      };
+      for (const listener of destinationListeners) {
+        listener(notification);
+      }
+      return;
     }
+    if (isOrderChanged(payload)) {
+      const orderListeners = this.orderListeners.get(payload.scopeId);
+      if (orderListeners === undefined) return;
+      const notification: OrderChanged = { orderId: payload.scopeId };
+      for (const listener of orderListeners) {
+        listener(notification);
+      }
+    }
+  }
+
+  private hasScopes(): boolean {
+    return this.listeners.size !== 0 || this.orderListeners.size !== 0;
   }
 }

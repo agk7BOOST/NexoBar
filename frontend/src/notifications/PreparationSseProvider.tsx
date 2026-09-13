@@ -8,13 +8,14 @@ import {
 } from "react";
 import {
   PreparationSseTransport,
+  type OrderChanged,
   type PreparationDestinationChanged,
 } from "./PreparationSseTransport.ts";
 
 const PreparationSseContext = createContext<PreparationSseTransport | null>(null);
 
 interface PreparationSseProviderProps {
-  identityId: string;
+  identityId: string | null;
   children: ReactNode;
 }
 
@@ -65,5 +66,32 @@ export function usePreparationConnectionGeneration(): number {
   const transport = usePreparationSseTransport();
   const [generation, setGeneration] = useState(transport.connectionGeneration);
   useEffect(() => transport.onConnected(setGeneration), [transport]);
+  return generation;
+}
+
+export function useOrderInvalidation(
+  orderId: string | null,
+  onInvalidated: (notification: OrderChanged) => void,
+): void {
+  const transport = useContext(PreparationSseContext);
+  useEffect(() => {
+    if (transport === null || orderId === null) return;
+    return transport.subscribeOrder(orderId, onInvalidated);
+  }, [orderId, onInvalidated, transport]);
+}
+
+export function useOrderConnectionGeneration(): number {
+  const transport = useContext(PreparationSseContext);
+  const [generation, setGeneration] = useState(
+    transport?.connectionGeneration ?? 0,
+  );
+  useEffect(() => {
+    if (transport === null) {
+      setGeneration(0);
+      return;
+    }
+    setGeneration(transport.connectionGeneration);
+    return transport.onConnected(setGeneration);
+  }, [transport]);
   return generation;
 }

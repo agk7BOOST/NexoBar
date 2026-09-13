@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActiveOrderFreshnessSubscription } from "../notifications/ActiveOrderFreshnessSubscription.tsx";
+import { PreparationReadCoordinator } from "../preparation/PreparationReadCoordinator.ts";
 import { DeliveryProblemError, getOrderDelivery, type OrderDeliveryContent } from "../delivery/deliveryClient.ts";
 import { discardAntiforgeryToken, getAntiforgeryToken, SessionProblemError } from "../identity/sessionClient.ts";
 import { OrderOperationsProblemError } from "./orderOperationsClient.ts";
@@ -22,7 +24,8 @@ export function AppliedPriceCorrection({ orderId, canAct, isTerminal, onRefresh,
   const locked = useRef(false);
   const sending = useRef(false);
   const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const evaluationCoordinator = useRef(new PreparationReadCoordinator());
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; evaluationCoordinator.current.cancel(); }; }, []);
   function lock(value: boolean) { locked.current = value; onBusyChange(value); }
   function status(error: unknown) {
     return error instanceof OrderOperationsProblemError ? error.problem.status :
@@ -48,6 +51,20 @@ export function AppliedPriceCorrection({ orderId, canAct, isTerminal, onRefresh,
       setMessage(status(error) === 403 ? "Esta Identity no tiene autorización para corregir precios aplicados. Se requiere OrderOperationsAndBasicClosure." : "No se pudieron consultar los precios aplicados. Intentá actualizar.");
     } finally { if (mounted.current) { setPhase("idle"); lock(false); } }
   }
+  const invalidateEvaluations = useCallback(() => {
+    if (rows.length === 0 && confirmation === null) return;
+    evaluationCoordinator.current.invalidate(async (isCurrent) => {
+      try {
+        const loaded = await readRows();
+        if (!mounted.current || !isCurrent()) return;
+        setConfirmation(null);
+        setRows(loaded);
+      } catch (error) {
+        if (!mounted.current || !isCurrent()) return;
+        if (status(error) === 401) unauthorized();
+      }
+    });
+  }, [confirmation, rows.length]);
   async function refresh() {
     setPhase("refreshing"); setConfirmation(null);
     try {
@@ -100,6 +117,7 @@ export function AppliedPriceCorrection({ orderId, canAct, isTerminal, onRefresh,
   }
   const disabled = !canAct || phase !== "idle";
   return <section className="order-ending" aria-label="Corrección de precio aplicado">
+    <ActiveOrderFreshnessSubscription orderId={rows.length > 0 || confirmation !== null ? orderId : null} invalidate={invalidateEvaluations} />
     <h3>Precios aplicados por contenido</h3>
     <button type="button" disabled={disabled} onClick={() => void read()}>Consultar precios aplicados</button>
     {phase === "reading" && <p role="status">Consultando precios…</p>}

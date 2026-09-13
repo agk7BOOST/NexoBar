@@ -3,6 +3,8 @@ import { PreparationSseTransport } from "./PreparationSseTransport.ts";
 
 const destinationA = "11111111-1111-4111-8111-111111111111";
 const destinationB = "22222222-2222-4222-8222-222222222222";
+const orderA = "33333333-3333-4333-8333-333333333333";
+const orderB = "44444444-4444-4444-8444-444444444444";
 
 class FakeEventSource {
   closed = false;
@@ -85,6 +87,25 @@ describe("PreparationSseTransport", () => {
     unsubscribeB();
     expect(sources).toHaveLength(3);
     expect(sources[1].closed).toBe(true);
+  });
+
+  it("uses one mixed-scope stream and delivers order.changed only to its exact Order", () => {
+    const { transport, sources, urls } = createTransport();
+    const preparationChanged = vi.fn();
+    const orderChanged = vi.fn();
+    transport.subscribe(destinationA, preparationChanged);
+    transport.subscribeOrder(orderA, orderChanged);
+
+    expect(sources).toHaveLength(2);
+    expect(urls[1]).toBe(
+      `/api/notifications/stream?scope=preparation.destination%3A${destinationA}&scope=order.active%3A${orderA}`,
+    );
+    sources[1].invalidate(JSON.stringify({ kind: "order.changed", scopeId: orderB }));
+    sources[1].invalidate(JSON.stringify({ kind: "order.changed", scopeId: orderA }));
+
+    expect(orderChanged).toHaveBeenCalledTimes(1);
+    expect(orderChanged).toHaveBeenLastCalledWith({ orderId: orderA });
+    expect(preparationChanged).not.toHaveBeenCalled();
   });
 
   it("delivers only valid invalidations to subscribers for that destination", () => {
