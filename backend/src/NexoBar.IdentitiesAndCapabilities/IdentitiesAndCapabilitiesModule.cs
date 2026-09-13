@@ -90,6 +90,8 @@ public static class IdentitiesAndCapabilitiesModule
         services.AddScoped<IOrderOperationsCapabilityStabilizer>(services =>
             services.GetRequiredService<OrderOperationsAuthorization>());
         services.AddScoped<IInventoryAuthorization, InventoryAuthorization>();
+        services.AddScoped<IInventoryOperationSubscriptionAuthorization,
+            InventoryOperationSubscriptionAuthorization>();
         services.AddScoped<IIdentityOperationalNameLookup,
             IdentityOperationalNameLookup>();
         services.AddScoped<IdentitySessionService>();

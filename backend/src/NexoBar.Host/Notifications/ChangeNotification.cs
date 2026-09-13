@@ -2,16 +2,16 @@ namespace NexoBar.Host.Notifications;
 
 public sealed record ChangeNotificationScope
 {
-    private ChangeNotificationScope(ChangeNotificationScopeKind kind, Guid scopeId)
+    private ChangeNotificationScope(ChangeNotificationScopeKind kind, Guid? scopeId)
     {
         Kind = kind;
         ScopeId = scopeId;
     }
 
     internal ChangeNotificationScopeKind Kind { get; }
-    public Guid ScopeId { get; }
+    public Guid? ScopeId { get; }
     public Guid DestinationId => Kind == ChangeNotificationScopeKind.PreparationDestination
-        ? ScopeId : throw new InvalidOperationException("This scope is not a Preparation destination.");
+        ? ScopeId!.Value : throw new InvalidOperationException("This scope is not a Preparation destination.");
 
     public static ChangeNotificationScope PreparationDestination(Guid destinationId)
     {
@@ -29,9 +29,18 @@ public sealed record ChangeNotificationScope
         return new(ChangeNotificationScopeKind.ActiveOrder, orderId);
     }
 
+    public static ChangeNotificationScope InventoryOperation() =>
+        new(ChangeNotificationScopeKind.InventoryOperation, null);
+
     internal static bool TryParse(string? value, out ChangeNotificationScope? scope)
     {
         scope = null;
+        if (value == "inventory.operation")
+        {
+            scope = InventoryOperation();
+            return true;
+        }
+
         var parts = value?.Split(':');
         if (parts is not { Length: 2 } || !Guid.TryParseExact(parts[1], "D", out var id) || id == Guid.Empty) return false;
         scope = parts[0] switch
@@ -44,7 +53,7 @@ public sealed record ChangeNotificationScope
     }
 }
 
-internal enum ChangeNotificationScopeKind { PreparationDestination, ActiveOrder }
+internal enum ChangeNotificationScopeKind { PreparationDestination, ActiveOrder, InventoryOperation }
 internal enum ChangeNotificationDelivery { Normal, FinalForPreviouslyAuthorizedScope }
 
 public sealed record ChangeNotification
@@ -56,8 +65,13 @@ public sealed record ChangeNotification
     }
 
     public ChangeNotificationScope Scope { get; }
-    public string Kind => Scope.Kind == ChangeNotificationScopeKind.ActiveOrder
-        ? "order.changed" : "preparation.destination.changed";
+    public string Kind => Scope.Kind switch
+    {
+        ChangeNotificationScopeKind.PreparationDestination => "preparation.destination.changed",
+        ChangeNotificationScopeKind.ActiveOrder => "order.changed",
+        ChangeNotificationScopeKind.InventoryOperation => "inventory.operation.changed",
+        _ => throw new InvalidOperationException("Unsupported notification scope.")
+    };
     internal ChangeNotificationDelivery Delivery { get; private init; }
 
     // Trusted Host-side classification only. S8-I4B will use this solely after

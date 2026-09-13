@@ -16,6 +16,7 @@ public sealed class ActiveOrderSseTests(OrderOperationsApiFixture fixture)
     private ChangeNotificationHub Hub => fixture.Services.GetRequiredService<ChangeNotificationHub>();
     private static string OrderScope(Guid id) => $"scope=order.active:{id:D}";
     private static string PreparationScope(Guid id) => $"scope=preparation.destination:{id:D}";
+    private const string InventoryScope = "scope=inventory.operation";
     private static string Url(string scopes) => $"/api/notifications/stream?{scopes}";
 
     [Theory]
@@ -98,9 +99,17 @@ public sealed class ActiveOrderSseTests(OrderOperationsApiFixture fixture)
     {
         var actor = await ArrangeAsync("mixed");
         using var client = actor.Client;
+        await using (var scope = fixture.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+            db.ResponsibilityAssignments.Add(new(
+                actor.IdentityId,
+                FunctionalResponsibility.InventoryOperation));
+            await db.SaveChangesAsync(Token);
+        }
         var other = await LiquidationTestSupport.CreateDirectOrderAsync(fixture, [("5", 2)], Token);
         var otherId = Guid.Parse(other.OperationalReference);
-        await using (var mixed = await OpenAsync(client, $"{OrderScope(actor.OrderId)}&{OrderScope(actor.OrderId)}&{PreparationScope(actor.Destination)}"))
+        await using (var mixed = await OpenAsync(client, $"{OrderScope(actor.OrderId)}&{OrderScope(actor.OrderId)}&{PreparationScope(actor.Destination)}&{InventoryScope}"))
         await using (var second = await OpenAsync(client, OrderScope(otherId)))
         await using (var preparation = await OpenAsync(client, PreparationScope(actor.Destination)))
         {
@@ -109,6 +118,10 @@ public sealed class ActiveOrderSseTests(OrderOperationsApiFixture fixture)
             Assert.Equal(": keep-alive\n", await mixed.FrameAsync()); // No duplicate from duplicate scope.
             Assert.Equal(": keep-alive\n", await second.FrameAsync());
             Assert.Equal(": keep-alive\n", await preparation.FrameAsync());
+            fixture.Services.GetRequiredService<IChangeNotificationPublisher>().Publish(
+                new(ChangeNotificationScope.InventoryOperation()));
+            Assert.Equal("event: invalidation\ndata: {\"kind\":\"inventory.operation.changed\"}\n",
+                await mixed.InvalidationAsync());
             Publish(otherId);
             Assert.Equal(OrderFrame(otherId), await second.InvalidationAsync());
             fixture.Services.GetRequiredService<IChangeNotificationPublisher>().Publish(

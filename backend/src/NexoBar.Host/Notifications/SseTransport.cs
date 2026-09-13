@@ -124,7 +124,7 @@ internal static class SseTransport
                 // The exact final scope and already-retired scopes skip active State;
                 // remaining deliverable scopes and all actor authority are still current.
                 if (await AuthorizeAsync(scopeFactory, scopes, retiredScopes,
-                        isFinal ? notification!.Scope.ScopeId : null, connection.Token) is not null)
+                        isFinal ? notification!.Scope.ScopeId!.Value : null, connection.Token) is not null)
                 {
                     logger.LogInformation("SSE connection authority lost.");
                     break;
@@ -138,11 +138,13 @@ internal static class SseTransport
                 }
                 else
                 {
-                    var json = JsonSerializer.Serialize(new
-                    {
-                        kind = notification!.Kind,
-                        scopeId = notification.Scope.ScopeId
-                    });
+                    var json = notification!.Scope.Kind == ChangeNotificationScopeKind.InventoryOperation
+                        ? JsonSerializer.Serialize(new { kind = notification.Kind })
+                        : JsonSerializer.Serialize(new
+                        {
+                            kind = notification.Kind,
+                            scopeId = notification.Scope.ScopeId!.Value
+                        });
                     await WriteAsync(context.Response, $"event: invalidation\ndata: {json}\n\n",
                         options.Value, connection.Token);
                     // Preserve the client snapshot, but permanently retire this exact scope.
@@ -189,7 +191,8 @@ internal static class SseTransport
         // Avoid retaining a tracked DbContext/transaction for a long-lived response.
         await using var scope = scopeFactory.CreateAsyncScope();
         var destinations = scopes.Where(x => x.Kind == ChangeNotificationScopeKind.PreparationDestination)
-            .Select(x => x.ScopeId).ToArray();
+            .Select(x => x.ScopeId!.Value)
+            .ToArray();
         if (destinations.Length > 0)
         {
             var preparation = await scope.ServiceProvider.GetRequiredService<IPreparationSubscriptionAuthorization>()
@@ -199,22 +202,40 @@ internal static class SseTransport
                     ? Problem(401, "Invalid session", "identities_and_capabilities.invalid_session")
                     : Problem(403, "Preparation access forbidden", "identities_and_capabilities.preparation.forbidden");
         }
-        var orders = scopes.Where(x => x.Kind == ChangeNotificationScopeKind.ActiveOrder).Select(x => x.ScopeId).ToArray();
-        if (orders.Length == 0) return null;
-        var authorization = scope.ServiceProvider.GetRequiredService<IActiveOrderSubscriptionAuthorization>();
-        var activeOrders = orders.Where(id => id != finalOrderId &&
-            !retiredScopes.Contains(ChangeNotificationScope.ActiveOrder(id))).ToArray();
-        var outcome = activeOrders.Length == 0
-            ? await authorization.AuthorizeCurrentActorAsync(cancellationToken)
-            : await authorization.AuthorizeAsync(activeOrders, cancellationToken);
-        return outcome switch
+        if (scopes.Contains(ChangeNotificationScope.InventoryOperation()))
         {
-            ActiveOrderSubscriptionAuthorizationOutcome.Authorized => null,
-            ActiveOrderSubscriptionAuthorizationOutcome.Unauthenticated => Problem(401, "Invalid session", "identities_and_capabilities.invalid_session"),
-            ActiveOrderSubscriptionAuthorizationOutcome.Forbidden => Problem(403, "Order access forbidden", "order_operations.order.forbidden"),
-            ActiveOrderSubscriptionAuthorizationOutcome.OrderNotFound => Problem(404, "Order not found", "order_operations.order.not_found"),
-            _ => throw new InvalidOperationException("Unknown active Order authorization outcome.")
-        };
+            var inventory = await scope.ServiceProvider
+                .GetRequiredService<IInventoryOperationSubscriptionAuthorization>()
+                .AuthorizeAsync(cancellationToken);
+            if (inventory != InventoryOperationSubscriptionAuthorizationOutcome.Authorized)
+            {
+                return inventory == InventoryOperationSubscriptionAuthorizationOutcome.Unauthenticated
+                    ? Problem(401, "Invalid session", "identities_and_capabilities.invalid_session")
+                    : Problem(403, "Inventory operation forbidden", "inventory.operation.forbidden");
+            }
+        }
+        var orders = scopes.Where(x => x.Kind == ChangeNotificationScopeKind.ActiveOrder)
+            .Select(x => x.ScopeId!.Value)
+            .ToArray();
+        if (orders.Length > 0)
+        {
+            var authorization = scope.ServiceProvider.GetRequiredService<IActiveOrderSubscriptionAuthorization>();
+            var activeOrders = orders.Where(id => id != finalOrderId &&
+                !retiredScopes.Contains(ChangeNotificationScope.ActiveOrder(id))).ToArray();
+            var outcome = activeOrders.Length == 0
+                ? await authorization.AuthorizeCurrentActorAsync(cancellationToken)
+                : await authorization.AuthorizeAsync(activeOrders, cancellationToken);
+            return outcome switch
+            {
+                ActiveOrderSubscriptionAuthorizationOutcome.Authorized => null,
+                ActiveOrderSubscriptionAuthorizationOutcome.Unauthenticated => Problem(401, "Invalid session", "identities_and_capabilities.invalid_session"),
+                ActiveOrderSubscriptionAuthorizationOutcome.Forbidden => Problem(403, "Order access forbidden", "order_operations.order.forbidden"),
+                ActiveOrderSubscriptionAuthorizationOutcome.OrderNotFound => Problem(404, "Order not found", "order_operations.order.not_found"),
+                _ => throw new InvalidOperationException("Unknown active Order authorization outcome.")
+            };
+        }
+
+        return null;
     }
 
     private static async Task WriteAsync(
