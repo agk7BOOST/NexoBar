@@ -11,7 +11,8 @@ internal sealed class ContentCorrectionService(
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
     TimeProvider timeProvider,
-    IPreparationDestinationInvalidationPublisher invalidations)
+    IPreparationDestinationInvalidationPublisher invalidations,
+    IOrderInvalidationPublisher orderInvalidations)
 {
     internal async Task<ContentCorrectionResult> CorrectAsync(
         Guid key, Guid orderId, Guid incorporationId, int contentOrdinal, int quantity,
@@ -91,6 +92,7 @@ internal sealed class ContentCorrectionService(
         dbContext.ContentCorrectionCommands.Add(new ContentCorrectionCommand(key, session.IdentityId, response));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        orderInvalidations.PublishChanged(orderId);
         if (work is not null)
             invalidations.Publish([work.PreparationResponsibilityId]);
         return new(ContentCorrectionOutcome.Succeeded, response);

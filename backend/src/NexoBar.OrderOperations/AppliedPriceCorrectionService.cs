@@ -13,7 +13,8 @@ internal sealed class AppliedPriceCorrectionService(
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
     ActiveOrderReadState activeOrder,
     IOrderAppliedPriceCatalog catalog,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IOrderInvalidationPublisher orderInvalidations)
 {
     internal async Task<AppliedPriceCorrectionEvaluationResult> EvaluateAsync(Guid orderId, Guid incorporationId, int contentOrdinal, CancellationToken cancellationToken)
     {
@@ -101,6 +102,7 @@ internal sealed class AppliedPriceCorrectionService(
         dbContext.AppliedPriceCorrectionCommands.Add(new AppliedPriceCorrectionCommand(key, session.IdentityId, response));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        orderInvalidations.PublishChanged(orderId);
         return new(AppliedPriceCorrectionOutcome.Succeeded, response);
     }
 

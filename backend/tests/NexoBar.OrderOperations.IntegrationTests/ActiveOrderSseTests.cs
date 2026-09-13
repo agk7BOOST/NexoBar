@@ -327,10 +327,15 @@ public sealed class ActiveOrderSseTests(OrderOperationsApiFixture fixture)
 
     private async Task SetLifecycleAsync(Actor actor, string lifecycle)
     {
+        // These transport tests explicitly control notification timing/classification.
+        // Commit setup commands through an isolated publisher; publication semantics
+        // of the production adapter are covered by OrderInvalidationTests.
+        using var application = fixture.CreateApplicationWithChangeNotificationPublisher(new SetupPublisher());
+        using var commandClient = await fixture.LoginAsync(fixture.DefaultOrderOperationsActor, Token, application);
         if (lifecycle is "closed" or "frozen")
         {
             await fixture.SetAllDeliveredQuantitiesAsync(actor.OrderId, Token);
-            using var liquidation = await LiquidationTestSupport.PostExternalAsync(fixture.OrderOperationsClient, actor.OrderId.ToString(), Guid.NewGuid(), Token);
+            using var liquidation = await LiquidationTestSupport.PostExternalAsync(commandClient, actor.OrderId.ToString(), Guid.NewGuid(), Token);
             liquidation.EnsureSuccessStatusCode();
         }
         string? path = lifecycle switch
@@ -344,7 +349,7 @@ public sealed class ActiveOrderSseTests(OrderOperationsApiFixture fixture)
         using var request = new HttpRequestMessage(HttpMethod.Post, path);
         if (lifecycle == "zero") request.Content = JsonContent.Create(new { quantity = 2 });
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString());
-        using var response = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(fixture.OrderOperationsClient, request, Token);
+        using var response = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(commandClient, request, Token);
         response.EnsureSuccessStatusCode();
     }
 
@@ -406,6 +411,10 @@ public sealed class ActiveOrderSseTests(OrderOperationsApiFixture fixture)
     private static string OrderFrame(Guid id) => $"event: invalidation\ndata: {{\"kind\":\"order.changed\",\"scopeId\":\"{id:D}\"}}\n";
     private sealed record Actor(FirstConfirmationResponse Order, Guid IdentityId, Guid Destination, HttpClient Client)
     { internal Guid OrderId => Guid.Parse(Order.OperationalReference); }
+    private sealed class SetupPublisher : IChangeNotificationPublisher
+    {
+        public void Publish(ChangeNotification notification) { }
+    }
     private sealed class PassiveClock : TimeProvider
     {
         private DateTimeOffset now = DateTimeOffset.UtcNow;

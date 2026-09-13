@@ -28,6 +28,7 @@ public static partial class OrderOperationsModule
                     "__ef_migrations_history",
                     "order_operations")));
         services.AddPreparationDestinationInvalidationPublisher();
+        services.AddOrderInvalidationPublisher();
         services.AddScoped<FirstConfirmationService>();
         services.AddScoped<SubsequentConfirmationService>();
         services.AddScoped<PendingCompositionService>();

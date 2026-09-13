@@ -11,7 +11,8 @@ internal sealed class ClosureService(
     ClosureStateReader stateReader,
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IOrderInvalidationPublisher orderInvalidations)
 {
     internal async Task<ClosureResult> CloseAsync(Guid key, Guid orderId, CancellationToken cancellationToken)
     {
@@ -79,6 +80,7 @@ internal sealed class ClosureService(
         dbContext.ClosureCommands.Add(resultCommand);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        orderInvalidations.PublishTerminalChanged(orderId);
         return new(ClosureOutcome.Succeeded, resultCommand.ToResponse());
     }
 

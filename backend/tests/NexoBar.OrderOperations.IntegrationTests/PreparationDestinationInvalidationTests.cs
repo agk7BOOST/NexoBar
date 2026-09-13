@@ -241,6 +241,7 @@ public sealed class PreparationDestinationInvalidationTests(OrderOperationsApiFi
 
         public void Publish(ChangeNotification notification)
         {
+            if (notification.Kind != "preparation.destination.changed") return;
             lock (destinationIds)
             {
                 destinationIds.Add(notification.Scope.DestinationId);

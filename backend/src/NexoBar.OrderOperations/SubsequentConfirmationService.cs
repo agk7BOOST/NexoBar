@@ -13,7 +13,8 @@ internal sealed class SubsequentConfirmationService(
     IOrderConfirmationCatalog catalog,
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
-    IPreparationDestinationInvalidationPublisher invalidations)
+    IPreparationDestinationInvalidationPublisher invalidations,
+    IOrderInvalidationPublisher orderInvalidations)
 {
     private const long SubsequentConfirmationLockNamespace = 0x535542434F4E4600;
 
@@ -221,6 +222,7 @@ internal sealed class SubsequentConfirmationService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        orderInvalidations.PublishChanged(orderId);
         invalidations.Publish(affectedDestinations);
 
         return SubsequentConfirmationResult.Confirmed(

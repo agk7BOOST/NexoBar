@@ -11,7 +11,8 @@ internal sealed class DeliveryCorrectionService(
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
     TimeProvider timeProvider,
-    IPreparationDestinationInvalidationPublisher invalidations)
+    IPreparationDestinationInvalidationPublisher invalidations,
+    IOrderInvalidationPublisher orderInvalidations)
 {
     internal async Task<DeliveryCorrectionResult> CorrectAsync(
         Guid key, Guid orderId, Guid incorporationId, int contentOrdinal, int quantity,
@@ -94,6 +95,7 @@ internal sealed class DeliveryCorrectionService(
         dbContext.DeliveryCorrectionCommands.Add(new DeliveryCorrectionCommand(key, session.IdentityId, response));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        orderInvalidations.PublishChanged(orderId);
         if (work is not null)
             invalidations.Publish([work.PreparationResponsibilityId]);
         return new(DeliveryCorrectionOutcome.Succeeded, response);

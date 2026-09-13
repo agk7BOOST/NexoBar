@@ -12,7 +12,8 @@ internal sealed class PendingCompositionService(
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
     IOrderOperationsAuthorization authorization,
     ActiveOrderReadState activeOrder,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IOrderInvalidationPublisher orderInvalidations)
 {
     private const long CommandLockNamespace = 0x50434F4D434D4400;
 
@@ -89,6 +90,7 @@ internal sealed class PendingCompositionService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        orderInvalidations.PublishChanged(orderId);
         return PendingCompositionCommandResult.Started(
             new PendingCompositionResponse(
                 pendingComposition.Id,
@@ -209,6 +211,7 @@ internal sealed class PendingCompositionService(
             pending));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        orderInvalidations.PublishChanged(orderId);
         return PendingCompositionCommandResult.Discarded();
     }
 

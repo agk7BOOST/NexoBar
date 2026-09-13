@@ -13,7 +13,8 @@ internal sealed class CompleteCancellationService(
     IOperationalInterventionCapabilityStabilizer intervention,
     ActiveOrderReadState activeOrder,
     TimeProvider timeProvider,
-    IPreparationDestinationInvalidationPublisher invalidations)
+    IPreparationDestinationInvalidationPublisher invalidations,
+    IOrderInvalidationPublisher orderInvalidations)
 {
     internal async Task<CompleteCancellationResult> ExecuteAsync(Guid orderId, Guid? key, CancellationToken token)
     {
@@ -88,6 +89,7 @@ internal sealed class CompleteCancellationService(
         await dbContext.SaveChangesAsync(token);
         var response = new CompleteCancellationResponse(orderId, fact.Id, occurredAt, true, fact.PendingCompositionDiscarded, plan.Evaluation.Consequences);
         await transaction.CommitAsync(token);
+        orderInvalidations.PublishTerminalChanged(orderId);
         invalidations.Publish(affectedDestinations);
         return new(Response: response);
     }

@@ -418,7 +418,7 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
             token);
         Assert.Equal(HttpStatusCode.Conflict, subsequentResponse.StatusCode);
 
-        using var orderResponse = await fixture.Client.GetAsync(
+        using var orderResponse = await fixture.OrderOperationsClient.GetAsync(
             $"/api/order-operations/orders/{OrderId:D}",
             token);
         orderResponse.EnsureSuccessStatusCode();

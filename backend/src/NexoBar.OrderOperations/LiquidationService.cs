@@ -11,7 +11,8 @@ internal sealed class LiquidationService(
     OrderEconomicStateReader economicStateReader,
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IOrderInvalidationPublisher orderInvalidations)
 {
     internal const int DeclaredPaymentMediumMaxLength = 200;
     private const long CommandLockNamespace = 0x4C4951434D440000;
@@ -173,6 +174,7 @@ internal sealed class LiquidationService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        orderInvalidations.PublishChanged(orderId);
         return LiquidationResult.Succeeded(result);
     }
 

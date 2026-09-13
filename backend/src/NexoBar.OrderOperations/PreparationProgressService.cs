@@ -11,7 +11,8 @@ internal sealed class PreparationProgressService(
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IPreparationCapabilityStabilizer capabilityStabilizer,
     TimeProvider timeProvider,
-    IPreparationDestinationInvalidationPublisher invalidations)
+    IPreparationDestinationInvalidationPublisher invalidations,
+    IOrderInvalidationPublisher orderInvalidations)
 {
     private const long PreparationCommandLockNamespace = 0x50524550434D4400;
 
@@ -218,6 +219,7 @@ internal sealed class PreparationProgressService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        orderInvalidations.PublishChanged(orderId.Value);
         invalidations.Publish([work.PreparationResponsibilityId]);
         return PreparationProgressResult.Succeeded(result);
     }

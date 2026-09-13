@@ -101,7 +101,7 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
                 token);
             Assert.Equal(HttpStatusCode.Conflict, subsequentReplay.StatusCode);
 
-            using var orderResponse = await fixture.Client.GetAsync(
+            using var orderResponse = await fixture.OrderOperationsClient.GetAsync(
                 $"/api/order-operations/orders/{orderId:D}", token);
             Assert.Equal(HttpStatusCode.OK, orderResponse.StatusCode);
             var order = Assert.IsType<OrderQueryResponse>(

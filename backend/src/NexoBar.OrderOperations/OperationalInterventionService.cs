@@ -10,7 +10,8 @@ internal sealed class OperationalInterventionService(
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOperationalInterventionCapabilityStabilizer capabilityStabilizer,
     TimeProvider timeProvider,
-    IPreparationDestinationInvalidationPublisher invalidations)
+    IPreparationDestinationInvalidationPublisher invalidations,
+    IOrderInvalidationPublisher orderInvalidations)
 {
     internal Task<PreparationProgressResult> InterveneInPreparationAsync(Guid key, Guid workId, int quantity, CancellationToken token) =>
         ExecuteAsync(false, key, workId, quantity, token);
@@ -90,6 +91,7 @@ internal sealed class OperationalInterventionService(
             : PreparationCommand.InterveneInPreparation(key, session.IdentityId, workId, quantity, result));
         await dbContext.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
+        orderInvalidations.PublishChanged(target.OrderId);
         invalidations.Publish([workState.PreparationResponsibilityId]);
         return PreparationProgressResult.Succeeded(result);
     }
