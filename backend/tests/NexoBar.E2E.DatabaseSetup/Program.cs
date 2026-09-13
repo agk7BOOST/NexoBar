@@ -326,6 +326,11 @@ try
     orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
         Guid.CreateVersion7(), sseIncorporation.Id, sseOrder.Context, deliverer.Id, DateTimeOffset.UtcNow));
     await orderOperations.SaveChangesAsync();
+    await orderOperations.Database.ExecuteSqlInterpolatedAsync($"""
+        UPDATE order_operations.preparation_work
+        SET pending_quantity = 0, in_preparation_quantity = 1
+        WHERE incorporation_id = {sseIncorporation.Id} AND content_ordinal = 1
+        """);
 
     Console.WriteLine(
         $"E2E database migrations and security fixture applied; " +
