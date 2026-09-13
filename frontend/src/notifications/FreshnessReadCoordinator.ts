@@ -1,5 +1,5 @@
-/** One active destination refresh and one newest pending refresh per panel. */
-export class PreparationReadCoordinator {
+/** One active authoritative refresh and one newest pending refresh per owner. */
+export class FreshnessReadCoordinator {
   private generation = 0;
   private running = false;
   private pending: ((isCurrent: () => boolean) => Promise<void>) | null = null;

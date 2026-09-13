@@ -1,6 +1,6 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PreparationReadCoordinator } from "../preparation/PreparationReadCoordinator.ts";
+import { FreshnessReadCoordinator } from "./FreshnessReadCoordinator.ts";
 import { ActiveOrderFreshnessSubscription } from "./ActiveOrderFreshnessSubscription.tsx";
 import { NotificationSseProvider } from "./NotificationSseProvider.tsx";
 
@@ -92,7 +92,7 @@ describe("active Order SSE freshness", () => {
   });
 
   it("fences an obsolete response and coalesces repeated invalidations", async () => {
-    const coordinator = new PreparationReadCoordinator();
+    const coordinator = new FreshnessReadCoordinator();
     const old = deferred<string>();
     const current = deferred<string>();
     const applied: string[] = [];

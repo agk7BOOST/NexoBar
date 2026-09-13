@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActiveOrderFreshnessSubscription } from "../notifications/ActiveOrderFreshnessSubscription.tsx";
-import { PreparationReadCoordinator } from "../preparation/PreparationReadCoordinator.ts";
+import { FreshnessReadCoordinator } from "../notifications/FreshnessReadCoordinator.ts";
 import { DeliveryProblemError, getOrderDelivery, type OrderDeliveryContent } from "../delivery/deliveryClient.ts";
 import { discardAntiforgeryToken, getAntiforgeryToken, SessionProblemError } from "../identity/sessionClient.ts";
 import { OrderOperationsProblemError } from "./orderOperationsClient.ts";
@@ -24,7 +24,7 @@ export function AppliedPriceCorrection({ orderId, canAct, isTerminal, onRefresh,
   const locked = useRef(false);
   const sending = useRef(false);
   const mounted = useRef(true);
-  const evaluationCoordinator = useRef(new PreparationReadCoordinator());
+  const evaluationCoordinator = useRef(new FreshnessReadCoordinator());
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; evaluationCoordinator.current.cancel(); }; }, []);
   function lock(value: boolean) { locked.current = value; onBusyChange(value); }
   function status(error: unknown) {

@@ -1,6 +1,6 @@
 import { maximumContentCancellation } from "./contentCancellation.ts";
 import { ActiveOrderFreshnessSubscription } from "../notifications/ActiveOrderFreshnessSubscription.tsx";
-import { PreparationReadCoordinator } from "../preparation/PreparationReadCoordinator.ts";
+import { FreshnessReadCoordinator } from "../notifications/FreshnessReadCoordinator.ts";
 import { maximumContentCorrection } from "./contentCorrection.ts";
 import { getOrder } from "../orderOperations/orderOperationsClient.ts";
 import { listPreparationDestinations } from "../identity/sessionClient.ts";
@@ -121,7 +121,7 @@ export function DeliveryPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const requestSequence = useRef(0);
-  const deliveryReadCoordinator = useRef(new PreparationReadCoordinator());
+  const deliveryReadCoordinator = useRef(new FreshnessReadCoordinator());
   const intentsRef = useRef<Record<string, DeliveryIntent>>({});
   const reportedBusyReferences = useRef(new Set<string>());
 

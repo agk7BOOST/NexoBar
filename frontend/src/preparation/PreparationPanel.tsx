@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PreparationReadCoordinator } from "./PreparationReadCoordinator.ts";
+import { FreshnessReadCoordinator } from "../notifications/FreshnessReadCoordinator.ts";
 import { PreparationFreshnessSubscription } from "./PreparationFreshnessSubscription.tsx";
 import {
   discardAntiforgeryToken,
@@ -158,7 +158,7 @@ export function PreparationPanel({
   const [isLoadingDestinations, setIsLoadingDestinations] = useState(true);
   const [isLoadingWork, setIsLoadingWork] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [readCoordinator] = useState(() => new PreparationReadCoordinator());
+  const [readCoordinator] = useState(() => new FreshnessReadCoordinator());
   const mounted = useRef(true);
   const selectedIdRef = useRef("");
   useEffect(() => {

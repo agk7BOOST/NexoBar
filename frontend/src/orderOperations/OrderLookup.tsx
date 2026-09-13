@@ -9,7 +9,7 @@ import { OrderEnding } from "./OrderEnding.tsx";
 import { AppliedPriceCorrection } from "./AppliedPriceCorrection.tsx";
 import { CompleteCancellation } from "./CompleteCancellation.tsx";
 import { ActiveOrderFreshnessSubscription } from "../notifications/ActiveOrderFreshnessSubscription.tsx";
-import { PreparationReadCoordinator } from "../preparation/PreparationReadCoordinator.ts";
+import { FreshnessReadCoordinator } from "../notifications/FreshnessReadCoordinator.ts";
 import {
   evaluateCompleteCancellation,
   type CompleteCancellationEvaluation,
@@ -88,7 +88,7 @@ export function OrderLookup({
   >({});
   const endingBusyRef = useRef(false);
   const sequence = useRef(0);
-  const activeReadCoordinator = useRef(new PreparationReadCoordinator());
+  const activeReadCoordinator = useRef(new FreshnessReadCoordinator());
   useEffect(
     () => () => {
       sequence.current++;

@@ -14,7 +14,7 @@ import {
 } from "./composition.ts";
 import { CompositionLineEditor } from "./CompositionLineEditor.tsx";
 import { ActiveOrderFreshnessSubscription } from "../notifications/ActiveOrderFreshnessSubscription.tsx";
-import { PreparationReadCoordinator } from "../preparation/PreparationReadCoordinator.ts";
+import { FreshnessReadCoordinator } from "../notifications/FreshnessReadCoordinator.ts";
 import {
   confirmFirst,
   confirmSubsequent,
@@ -178,7 +178,7 @@ export function OrderWorkflow({
   } | null>(null);
   const localPendingRef = useRef(localPending);
   const activeOrderRef = useRef(activeOperationalReference);
-  const pendingReadCoordinator = useRef(new PreparationReadCoordinator());
+  const pendingReadCoordinator = useRef(new FreshnessReadCoordinator());
   const pendingReadSequence = useRef(0);
   const [staleComposition, setStaleComposition] = useState(false);
   activeOrderRef.current = activeOperationalReference;
