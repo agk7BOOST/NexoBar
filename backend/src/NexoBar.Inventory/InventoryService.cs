@@ -10,7 +10,8 @@ namespace NexoBar.Inventory;
 
 internal sealed class InventoryService(
     InventoryDbContext dbContext,
-    IInventoryAuthorization authorization)
+    IInventoryAuthorization authorization,
+    IInventoryOperationInvalidationPublisher invalidations)
 {
     private const long ItemCreationLockNamespace = 0x494E564352454154;
 
@@ -104,6 +105,7 @@ internal sealed class InventoryService(
             return CreateInventoryItemResult.DuplicateName();
         }
 
+        invalidations.PublishChanged();
         return CreateInventoryItemResult.Created(response);
     }
 

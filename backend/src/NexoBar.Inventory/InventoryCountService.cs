@@ -11,7 +11,8 @@ internal sealed class InventoryCountService(
     InventoryDbContext dbContext,
     IInventoryAuthorization authorization,
     TimeProvider timeProvider,
-    ILogger<InventoryCountService> logger)
+    ILogger<InventoryCountService> logger,
+    IInventoryOperationInvalidationPublisher invalidations)
 {
     private const long CountCommandLockNamespace = 0x494E56434F554E54;
     private const long MovementCommandLockNamespace = 0x494E564D4F56454D;
@@ -241,6 +242,10 @@ internal sealed class InventoryCountService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        if (transition.MovementRequired)
+        {
+            invalidations.PublishChanged();
+        }
         return ReconcileInventoryCountResult.Succeeded(response);
     }
 

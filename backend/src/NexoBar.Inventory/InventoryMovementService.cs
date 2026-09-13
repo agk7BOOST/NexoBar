@@ -11,7 +11,8 @@ internal sealed class InventoryMovementService(
     InventoryDbContext dbContext,
     IInventoryAuthorization authorization,
     TimeProvider timeProvider,
-    ILogger<InventoryMovementService> logger)
+    ILogger<InventoryMovementService> logger,
+    IInventoryOperationInvalidationPublisher invalidations)
 {
     private const long MovementCommandLockNamespace = 0x494E564D4F56454D;
 
@@ -201,6 +202,7 @@ internal sealed class InventoryMovementService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        invalidations.PublishChanged();
         return RecordInventoryMovementResult.Succeeded(response);
     }
 

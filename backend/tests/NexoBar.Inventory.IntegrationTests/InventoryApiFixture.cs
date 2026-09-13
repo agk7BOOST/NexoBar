@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using NexoBar.Host.Notifications;
 using NexoBar.IdentitiesAndCapabilities;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -146,8 +147,23 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         string? operationalUnit,
         CancellationToken cancellationToken,
         string? antiforgeryToken = null)
+        => await PostItemAsync(
+            Client,
+            key,
+            operationalName,
+            operationalUnit,
+            cancellationToken,
+            antiforgeryToken);
+
+    internal static async Task<HttpResponseMessage> PostItemAsync(
+        HttpClient client,
+        Guid key,
+        string? operationalName,
+        string? operationalUnit,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null)
     {
-        antiforgeryToken ??= await GetAntiforgeryTokenAsync(cancellationToken);
+        antiforgeryToken ??= await GetAntiforgeryTokenAsync(client, cancellationToken);
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/inventory/items")
         {
             Content = JsonContent.Create(new
@@ -158,7 +174,7 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         };
         request.Headers.Add("Idempotency-Key", key.ToString("D"));
         request.Headers.Add("X-NexoBar-CSRF", antiforgeryToken);
-        return await Client.SendAsync(request, cancellationToken);
+        return await client.SendAsync(request, cancellationToken);
     }
 
     internal async Task<HttpResponseMessage> PostCountAsync(
@@ -562,6 +578,15 @@ public sealed class InventoryApiFixture : IAsyncLifetime
             {
                 services.RemoveAll<IIdentityOperationalNameLookup>();
                 services.AddScoped(factory);
+            }));
+
+    internal WebApplicationFactory<Program> CreateApplicationWithChangeNotificationPublisher(
+        IChangeNotificationPublisher replacement) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IChangeNotificationPublisher>();
+                services.AddSingleton(replacement);
             }));
 
     internal async Task<bool> WaitForDatabaseLockAsync(

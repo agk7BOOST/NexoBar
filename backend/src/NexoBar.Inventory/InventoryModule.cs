@@ -31,6 +31,7 @@ public static class InventoryModule
         services.AddScoped<InventoryCountService>();
         services.AddScoped<InventoryMovementService>();
         services.AddScoped<InventoryMovementHistoryService>();
+        services.AddInventoryOperationInvalidationPublisher();
         return services;
     }
 

@@ -19,6 +19,8 @@ builder.Services.AddSseTransport(builder.Configuration);
 builder.Services.AddSingleton<IPreparationDestinationInvalidationPublisher,
     PreparationDestinationInvalidationPublisher>();
 builder.Services.AddSingleton<IOrderInvalidationPublisher, OrderInvalidationPublisher>();
+builder.Services.AddSingleton<IInventoryOperationInvalidationPublisher,
+    InventoryOperationInvalidationPublisher>();
 
 var app = builder.Build();
 
