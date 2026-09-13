@@ -165,7 +165,8 @@ describe("Preparation SSE freshness", () => {
 
   it("merges initial open with pending page load and refreshes after reconnect only for the current stream", async () => {
     const initial = deferred<PreparationWork[]>();
-    read.mockReturnValueOnce(initial.promise);
+    const followUp = deferred<PreparationWork[]>();
+    read.mockReturnValueOnce(initial.promise).mockReturnValueOnce(followUp.promise);
     render(tree());
     await waitFor(() => expect(Stream.sources).toHaveLength(1));
     await act(async () => Stream.sources[0].onopen?.());
@@ -173,6 +174,13 @@ describe("Preparation SSE freshness", () => {
     await act(async () => initial.resolve([{ ...work, productOperationalName: "Old initial" }]));
     expect(read).toHaveBeenCalledTimes(2);
     expect(screen.queryByText("Old initial")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Actualizar preparación" })).toBeDisabled();
+    expect(screen.getByText("Cargando trabajo…")).toBeVisible();
+    await act(async () => followUp.resolve([{ ...work, productOperationalName: "Newest initial" }]));
+    expect(screen.getByText("Newest initial", { selector: "strong" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Actualizar preparación" })).toBeEnabled();
+    expect(screen.queryByText("Cargando trabajo…")).not.toBeInTheDocument();
+    expect(read).toHaveBeenCalledTimes(2);
     act(() => Stream.sources[0].onerror?.());
     await waitFor(() => expect(Stream.sources).toHaveLength(2), { timeout: 2000 });
     await act(async () => Stream.sources[1].onopen?.());

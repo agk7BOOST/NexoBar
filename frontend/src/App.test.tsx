@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.tsx";
@@ -136,6 +136,25 @@ describe("App coordination", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("keeps one authenticated Preparation subtree across sibling rerenders", async () => {
+    const errors = vi.spyOn(console, "error");
+    try {
+      const user = await renderLoadedApp();
+      await screen.findByText("No hay destinos de preparación habilitados para esta Identity.");
+      fetchMock.mockResolvedValue(jsonResponse([listedProduct]));
+      await user.click(screen.getByRole("button", { name: "Simular Price Change exitoso" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+
+      expect(screen.getAllByRole("region", { name: "Identity actual" })).toHaveLength(1);
+      expect(screen.getAllByRole("region", { name: "Preparación" })).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "Actualizar preparación" })).toBeEnabled();
+      expect(screen.queryByText("Cargando destinos…")).not.toBeInTheDocument();
+      expect(errors.mock.calls.filter(args => String(args[0]).includes("same key"))).toEqual([]);
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it("Primera Confirmación activa el Pedido y solicita su lookup", async () => {

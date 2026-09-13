@@ -288,6 +288,45 @@ try
         DateTimeOffset.UtcNow));
     await orderOperations.SaveChangesAsync();
 
+    // Dedicated single-destination fixture for the multi-session SSE checkpoint.
+    var sseDestination = new PreparationResponsibility(Guid.CreateVersion7(), "Cocina SSE E2E");
+    operationalConfiguration.PreparationResponsibilities.Add(sseDestination);
+    await operationalConfiguration.SaveChangesAsync();
+    foreach (var suffix in new[] { "a", "b" })
+    {
+        var sseOperator = new Identity($"Preparador SSE {suffix.ToUpperInvariant()} E2E", true);
+        identitiesAndCapabilities.Identities.Add(sseOperator);
+        identitiesAndCapabilities.ResponsibilityAssignments.Add(new ResponsibilityAssignment(
+            sseOperator.Id, FunctionalResponsibility.Preparation));
+        identitiesAndCapabilities.PreparationEnablements.Add(new PreparationEnablement(
+            sseOperator.Id, sseDestination.Id));
+        await identitiesAndCapabilities.SaveChangesAsync();
+        await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+            .ProvisionAsync(sseOperator.Id, $"preparation-sse-{suffix}-e2e",
+                $"preparation-sse-{suffix}-e2e-secret", CancellationToken.None);
+    }
+
+    var sseProduct = new Product(Guid.CreateVersion7(), "Papas SSE E2E", 7m);
+    catalog.Products.Add(sseProduct);
+    await catalog.SaveChangesAsync();
+    await catalog.Database.ExecuteSqlInterpolatedAsync($"""
+        UPDATE catalog.products SET requires_preparation = TRUE,
+            preparation_responsibility_id = {sseDestination.Id} WHERE id = {sseProduct.Id}
+        """);
+    var sseOrder = new Order(Guid.CreateVersion7(), "Mesa SSE E2E");
+    var sseIncorporation = new Incorporation(Guid.CreateVersion7(), sseOrder.Id, 1);
+    orderOperations.Orders.Add(sseOrder);
+    orderOperations.Incorporations.Add(sseIncorporation);
+    orderOperations.IncorporationContents.Add(new IncorporationContent(
+        sseIncorporation.Id, 1, sseProduct.Id, 1, true, 7m, null));
+    orderOperations.PreparationWork.Add(new PreparationWork(
+        Guid.CreateVersion7(), sseIncorporation.Id, 1, sseDestination.Id, 1));
+    orderOperations.DeliveryStates.Add(new DeliveryState(sseIncorporation.Id, 1));
+    orderOperations.ContentQuantityStates.Add(new ContentQuantityState(sseIncorporation.Id, 1));
+    orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
+        Guid.CreateVersion7(), sseIncorporation.Id, sseOrder.Context, deliverer.Id, DateTimeOffset.UtcNow));
+    await orderOperations.SaveChangesAsync();
+
     Console.WriteLine(
         $"E2E database migrations and security fixture applied; " +
         $"pending models: {modularContexts.Length}/{modularContexts.Length} false.");

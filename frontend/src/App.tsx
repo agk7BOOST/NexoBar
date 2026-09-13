@@ -182,7 +182,7 @@ function App() {
       )}
       {authState.status === "authenticated" && (
         <PreparationSseProvider
-          key={authState.identity.identityId}
+          key={`preparation-session:${authState.identity.identityId}`}
           identityId={authState.identity.identityId}
         >
           <SessionBar
