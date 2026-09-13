@@ -96,7 +96,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         var second = await ReadSubsequentAsync(secondResponse, cancellationToken);
         Assert.Equal("12", Assert.Single(second.Incorporation.Items).AppliedPrice);
 
-        using var queryResponse = await fixture.Client.GetAsync(
+        using var queryResponse = await fixture.OrderOperationsClient.GetAsync(
             $"/api/order-operations/orders/{first.OperationalReference}",
             cancellationToken);
         queryResponse.EnsureSuccessStatusCode();

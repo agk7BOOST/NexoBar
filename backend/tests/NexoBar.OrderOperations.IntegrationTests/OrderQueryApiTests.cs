@@ -50,7 +50,7 @@ public sealed class OrderQueryApiTests(OrderOperationsApiFixture fixture)
                     cancellationToken);
         }
 
-        using var response = await fixture.Client.GetAsync(
+        using var response = await fixture.OrderOperationsClient.GetAsync(
             $"/api/order-operations/orders/{confirmed.OperationalReference}",
             cancellationToken);
 
@@ -76,7 +76,7 @@ public sealed class OrderQueryApiTests(OrderOperationsApiFixture fixture)
         var cancellationToken = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(cancellationToken);
 
-        using var response = await fixture.Client.GetAsync(
+        using var response = await fixture.OrderOperationsClient.GetAsync(
             $"/api/order-operations/orders/{Guid.CreateVersion7():D}",
             cancellationToken);
 
@@ -93,7 +93,7 @@ public sealed class OrderQueryApiTests(OrderOperationsApiFixture fixture)
         var cancellationToken = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(cancellationToken);
 
-        using var response = await fixture.Client.GetAsync(
+        using var response = await fixture.OrderOperationsClient.GetAsync(
             "/api/order-operations/orders/not-a-valid-reference",
             cancellationToken);
 
@@ -119,7 +119,7 @@ public sealed class OrderQueryApiTests(OrderOperationsApiFixture fixture)
                 cancellationToken));
         var replacement = new UnexpectedCatalogCapability();
         await using var application = fixture.CreateApplicationWithCatalog(replacement);
-        using var client = application.CreateClient();
+        using var client = await fixture.LoginAsync(fixture.DefaultOrderOperationsActor, cancellationToken, application);
 
         using var response = await client.GetAsync(
             $"/api/order-operations/orders/{confirmed.OperationalReference}",
@@ -152,6 +152,8 @@ public sealed class OrderQueryApiTests(OrderOperationsApiFixture fixture)
         var responses = operation.GetProperty("responses");
         Assert.True(responses.TryGetProperty("200", out _));
         Assert.True(responses.TryGetProperty("400", out _));
+        Assert.True(responses.TryGetProperty("401", out _));
+        Assert.True(responses.TryGetProperty("403", out _));
         Assert.True(responses.TryGetProperty("404", out _));
 
         var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");

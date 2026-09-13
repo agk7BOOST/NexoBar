@@ -116,15 +116,11 @@ public sealed partial class CompleteCancellationTests(OrderOperationsApiFixture 
         Assert.Equal(consequence, (await db.CompleteCancellationDetails.SingleAsync(Token)).ToResponse());
         Assert.Single(await db.ContentCancellationHistory.ToArrayAsync(Token));
         Assert.Equal(1, await db.PendingCompositionCommands.CountAsync(Token));
-        var historical = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, Token);
-        Assert.Equal("0", historical.FunctionalAmount);
-        Assert.False(historical.IsFrozen);
-        Assert.False(historical.IsLiquidationEligible);
-        Assert.False(historical.IsClosureEligible);
-        var terminal = await Read(target.OperationalReference);
-        Assert.True(terminal.IsTerminal);
-        Assert.Equal(result.CancellationId, terminal.CancellationId);
-        Assert.Contains("already_completely_cancelled", terminal.Blockers);
+        // Persistence assertions above verify the terminal result; active reads grant no History.
+        using var lookup = await fixture.OrderOperationsClient.GetAsync($"/api/order-operations/orders/{target.OperationalReference}", Token);
+        Assert.Equal(HttpStatusCode.NotFound, lookup.StatusCode);
+        using var terminal = await fixture.OrderOperationsClient.GetAsync(Path(target.OperationalReference), Token);
+        Assert.Equal(HttpStatusCode.NotFound, terminal.StatusCode);
     }
 
     [Theory]

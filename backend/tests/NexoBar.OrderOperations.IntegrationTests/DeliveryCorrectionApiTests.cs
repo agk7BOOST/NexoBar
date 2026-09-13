@@ -39,7 +39,7 @@ public sealed class DeliveryCorrectionApiTests(OrderOperationsApiFixture fixture
              x.ResultingPendingQuantity, x.ResultingInPreparationQuantity, x.ResultingReadyQuantity)).ToArray();
         var originalHistory = (await fixture.ReadDeliveryHistoryAsync(token)).Select(x =>
             (x.Id, x.IncorporationId, x.ContentOrdinal, x.EventKind, x.Quantity, x.ActorIdentityId, x.OccurredAt, x.ResultingDeliveredQuantity)).ToArray();
-        var before = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, token);
+        var before = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, token);
         Assert.True(before.IsLiquidationEligible);
         var earliest = DateTimeOffset.UtcNow.AddSeconds(-1);
         using var response = await DeliveryCorrectionTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), quantity, token);
@@ -69,7 +69,7 @@ public sealed class DeliveryCorrectionApiTests(OrderOperationsApiFixture fixture
         Assert.Equal(result, new DeliveryCorrectionResponse(history.OrderId, history.IncorporationId, history.ContentOrdinal,
             history.Id, history.CorrectedQuantity, history.PreviousDeliveredQuantity, history.ResultingDeliveredQuantity, history.OccurredAt));
         await DeliveryCorrectionTestSupport.CountsAsync(fixture, 1, token);
-        var after = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, token);
+        var after = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, token);
         var price = decimal.Parse(before.Incorporations.Single().Items.Single().AppliedPrice, System.Globalization.CultureInfo.InvariantCulture);
         Assert.Equal(before.Incorporations.Single().Items, after.Incorporations.Single().Items);
         Assert.Equal((3 - quantity) * price, decimal.Parse(after.FunctionalAmount, System.Globalization.CultureInfo.InvariantCulture));
@@ -81,7 +81,7 @@ public sealed class DeliveryCorrectionApiTests(OrderOperationsApiFixture fixture
         Assert.Equal(quantity, content.GetProperty("deliverableQuantity").GetInt32());
         Assert.Equal(quantity, content.GetProperty("remainingQuantity").GetInt32());
         await DeliveryCorrectionTestSupport.DeliverAsync(fixture, target, quantity, token);
-        Assert.True((await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, token)).IsLiquidationEligible);
+        Assert.True((await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, token)).IsLiquidationEligible);
     }
 
     [Theory]

@@ -30,11 +30,11 @@ public sealed partial class AppliedPriceCorrectionApiTests(OrderOperationsApiFix
         }
 
         await DeliveryCorrectionTestSupport.DeliverAsync(fixture, target, 2, token);
-        Assert.Equal(16m, decimal.Parse((await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, token)).FunctionalAmount, System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(16m, decimal.Parse((await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, token)).FunctionalAmount, System.Globalization.CultureInfo.InvariantCulture));
         await SetCatalogPriceAsync(content.ProductId, 9m, token);
         using var second = await PostAsync(target, Guid.NewGuid(), token);
         await ReadSuccessAsync(second, token);
-        Assert.Equal(18m, decimal.Parse((await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, token)).FunctionalAmount, System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(18m, decimal.Parse((await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, token)).FunctionalAmount, System.Globalization.CultureInfo.InvariantCulture));
         await using var finalScope = fixture.Services.CreateAsyncScope();
         var finalDb = finalScope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
         Assert.Equal(2, await finalDb.AppliedPriceCorrectionHistory.CountAsync(token));

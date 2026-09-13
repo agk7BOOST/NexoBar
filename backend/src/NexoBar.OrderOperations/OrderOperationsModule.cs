@@ -32,6 +32,7 @@ public static partial class OrderOperationsModule
         services.AddScoped<SubsequentConfirmationService>();
         services.AddScoped<PendingCompositionService>();
         services.AddScoped<OrderQueryService>();
+        services.AddScoped<ActiveOrderReadState>();
         services.AddScoped<OrderEconomicStateReader>();
         services.AddScoped<LiquidationService>();
         services.AddScoped<ClosureService>();
@@ -176,7 +177,10 @@ public static partial class OrderOperationsModule
                 FindOrderAsync)
             .WithName("GetOrderByOperationalReference")
             .WithTags("OrderOperations")
+            .RequireAuthorization()
             .Produces<OrderQueryResponse>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
@@ -1305,15 +1309,27 @@ public static partial class OrderOperationsModule
                 "order_operations.order.operational_reference_invalid");
         }
 
-        var order = await service.FindAsync(orderId, cancellationToken);
-
-        return order is null
-            ? Problem(
+        var result = await service.FindAsync(orderId, cancellationToken);
+        return result.Outcome switch
+        {
+            OrderQueryOutcome.Succeeded => Results.Ok(result.Response),
+            OrderQueryOutcome.Unauthenticated => Problem(
+                StatusCodes.Status401Unauthorized,
+                "Invalid session",
+                "The current session is invalid or expired.",
+                "identities_and_capabilities.invalid_session"),
+            OrderQueryOutcome.Forbidden => Problem(
+                StatusCodes.Status403Forbidden,
+                "Order access forbidden",
+                "The current Identity is not authorized for Order Operations.",
+                "order_operations.order.forbidden"),
+            OrderQueryOutcome.OrderNotFound => Problem(
                 StatusCodes.Status404NotFound,
                 "Order not found",
                 "No Order exists with the supplied operational reference.",
-                "order_operations.order.not_found")
-            : Results.Ok(order);
+                "order_operations.order.not_found"),
+            _ => throw new UnreachableException()
+        };
     }
 
     private static async Task<IResult> FindOrderDeliveryAsync(

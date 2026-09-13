@@ -65,7 +65,7 @@ public sealed class ContentCancellationCompositionTests(OrderOperationsApiFixtur
         Assert.Equal(2, item.CancelledQuantity);
         Assert.Equal(3, item.CurrentFulfillmentQuantity);
         Assert.Equal(0, item.DeliverableQuantity);
-        var order = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, token);
+        var order = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, token);
         Assert.Equal(["pending_composition"], order.LiquidationBlockers);
     }
 

@@ -46,7 +46,7 @@ public sealed partial class AppliedPriceCorrectionApiTests
 
     private async Task AssertAmountAsync(DeliveryTarget target, string expected)
     {
-        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, Token);
+        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, Token);
         Assert.Equal(expected, read.FunctionalAmount);
     }
 

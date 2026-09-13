@@ -22,7 +22,7 @@ public sealed class ContentCancellationSemanticsTests(OrderOperationsApiFixture 
             : await DeliveryQuantityTestSupport.CreateDirectAsync(fixture, 3, token);
         var original = await fixture.ReadConfirmedContentsAsync(token);
         var workBefore = await fixture.ReadPreparationWorkAsync(token);
-        var before = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, token);
+        var before = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, token);
         using var response = await ContentCancellationTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), quantity, token);
         var result = await ContentCancellationTestSupport.SuccessAsync(response, token);
         Assert.Equal(3, result.ConfirmedQuantity);
@@ -42,7 +42,7 @@ public sealed class ContentCancellationSemanticsTests(OrderOperationsApiFixture 
             Assert.Equal(0, work.InPreparationQuantity);
             Assert.Equal(0, work.ReadyQuantity);
         }
-        var after = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, token);
+        var after = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, token);
         Assert.Equal(before.FunctionalAmount, after.FunctionalAmount);
         Assert.Equal(quantity == 3, after.IsLiquidationEligible);
         using var read = await fixture.OrderOperationsClient.GetAsync($"/api/order-operations/orders/{target.OperationalReference}/delivery", token);
@@ -87,7 +87,7 @@ public sealed class ContentCancellationSemanticsTests(OrderOperationsApiFixture 
         using var response = await ContentCancellationTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), quantity, token);
         Assert.Equal((HttpStatusCode)status, response.StatusCode);
         Assert.Equal(2, Assert.Single(await fixture.ReadDeliveryStatesAsync(token)).DeliveredQuantity);
-        var order = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, token);
+        var order = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, token);
         Assert.Equal(prepared ? "14" : "10", order.FunctionalAmount);
         Assert.Equal(status == 200, order.IsLiquidationEligible);
         if (prepared)

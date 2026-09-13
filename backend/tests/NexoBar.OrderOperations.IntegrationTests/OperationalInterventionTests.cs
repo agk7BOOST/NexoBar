@@ -97,7 +97,7 @@ public sealed partial class OperationalInterventionTests(OrderOperationsApiFixtu
         var histories = await fixture.ReadPreparationHistoryAsync(Token);
         var commands = await fixture.ReadPreparationCommandsAsync(Token);
         var deliveries = await fixture.ReadDeliveryStatesAsync(Token);
-        var economics = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, s.Target.OperationalReference, Token);
+        var economics = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, s.Target.OperationalReference, Token);
         using var response = await Intervene(client, s.Target, ready, quantity);
         var result = await Success(response);
         var work = Assert.Single(await fixture.ReadPreparationWorkAsync(Token));
@@ -120,7 +120,7 @@ public sealed partial class OperationalInterventionTests(OrderOperationsApiFixtu
         Assert.Equal((result.TotalQuantity, result.PendingQuantity, result.InPreparationQuantity, result.ReadyQuantity),
             (intervention.ResultingTotalQuantity, intervention.ResultingPendingQuantity, intervention.ResultingInPreparationQuantity, intervention.ResultingReadyQuantity));
         Assert.Equal(commands.Count + 1, (await fixture.ReadPreparationCommandsAsync(Token)).Count);
-        var currentEconomics = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, s.Target.OperationalReference, Token);
+        var currentEconomics = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, s.Target.OperationalReference, Token);
         Assert.Equal(economics.FunctionalAmount, currentEconomics.FunctionalAmount);
         Assert.False(currentEconomics.IsFrozen);
         await using var scope = fixture.Services.CreateAsyncScope();
@@ -165,7 +165,7 @@ public sealed partial class OperationalInterventionTests(OrderOperationsApiFixtu
         Assert.Equal(Guid.Parse(s.Target.OperationalReference), pending.OrderId);
         Assert.Empty(await db.Liquidations.ToArrayAsync(Token));
         Assert.Empty(await db.Closures.ToArrayAsync(Token));
-        var order = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, s.Target.OperationalReference, Token);
+        var order = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, s.Target.OperationalReference, Token);
         Assert.Equal("0", order.FunctionalAmount);
         Assert.Equal(["pending_composition"], order.LiquidationBlockers);
         using var read = await client.GetAsync(ReadPath(s.Target), Token);

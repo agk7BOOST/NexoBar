@@ -10,6 +10,7 @@ namespace NexoBar.OrderOperations;
 internal sealed class OrderDeliveryQueryService(
     OrderOperationsDbContext dbContext,
     IOrderOperationsAuthorization authorization,
+    ActiveOrderReadState activeOrder,
     IProductOperationalReferenceLookup productReferences,
     ILogger<OrderDeliveryQueryService> logger)
 {
@@ -33,6 +34,9 @@ internal sealed class OrderDeliveryQueryService(
         {
             return OrderDeliveryQueryResult.Forbidden();
         }
+
+        if (!await activeOrder.IsReadableAsync(orderId, cancellationToken))
+            return OrderDeliveryQueryResult.OrderNotFound();
 
         var persisted = await (
             from order in dbContext.Orders.AsNoTracking()

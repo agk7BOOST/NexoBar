@@ -51,7 +51,7 @@ public sealed class ContentCorrectionPreservationTests(OrderOperationsApiFixture
         using var subsequentReplay = await Subsequent();
         Assert.Equal(originalFirst, await firstReplay.Content.ReadAsStringAsync(token));
         Assert.Equal(originalSubsequent, await subsequentReplay.Content.ReadAsStringAsync(token));
-        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, order.OperationalReference, token);
+        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, order.OperationalReference, token);
         Assert.Equal(["pending_composition"], read.LiquidationBlockers);
         Assert.Equal(contents, await fixture.ReadConfirmedContentsAsync(token));
         await using var scope = fixture.Services.CreateAsyncScope();

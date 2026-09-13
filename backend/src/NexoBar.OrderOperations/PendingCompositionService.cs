@@ -11,6 +11,7 @@ internal sealed class PendingCompositionService(
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
     IOrderOperationsAuthorization authorization,
+    ActiveOrderReadState activeOrder,
     TimeProvider timeProvider)
 {
     private const long CommandLockNamespace = 0x50434F4D434D4400;
@@ -115,9 +116,7 @@ internal sealed class PendingCompositionService(
             return CurrentPendingCompositionResult.Forbidden();
         }
 
-        if (!await dbContext.Orders.AsNoTracking().AnyAsync(
-                order => order.Id == orderId,
-                cancellationToken))
+        if (!await activeOrder.IsReadableAsync(orderId, cancellationToken))
         {
             return CurrentPendingCompositionResult.OrderNotFound();
         }

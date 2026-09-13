@@ -11,6 +11,7 @@ internal sealed class CompleteCancellationService(
     IAuthenticatedSessionStabilizer sessions,
     IOrderOperationsCapabilityStabilizer operations,
     IOperationalInterventionCapabilityStabilizer intervention,
+    ActiveOrderReadState activeOrder,
     TimeProvider timeProvider,
     IPreparationDestinationInvalidationPublisher invalidations)
 {
@@ -43,6 +44,9 @@ internal sealed class CompleteCancellationService(
         if (!await dbContext.Orders.FromSqlInterpolated(
                 $"SELECT id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE").AsNoTracking().AnyAsync(token))
             return new("order_not_found");
+
+        // Only the advisory read uses AD-SEC-05; command and durable replay retain their semantics.
+        if (key is null && !await activeOrder.IsReadableAsync(orderId, token)) return new("order_not_found");
 
         var plan = await PlanAsync(orderId, token);
         if (key is not null)

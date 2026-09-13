@@ -12,12 +12,12 @@ public sealed class ClosureApiTests(OrderOperationsApiFixture fixture)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Explicit_close_persists_state_history_actor_utc_and_keeps_exact_lookup(bool external)
+    public async Task Explicit_close_persists_state_history_actor_utc_and_removes_active_lookup(bool external)
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
         var order = await ClosureTestSupport.CreateOrderAsync(fixture, token, external: external);
-        var before = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, order.OperationalReference, token);
+        var before = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, order.OperationalReference, token);
         Assert.False(before.IsClosed);
         Assert.Null(before.ClosedAt);
         Assert.True(before.IsClosureEligible);
@@ -51,16 +51,10 @@ public sealed class ClosureApiTests(OrderOperationsApiFixture fixture)
         Assert.Equal(ClosureCommand.CloseCommandKind, command.CommandKind);
         Assert.Single(await fixture.ReadLiquidationsAsync(token));
         Assert.Single(await fixture.ReadLiquidationHistoryAsync(token));
-        var after = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, order.OperationalReference, token);
-        Assert.True(after.IsClosed);
-        Assert.Equal(result.ClosedAt, after.ClosedAt);
-        Assert.False(after.IsClosureEligible);
-        Assert.True(after.IsLiquidated);
-        Assert.True(after.IsFrozen);
-        Assert.Equal(before.LiquidatedAmount, after.LiquidatedAmount);
-        Assert.Equal(before.LiquidationMode, after.LiquidationMode);
-        Assert.Equal(before.DeclaredPaymentMedium, after.DeclaredPaymentMedium);
-        Assert.Equal(before.Incorporations.Count, after.Incorporations.Count);
+        // Durable State/History above remain preserved; AD-SEC-05 ends active visibility.
+        using var after = await fixture.OrderOperationsClient.GetAsync($"/api/order-operations/orders/{order.OperationalReference}", token);
+        await LiquidationTestSupport.AssertProblemAsync(after, HttpStatusCode.NotFound, "order_operations.order.not_found", token);
+        Assert.Equal(before.Incorporations.Count, await db.Incorporations.CountAsync(token));
     }
 
     [Fact]
@@ -71,7 +65,7 @@ public sealed class ClosureApiTests(OrderOperationsApiFixture fixture)
         var order = await ClosureTestSupport.CreateOrderAsync(fixture, token, liquidate: false);
         using var response = await ClosureTestSupport.PostAsync(fixture.OrderOperationsClient, order.OperationalReference, Guid.NewGuid(), token);
         await ClosureTestSupport.AssertProblemAsync(response, HttpStatusCode.Conflict, "not_liquidated", token);
-        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, order.OperationalReference, token);
+        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, order.OperationalReference, token);
         Assert.False(read.IsClosureEligible);
         Assert.False(read.IsClosed);
         Assert.Null(read.ClosedAt);
@@ -236,8 +230,16 @@ public sealed class ClosureApiTests(OrderOperationsApiFixture fixture)
             db.Closures.Add(new Closure(Guid.CreateVersion7(), orderId, DateTimeOffset.UtcNow.AddDays(-1), fixture.DefaultOrderOperationsActor.IdentityId));
         }
         await db.SaveChangesAsync(token);
-        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, order.OperationalReference, token);
-        Assert.False(read.IsClosureEligible);
+        if (scenario == "pending")
+        {
+            var read = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, order.OperationalReference, token);
+            Assert.False(read.IsClosureEligible);
+        }
+        else
+        {
+            using var read = await fixture.OrderOperationsClient.GetAsync($"/api/order-operations/orders/{order.OperationalReference}", token);
+            Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
+        }
         using var response = await ClosureTestSupport.PostAsync(fixture.OrderOperationsClient, order.OperationalReference, Guid.NewGuid(), token);
         await ClosureTestSupport.AssertProblemAsync(response, HttpStatusCode.Conflict, "state_inconsistent", token);
         Assert.Empty(await db.ClosureHistory.ToArrayAsync(token));

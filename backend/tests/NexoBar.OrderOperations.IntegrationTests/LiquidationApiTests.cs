@@ -30,7 +30,7 @@ public sealed class LiquidationApiTests(OrderOperationsApiFixture fixture)
             token);
 
         var read = await LiquidationTestSupport.ReadOrderAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             order.OperationalReference,
             token);
 
@@ -59,7 +59,7 @@ public sealed class LiquidationApiTests(OrderOperationsApiFixture fixture)
         await fixture.SetPreparationQuantitiesAsync(work.Id, 0, 0, 2, token);
 
         var read = await LiquidationTestSupport.ReadOrderAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             created.Confirmation.OperationalReference,
             token);
 
@@ -91,7 +91,7 @@ public sealed class LiquidationApiTests(OrderOperationsApiFixture fixture)
             "order_operations.liquidation.pending_composition",
             token);
         var read = await LiquidationTestSupport.ReadOrderAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             order.OperationalReference,
             token);
         Assert.Contains(
@@ -130,7 +130,7 @@ public sealed class LiquidationApiTests(OrderOperationsApiFixture fixture)
         await fixture.ResetAsync(token);
         var order = await CreateFullyDeliveredOrderAsync(token, price: "2.35", quantity: 4);
         var eligible = await LiquidationTestSupport.ReadOrderAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             order.OperationalReference,
             token);
         Assert.True(eligible.IsLiquidationEligible);
@@ -413,7 +413,7 @@ public sealed class LiquidationApiTests(OrderOperationsApiFixture fixture)
             token);
 
         var read = await LiquidationTestSupport.ReadOrderAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             order.OperationalReference,
             token);
         Assert.True(read.IsLiquidated);

@@ -1,17 +1,28 @@
+using System.Data;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using NexoBar.IdentitiesAndCapabilities;
 
 namespace NexoBar.OrderOperations;
 
 internal sealed class OrderQueryService(
     OrderOperationsDbContext dbContext,
+    IOrderOperationsAuthorization authorization,
+    ActiveOrderReadState activeOrder,
     OrderEconomicStateReader economicStateReader,
     ClosureStateReader closureStateReader)
 {
-    internal async Task<OrderQueryResponse?> FindAsync(
+    internal async Task<OrderQueryResult> FindAsync(
         Guid orderId,
         CancellationToken cancellationToken)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        var authority = await authorization.AuthorizeAsync(transaction.GetDbTransaction(), cancellationToken);
+        if (authority == OrderOperationsAuthorizationOutcome.Unauthenticated) return new(OrderQueryOutcome.Unauthenticated);
+        if (authority == OrderOperationsAuthorizationOutcome.Forbidden) return new(OrderQueryOutcome.Forbidden);
+        if (!await activeOrder.IsReadableAsync(orderId, cancellationToken)) return new(OrderQueryOutcome.OrderNotFound);
+
         var context = await dbContext.Orders
             .AsNoTracking()
             .Where(order => order.Id == orderId)
@@ -20,7 +31,7 @@ internal sealed class OrderQueryService(
 
         if (context is null)
         {
-            return null;
+            return new(OrderQueryOutcome.OrderNotFound);
         }
 
         var incorporationHeaders = await (
@@ -89,7 +100,7 @@ internal sealed class OrderQueryService(
             blockers.Add(LiquidationEligibilityBlockers.UnresolvedFulfillment);
         }
 
-        return new OrderQueryResponse(
+        var response = new OrderQueryResponse(
             orderId.ToString("D"),
             context,
             incorporations,
@@ -104,5 +115,10 @@ internal sealed class OrderQueryService(
             closureState.Closure is not null,
             closureState.Closure?.ClosedAt,
             closureState.IsEligible);
+        await transaction.CommitAsync(cancellationToken);
+        return new(OrderQueryOutcome.Succeeded, response);
     }
 }
+
+internal enum OrderQueryOutcome { Succeeded, Unauthenticated, Forbidden, OrderNotFound }
+internal sealed record OrderQueryResult(OrderQueryOutcome Outcome, OrderQueryResponse? Response = null);

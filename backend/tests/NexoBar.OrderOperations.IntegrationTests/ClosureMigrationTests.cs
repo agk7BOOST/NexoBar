@@ -25,7 +25,7 @@ public sealed class ClosureMigrationTests(OrderOperationsApiFixture fixture)
             await ClosureTestSupport.AssertCountsAsync(fixture, 0, token);
             Assert.Equal(liquidation.Id, Assert.Single(await fixture.ReadLiquidationsAsync(token)).Id);
             Assert.Single(await fixture.ReadLiquidationHistoryAsync(token));
-            var read = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, order.OperationalReference, token);
+            var read = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, order.OperationalReference, token);
             Assert.True(read.IsClosureEligible);
             Assert.False(read.IsClosed);
             Assert.False(await fixture.HasPendingModelChangesAsync());

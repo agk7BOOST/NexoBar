@@ -96,7 +96,7 @@ public sealed partial class OperationalInterventionTests
         using var intervention = responses.Intervention; using var liquidation = responses.Competitor;
         await Success(intervention);
         Assert.Equal(interventionFirst ? HttpStatusCode.OK : HttpStatusCode.Conflict, liquidation.StatusCode);
-        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, s.Target.OperationalReference, Token);
+        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, s.Target.OperationalReference, Token);
         Assert.Equal("14", read.FunctionalAmount);
         Assert.Equal(interventionFirst, read.IsFrozen);
         if (!interventionFirst)

@@ -151,7 +151,7 @@ public sealed class ConfirmationInstructionApiTests(OrderOperationsApiFixture fi
             works.OrderBy(work => work.ContentOrdinal)
                 .Select(work => work.Instruction).ToArray());
 
-        using var orderResponse = await fixture.Client.GetAsync(
+        using var orderResponse = await fixture.OrderOperationsClient.GetAsync(
             $"/api/order-operations/orders/{confirmed.OperationalReference}", token);
         var order = Assert.IsType<OrderQueryResponse>(
             await orderResponse.Content.ReadFromJsonAsync<OrderQueryResponse>(token));

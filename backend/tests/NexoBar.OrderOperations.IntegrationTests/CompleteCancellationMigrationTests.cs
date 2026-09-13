@@ -33,9 +33,9 @@ public sealed partial class CompleteCancellationTests
             var error = await Assert.ThrowsAsync<PostgresException>(() => fixture.MigrateOrderOperationsAsync(previous, Token));
             Assert.Contains("Cannot remove meaningful Complete Cancellation", error.MessageText);
             await Counts(1);
-            Assert.Equal(original.CancellationId, (await Read(target.OperationalReference)).CancellationId);
             await using var scope = fixture.Services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+            Assert.Equal(original.CancellationId, (await db.OrderCancellationStates.SingleAsync(Token)).CancellationId);
             Assert.Empty(await db.CompleteCancellationDetails.ToArrayAsync(Token));
             Assert.False(await fixture.HasPendingModelChangesAsync());
         }

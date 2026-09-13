@@ -55,7 +55,7 @@ public sealed class DeliveryCorrectionConcurrencyTests(OrderOperationsApiFixture
         Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
         await DeliveryQuantityTestSupport.AssertProblemAsync(secondResponse, HttpStatusCode.Conflict,
             correctionFirst ? "order_operations.liquidation.unresolved_fulfillment" : "order_operations.order.frozen", token);
-        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, token);
+        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, token);
         Assert.Equal(correctionFirst ? "10" : "15", read.FunctionalAmount);
         Assert.Equal(!correctionFirst, read.IsFrozen);
         await DeliveryCorrectionTestSupport.CountsAsync(fixture, correctionFirst ? 1 : 0, token);

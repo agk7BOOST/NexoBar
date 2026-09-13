@@ -11,6 +11,7 @@ internal sealed class AppliedPriceCorrectionService(
     OrderOperationsDbContext dbContext,
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
+    ActiveOrderReadState activeOrder,
     IOrderAppliedPriceCatalog catalog,
     TimeProvider timeProvider)
 {
@@ -20,7 +21,7 @@ internal sealed class AppliedPriceCorrectionService(
         var session = await sessionStabilizer.StabilizeAsync(transaction.GetDbTransaction(), cancellationToken);
         if (session is null) return new(AppliedPriceCorrectionEvaluationOutcome.Unauthenticated);
         if (!await capabilityStabilizer.StabilizeResponsibilityAsync(session.IdentityId, transaction.GetDbTransaction(), cancellationToken)) return new(AppliedPriceCorrectionEvaluationOutcome.Forbidden);
-        if (!await dbContext.Orders.AsNoTracking().AnyAsync(x => x.Id == orderId, cancellationToken) ||
+        if (!await activeOrder.IsReadableAsync(orderId, cancellationToken) ||
             !await dbContext.Incorporations.AsNoTracking().AnyAsync(x => x.Id == incorporationId && x.OrderId == orderId, cancellationToken)) return new(AppliedPriceCorrectionEvaluationOutcome.ContentNotFound);
         var content = await dbContext.IncorporationContents.AsNoTracking().SingleOrDefaultAsync(x => x.IncorporationId == incorporationId && x.ContentOrdinal == contentOrdinal, cancellationToken);
         var state = await dbContext.ContentAppliedPriceStates.AsNoTracking().SingleOrDefaultAsync(x => x.IncorporationId == incorporationId && x.ContentOrdinal == contentOrdinal, cancellationToken);

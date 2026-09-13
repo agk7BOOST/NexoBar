@@ -85,7 +85,7 @@ public sealed class ContentCorrectionConcurrencyTests(OrderOperationsApiFixture 
         using var secondResponse = await second;
         Assert.Equal(correctionFirst ? HttpStatusCode.OK : HttpStatusCode.Conflict, firstResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
-        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.Client, target.OperationalReference, token);
+        var read = await LiquidationTestSupport.ReadOrderAsync(fixture.OrderOperationsClient, target.OperationalReference, token);
         Assert.Equal("10", read.FunctionalAmount);
         Assert.Equal(correctionFirst, read.IsFrozen);
     }
