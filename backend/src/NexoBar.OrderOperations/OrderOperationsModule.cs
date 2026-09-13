@@ -33,6 +33,7 @@ public static partial class OrderOperationsModule
         services.AddScoped<PendingCompositionService>();
         services.AddScoped<OrderQueryService>();
         services.AddScoped<ActiveOrderReadState>();
+        services.AddScoped<IActiveOrderSubscriptionAuthorization, ActiveOrderSubscriptionAuthorization>();
         services.AddScoped<OrderEconomicStateReader>();
         services.AddScoped<LiquidationService>();
         services.AddScoped<ClosureService>();

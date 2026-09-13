@@ -36,6 +36,7 @@ internal sealed class ChangeNotificationSubscription : IDisposable
 {
     private readonly ChangeNotificationHub hub;
     private readonly HashSet<ChangeNotificationScope> scopes;
+    private readonly HashSet<ChangeNotificationScope> retiredScopes = [];
     private readonly object gate = new();
     private readonly CancellationTokenSource dropped = new();
     private readonly Channel<ChangeNotification> channel = Channel.CreateBounded<ChangeNotification>(
@@ -60,11 +61,19 @@ internal sealed class ChangeNotificationSubscription : IDisposable
     internal CancellationToken Dropped { get; }
     internal int ScopeCount => scopes.Count;
 
+    internal void Retire(ChangeNotificationScope scope)
+    {
+        lock (gate)
+        {
+            retiredScopes.Add(scope);
+        }
+    }
+
     internal void TryPublish(ChangeNotification notification)
     {
         lock (gate)
         {
-            if (stopped || !scopes.Contains(notification.Scope))
+            if (stopped || !scopes.Contains(notification.Scope) || retiredScopes.Contains(notification.Scope))
             {
                 return;
             }
