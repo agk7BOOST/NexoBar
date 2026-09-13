@@ -22,7 +22,9 @@ Catalog vigente no participa de esta clasificación.
 GET /api/order-operations/orders/{operationalReference}/delivery
 ```
 
-La consulta exige Session válida, Identity activa y `OrderOperationsAndBasicClosure` vigente. No requiere `Preparation` ni `PreparationEnablement`. Session/Identity no utilizable responde `401`, Responsibility faltante responde `403` y Order inexistente responde `404`.
+Según AD-SEC-05, la consulta del Estado operacional actual exige Session utilizable, Identity activa y `OrderOperationsAndBasicClosure` vigente, y permite leer cualquier Order operacionalmente activo dentro del alcance de NexoBar. No hay restricción por creador, owner, asignación, Session, dispositivo o Context. No requiere `Preparation` ni `PreparationEnablement`; esas capacidades no conceden esta lectura. Session/Identity no utilizable responde `401`, Responsibility faltante responde `403` y el tratamiento de un Order que no está en el conjunto activo no debe ampliar acceso histórico.
+
+El retrofit de esta frontera de lectura no está cerrado en todos los endpoints actuales: [S8-I4A0](../architecture/security-boundaries.md#pendientes) debe alinear este read y sus equivalentes antes de habilitar `order.active` SSE. Esta documentación no afirma que el endpoint existente ya aplique toda la política AD-SEC-05.
 
 La lectura abre una transacción corta `READ COMMITTED`, estabiliza Session, Identity y Responsibility, y obtiene el Estado de `OrderOperations` mediante una proyección coherente. No usa `FOR UPDATE` para la lectura ordinaria. Después resuelve en batch el `ProductOperationalName` vigente mediante la capacidad estrecha de Catalog, reutilizando la transacción; no existe SQL ni acceso a `DbContext` cross-module.
 

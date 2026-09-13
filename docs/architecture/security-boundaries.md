@@ -7,11 +7,24 @@
 - Un replay de efecto ya confirmado sigue la regla local documentada: no reinterpreta su Historia por una revocación posterior de capacidad. No generalices ese tratamiento a intenciones nuevas.
 - El alcance de protección existente es explícito: los endpoints anónimos pendientes de retrofit no se consideran protegidos por esta guía. Las reglas completas de cookie, antiforgery, credenciales, sesión y estabilización están en [Identities](../identities-and-capabilities/security.md); leerlas cuando la tarea afecte esos mecanismos.
 
+## AD-SEC-05 — Visibilidad operacional del Pedido activo
+
+Esta Adenda rige la lectura del Estado operacional actual de un Order. Una Identity activa con `OrderOperationsAndBasicClosure` puede localizar y leer los Orders operacionalmente activos dentro del alcance operacional de NexoBar. Para el MVP no hay restricción adicional por Identity creadora, owner, operador asignado, Session de origen, dispositivo, Context ni asignación personal del Order. Context es información de coordinación operacional, no una frontera de autorización.
+
+La lectura operacional puede incluir identidad y referencia estables del Order, Context, Content confirmado relevante, PendingComposition, progreso y cumplimiento necesarios para entender la accionabilidad o Delivery, correcciones/cancelaciones/excepciones actuales, mutabilidad, Importe funcional, Liquidation y su elegibilidad, Freeze y Closure. Es Estado actual; no concede por sí sola Historia general, administración de Catalog o Identity, acceso a Inventory, `GeneralConfiguration` ni `OperationalConfiguration`.
+
+Un Order entra al conjunto operacionalmente activo con First Confirmation. Permanece allí durante el recorrido ordinario, incluido Liquidated/Frozen mientras Closure sea el siguiente paso ordinario. Sale de ese conjunto cuando confirma Closure o Complete Order Cancellation; que todos los F sean cero no lo vuelve terminal ni elimina la visibilidad activa por sí solo.
+
+La vista o suscripción que ya tenía autorización puede recibir la invalidación final de Closure o Complete Order Cancellation para reconciliar o retirar Estado que ya poseía. Después no se autoriza una nueva lectura o renovación `order.active`; esto termina la visibilidad previa y no concede acceso histórico post-terminal.
+
+La misma frontera rige GETs/reads autoritativos del Estado operacional actual y la suscripción/entrega SSE `order.active`: SSE no puede exponer un alcance mayor que el read equivalente. `OperationalIntervention` conserva sólo sus reads estrechos de target y no concede visibilidad general del Order activo. Preparation continúa bajo `Preparation` más `PreparationEnablement` exacto y sus reads por destino; tampoco concede visibilidad de Order activo.
+
 ## Pendientes
 
 Este inventario no define políticas nuevas ni afirma seguridad global completa.
 
-- retrofit global de autenticación/autorización para endpoints todavía anónimos, según corresponda: Catalog, OperationalConfiguration, lookup de Order y otros endpoints funcionales actuales no cubiertos. Confirmaciones ya tienen el retrofit de Slice 6;
+- **S8-I4A0 — retrofit de autorización de lectura de Order activo:** aplicar AD-SEC-05 a los GETs/reads autoritativos del Estado operacional actual antes de implementar `order.active` SSE. El lookup general de Order actual carece de esta validación; también deben inventariarse y corregirse los reads operacionales equivalentes que no validen Session utilizable, Identity activa y `OrderOperationsAndBasicClosure`. Esta deuda no está implementada y no autoriza acceso histórico ni una política distinta de visibilidad;
+- retrofit global de autenticación/autorización para endpoints todavía anónimos, según corresponda: Catalog, OperationalConfiguration y otros endpoints funcionales actuales no cubiertos. Confirmaciones ya tienen el retrofit de Slice 6;
 - bootstrap productivo de Identity y credenciales;
 - implementación de recovery extraordinario (`AD-SEC-01`) y UX de recovery ordinario;
 - decisión normativa de parámetros de timeout (`PAR-SEC-02`) y política cuantitativa de brute-force/lockout;

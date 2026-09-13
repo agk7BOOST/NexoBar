@@ -92,9 +92,11 @@ Representa exclusivamente un Order que el usuario abrió explícitamente para op
 
 ### ORDER-SSE-02 — Autoridad de lectura operacional
 
-Suscribirse a `order.active:<orderId>` exige autoridad vigente: Session utilizable, Identity activa, `OrderOperationsAndBasicClosure` y visibilidad de lectura operacional actual sobre ese Order exacto, conforme a la política de lectura por necesidad operacional existente. La suscripción se autoriza al abrir y se revalida mientras el stream permanece conectado; la pérdida de autoridad termina o deja de entregar de forma fail-closed.
+Suscribirse a `order.active:<orderId>` exige autoridad vigente: Session utilizable, Identity activa, `OrderOperationsAndBasicClosure` y visibilidad de lectura operacional actual conforme a AD-SEC-05. Durante el MVP esa visibilidad comprende cualquier Order operacionalmente activo dentro del alcance de NexoBar, sin filtro por creador, owner, asignación, Session, dispositivo o Context. La suscripción se autoriza al abrir y se revalida mientras el stream permanece conectado; la pérdida de autoridad termina o deja de entregar de forma fail-closed.
 
 Esta frontera no infiere visibilidad universal de Orders, autoridad de escritura desde la lectura en general, ni autoridad de feed amplio desde `OperationalIntervention`. `OperationalIntervention` por sí sola no concede el scope general de Order activo; sus lecturas propietarias siguen siendo estrechas. `Preparation` tampoco concede `order.active` porque pueda afectar el Order: Preparation conserva su superficie por destino. Una suscripción no autorizada no revela existencia del Order.
+
+Closure o Complete Order Cancellation permiten entregar sólo la invalidación final a una suscripción que ya estaba autorizada, para reconciliar o retirar Estado que ya poseía. Tras ese commit, `order.active` no puede autorizarse ni renovarse para ese Order; la excepción de invalidación final no concede lectura post-terminal ni Historia.
 
 ### ORDER-SSE-03 — Criterio de publicación
 
@@ -140,4 +142,4 @@ El checkpoint Playwright dirigido usa dos cuentas/Identities distintas, dos Sess
 
 La evidencia focalizada incluye integración backend de invalidación `7/7`, regresión de OrderOperations en ese checkpoint `687/687`, freshness frontend de Preparation `14/14` más pruebas afectadas, y el E2E final `1/1`. Durante ese checkpoint se corrigió una colisión incidental de keys entre hermanos de la composición autenticada de App; no modifica la semántica SSE.
 
-Permanece sin implementar el vertical aprobado `order.changed` para Order activo. Continúan diferidos SSE de producto/precio de Catalog, Inventory, OperationalConfiguration, un feed general de Identity/capabilities, listas/búsqueda global de Orders e Historia. No se afirma que todos esos scopes sean necesarios para cerrar Slice 8. La limitación MVP de una sola instancia backend activa continúa vigente; fan-out multi-instancia queda fuera de la implementación actual.
+Permanece sin implementar el vertical aprobado `order.changed` para Order activo. S8-I4A queda bloqueado hasta que **S8-I4A0 — retrofit de autorización de lectura de Order activo** alinee los GETs/reads con AD-SEC-05; no se marca el scope SSE como implementado. Continúan diferidos SSE de producto/precio de Catalog, Inventory, OperationalConfiguration, un feed general de Identity/capabilities, listas/búsqueda global de Orders e Historia. No se afirma que todos esos scopes sean necesarios para cerrar Slice 8. La limitación MVP de una sola instancia backend activa continúa vigente; fan-out multi-instancia queda fuera de la implementación actual.

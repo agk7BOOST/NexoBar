@@ -14,6 +14,8 @@ El comando valida el plan completo antes de mutar. El éxito exige un Order abie
 
 Después del éxito no se liquida ni se cierra el Order, no se crea Freeze, no se requiere Liquidation de importe cero ni se crea Closure automáticamente. El Order es terminal por `OrderCancellationState` mismo; tampoco procede posteriormente por el recorrido ordinario Liquidation/Closure. No implica disposición física, Inventory, reversión de pagos ni refund.
 
+Para la visibilidad operacional de AD-SEC-05, Complete Order Cancellation retira el Order del conjunto activo al confirmar. Una vista o suscripción que ya estaba autorizada puede recibir la invalidación final para retirar el Estado actual que ya poseía; no se autoriza después una nueva lectura operacional o renovación `order.active`, y ello no concede Historia.
+
 **CAN-04 — F ya puede ser cero.** Un Order todavía abierto y no terminal, sin Delivery efectiva, Liquidation, Closure ni Complete Cancellation previa, puede cancelarse completamente aunque todos los F actuales sean cero. Se crea el Estado/Historia terminal Order-level y se descarta PendingComposition atómicamente si existe. No se crean hechos de Content Cancellation o intervención de cantidad cero.
 
 **CAN-05 — Repetición terminal.** Replay exacto con la misma key durable devuelve el resultado original sin nuevo Estado ni Historia. Una nueva intención con otra key contra un Order ya completamente cancelado se rechaza por terminalidad; no crea una segunda cancelación. Véase [idempotencia](contracts-and-history.md#complete-order-cancellation--historia-e-idempotencia-implementadas-s7-i7d).
@@ -52,5 +54,7 @@ INT-07 no implementa Cancellation completa de Order ni reparación post-Liquidat
 ### Liquidation, Closure y completitud
 
 `Delivered != Liquidated != Closed`. Slice 6 materializa Liquidation, Freeze como consecuencia y Closure explícito en OrderOperations. Delivery sigue siendo una dimensión distinta y sus nuevas mutaciones ordinarias quedan bloqueadas tras Liquidation. El read expone `isLiquidated`, `isFrozen` e `isClosed` como dimensiones diferenciadas; no constituyen un Status global único.
+
+Para AD-SEC-05, el Order entra al conjunto operacionalmente activo con First Confirmation y continúa allí, incluso Liquidated/Frozen, mientras Closure siga siendo el siguiente paso ordinario. Closure lo retira del conjunto al confirmar. Una vista o suscripción previamente autorizada puede recibir esa invalidación final para reconciliar/remover Estado ya poseído; no genera acceso post-terminal ni Historia. Que todos los F sean cero no sustituye Closure o Complete Order Cancellation ni retira por sí solo el Order de la visibilidad activa.
 
 Tampoco se persiste `Order.IsDelivered` ni se afirma un Status global implementado. La completitud se evalúa contra la obligación vigente F; esa derivación no crea un Status global ni implementa futuras Corrections.
