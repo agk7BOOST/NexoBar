@@ -71,8 +71,28 @@ No incluye cantidades, precios, actor, hechos de Historia ni State completo. No 
 
 Tras commit, se invalida el destino cuando una mutación confirmada lo afecte: Confirmation que crea Work; Start; MarkReady; correcciones Start/Ready; Content Correction; Content Cancellation ordinaria; OperationalIntervention; Complete Order Cancellation; y Delivery o Delivery Correction cuando cambien límites o State mostrados por Preparation.
 
-No se implementan aún `order.changed` general, SSE de Catalog, Inventory u OperationalConfiguration. Podrán reutilizar la infraestructura sólo mediante una decisión y vertical posterior explícitos.
+Siguen sin implementar `order.changed` general, SSE de Catalog, Inventory u OperationalConfiguration. Podrán reutilizar la infraestructura sólo mediante una decisión y vertical posterior explícitos.
 
-## Implementación y verificación siguientes
+## Vertical implementado: frescura de destino de Preparation
 
-La próxima implementación comienza por transporte/infraestructura SSE y después integra el vertical de destino de Preparation. La verificación proporcional futura cubre publicación sólo post-commit, silencio ante rollback, autorización exacta de destino, terminación por pérdida de autoridad, fencing de generación, duplicados/coalescing, refresh tras reconexión, intents inciertos sin cambio y un E2E de dos navegadores para frescura de Preparation.
+**Preparation destination SSE freshness está verticalmente implementado.** Esto no cierra Slice 8 completo.
+
+El Host expone `GET /api/notifications/stream`, compatible con `EventSource` nativo y autenticado por la cookie de Session opaca same-origin. Cada conexión usa un snapshot fijo de scopes; el único scope de producción actual es `preparation.destination:<destinationId>`, con hasta ocho scopes por conexión en la implementación actual. El límite de scopes simultáneos, buffering por conexión, timeout de escritura y heartbeat son detalles técnicos acotados de la implementación, no reglas funcionales. El hub es en memoria y local al proceso, entrega de forma no bloqueante best-effort y limpia suscripciones ante desconexión, cancelación o shutdown.
+
+El servidor valida la autoridad al suscribirse y antes de entregar notificaciones. Para Preparation exige Session utilizable, Identity activa, responsabilidad `Preparation` y `PreparationEnablement` exacta. La pérdida de cualquiera de esas condiciones termina o deja de entregar por el stream fail-closed. La validación y el heartbeat SSE no renuevan la inactividad ni la vida absoluta de la Session.
+
+`preparation.destination.changed(destinationId)` se publica sólo después del commit exitoso si cambió el read autoritativo del destino. Está integrado en First/Subsequent Confirmation que crean Work, Start, MarkReady, Correct Start, Correct Ready, Content Correction, Content Cancellation ordinaria, OperationalIntervention, Complete Order Cancellation, Delivery y Delivery Correction. Se publica una vez por destino afectado, con deduplicación si la mutación alcanza varios. Los Contents direct sin `PreparationWork` no generan una notificación de Preparation.
+
+Replay durable exacto, rechazo, no-op y rollback no emiten una invalidación nueva. Un error del publisher después de commit se contiene como falla de frescura best-effort: no revierte ni convierte en fallido el comando ya comprometido.
+
+El App mantiene un único `EventSource` por Session/App activa y la unión de los destinos suscriptos. Un cambio de snapshot cierra y reemplaza el stream; sin scopes no abre ninguno. La reconexión manual usa backoff acotado con jitter y callbacks, conexiones y timers obsoletos quedan cercados por generación de lifecycle. La apertura inicial y cada reconexión exitosa señalan que los reads suscriptos están stale. El transporte distribuye exclusivamente invalidaciones tipadas y no posee State de negocio de Preparation.
+
+Preparation conserva el GET autoritativo y su State/UI. Para el destino activo, la invalidación incrementa de inmediato la generación del read, marca stale y programa refetch. Sólo una respuesta o error de la generación vigente puede actualizar UI; hay un refresh activo y las señales durante él coalescen en un único seguimiento. Reemplazar destino o Identity cerca las respuestas anteriores. El refresh posterior a comando local y el de SSE usan el mismo coordinador. Si SSE se desconecta, sólo degrada frescura: lecturas y comandos HTTP continúan disponibles.
+
+La señal SSE ni el State observado tras un refetch prueban el éxito de Start, Ready o Correction. Los intents inciertos conservan su retry exacto idempotente; su resultado autoritativo sigue siendo la única resolución.
+
+El checkpoint Playwright dirigido usa dos cuentas/Identities distintas, dos Sessions y contextos de navegador independientes, ambas con `Preparation` y enablement exacto sobre un único destino. Con un Work pendiente de cantidad 1, A ya visualiza `Pending=1`, `InPreparation=0`, `Ready=0`; B ejecuta Start por UI y observa `Pending=0`, `InPreparation=1`. Sin reload, Refresh manual, reselección de destino ni API de mutación desde la prueba, la vista ya abierta de A llega a los mismos buckets mediante `commit → invalidación SSE → GET autoritativo`. Resultado dirigido: Playwright `1/1 passed`.
+
+La evidencia focalizada incluye integración backend de invalidación `7/7`, regresión de OrderOperations en ese checkpoint `687/687`, freshness frontend de Preparation `14/14` más pruebas afectadas, y el E2E final `1/1`. Durante ese checkpoint se corrigió una colisión incidental de keys entre hermanos de la composición autenticada de App; no modifica la semántica SSE.
+
+Permanecen diferidos `order.changed` general, frescura de producto/precio de Catalog, Inventory y OperationalConfiguration. No se afirma que todos esos scopes sean necesarios para cerrar Slice 8. La limitación MVP de una sola instancia backend activa continúa vigente; fan-out multi-instancia queda fuera de la implementación actual.
