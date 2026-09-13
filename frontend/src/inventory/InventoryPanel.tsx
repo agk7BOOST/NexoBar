@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { FreshnessReadCoordinator } from "../notifications/FreshnessReadCoordinator.ts";
 import {
   discardAntiforgeryToken,
   getAntiforgeryToken,
@@ -12,6 +13,7 @@ import {
 } from "../identity/sessionClient.ts";
 import { InventoryHistory } from "./InventoryHistory.tsx";
 import { InventoryItemOperations } from "./InventoryItemOperations.tsx";
+import { InventoryOperationFreshnessSubscription } from "./InventoryOperationFreshnessSubscription.tsx";
 import {
   createInventoryItem,
   InventoryProblemError,
@@ -72,6 +74,7 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
   const [operation, setOperation] = useState<
     ScopeState<InventoryOperationalItem>
   >({ status: "loading" });
+  const [operationAuthorized, setOperationAuthorized] = useState(false);
   const [operationalName, setOperationalName] = useState("");
   const [operationalUnit, setOperationalUnit] = useState("");
   const [createIntent, setCreateIntentState] = useState<CreateIntent | null>(
@@ -82,13 +85,17 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
     useState<InventoryOperationalItem | null>(null);
   const [historyRefreshRevision, setHistoryRefreshRevision] = useState(0);
   const configurationSequence = useRef(0);
-  const operationSequence = useRef(0);
+  const operationReadCoordinator = useRef(new FreshnessReadCoordinator());
   const createIntentRef = useRef<CreateIntent | null>(null);
   const operationAuthorizedRef = useRef(false);
   const sessionEndedRef = useRef(false);
+  const mountedRef = useRef(true);
   const cancelReadRequests = useCallback(() => {
     configurationSequence.current++;
-    operationSequence.current++;
+  }, []);
+
+  const cancelOperationRequests = useCallback(() => {
+    operationReadCoordinator.current.cancel();
   }, []);
 
   const setCreateIntent = useCallback((intent: CreateIntent | null) => {
@@ -100,11 +107,13 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
     if (sessionEndedRef.current) return;
     sessionEndedRef.current = true;
     cancelReadRequests();
+    cancelOperationRequests();
+    setOperationAuthorized(false);
     discardAntiforgeryToken();
     setCreateIntent(null);
     setHistoryItem(null);
     onUnauthorized();
-  }, [cancelReadRequests, onUnauthorized, setCreateIntent]);
+  }, [cancelOperationRequests, cancelReadRequests, onUnauthorized, setCreateIntent]);
 
   const refreshConfiguration = useCallback(async () => {
     const sequence = ++configurationSequence.current;
@@ -131,32 +140,52 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
 
   const refreshOperation = useCallback(
     async (showLoading = true) => {
-      const sequence = ++operationSequence.current;
+      if (!mountedRef.current || sessionEndedRef.current) return;
       if (showLoading) setOperation({ status: "loading" });
-      try {
-        const items = await listInventoryOperationalItems();
-        if (sequence === operationSequence.current) {
+      operationReadCoordinator.current.invalidate(async (isCurrent) => {
+        try {
+          const items = await listInventoryOperationalItems();
+          if (!isCurrent() || !mountedRef.current || sessionEndedRef.current) {
+            return;
+          }
           operationAuthorizedRef.current = true;
+          setOperationAuthorized(true);
           setOperation({ status: "ready", items });
+        } catch (error) {
+          if (!isCurrent() || !mountedRef.current || sessionEndedRef.current) {
+            return;
+          }
+          operationAuthorizedRef.current = false;
+          if (error instanceof InventoryProblemError && error.status === 401) {
+            handleUnauthorized();
+          } else if (
+            error instanceof InventoryProblemError &&
+            error.status === 403
+          ) {
+            setOperationAuthorized(false);
+            setOperation({ status: "forbidden" });
+            setHistoryItem(null);
+          } else {
+            setOperation({ status: "error" });
+          }
         }
-      } catch (error) {
-        if (sequence !== operationSequence.current) return;
-        operationAuthorizedRef.current = false;
-        if (error instanceof InventoryProblemError && error.status === 401) {
-          handleUnauthorized();
-        } else if (
-          error instanceof InventoryProblemError &&
-          error.status === 403
-        ) {
-          setOperation({ status: "forbidden" });
-          setHistoryItem(null);
-        } else {
-          setOperation({ status: "error" });
-        }
-      }
+      });
     },
     [handleUnauthorized],
   );
+
+  const invalidateOperation = useCallback(() => {
+    void refreshOperation(false);
+  }, [refreshOperation]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cancelReadRequests();
+      cancelOperationRequests();
+    };
+  }, [cancelOperationRequests, cancelReadRequests]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -165,9 +194,8 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
     }, 0);
     return () => {
       window.clearTimeout(timeout);
-      cancelReadRequests();
     };
-  }, [cancelReadRequests, refreshConfiguration, refreshOperation]);
+  }, [refreshConfiguration, refreshOperation]);
 
   const executeCreateIntent = useCallback(
     async (intent: CreateIntent) => {
@@ -440,6 +468,11 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
         aria-labelledby="inventory-operation-heading"
         aria-busy={operation.status === "loading"}
       >
+        {operationAuthorized && (
+          <InventoryOperationFreshnessSubscription
+            invalidate={invalidateOperation}
+          />
+        )}
         <div className="section-heading">
           <div>
             <h3 id="inventory-operation-heading">

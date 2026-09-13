@@ -6,6 +6,11 @@ export interface OrderChanged {
   orderId: string;
 }
 
+/** The Inventory operational scope is static and deliberately has no scope id. */
+export interface InventoryOperationChanged {
+  kind: "inventory.operation.changed";
+}
+
 interface EventSourceConnection {
   close(): void;
   onopen: ((event: Event) => void) | null;
@@ -60,6 +65,17 @@ function isOrderChanged(
   );
 }
 
+function isInventoryOperationChanged(
+  value: unknown,
+): value is InventoryOperationChanged {
+  if (value === null || typeof value !== "object") return false;
+  const payload = value as Record<string, unknown>;
+  return (
+    payload.kind === "inventory.operation.changed" &&
+    Object.keys(payload).length === 1
+  );
+}
+
 /** App-owned, non-authoritative notification transport. */
 export class NotificationSseTransport {
   private readonly listeners = new Map<
@@ -69,6 +85,9 @@ export class NotificationSseTransport {
   private readonly orderListeners = new Map<
     string,
     Set<(notification: OrderChanged) => void>
+  >();
+  private readonly inventoryOperationListeners = new Set<
+    (notification: InventoryOperationChanged) => void
   >();
   private readonly connectedListeners = new Set<(generation: number) => void>();
   private readonly eventSourceFactory: EventSourceFactory;
@@ -154,6 +173,24 @@ export class NotificationSseTransport {
     };
   }
 
+  subscribeInventoryOperation(
+    listener: (notification: InventoryOperationChanged) => void,
+  ): () => void {
+    const snapshotChanged = this.inventoryOperationListeners.size === 0;
+    this.inventoryOperationListeners.add(listener);
+    if (snapshotChanged) this.replaceConnection();
+
+    let subscribed = true;
+    return () => {
+      if (!subscribed) return;
+      subscribed = false;
+      this.inventoryOperationListeners.delete(listener);
+      if (snapshotChanged && this.inventoryOperationListeners.size === 0) {
+        this.replaceConnection();
+      }
+    };
+  }
+
   onConnected(listener: (generation: number) => void): () => void {
     this.connectedListeners.add(listener);
     return () => this.connectedListeners.delete(listener);
@@ -163,6 +200,7 @@ export class NotificationSseTransport {
     this.activeIdentityId = null;
     this.listeners.clear();
     this.orderListeners.clear();
+    this.inventoryOperationListeners.clear();
     this.closeCurrentConnection();
     this.connectedListeners.clear();
   }
@@ -247,6 +285,9 @@ export class NotificationSseTransport {
     for (const orderId of [...this.orderListeners.keys()].sort()) {
       query.append("scope", `order.active:${orderId}`);
     }
+    if (this.inventoryOperationListeners.size !== 0) {
+      query.append("scope", "inventory.operation");
+    }
     return `${streamPath}?${query.toString()}`;
   }
 
@@ -275,10 +316,23 @@ export class NotificationSseTransport {
       for (const listener of orderListeners) {
         listener(notification);
       }
+      return;
+    }
+    if (isInventoryOperationChanged(payload)) {
+      const notification: InventoryOperationChanged = {
+        kind: "inventory.operation.changed",
+      };
+      for (const listener of this.inventoryOperationListeners) {
+        listener(notification);
+      }
     }
   }
 
   private hasScopes(): boolean {
-    return this.listeners.size !== 0 || this.orderListeners.size !== 0;
+    return (
+      this.listeners.size !== 0 ||
+      this.orderListeners.size !== 0 ||
+      this.inventoryOperationListeners.size !== 0
+    );
   }
 }

@@ -108,6 +108,36 @@ describe("NotificationSseTransport", () => {
     expect(preparationChanged).not.toHaveBeenCalled();
   });
 
+  it("serializes the static Inventory scope once in a mixed snapshot and routes it only to Inventory", () => {
+    const { transport, sources, urls } = createTransport();
+    const preparationChanged = vi.fn();
+    const orderChanged = vi.fn();
+    const inventoryChanged = vi.fn();
+    transport.subscribe(destinationA, preparationChanged);
+    transport.subscribeOrder(orderA, orderChanged);
+    const unsubscribeInventory = transport.subscribeInventoryOperation(inventoryChanged);
+    transport.subscribeInventoryOperation(vi.fn());
+
+    expect(sources).toHaveLength(3);
+    expect(urls[2]).toBe(
+      `/api/notifications/stream?scope=preparation.destination%3A${destinationA}&scope=order.active%3A${orderA}&scope=inventory.operation`,
+    );
+    sources[2].invalidate(JSON.stringify({ kind: "inventory.operation.changed" }));
+    sources[2].invalidate(JSON.stringify({
+      kind: "inventory.operation.changed",
+      scopeId: orderA,
+    }));
+
+    expect(inventoryChanged).toHaveBeenCalledTimes(1);
+    expect(inventoryChanged).toHaveBeenLastCalledWith({
+      kind: "inventory.operation.changed",
+    });
+    expect(preparationChanged).not.toHaveBeenCalled();
+    expect(orderChanged).not.toHaveBeenCalled();
+    unsubscribeInventory();
+    expect(sources[2].closed).toBe(false);
+  });
+
   it("delivers only valid invalidations to subscribers for that destination", () => {
     const { transport, sources } = createTransport();
     const changedA = vi.fn();

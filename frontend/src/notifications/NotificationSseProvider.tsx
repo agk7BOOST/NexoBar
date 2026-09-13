@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   NotificationSseTransport,
+  type InventoryOperationChanged,
   type OrderChanged,
   type PreparationDestinationChanged,
 } from "./NotificationSseTransport.ts";
@@ -81,6 +82,32 @@ export function useOrderInvalidation(
 }
 
 export function useOrderConnectionGeneration(): number {
+  const transport = useContext(NotificationSseContext);
+  const [generation, setGeneration] = useState(
+    transport?.connectionGeneration ?? 0,
+  );
+  useEffect(() => {
+    if (transport === null) {
+      setGeneration(0);
+      return;
+    }
+    setGeneration(transport.connectionGeneration);
+    return transport.onConnected(setGeneration);
+  }, [transport]);
+  return generation;
+}
+
+export function useInventoryOperationInvalidation(
+  onInvalidated: (notification: InventoryOperationChanged) => void,
+): void {
+  const transport = useContext(NotificationSseContext);
+  useEffect(() => {
+    if (transport === null) return;
+    return transport.subscribeInventoryOperation(onInvalidated);
+  }, [onInvalidated, transport]);
+}
+
+export function useInventoryOperationConnectionGeneration(): number {
   const transport = useContext(NotificationSseContext);
   const [generation, setGeneration] = useState(
     transport?.connectionGeneration ?? 0,

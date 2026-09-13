@@ -335,7 +335,13 @@ export function InventoryItemOperations({
   }
 
   function beginReconciliation() {
-    if (intentRef.current !== null || countObservation === null) return;
+    if (
+      intentRef.current !== null ||
+      countObservation === null ||
+      countObservation.observedMovementRevision !== item.asOfMovementRevision
+    ) {
+      return;
+    }
     const next: InventoryOperationIntent = {
       phase: "submitting",
       kind: "reconcile",
@@ -358,6 +364,9 @@ export function InventoryItemOperations({
   }
 
   const blocked = intent !== null;
+  const countObservationStale =
+    countObservation !== null &&
+    countObservation.observedMovementRevision !== item.asOfMovementRevision;
   const quantityForms = item.quantityEstablished
     ? ([
         {
@@ -423,9 +432,15 @@ export function InventoryItemOperations({
               {countObservation.observedOperationalUnit}
             </strong>
           </p>
+          {countObservationStale && (
+            <p className="notice notice--functional-error" role="alert">
+              Este conteo ya no refleja el estado actual de Inventario. Se
+              requiere un nuevo conteo fÃ­sico antes de reconciliar.
+            </p>
+          )}
           <button
             type="button"
-            disabled={blocked}
+            disabled={blocked || countObservationStale}
             onClick={beginReconciliation}
           >
             Reconciliar conteo

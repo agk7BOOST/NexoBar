@@ -85,7 +85,7 @@ function renderOperations(
   onAuthoritativeMutation = vi.fn().mockResolvedValue(undefined),
   onStateRefresh = vi.fn().mockResolvedValue(undefined),
 ) {
-  render(
+  const view = render(
     <InventoryItemOperations
       item={{ ...item, ...overrides }}
       onUnauthorized={onUnauthorized}
@@ -94,7 +94,7 @@ function renderOperations(
       onItemUnavailable={vi.fn()}
     />,
   );
-  return { onUnauthorized, onAuthoritativeMutation, onStateRefresh };
+  return { view, onUnauthorized, onAuthoritativeMutation, onStateRefresh };
 }
 
 async function recordCount(
@@ -154,6 +154,7 @@ describe("InventoryItemOperations", () => {
     vi.mocked(recordInventoryCount).mockResolvedValueOnce({
       ...count,
       observedQuantity: "0",
+      observedMovementRevision: 0,
     });
     vi.mocked(reconcileInventoryCount).mockResolvedValueOnce({
       ...reconciled,
@@ -264,6 +265,41 @@ describe("InventoryItemOperations", () => {
     expect(
       screen.getByRole("button", { name: "Registrar conteo" }),
     ).toBeEnabled();
+  });
+
+  it("keeps a Count current only at its observed revision and requires a new Count after an authoritative revision change", async () => {
+    vi.mocked(recordInventoryCount)
+      .mockResolvedValueOnce(count)
+      .mockResolvedValueOnce({
+        ...count,
+        countObservationId: "count-2",
+        observedQuantity: "8",
+        observedMovementRevision: 2,
+      });
+    const user = userEvent.setup();
+    const { view } = renderOperations();
+
+    await recordCount(user);
+    expect(screen.getByRole("button", { name: "Reconciliar conteo" })).toBeEnabled();
+
+    view.rerender(
+      <InventoryItemOperations
+        item={{ ...item, asOfMovementRevision: 2, currentRegisteredQuantity: "15" }}
+        onUnauthorized={vi.fn()}
+        onStateRefresh={vi.fn().mockResolvedValue(undefined)}
+        onAuthoritativeMutation={vi.fn().mockResolvedValue(undefined)}
+        onItemUnavailable={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/ya no refleja el estado actual/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Reconciliar conteo" })).toBeDisabled();
+    expect(screen.getByText(/Cantidad observada:/)).toHaveTextContent("7.500 kg");
+
+    await user.type(screen.getByLabelText("Cantidad observada para Harina"), "8");
+    await user.click(screen.getByRole("button", { name: "Registrar conteo" }));
+    await screen.findByText("Conteo registrado: 8 kg. El saldo no fue modificado.");
+    expect(screen.getByRole("button", { name: "Reconciliar conteo" })).toBeEnabled();
   });
 
   it.each([
