@@ -71,7 +71,7 @@ No incluye cantidades, precios, actor, hechos de Historia ni State completo. No 
 
 Tras commit, se invalida el destino cuando una mutación confirmada lo afecte: Confirmation que crea Work; Start; MarkReady; correcciones Start/Ready; Content Correction; Content Cancellation ordinaria; OperationalIntervention; Complete Order Cancellation; y Delivery o Delivery Correction cuando cambien límites o State mostrados por Preparation.
 
-El vertical `order.changed` de Order activo está implementado conforme a SSE-09. El vertical operacional de Inventory está decidido en SSE-10 pero aún no implementado. SSE de Catalog u OperationalConfiguration continúa diferido; los demás scopes sólo podrán reutilizar la infraestructura mediante una decisión y vertical posterior explícitos.
+Los verticales `order.changed` de Order activo e `inventory.operation` están implementados conforme a SSE-09 y SSE-10. SSE de Catalog u OperationalConfiguration continúa diferido; los demás scopes sólo podrán reutilizar la infraestructura mediante una decisión y vertical posterior explícitos.
 
 ## SSE-09 — Vertical implementado: frescura del Order activo
 
@@ -120,15 +120,17 @@ El caso operativo que motiva este vertical es Preparation → Delivery: A tiene 
 
 La señal no implica repricing automático de Catalog, actualizaciones de Inventory, resolución de intents inciertos, bypass de validación backend, ni garantía de que el siguiente comando verá exactamente el State antes renderizado. Idempotencia y controles de concurrencia permanecen necesarios. La pérdida de una notificación degrada únicamente frescura; en apertura o reconexión el frontend reconcilia autoritativamente sus reads suscriptos conforme a SSE-03.
 
-## SSE-10 — Vertical aprobado: frescura operacional de Inventory
+## SSE-10 — Vertical implementado: frescura operacional de Inventory
 
 ### INV-SSE-01 — Un scope operacional
 
-El vertical usará un único scope estático `inventory.operation`. Representa exclusivamente la superficie operacional actualmente montada y su read autoritativo `GET /api/inventory/operations/items`. La UI operacional vigente es un listado, no un detalle por Item; por ello no se agregan suscripciones por Item. Tampoco se agregan SSE de configuración, Historia ni un feed global genérico de Inventory.
+El vertical usa un único scope estático `inventory.operation`. Representa exclusivamente la superficie operacional actualmente montada y su read autoritativo `GET /api/inventory/operations/items`. La UI operacional vigente es un listado, no un detalle por Item; por ello no se agregan suscripciones por Item.
+
+`inventory.item:<itemId>` fue descartado: no existe un GET autoritativo exacto del State actual de un Item, las filas visibles pueden exceder el límite de scopes del transporte y suscribir cada fila dejaría la cobertura frágil e incompleta. Un feed genérico más amplio, `inventory.changed`, también fue descartado porque mezclaría Estado operacional, configuración e Historia. `inventory.operation` es el scope mínimo que coincide con el read real. No se agregan SSE de configuración ni Historia.
 
 ### INV-SSE-02 — Autoridad
 
-Abrir y mantener `inventory.operation` exige Session utilizable, Identity activa e `InventoryOperation` vigente. `InventoryConfiguration` por sí sola no concede este scope. La frontera coincide con el read operacional, que ya es list-wide, por lo que no requiere autorización individual por Item. La autoridad se revalida antes de la entrega conectada y se pierde fail-closed; la actividad SSE no renueva la inactividad de Session.
+Abrir y mantener `inventory.operation` exige Session utilizable, Identity activa e `InventoryOperation` vigente. `InventoryConfiguration` por sí sola no concede este scope. La frontera coincide exactamente con `GET /api/inventory/operations/items`, que ya es list-wide, por lo que no requiere autorización individual por Item. La autoridad conectada se revalida antes de la entrega y se pierde fail-closed; la actividad SSE no renueva la inactividad de Session.
 
 ### INV-SSE-03 — Invalidación opaca
 
@@ -140,7 +142,7 @@ La única señal será:
 }
 ```
 
-No contiene ItemId, cantidad, unidad, `MovementRevision`, naturaleza del Movimiento, actor, Conteo, resultado de Reconciliación ni payload de Historia. Su significado es solamente que el listado operacional autoritativo puede haber cambiado.
+No contiene UUID, `scopeId`, identidad de Item, cantidad, unidad, `MovementRevision`, naturaleza del Movimiento, actor, Conteo, resultado de Reconciliación ni payload de Historia. Su significado es solamente que el listado operacional autoritativo puede haber cambiado.
 
 ### INV-SSE-04 — Publicación
 
@@ -148,11 +150,11 @@ Se publicará sólo después de un nuevo commit exitoso que cambie el Estado ope
 
 ### INV-SSE-05 — `MovementRevision` y Conteo
 
-SSE es sólo una pista de frescura. `MovementRevision` conserva la guardia autoritativa de concurrencia: la notificación no valida un Conteo, no avanza una observación local, no vuelve válida una observación vieja ni reemplaza validaciones esperadas. Tras releer el listado, el frontend puede comparar la revisión de una observación retenida con `AsOfMovementRevision`; la validación backend de Reconciliación sigue siendo obligatoria. Conteo no cambia por sí mismo el Estado registrado ni publica.
+SSE es sólo una pista de frescura. `MovementRevision` conserva la guardia autoritativa de concurrencia: la notificación no valida un Conteo, no avanza una observación local, no vuelve válida una observación vieja ni reemplaza validaciones esperadas. Tras releer el listado, si `ObservedMovementRevision != AsOfMovementRevision`, el frontend muestra la observación stale y no permite la Reconciliación normal; se requiere un nuevo Conteo físico. La validación backend de Reconciliación sigue siendo obligatoria. Conteo no cambia por sí mismo el Estado registrado ni publica.
 
 ### INV-SSE-06 — Reconciliación frontend
 
-`InventoryPanel` conservará la propiedad de `GET /api/inventory/operations/items`. Ante `inventory.operation.changed`, apertura inicial exitosa o reconexión exitosa, incrementa inmediatamente la generación del read, lo marca stale y relee desde la autoridad. Sólo respuestas de la generación vigente pueden aplicar; existe un fetch activo y se coalescen invalidaciones durante él en un único seguimiento. SSE nunca muta cantidades directamente ni introduce un gestor global de State de negocio.
+`InventoryPanel` posee `GET /api/inventory/operations/items` y se suscribe a `inventory.operation` sólo mientras la superficie operacional autorizada está montada. Ante `inventory.operation.changed`, apertura inicial exitosa o reconexión exitosa, reconcilia desde la autoridad. `FreshnessReadCoordinator` incrementa la generación, cerca éxitos y errores stale, mantiene como máximo un GET activo y coalesce una única lectura posterior. SSE nunca muta cantidades o revisiones directamente ni introduce un gestor global de State de negocio. Count, Entry, Manual Exit, Waste, Reconciliación, refresh manual y el refresh visible tras creación de Item comparten esa ruta cercada cuando corresponde; los intents inciertos son independientes de SSE.
 
 ### INV-SSE-07 — Sin semántica terminal
 
@@ -168,13 +170,13 @@ La secuencia es `commit de negocio → invalidación best-effort`. Replay exacto
 
 ### INV-SSE-10 — Checkpoint E2E
 
-El checkpoint vertical dirigido usará dos Identities y Sessions separadas: A ya ve el listado operacional con Item X en cantidad 10; B, con `InventoryOperation`, registra Entry +5 por UI. Sin reload, refresh manual ni API de mutación directa, A relee el listado y renderiza 15 mediante `commit → inventory.operation.changed → GET operacional autoritativo`.
+El checkpoint vertical dirigido usa dos Identities y Sessions separadas, ambas sólo con `InventoryOperation`. El fixture aislado establece Item X en cantidad 10. A ya ve el listado operacional y su stream real `inventory.operation` está abierto antes de la mutación; B registra Entry +5 por UI y observa 15. Sin reload, refresh manual, re-navegación ni API de mutación directa, la fila ya abierta de A relee y renderiza 15 mediante `commit → inventory.operation.changed → EventSource real → GET /api/inventory/operations/items → UI`. Playwright focalizado: `1 discovered`, `1 passed`, `0 failed`, `0 skipped`; no se consigna un exit code no capturado.
 
 ## Vertical implementado: frescura de destino de Preparation
 
 **Preparation destination SSE freshness está verticalmente implementado.** Esto no cierra Slice 8 completo.
 
-El Host expone `GET /api/notifications/stream`, compatible con `EventSource` nativo y autenticado por la cookie de Session opaca same-origin. Cada conexión usa un snapshot fijo de scopes; el único scope de producción actual es `preparation.destination:<destinationId>`, con hasta ocho scopes por conexión en la implementación actual. El límite de scopes simultáneos, buffering por conexión, timeout de escritura y heartbeat son detalles técnicos acotados de la implementación, no reglas funcionales. El hub es en memoria y local al proceso, entrega de forma no bloqueante best-effort y limpia suscripciones ante desconexión, cancelación o shutdown.
+El Host expone `GET /api/notifications/stream`, compatible con `EventSource` nativo y autenticado por la cookie de Session opaca same-origin. Cada conexión usa un snapshot fijo de scopes; los scopes de producción actuales son `preparation.destination:<destinationId>`, `order.active:<orderId>` e `inventory.operation`, con hasta ocho scopes por conexión en la implementación actual. El límite de scopes simultáneos, buffering por conexión, timeout de escritura y heartbeat son detalles técnicos acotados de la implementación, no reglas funcionales. El hub es en memoria y local al proceso, entrega de forma no bloqueante best-effort y limpia suscripciones ante desconexión, cancelación o shutdown.
 
 El servidor valida la autoridad al suscribirse y antes de entregar notificaciones. Para Preparation exige Session utilizable, Identity activa, responsabilidad `Preparation` y `PreparationEnablement` exacta. La pérdida de cualquiera de esas condiciones termina o deja de entregar por el stream fail-closed. La validación y el heartbeat SSE no renuevan la inactividad ni la vida absoluta de la Session.
 
@@ -210,6 +212,16 @@ El checkpoint Playwright dirigido usa dos Identities, Sessions y contextos disti
 
 Evidencia proporcional: autorización de active Order `13/13`; regresión read/API afectada `169/169`; checkpoint de autorización OrderOperations `674/674`; expectativas de migración `2/2`; transporte active Order `49/49`; regresión transporte Preparation `39/39`; publicación Order `13/13`; regresión publicación Preparation `7/7`; checkpoint de publicación OrderOperations `760/762`, con los dos reads de migración originalmente fallidos verificados después individualmente green; frontend active Order `100 passed`; E2E final `1/1`. No se afirma una segunda corrida completa `762/762`.
 
-El transporte compartido frontend ya se llama `NotificationSseProvider` / `NotificationSseTransport`. El read coordinator compartible aún conserva naming específico de Preparation; es deuda de mantenibilidad, no semántica, y debe neutralizarse antes de que Inventory lo reutilice.
+La infraestructura compartida neutral actual es `NotificationSseProvider`, `NotificationSseTransport` y `FreshnessReadCoordinator`; los consumidores permanecen específicos de cada feature. La deuda de naming específica de Preparation quedó resuelta al reutilizar el coordinator para Inventory.
 
-Slice 8 sigue abierto. Los próximos frentes son `S8-I5A` scope/autorización operacional de Inventory, `S8-I5B` publicación post-commit, `S8-R2` neutralización del read coordinator, `S8-I5C` reconciliación frontend y presentación de Conteo stale, `S8-I5D` E2E de dos operadores y `S8-I5E` checkpoint/auditoría de cierre. Permanecen diferidos Catalog/product freshness, OperationalConfiguration freshness, feed general de Identity/capabilities, listas/búsqueda global de Orders, frescura de Historia, fan-out multi-instancia, corrección/lifecycle/unidad de Inventory y efectos automáticos Order/Preparation → Inventory. La limitación MVP de una sola instancia activa continúa vigente.
+## Auditoría de cierre — Slice 8 SSE / frescura multiusuario
+
+**Slice 8 — SSE / Multi-user Freshness: CLOSED.** El cierre significa que las superficies operacionales MVP requeridas están implementadas y verificadas verticalmente; no significa que todo módulo o read futuro tenga SSE.
+
+- **Preparation operacional:** scope exacto por destino, `Preparation` más enablement exacto, relectura autoritativa y vertical de dos usuarios están cubiertos.
+- **Order activo:** scope exacto `order.active:<orderId>`, autorización de lectura AD-SEC-05, publicaciones post-commit y la invalidación final para Closure/Complete Order Cancellation, reconciliación de reads montados y vertical Preparation→Delivery están cubiertos.
+- **Inventory operacional:** scope list-wide `inventory.operation`, autorización `InventoryOperation`, mutaciones calificadas post-commit, `MovementRevision` y Conteo stale preservados, y vertical Entry de dos usuarios están cubiertos.
+
+No hay contradicción normativa conocida, desajuste de autorización con el read equivalente, State derivado del payload, resolución SSE de intents inciertos ni superficie multiusuario MVP requerida sin cobertura. Las notificaciones actuales siguen siendo best-effort, invalidaciones no autoritativas seguidas de GET, no son streams durables, Event Sourcing, acknowledgements de comando ni garantías de replay; la reconexión reconcilia, no reproduce eventos.
+
+Permanecen diferidos y no bloquean este cierre: SSE de Catalog/product, OperationalConfiguration, feed general de Identity/capabilities, listas o búsqueda global de Orders, frescura de Historia, fan-out multi-instancia, PostgreSQL `LISTEN/NOTIFY` u otro mecanismo futuro, replay/backlog durable, outbox/broker, lifecycle/retirement de Inventory, corrección o unidad de Inventory y la integración automática Order/Preparation → Inventory. La limitación MVP de una única instancia backend activa continúa vigente: el fan-out en memoria no es seguro para múltiples instancias; una evolución futura queda detrás de la abstracción de publisher existente.

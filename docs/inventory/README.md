@@ -39,11 +39,13 @@ La Historia autorizada de Movimientos se consulta en orden descendente por `Move
 
 No existe integración automática con `Catalog`, Product, ventas u `OrderOperations`: `Product != InventoryItem`. Order, Confirmation, Preparation y Delivery no crean Movimientos de Inventory automáticamente.
 
-## Frescura operacional aprobada para Slice 8
+## Frescura operacional implementada para Slice 8
 
-El vertical pendiente usará exclusivamente el scope SSE estático `inventory.operation` para el listado autoritativo `GET /api/inventory/operations/items`. Exige Session utilizable, Identity activa e `InventoryOperation`; `InventoryConfiguration` no hereda ese scope. La única señal opaca será `inventory.operation.changed`, sin ItemId, cantidades, unidad, revisión, Movimiento, actor, Conteo, Reconciliación ni Historia.
+El vertical usa exclusivamente el scope SSE estático `inventory.operation` para el listado autoritativo `GET /api/inventory/operations/items`. Exige Session utilizable, Identity activa e `InventoryOperation`; `InventoryConfiguration` no hereda ese scope. La autoridad conectada se revalida fail-closed y el tráfico SSE no renueva inactividad de Session. La única señal opaca es `inventory.operation.changed`, sin UUID, `scopeId`, ItemId, cantidades, unidad, revisión, Movimiento, actor, Conteo, Reconciliación ni Historia.
 
-Sólo publican después de commit los cambios nuevos de Estado operacional: creación visible de Item, Entry, Manual Exit, Waste y Reconciliación que crea Movimiento, incluida la fijación inicial de existencia. Conteo, Reconciliación sin discrepancia, replay, rechazo, no-op, conflicto y rollback no publican. `MovementRevision` y la validación backend de Reconciliación siguen siendo autoritativos; SSE no convierte una observación vieja en válida. No hay semántica terminal mientras lifecycle de Item siga diferido. El detalle completo está en [SSE y frescura multiusuario](../architecture/sse-and-freshness.md#sse-10--vertical-aprobado-frescura-operacional-de-inventory).
+Es un scope de lista porque la superficie real es el listado operacional actual. No existe un GET exacto de State actual por Item y suscribir filas como `inventory.item:<id>` podría exceder el límite de transporte y dejar cobertura incompleta. Un feed genérico que mezclara Estado operacional, configuración e Historia tampoco representa el read. No hay regla de visibilidad por Item para esta superficie list-wide.
+
+Sólo publican después de commit los cambios nuevos de Estado operacional: creación visible de Item, Entry, Manual Exit, Waste y Reconciliación que crea Movimiento, incluida la fijación inicial de existencia. Conteo, Reconciliación sin discrepancia, observación stale rechazada, replay exacto, rechazo, no-op, conflicto y rollback no publican. El publisher es best-effort: un fallo posterior no revierte el State comprometido. `MovementRevision` y la validación backend de Reconciliación siguen siendo autoritativos; SSE no convierte una observación vieja en válida ni reemplaza concurrencia. Un saldo negativo sigue siendo State válido y sólo el GET autoritativo determina su advertencia visible. No hay semántica terminal mientras lifecycle de Item siga diferido. El detalle completo está en [SSE y frescura multiusuario](../architecture/sse-and-freshness.md#sse-10--vertical-implementado-frescura-operacional-de-inventory).
 
 ## Migraciones
 
@@ -58,7 +60,6 @@ Las migraciones vigentes de Inventory en Slice 5 son:
 - Movement Correction de Inventory; la forma final de su relación con Movimientos previos no está decidida aquí;
 - `retire/reactivate/delete` de InventoryItem;
 - Unit Correction de InventoryItem y sus reglas antes/después de existir Historia;
-- implementación del vertical SSE operacional aprobado en Slice 8;
 - persistencia cross-reload de intents inciertos de Inventory;
 - política final de reutilización de nombres antes de materializar lifecycle de InventoryItem;
 

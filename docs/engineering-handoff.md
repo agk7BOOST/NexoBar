@@ -30,4 +30,8 @@ Consulta solo los temas afectados y sus dependencias explícitas. Los pendientes
 
 Las rutas de instrucciones locales empiezan en [backend](../backend/AGENTS.md), [frontend](../frontend/AGENTS.md), [tests backend](../backend/tests/AGENTS.md), [scripts](../scripts/AGENTS.md) y [docs](AGENTS.md).
 
+## Estado actual de Slice
+
+**Slice 8 — SSE / Multi-user Freshness: CLOSED.** Preparation por destino, Order activo e Inventory operacional son las superficies MVP de frescura implementadas y verificadas verticalmente. La decisión, evidencia y límites —incluida la única instancia backend activa— pertenecen a [SSE y frescura](architecture/sse-and-freshness.md). Los feeds de otros módulos y mecanismos futuros multi-instancia permanecen diferidos; este cierre no inicia ni diseña el siguiente Slice.
+
 Solo para trazabilidad: [checkpoints históricos de slices](history/slice-checkpoints.md) y [auditoría de esta reorganización](context-audit.md). No son fuentes de nuevas decisiones ni lecturas de arranque obligatorias.
