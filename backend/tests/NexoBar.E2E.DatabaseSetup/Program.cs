@@ -85,6 +85,8 @@ try
     var cancellationOperator = new Identity("Cancelación completa E2E", true);
     var inventoryConfigurator = new Identity("Configurador Inventario E2E", true);
     var inventoryOperator = new Identity("Operador Inventario E2E", true);
+    var inventorySseOperatorA = new Identity("Operador Inventario SSE A E2E", true);
+    var inventorySseOperatorB = new Identity("Operador Inventario SSE B E2E", true);
     identitiesAndCapabilities.Identities.AddRange(
         preparer,
         secondPreparer,
@@ -93,7 +95,9 @@ try
         interventionOperator,
         cancellationOperator,
         inventoryConfigurator,
-        inventoryOperator);
+        inventoryOperator,
+        inventorySseOperatorA,
+        inventorySseOperatorB);
     identitiesAndCapabilities.ResponsibilityAssignments.AddRange(
         new ResponsibilityAssignment(
             priceCatalogConfigurator.Id,
@@ -121,6 +125,12 @@ try
             FunctionalResponsibility.InventoryConfiguration),
         new ResponsibilityAssignment(
             inventoryOperator.Id,
+            FunctionalResponsibility.InventoryOperation),
+        new ResponsibilityAssignment(
+            inventorySseOperatorA.Id,
+            FunctionalResponsibility.InventoryOperation),
+        new ResponsibilityAssignment(
+            inventorySseOperatorB.Id,
             FunctionalResponsibility.InventoryOperation));
     identitiesAndCapabilities.PreparationEnablements.AddRange(
         new PreparationEnablement(preparer.Id, kitchen.Id),
@@ -174,6 +184,36 @@ try
             "inventory-operation-e2e",
             "inventory-operation-e2e-secret",
             CancellationToken.None);
+    await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+        .ProvisionAsync(
+            inventorySseOperatorA.Id,
+            "inventory-operation-sse-a-e2e",
+            "inventory-operation-sse-a-e2e-secret",
+            CancellationToken.None);
+    await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+        .ProvisionAsync(
+            inventorySseOperatorB.Id,
+            "inventory-operation-sse-b-e2e",
+            "inventory-operation-sse-b-e2e-secret",
+            CancellationToken.None);
+
+    var inventorySseItemId = Guid.CreateVersion7();
+    await inventory.Database.ExecuteSqlInterpolatedAsync($"""
+        INSERT INTO inventory.inventory_items (
+            id,
+            current_registered_quantity,
+            movement_revision,
+            normalized_operational_name,
+            operational_name,
+            operational_unit)
+        VALUES (
+            {inventorySseItemId},
+            {10m},
+            {0L},
+            {"INSUMO SSE INVENTARIO E2E"},
+            {"Insumo SSE Inventario E2E"},
+            {"unidades"})
+        """);
 
     var authorizedProduct = new Product(
         Guid.CreateVersion7(),
