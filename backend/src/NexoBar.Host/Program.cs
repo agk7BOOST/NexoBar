@@ -4,7 +4,19 @@ using NexoBar.IdentitiesAndCapabilities;
 using NexoBar.Inventory;
 using NexoBar.OperationalConfiguration;
 using NexoBar.OrderOperations;
+using NexoBar.Host;
 using NexoBar.Host.Notifications;
+
+var commandSelection = HostCommandLine.Parse(args);
+if (commandSelection.Mode == HostExecutionMode.ProvisionInitialAdmin)
+{
+    return await HostInitialProvisioningCommand.ExecuteAsync(
+        commandSelection,
+        Console.In,
+        Console.Out,
+        Console.IsInputRedirected,
+        CancellationToken.None);
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,5 +55,7 @@ app.MapOrderOperationsEndpoints();
 app.MapSseTransport();
 
 app.Run();
+
+return 0;
 
 public partial class Program;

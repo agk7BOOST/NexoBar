@@ -97,6 +97,9 @@ public static class IdentitiesAndCapabilitiesModule
         services.AddScoped<IdentitySessionService>();
         services.AddScoped<CurrentPreparationDestinationQueryService>();
         services.AddScoped<LocalCredentialProvisioner>();
+        services.AddScoped<InitialProvisioningService>();
+        services.AddScoped<IInitialProvisioningService>(services =>
+            services.GetRequiredService<InitialProvisioningService>());
         services.AddScoped<PreparationEnablementService>();
         services.AddScoped<IdentityAdministrationService>();
 

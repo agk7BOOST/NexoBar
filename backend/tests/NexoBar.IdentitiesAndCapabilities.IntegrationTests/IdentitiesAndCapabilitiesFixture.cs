@@ -366,6 +366,36 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    internal async Task<int> CountInstallationProvisioningFactsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .InstallationProvisioningFacts.CountAsync(cancellationToken);
+    }
+
+    internal async Task<InitialProvisioningResult> ProvisionInitialAsync(
+        InitialProvisioningRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IInitialProvisioningService>()
+            .ProvisionAsync(request, cancellationToken);
+    }
+
+    internal async Task<LoginResult> LoginAsync(
+        string loginIdentifier,
+        string secret,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitySessionService>()
+            .LoginAsync(loginIdentifier, secret, cancellationToken);
+    }
+
     internal async Task<FunctionalResponsibility[]> ReadResponsibilitiesAsync(
         Guid identityId,
         CancellationToken cancellationToken)
