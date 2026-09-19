@@ -7,6 +7,25 @@
 - Un replay de efecto ya confirmado sigue la regla local documentada: no reinterpreta su Historia por una revocación posterior de capacidad. No generalices ese tratamiento a intenciones nuevas.
 - El alcance de protección existente es explícito: los endpoints anónimos pendientes de retrofit no se consideran protegidos por esta guía. Las reglas completas de cookie, antiforgery, credenciales, sesión y estabilización están en [Identities](../identities-and-capabilities/security.md); leerlas cuando la tarea afecte esos mecanismos.
 
+## AD-SEC-06 — Provisioning inicial de la primera vía administrativa
+
+Una instalación nueva se inicializa una sola vez mediante provisioning técnico. Ese provisioning crea una Identity activa, su credencial local y la asignación `GeneralConfiguration` inicial. Tras la primera inicialización exitosa, el bootstrap queda permanentemente indisponible.
+
+No es funcionalidad ordinaria de la aplicación, no crea un administrador técnico permanente ni un superadministrador, y no es un endpoint HTTP anónimo permanente. Debe ser técnicamente trazable. AD-SEC-06 no decide todavía el comando, herramienta o canal concreto.
+
+Si después se pierden todos los caminos de `GeneralConfiguration`, el bootstrap no se reactiva: aplica el recovery extraordinario pendiente de `AD-SEC-01`.
+
+## S9 — Secure Configuration Foundations
+
+Los endpoints existentes de `Catalog` y `OperationalConfiguration` siguen anónimos y no satisfacen todavía esta frontera. El retrofit debe separar los reads administrativos de los operacionales y autorizar los writes por actor.
+
+- `OperationalConfiguration` administra y lista Preparation Responsibilities con `GeneralConfiguration`.
+- La administración de Catalog requiere `CatalogConfiguration`.
+- La exploración operacional de Products para Composición/Confirmation requiere `OrderOperationsAndBasicClosure`; la visibilidad de la excepción de Product temporalmente no disponible exige además `OperationalIntervention`.
+- No existe una responsabilidad `CatalogRead`.
+
+Los comandos retrofitados de ambos módulos deben obtener en servidor el actor autenticado, exigir Session utilizable, Identity activa, responsabilidad vigente y antiforgery, y persistir la identidad durable del actor en su registro local de idempotencia. Un replay requiere igualdad exacta de actor, command kind e intención canonical; la misma key con actor o intención incompatibles produce conflicto. Esta regla reutiliza la semántica local de idempotencia; no crea una infraestructura compartida nueva.
+
 ## AD-SEC-05 — Visibilidad operacional del Pedido activo
 
 Esta Adenda rige la lectura del Estado operacional actual de un Order. Una Identity activa con `OrderOperationsAndBasicClosure` puede localizar y leer los Orders operacionalmente activos dentro del alcance operacional de NexoBar. Para el MVP no hay restricción adicional por Identity creadora, owner, operador asignado, Session de origen, dispositivo, Context ni asignación personal del Order. Context es información de coordinación operacional, no una frontera de autorización.
@@ -26,7 +45,6 @@ El retrofit AD-SEC-05 está implementado consistentemente en el lookup general d
 Este inventario no define políticas nuevas ni afirma seguridad global completa.
 
 - retrofit global de autenticación/autorización para endpoints todavía anónimos, según corresponda: Catalog, OperationalConfiguration y otros endpoints funcionales actuales no cubiertos. Confirmaciones ya tienen el retrofit de Slice 6;
-- bootstrap productivo de Identity y credenciales;
 - implementación de recovery extraordinario (`AD-SEC-01`) y UX de recovery ordinario;
 - decisión normativa de parámetros de timeout (`PAR-SEC-02`) y política cuantitativa de brute-force/lockout;
 - frontend administrativo completo;

@@ -34,4 +34,16 @@ Las rutas de instrucciones locales empiezan en [backend](../backend/AGENTS.md), 
 
 **Slice 8 — SSE / Multi-user Freshness: CLOSED.** Preparation por destino, Order activo e Inventory operacional son las superficies MVP de frescura implementadas y verificadas verticalmente. La decisión, evidencia y límites —incluida la única instancia backend activa— pertenecen a [SSE y frescura](architecture/sse-and-freshness.md). Los feeds de otros módulos y mecanismos futuros multi-instancia permanecen diferidos; este cierre no inicia ni diseña el siguiente Slice.
 
+**Siguiente frontera: Slice 9 — Secure Configuration Foundations.** Su objetivo inicial no es completar toda la administración: establece las bases seguras y correctas por capacidad del comportamiento existente de Catalog y OperationalConfiguration.
+
+La secuencia actual es:
+
+1. **S9-I0** — provisioning de instalación inicial.
+2. **S9-I1A** — asegurar la API existente de OperationalConfiguration.
+3. **S9-I1B** — asegurar y separar reads/writes de Catalog.
+4. **S9-I1C** — adaptar frontend a reads autenticados y conscientes de capacidad para configuración y Catalog operacional.
+5. **S9-I1D** — checkpoint de seguridad cross-capability.
+
+Permanecen como trabajo posterior y separado: override de Product no disponible RF-PED-024/RF-PED-025, UI de administración GeneralConfiguration, UI de Preparation Responsibility, Contexts, recovery, Delete Identity, lifecycle restante de Catalog, y SSE de Catalog/OperationalConfiguration. No están implementados por esta planificación.
+
 Solo para trazabilidad: [checkpoints históricos de slices](history/slice-checkpoints.md) y [auditoría de esta reorganización](context-audit.md). No son fuentes de nuevas decisiones ni lecturas de arranque obligatorias.
