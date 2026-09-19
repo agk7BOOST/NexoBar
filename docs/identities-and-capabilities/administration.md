@@ -20,7 +20,33 @@ POST /api/identities/{identityId}/preparation-enablement/{responsibilityId}/revo
 
 La administración ordinaria debe preservar al menos un camino operacional vigente de `GeneralConfiguration`. La definición técnica actual del camino es: Identity activa + assignment `GeneralConfiguration` + `LocalCredential` utilizable. No requiere una sesión activa. Un advisory lock estable, transaction-scoped, serializa las mutaciones administrativas relevantes y evita carreras de revocación/desactivación que dejen cero caminos. Esto no implementa recovery extraordinario: `AD-SEC-01` continúa pendiente productivamente.
 
-El primer camino de una instalación nueva procede del provisioning técnico único de `AD-SEC-06`: crea la Identity activa, credencial local y asignación `GeneralConfiguration` iniciales. Una vez inicializada la instalación, ese bootstrap no puede reutilizarse como administración ordinaria ni como recovery. El detalle de comando, herramienta o canal permanece abierto en la Adenda; véanse las [fronteras de seguridad](../architecture/security-boundaries.md).
+### Provisioning inicial técnico (`AD-SEC-06`)
+
+El primer camino de una instalación nueva procede del subcomando Host `provision-initial-admin`. Crea exactamente una Identity activa, una `LocalCredential` y la asignación `GeneralConfiguration`; no acepta responsabilidades adicionales, habilitaciones de Preparation ni un flag de actividad.
+
+Sus entradas obligatorias son `--operational-name`, `--login-identifier`, `--command-id` UUID v4 y el secret de credencial por stdin redirigido. El secret no es un argumento. Una invocación conceptual es:
+
+```text
+<protected-secret-source> | dotnet NexoBar.Host.dll provision-initial-admin --operational-name "<operational-name>" --login-identifier "<login>" --command-id "<uuid-v4>"
+```
+
+`<protected-secret-source>` representa un mecanismo de secreto del entorno de despliegue que escribe una sola línea; no debe reemplazarse por un secret literal en el historial de shell. Stdin interactivo se rechaza. El Host entra en este modo antes de construir `WebApplication`: compone sólo lo necesario, no abre listeners HTTP y termina al devolver el resultado.
+
+La autoridad es la de ejecución del proceso/deployment. Antes del provisioning no existe Session ni Identity NexoBar que autorice el acto; no existe responsabilidad Bootstrap y no se crea una Identity técnica, superadministrador ni comando administrativo ordinario.
+
+Hay dos gates acumulativos: el proceso debe invocar explícitamente `provision-initial-admin` y no debe existir `InstallationProvisioningFact`. La ausencia del fact no autoriza el startup ordinario del Host. Si el fact existe, siempre prevalece sobre argumentos o configuración de deployment: una tentativa independiente devuelve `already_initialized` y no muta Estado.
+
+El fact pertenece a `IdentitiesAndCapabilities`. La migración inserta exactamente un `LegacyBackfill` si una base pre-feature contiene cualquier Identity, incluso inactiva o sin credencial/`GeneralConfiguration`; una base vacía no recibe un fact inventado. Por eso el operador sólo debe ejecutar el subcomando contra una base positivamente destinada a una instalación nueva: una base vacía no se considera automáticamente fresca o segura.
+
+Identity, `LocalCredential`, asignación `GeneralConfiguration` y `InstallationProvisioningFact` se confirman juntos en una transacción de `IdentitiesAndCapabilities`. Un advisory transaction lock PostgreSQL serializa las tentativas y deja como máximo una tentativa independiente exitosa.
+
+El operador/deployment conserva el command ID mientras el resultado sea incierto. El mismo command ID, intención canónica (nombre operacional y login normalizado) y secret produce `replayed_success`; el mismo ID con intención o secret distinto produce `intent_conflict`; un ID distinto tras el éxito produce `already_initialized`. El reintento compara el secret mediante un verifier lento persistido; no expone `RetrySecretVerifier`.
+
+Los outcomes y exits son estables para scripts: `success`/`replayed_success` = 0, `infrastructure_failure` = 1, `invalid_input` = 2, `already_initialized` = 3, `intent_conflict` = 4 y `duplicate_login` = 5. La salida ordinaria no contiene secret ni verifier/hash.
+
+`InstallationProvisioningFact` es el hecho durable del provisioning exitoso. Los logs estructurados registran metadatos seguros de intento, outcome, command ID y, en el éxito, Identity ID; excluyen secrets y verifiers. No existe por ello una facilidad genérica de auditoría administrativa durable.
+
+Una vez inicializada la instalación, bootstrap no es administración ordinaria ni recovery. Desactivar/eliminar administradores, perder credenciales o perder Sessions no reactiva el subcomando. La recuperación extraordinaria posterior pertenece a `AD-SEC-01`, que sigue separada y pendiente. Véanse las [fronteras de seguridad](../architecture/security-boundaries.md).
 
 Los comandos administrativos durables usan `Idempotency-Key` UUID v4 y persisten `ActorIdentityId`, command kind, fingerprint estructural y result payload. La misma combinación actor/key/intención hace replay; una key reutilizada con actor o intención diferentes produce conflicto. `SessionId` no es actor durable.
 

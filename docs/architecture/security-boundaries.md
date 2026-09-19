@@ -11,7 +11,7 @@
 
 Una instalación nueva se inicializa una sola vez mediante provisioning técnico. Ese provisioning crea una Identity activa, su credencial local y la asignación `GeneralConfiguration` inicial. Tras la primera inicialización exitosa, el bootstrap queda permanentemente indisponible.
 
-No es funcionalidad ordinaria de la aplicación, no crea un administrador técnico permanente ni un superadministrador, y no es un endpoint HTTP anónimo permanente. Debe ser técnicamente trazable. AD-SEC-06 no decide todavía el comando, herramienta o canal concreto.
+No es funcionalidad ordinaria de la aplicación, no crea un administrador técnico permanente ni un superadministrador, y no es un endpoint HTTP anónimo permanente. Debe ser técnicamente trazable. Está materializado por `provision-initial-admin`, ejecutado bajo autoridad de deployment/proceso, con stdin redirigido para el secret y sin listeners HTTP. El detalle operativo, gates, retry, observabilidad y exits está en la [administración de Identity](../identities-and-capabilities/administration.md#provisioning-inicial-técnico-ad-sec-06).
 
 Si después se pierden todos los caminos de `GeneralConfiguration`, el bootstrap no se reactiva: aplica el recovery extraordinario pendiente de `AD-SEC-01`.
 
