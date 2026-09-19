@@ -21,6 +21,9 @@ internal sealed class IdentitiesAndCapabilitiesDbContext(
     internal DbSet<IdentityAdministrativeCommand> AdministrativeCommands =>
         Set<IdentityAdministrativeCommand>();
 
+    internal DbSet<InstallationProvisioningFact> InstallationProvisioningFacts =>
+        Set<InstallationProvisioningFact>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("identities_and_capabilities");
@@ -30,6 +33,65 @@ internal sealed class IdentitiesAndCapabilitiesDbContext(
         modelBuilder.ApplyConfiguration(new ResponsibilityAssignmentConfiguration());
         modelBuilder.ApplyConfiguration(new PreparationEnablementConfiguration());
         modelBuilder.ApplyConfiguration(new IdentityAdministrativeCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new InstallationProvisioningFactConfiguration());
+    }
+
+    private sealed class InstallationProvisioningFactConfiguration :
+        IEntityTypeConfiguration<InstallationProvisioningFact>
+    {
+        public void Configure(EntityTypeBuilder<InstallationProvisioningFact> builder)
+        {
+            builder.ToTable(
+                "installation_provisioning",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_installation_provisioning_singleton",
+                        "singleton_key = 1");
+                    table.HasCheckConstraint(
+                        "CK_installation_provisioning_origin",
+                        "origin IN ('InitialProvisioning', 'LegacyBackfill')");
+                    table.HasCheckConstraint(
+                        "CK_installation_provisioning_initial_fields",
+                        "(origin = 'InitialProvisioning' AND " +
+                        "completed_at IS NOT NULL AND " +
+                        "provisioning_command_id IS NOT NULL AND " +
+                        "initial_identity_id IS NOT NULL AND " +
+                        "retry_intent_fingerprint IS NOT NULL AND " +
+                        "octet_length(retry_intent_fingerprint) > 0 AND " +
+                        "retry_secret_verifier IS NOT NULL AND " +
+                        "length(retry_secret_verifier) > 0) OR " +
+                        "(origin = 'LegacyBackfill' AND " +
+                        "completed_at IS NULL AND " +
+                        "provisioning_command_id IS NULL AND " +
+                        "initial_identity_id IS NULL AND " +
+                        "retry_intent_fingerprint IS NULL AND " +
+                        "retry_secret_verifier IS NULL)");
+                });
+            builder.HasKey(fact => fact.Key)
+                .HasName("PK_installation_provisioning");
+            builder.Property(fact => fact.Key)
+                .HasColumnName("singleton_key")
+                .ValueGeneratedNever();
+            builder.Property(fact => fact.Origin)
+                .HasColumnName("origin")
+                .HasConversion<string>()
+                .HasColumnType("text")
+                .IsRequired();
+            builder.Property(fact => fact.CompletedAt)
+                .HasColumnName("completed_at")
+                .HasColumnType("timestamp with time zone");
+            builder.Property(fact => fact.ProvisioningCommandId)
+                .HasColumnName("provisioning_command_id");
+            builder.Property(fact => fact.InitialIdentityId)
+                .HasColumnName("initial_identity_id");
+            builder.Property(fact => fact.RetryIntentFingerprint)
+                .HasColumnName("retry_intent_fingerprint")
+                .HasColumnType("bytea");
+            builder.Property(fact => fact.RetrySecretVerifier)
+                .HasColumnName("retry_secret_verifier")
+                .HasColumnType("text");
+        }
     }
 
     private sealed class IdentityAdministrativeCommandConfiguration :

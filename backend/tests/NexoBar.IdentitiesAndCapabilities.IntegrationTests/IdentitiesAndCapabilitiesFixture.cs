@@ -56,6 +56,7 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                identities_and_capabilities.installation_provisioning,
                 identities_and_capabilities.administrative_commands,
                 identities_and_capabilities.sessions,
                 identities_and_capabilities.local_credentials,
@@ -309,6 +310,45 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
             .AdministrativeCommands.CountAsync(cancellationToken);
     }
 
+    internal async Task MigrateIdentitiesAndCapabilitiesAsync(
+        string? targetMigration,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .Database.MigrateAsync(targetMigration, cancellationToken);
+    }
+
+    internal async Task<InstallationProvisioningFactSnapshot?>
+        ReadInstallationProvisioningFactAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .InstallationProvisioningFacts.AsNoTracking()
+            .Select(fact => new InstallationProvisioningFactSnapshot(
+                fact.Key,
+                fact.Origin,
+                fact.CompletedAt,
+                fact.ProvisioningCommandId,
+                fact.InitialIdentityId,
+                fact.RetryIntentFingerprint,
+                fact.RetrySecretVerifier))
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    internal async Task InsertInstallationProvisioningFactAsync(
+        InstallationProvisioningFact fact,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        dbContext.InstallationProvisioningFacts.Add(fact);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     internal async Task<CredentialSnapshot?> ReadCredentialAsync(
         Guid identityId,
         CancellationToken cancellationToken)
@@ -452,6 +492,15 @@ internal sealed record SessionSnapshot(
     DateTimeOffset LastActivityAt,
     DateTimeOffset AbsoluteExpiresAt,
     DateTimeOffset? RevokedAt);
+
+internal sealed record InstallationProvisioningFactSnapshot(
+    short Key,
+    InstallationProvisioningOrigin Origin,
+    DateTimeOffset? CompletedAt,
+    Guid? ProvisioningCommandId,
+    Guid? InitialIdentityId,
+    byte[]? RetryIntentFingerprint,
+    string? RetrySecretVerifier);
 
 internal sealed class ManualTimeProvider : TimeProvider
 {

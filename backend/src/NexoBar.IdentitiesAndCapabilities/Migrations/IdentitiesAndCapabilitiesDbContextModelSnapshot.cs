@@ -22,6 +22,64 @@ partial class IdentitiesAndCapabilitiesDbContextModelSnapshot : ModelSnapshot
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
         modelBuilder.Entity(
+            "NexoBar.IdentitiesAndCapabilities.InstallationProvisioningFact",
+            b =>
+            {
+                b.Property<short>("Key")
+                    .HasColumnType("smallint")
+                    .HasColumnName("singleton_key");
+                b.Property<DateTimeOffset?>("CompletedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("completed_at");
+                b.Property<Guid?>("InitialIdentityId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("initial_identity_id");
+                b.Property<string>("Origin")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("origin");
+                b.Property<Guid?>("ProvisioningCommandId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("provisioning_command_id");
+                b.Property<byte[]>("RetryIntentFingerprint")
+                    .HasColumnType("bytea")
+                    .HasColumnName("retry_intent_fingerprint");
+                b.Property<string>("RetrySecretVerifier")
+                    .HasColumnType("text")
+                    .HasColumnName("retry_secret_verifier");
+                b.HasKey("Key")
+                    .HasName("PK_installation_provisioning");
+                b.ToTable(
+                    "installation_provisioning",
+                    "identities_and_capabilities",
+                    t =>
+                    {
+                        t.HasCheckConstraint(
+                            "CK_installation_provisioning_singleton",
+                            "singleton_key = 1");
+                        t.HasCheckConstraint(
+                            "CK_installation_provisioning_origin",
+                            "origin IN ('InitialProvisioning', 'LegacyBackfill')");
+                        t.HasCheckConstraint(
+                            "CK_installation_provisioning_initial_fields",
+                            "(origin = 'InitialProvisioning' AND " +
+                            "completed_at IS NOT NULL AND " +
+                            "provisioning_command_id IS NOT NULL AND " +
+                            "initial_identity_id IS NOT NULL AND " +
+                            "retry_intent_fingerprint IS NOT NULL AND " +
+                            "octet_length(retry_intent_fingerprint) > 0 AND " +
+                            "retry_secret_verifier IS NOT NULL AND " +
+                            "length(retry_secret_verifier) > 0) OR " +
+                            "(origin = 'LegacyBackfill' AND " +
+                            "completed_at IS NULL AND " +
+                            "provisioning_command_id IS NULL AND " +
+                            "initial_identity_id IS NULL AND " +
+                            "retry_intent_fingerprint IS NULL AND " +
+                            "retry_secret_verifier IS NULL)");
+                    });
+            });
+
+        modelBuilder.Entity(
             "NexoBar.IdentitiesAndCapabilities.IdentityAdministrativeCommand",
             b =>
             {
