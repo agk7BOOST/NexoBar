@@ -40,12 +40,14 @@ Las rutas de instrucciones locales empiezan en [backend](../backend/AGENTS.md), 
 
 **S9-I1A — API existente de OperationalConfiguration: CLOSED.** El GET administrativo y el create de Preparation Responsibilities exigen Session utilizable, Identity activa y `GeneralConfiguration`; el create además preserva antiforgery, actor durable e idempotencia/replay exacto.
 
+**S9-I2 — General Configuration Administration Vertical: CLOSED.** La UI conecta las operaciones administrativas de Identity con sesiones y endpoints asegurados reales, preserva la vía administrativa final y cubre el reemplazo de credencial propia. El detalle de contrato está en [Administración de Identity](identities-and-capabilities/administration.md#vertical-web-s9-i2--general-configuration) y la evidencia en [Testing](testing/verification.md).
+
 La secuencia restante es:
 
 1. **S9-I1B** — asegurar y separar reads/writes de Catalog.
 2. **S9-I1C** — adaptar frontend a reads autenticados y conscientes de capacidad para configuración y Catalog operacional.
 3. **S9-I1D** — checkpoint de seguridad cross-capability.
 
-Permanecen como trabajo posterior y separado: override de Product no disponible RF-PED-024/RF-PED-025, UI de administración GeneralConfiguration, UI de Preparation Responsibility, Contexts, recovery, Delete Identity, lifecycle restante de Catalog, y SSE de Catalog/OperationalConfiguration. No están implementados por esta planificación.
+Permanecen como trabajo posterior y separado: override de Product no disponible RF-PED-024/RF-PED-025, Delete Identity, recovery ordinario y extraordinario (`AD-SEC-01`), UI de lifecycle/administración de Preparation Responsibility más allá de los contratos existentes, Contexts, administración arbitraria de Sessions, UI de bootstrap, lifecycle restante de Catalog y los demás trabajos de Slice 9, incluido SSE de Catalog/OperationalConfiguration. Slice 9 permanece OPEN; no están implementados por esta planificación.
 
 Solo para trazabilidad: [checkpoints históricos de slices](history/slice-checkpoints.md) y [auditoría de esta reorganización](context-audit.md). No son fuentes de nuevas decisiones ni lecturas de arranque obligatorias.

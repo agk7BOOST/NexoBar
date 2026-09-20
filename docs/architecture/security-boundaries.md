@@ -49,7 +49,7 @@ Este inventario no define políticas nuevas ni afirma seguridad global completa.
 - retrofit global de autenticación/autorización para endpoints todavía anónimos, según corresponda: otros endpoints funcionales actuales no cubiertos. Confirmaciones ya tienen el retrofit de Slice 6;
 - implementación de recovery extraordinario (`AD-SEC-01`) y UX de recovery ordinario;
 - decisión normativa de parámetros de timeout (`PAR-SEC-02`) y política cuantitativa de brute-force/lockout;
-- frontend administrativo completo;
+- frontend administrativo restante más allá del vertical actual de GeneralConfiguration;
 - elegibilidad de Delete Identity y coordinación con Historia;
 - auditoría global de seguridad y consumo de autenticación en SSE;
 
