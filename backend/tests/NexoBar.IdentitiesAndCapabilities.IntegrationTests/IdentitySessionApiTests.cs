@@ -81,9 +81,10 @@ public sealed class IdentitySessionApiTests(IdentitiesAndCapabilitiesFixture fix
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var current = await response.Content.ReadFromJsonAsync<CurrentIdentityResponse>(
             cancellationToken: token);
-        Assert.Equal(
-            new CurrentIdentityResponse(identity.Id, "Ana Operativa"),
-            current);
+        Assert.NotNull(current);
+        Assert.Equal(identity.Id, current.IdentityId);
+        Assert.Equal("Ana Operativa", current.OperationalName);
+        Assert.Empty(current.Responsibilities);
         var sessionCookie = ReadSessionSetCookie(response);
         Assert.Contains("; path=/", sessionCookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("; httponly", sessionCookie, StringComparison.OrdinalIgnoreCase);
@@ -190,7 +191,7 @@ public sealed class IdentitySessionApiTests(IdentitiesAndCapabilitiesFixture fix
     }
 
     [Fact]
-    public async Task Current_requires_authentication_and_returns_minimal_identity()
+    public async Task Current_requires_authentication_and_returns_current_minimal_self_context()
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
@@ -205,6 +206,15 @@ public sealed class IdentitySessionApiTests(IdentitiesAndCapabilitiesFixture fix
 
         var identity = await fixture.CreateIdentityAsync("Ana", true, token);
         await fixture.ProvisionCredentialAsync(identity.Id, "ana", "secret", token);
+        await fixture.InsertAssignmentAsync(
+            identity.Id,
+            FunctionalResponsibility.CatalogConfiguration,
+            token);
+        await fixture.InsertAssignmentAsync(
+            identity.Id,
+            FunctionalResponsibility.OrderOperationsAndBasicClosure,
+            token);
+        await fixture.InsertEnablementAsync(identity.Id, Guid.NewGuid(), token);
         using var authenticated = fixture.CreateClient();
         using var login = await LoginAsync(authenticated, "ana", "secret", token);
         login.EnsureSuccessStatusCode();
@@ -214,11 +224,89 @@ public sealed class IdentitySessionApiTests(IdentitiesAndCapabilitiesFixture fix
             token);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await response.Content.ReadAsStringAsync(token);
-        Assert.Contains(identity.Id.ToString("D"), json, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Ana", json, StringComparison.Ordinal);
+        var current = JsonSerializer.Deserialize<CurrentIdentityResponse>(
+            json,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(current);
+        Assert.Equal(identity.Id, current.IdentityId);
+        Assert.Equal("Ana", current.OperationalName);
+        Assert.Equal(
+            [
+                "CatalogConfiguration",
+                "OrderOperationsAndBasicClosure"
+            ],
+            current.Responsibilities);
+        Assert.Equal(
+            current.Responsibilities.OrderBy(code => code, StringComparer.Ordinal),
+            current.Responsibilities);
+        Assert.Equal(
+            current.Responsibilities.Distinct(StringComparer.Ordinal),
+            current.Responsibilities);
         Assert.DoesNotContain("sessionId", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("responsibil", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("enablement", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("isActive", json, StringComparison.OrdinalIgnoreCase);
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(
+            ["identityId", "operationalName", "responsibilities"],
+            document.RootElement.EnumerateObject().Select(property => property.Name));
+    }
+
+    [Fact]
+    public async Task Current_reflects_responsibility_grants_and_revocations_after_login()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var identity = await fixture.CreateIdentityAsync("Ana", true, token);
+        await fixture.ProvisionCredentialAsync(identity.Id, "ana", "secret", token);
+        await fixture.InsertAssignmentAsync(
+            identity.Id,
+            FunctionalResponsibility.GeneralConfiguration,
+            token);
+        using var client = fixture.CreateClient();
+        using var login = await LoginAsync(client, "ana", "secret", token);
+        login.EnsureSuccessStatusCode();
+
+        using (var initial = await client.GetAsync("/api/identity-sessions/current", token))
+        {
+            var current = await initial.Content.ReadFromJsonAsync<CurrentIdentityResponse>(
+                cancellationToken: token);
+            Assert.NotNull(current);
+            Assert.Equal(["GeneralConfiguration"], current.Responsibilities);
+        }
+
+        using (var grant = await SendCommandAsync(
+                   client,
+                   $"/api/identities/{identity.Id:D}/responsibilities/CatalogConfiguration/assign",
+                   token))
+        {
+            grant.EnsureSuccessStatusCode();
+        }
+
+        using (var afterGrant = await client.GetAsync("/api/identity-sessions/current", token))
+        {
+            var current = await afterGrant.Content.ReadFromJsonAsync<CurrentIdentityResponse>(
+                cancellationToken: token);
+            Assert.NotNull(current);
+            Assert.Equal(
+                ["CatalogConfiguration", "GeneralConfiguration"],
+                current.Responsibilities);
+        }
+
+        using (var revoke = await SendCommandAsync(
+                   client,
+                   $"/api/identities/{identity.Id:D}/responsibilities/CatalogConfiguration/revoke",
+                   token))
+        {
+            revoke.EnsureSuccessStatusCode();
+        }
+
+        using var afterRevoke = await client.GetAsync(
+            "/api/identity-sessions/current",
+            token);
+        var refreshed = await afterRevoke.Content.ReadFromJsonAsync<CurrentIdentityResponse>(
+            cancellationToken: token);
+        Assert.NotNull(refreshed);
+        Assert.Equal(["GeneralConfiguration"], refreshed.Responsibilities);
     }
 
     [Fact]
@@ -463,6 +551,21 @@ public sealed class IdentitySessionApiTests(IdentitiesAndCapabilitiesFixture fix
             HttpMethod.Delete,
             "/api/identity-sessions/current");
         request.Headers.Add("X-NexoBar-CSRF", requestToken);
+        return await client.SendAsync(request, cancellationToken);
+    }
+
+    private static async Task<HttpResponseMessage> SendCommandAsync(
+        HttpClient client,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var requestToken = await GetAntiforgeryTokenAsync(client, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = JsonContent.Create(new { })
+        };
+        request.Headers.Add("X-NexoBar-CSRF", requestToken);
+        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
         return await client.SendAsync(request, cancellationToken);
     }
 

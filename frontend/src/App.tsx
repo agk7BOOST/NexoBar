@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CatalogPanel } from "./catalog/CatalogPanel.tsx";
 import { listProducts, type Product } from "./catalog/catalogClient.ts";
 import {
@@ -43,6 +43,7 @@ function App() {
   const [deliveryOperationalReference, setDeliveryOperationalReference] =
     useState<string | null>(null);
   const [authState, setAuthState] = useState<AuthState>({ status: "loading" });
+  const identityGeneration = useRef(0);
   const [terminalOrders, setTerminalOrders] = useState<Record<string, boolean>>(
     {},
   );
@@ -115,12 +116,15 @@ function App() {
 
   useEffect(() => {
     let isCurrent = true;
+    const generation = identityGeneration.current;
     void getCurrentIdentity().then(
       (identity) => {
-        if (isCurrent) setAuthState({ status: "authenticated", identity });
+        if (isCurrent && identityGeneration.current === generation) {
+          setAuthState({ status: "authenticated", identity });
+        }
       },
       (error: unknown) => {
-        if (!isCurrent) return;
+        if (!isCurrent || identityGeneration.current !== generation) return;
         if (error instanceof SessionProblemError && error.status === 401) {
           discardAntiforgeryToken();
         }
@@ -133,6 +137,7 @@ function App() {
   }, []);
 
   const returnToLogin = useCallback(() => {
+    identityGeneration.current += 1;
     discardAntiforgeryToken();
     setAuthState({ status: "unauthenticated" });
     setActiveOperationalReference(null);
@@ -142,6 +147,11 @@ function App() {
     setEndingOrders({});
     setDeliveryBusy({});
     setPreparationBusy([]);
+  }, []);
+
+  const setAuthenticatedIdentity = useCallback((identity: CurrentIdentity) => {
+    identityGeneration.current += 1;
+    setAuthState({ status: "authenticated", identity });
   }, []);
 
   function activateOrder(operationalReference: string) {
@@ -203,9 +213,7 @@ function App() {
       {authState.status === "loading" && <p>Cargando sesión…</p>}
       {authState.status === "unauthenticated" && (
         <LoginPanel
-          onAuthenticated={(identity) =>
-            setAuthState({ status: "authenticated", identity })
-          }
+          onAuthenticated={setAuthenticatedIdentity}
         />
       )}
       {authState.status === "authenticated" && (

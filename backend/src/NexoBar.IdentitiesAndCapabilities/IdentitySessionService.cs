@@ -52,6 +52,10 @@ internal sealed class IdentitySessionService(
             return LoginResult.InvalidCredentials();
         }
 
+        var responsibilities = await ReadResponsibilityCodesAsync(
+            identity.Id,
+            cancellationToken);
+
         var now = SecurityTime.GetUtcNow(timeProvider);
         if (authenticatedContext.SessionId is { } replacedSessionId)
         {
@@ -83,7 +87,10 @@ internal sealed class IdentitySessionService(
 
         return LoginResult.Succeeded(
             generatedToken.RawToken,
-            new CurrentIdentityResponse(identity.Id, identity.OperationalName));
+            new CurrentIdentityResponse(
+                identity.Id,
+                identity.OperationalName,
+                responsibilities));
     }
 
     internal async Task<CurrentIdentityResponse?> ReadCurrentAsync(
@@ -94,13 +101,31 @@ internal sealed class IdentitySessionService(
             return null;
         }
 
-        return await dbContext.Identities.AsNoTracking()
+        var identity = await dbContext.Identities.AsNoTracking()
             .Where(identity => identity.Id == identityId && identity.IsActive)
-            .Select(identity => new CurrentIdentityResponse(
+            .Select(identity => new CurrentIdentityProjection(
                 identity.Id,
                 identity.OperationalName))
             .SingleOrDefaultAsync(cancellationToken);
+
+        return identity is null
+            ? null
+            : new CurrentIdentityResponse(
+                identity.IdentityId,
+                identity.OperationalName,
+                await ReadResponsibilityCodesAsync(identity.IdentityId, cancellationToken));
     }
+
+    private async Task<string[]> ReadResponsibilityCodesAsync(
+        Guid identityId,
+        CancellationToken cancellationToken) =>
+        (await dbContext.ResponsibilityAssignments.AsNoTracking()
+            .Where(assignment => assignment.IdentityId == identityId)
+            .OrderBy(assignment => assignment.ResponsibilityCode)
+            .Select(assignment => assignment.ResponsibilityCode)
+            .ToArrayAsync(cancellationToken))
+        .Select(responsibility => responsibility.ToString())
+        .ToArray();
 
     internal async Task LogoutAsync(CancellationToken cancellationToken)
     {
@@ -142,7 +167,14 @@ internal enum LoginOutcome
     InvalidCredentials
 }
 
-internal sealed record CurrentIdentityResponse(Guid IdentityId, string OperationalName);
+internal sealed record CurrentIdentityResponse(
+    Guid IdentityId,
+    string OperationalName,
+    IReadOnlyList<string> Responsibilities);
+
+internal sealed record CurrentIdentityProjection(
+    Guid IdentityId,
+    string OperationalName);
 
 internal sealed record LoginRequest(string? LoginIdentifier, string? Secret);
 

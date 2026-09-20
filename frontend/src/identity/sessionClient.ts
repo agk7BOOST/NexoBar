@@ -1,6 +1,14 @@
 export interface CurrentIdentity {
   identityId: string;
   operationalName: string;
+  responsibilities: string[];
+}
+
+export function hasResponsibility(
+  identity: CurrentIdentity,
+  responsibility: string,
+): boolean {
+  return identity.responsibilities.includes(responsibility);
 }
 
 export interface PreparationDestination {

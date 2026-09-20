@@ -18,6 +18,7 @@ describe("LoginPanel", () => {
     vi.mocked(login).mockResolvedValue({
       identityId: "identity-1",
       operationalName: "Ana",
+      responsibilities: ["CatalogConfiguration"],
     });
     const onAuthenticated = vi.fn();
     const user = userEvent.setup();
@@ -33,6 +34,7 @@ describe("LoginPanel", () => {
     expect(onAuthenticated).toHaveBeenCalledWith({
       identityId: "identity-1",
       operationalName: "Ana",
+      responsibilities: ["CatalogConfiguration"],
     });
   });
 

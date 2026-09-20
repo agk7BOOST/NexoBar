@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.tsx";
 import type { Product } from "./catalog/catalogClient.ts";
+import type { CurrentIdentity } from "./identity/sessionClient.ts";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -22,6 +23,11 @@ interface OrderLookupMockProps {
   activeOperationalReference: string | null;
   requestedLookup?: { operationalReference: string; sequence: number };
   onContinueOrder: (reference: string) => void;
+}
+
+interface SessionBarMockProps {
+  identity: CurrentIdentity;
+  onLoggedOut: () => void;
 }
 
 vi.mock("./catalog/CatalogPanel.tsx", () => ({
@@ -99,6 +105,30 @@ vi.mock("./inventory/InventoryPanel.tsx", () => ({
   InventoryPanel: () => <section aria-label="Inventario coordinado" />,
 }));
 
+vi.mock("./identity/SessionBar.tsx", () => ({
+  SessionBar: ({ identity, onLoggedOut }: SessionBarMockProps) => (
+    <section aria-label="Identity actual">
+      <span>{identity.operationalName}</span>
+      <span aria-label="Responsabilidades actuales">
+        {identity.responsibilities.join(",")}
+      </span>
+      <button type="button" onClick={onLoggedOut}>
+        Simular cierre de sesión
+      </button>
+    </section>
+  ),
+}));
+
+vi.mock("./notifications/NotificationSseProvider.tsx", () => ({
+  NotificationSseProvider: ({ children }: { children: React.ReactNode }) => children,
+  usePreparationDestinationInvalidation: () => undefined,
+  usePreparationConnectionGeneration: () => 0,
+  useOrderInvalidation: () => undefined,
+  useOrderConnectionGeneration: () => 0,
+  useInventoryOperationInvalidation: () => undefined,
+  useInventoryOperationConnectionGeneration: () => 0,
+}));
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -122,7 +152,11 @@ async function renderLoadedApp() {
   fetchMock
     .mockResolvedValueOnce(jsonResponse([listedProduct]))
     .mockResolvedValueOnce(
-      jsonResponse({ identityId: "identity-1", operationalName: "Ana" }),
+      jsonResponse({
+        identityId: "identity-1",
+        operationalName: "Ana",
+        responsibilities: [],
+      }),
     )
     .mockResolvedValueOnce(jsonResponse([]));
   const user = userEvent.setup();
@@ -245,7 +279,11 @@ describe("App coordination", () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse([listedProduct]))
       .mockResolvedValueOnce(
-        jsonResponse({ identityId: "identity-1", operationalName: "Ana" }),
+        jsonResponse({
+          identityId: "identity-1",
+          operationalName: "Ana",
+          responsibilities: [],
+        }),
       )
       .mockResolvedValueOnce(
         jsonResponse([
@@ -269,7 +307,11 @@ describe("App coordination", () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse([listedProduct]))
       .mockResolvedValueOnce(
-        jsonResponse({ identityId: "identity-1", operationalName: "Ana" }),
+        jsonResponse({
+          identityId: "identity-1",
+          operationalName: "Ana",
+          responsibilities: [],
+        }),
       )
       .mockResolvedValueOnce(
         jsonResponse([
@@ -296,7 +338,11 @@ describe("App coordination", () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse([listedProduct]))
       .mockResolvedValueOnce(
-        jsonResponse({ identityId: "identity-1", operationalName: "Ana" }),
+        jsonResponse({
+          identityId: "identity-1",
+          operationalName: "Ana",
+          responsibilities: [],
+        }),
       )
       .mockResolvedValueOnce(jsonResponse([]));
 
@@ -305,5 +351,63 @@ describe("App coordination", () => {
     expect(
       await screen.findByLabelText("Inventario coordinado"),
     ).toBeInTheDocument();
+  });
+
+  it("clears and replaces current responsibility context across session changes", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse([listedProduct]))
+      .mockResolvedValueOnce(
+        jsonResponse({ code: "authentication_required" }, 401),
+      )
+      .mockResolvedValueOnce(jsonResponse({ requestToken: "csrf-ana" }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          identityId: "identity-ana",
+          operationalName: "Ana",
+          responsibilities: ["CatalogConfiguration"],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse({ requestToken: "csrf-beto" }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          identityId: "identity-beto",
+          operationalName: "Beto",
+          responsibilities: ["OrderOperationsAndBasicClosure"],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse([]));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Ingresar" });
+    await user.type(screen.getByLabelText("Identificador de acceso"), "ana");
+    await user.type(screen.getByLabelText("Secreto"), "secret");
+    await user.click(screen.getByRole("button", { name: "Ingresar" }));
+
+    expect(
+      await screen.findByLabelText("Responsabilidades actuales"),
+    ).toHaveTextContent("CatalogConfiguration");
+
+    await user.click(
+      screen.getByRole("button", { name: "Simular cierre de sesión" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Ingresar" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Responsabilidades actuales"),
+    ).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Identificador de acceso"), "beto");
+    await user.type(screen.getByLabelText("Secreto"), "secret");
+    await user.click(screen.getByRole("button", { name: "Ingresar" }));
+
+    expect(
+      await screen.findByLabelText("Responsabilidades actuales"),
+    ).toHaveTextContent("OrderOperationsAndBasicClosure");
+    expect(screen.getByLabelText("Responsabilidades actuales")).not.toHaveTextContent(
+      "CatalogConfiguration",
+    );
   });
 });

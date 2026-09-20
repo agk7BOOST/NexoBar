@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   discardAntiforgeryToken,
   getCurrentIdentity,
+  hasResponsibility,
   listPreparationDestinations,
   login,
   logout,
@@ -28,12 +29,17 @@ describe("sessionClient", () => {
 
   it("reads the current Identity without exposing session material", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse({ identityId: "identity-1", operationalName: "Ana" }),
+      jsonResponse({
+        identityId: "identity-1",
+        operationalName: "Ana",
+        responsibilities: ["CatalogConfiguration"],
+      }),
     );
 
     await expect(getCurrentIdentity()).resolves.toEqual({
       identityId: "identity-1",
       operationalName: "Ana",
+      responsibilities: ["CatalogConfiguration"],
     });
     expect(fetchMock).toHaveBeenCalledWith("/api/identity-sessions/current", {
       credentials: "same-origin",
@@ -44,11 +50,19 @@ describe("sessionClient", () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ requestToken: "csrf-1" }))
       .mockResolvedValueOnce(
-        jsonResponse({ identityId: "identity-1", operationalName: "Ana" }),
+        jsonResponse({
+          identityId: "identity-1",
+          operationalName: "Ana",
+          responsibilities: ["CatalogConfiguration"],
+        }),
       )
       .mockResolvedValueOnce(jsonResponse({ requestToken: "csrf-2" }))
       .mockResolvedValueOnce(
-        jsonResponse({ identityId: "identity-1", operationalName: "Ana" }),
+        jsonResponse({
+          identityId: "identity-2",
+          operationalName: "Beto",
+          responsibilities: ["OrderOperationsAndBasicClosure"],
+        }),
       );
 
     await login("ana", "secret");
@@ -103,5 +117,18 @@ describe("sessionClient", () => {
     await expect(listPreparationDestinations()).rejects.toMatchObject({
       status: 403,
     });
+  });
+
+  it("reports only the current responsibility codes", () => {
+    const identity = {
+      identityId: "identity-1",
+      operationalName: "Ana",
+      responsibilities: ["CatalogConfiguration"],
+    };
+
+    expect(hasResponsibility(identity, "CatalogConfiguration")).toBe(true);
+    expect(
+      hasResponsibility(identity, "OrderOperationsAndBasicClosure"),
+    ).toBe(false);
   });
 });

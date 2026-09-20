@@ -20,7 +20,11 @@ vi.mock("../identity/sessionClient.ts", async importOriginal => ({
 beforeEach(() => { vi.mocked(getCurrentIdentity).mockReset(); });
 
 it("mounts the exact intervention lookup for an authenticated Identity without Preparation claims", async () => {
-  vi.mocked(getCurrentIdentity).mockResolvedValue({ identityId: "actor", operationalName: "Operador" });
+  vi.mocked(getCurrentIdentity).mockResolvedValue({
+    identityId: "actor",
+    operationalName: "Operador",
+    responsibilities: ["OperationalIntervention"],
+  });
   render(<App />);
   expect(await screen.findByRole("region", { name: "Intervención operacional" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Consultar para intervenir" })).toBeEnabled();
