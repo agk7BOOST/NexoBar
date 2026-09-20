@@ -9,6 +9,9 @@ public interface IPreparationResponsibilityLookup
 {
     Task<bool> ExistsAsync(Guid responsibilityId, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<PreparationResponsibilityReference>> ListAsync(
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<PreparationResponsibilityReference>> ReadByIdsAsync(
         IReadOnlyCollection<Guid> responsibilityIds,
         DbTransaction transaction,
@@ -30,6 +33,16 @@ internal sealed class PreparationResponsibilityLookup(
             .AnyAsync(
                 responsibility => responsibility.Id == responsibilityId,
                 cancellationToken);
+
+    public async Task<IReadOnlyList<PreparationResponsibilityReference>> ListAsync(
+        CancellationToken cancellationToken) =>
+        await dbContext.PreparationResponsibilities.AsNoTracking()
+            .OrderBy(responsibility => responsibility.OperationalName)
+            .ThenBy(responsibility => responsibility.Id)
+            .Select(responsibility => new PreparationResponsibilityReference(
+                responsibility.Id,
+                responsibility.OperationalName))
+            .ToArrayAsync(cancellationToken);
 
     public async Task<IReadOnlyList<PreparationResponsibilityReference>> ReadByIdsAsync(
         IReadOnlyCollection<Guid> responsibilityIds,

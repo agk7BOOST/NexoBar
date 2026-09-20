@@ -252,6 +252,7 @@ public sealed class ProductPreparationConfigurationApiTests(CatalogApiFixture fi
         var unexpected = new UnexpectedPreparationResponsibilityLookup();
         await using var application = fixture.CreateApplicationWithPreparationLookup(unexpected);
         using var client = application.CreateClient();
+        await fixture.AuthenticateAsync(client, "catalog-test-administrator", "secret");
         using var replay = await ChangeAsync(
             client, product.Id, null, responsibility.Id, key, token);
         Assert.Equal(expected, await ReadSuccessAsync(replay, token));
@@ -499,6 +500,11 @@ internal sealed class UnexpectedPreparationResponsibilityLookup :
         WasCalled = true;
         return Task.FromResult(true);
     }
+
+    public Task<IReadOnlyList<PreparationResponsibilityReference>> ListAsync(
+        CancellationToken cancellationToken) =>
+        throw new InvalidOperationException(
+            "Preparation Responsibility list lookup was not expected.");
 
     public Task<IReadOnlyList<PreparationResponsibilityReference>> ReadByIdsAsync(
         IReadOnlyCollection<Guid> responsibilityIds,

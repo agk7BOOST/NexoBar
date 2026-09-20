@@ -18,6 +18,12 @@ internal sealed record ProductResponse(
     bool RequiresPreparation,
     Guid? PreparationResponsibilityId);
 
+public sealed record OperationalProductResponse(
+    Guid Id,
+    string OperationalName,
+    string Price,
+    bool IsAvailable);
+
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record ChangeProductPriceRequest(
     string ExpectedCurrentPrice,

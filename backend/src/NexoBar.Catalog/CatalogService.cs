@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using NexoBar.IdentitiesAndCapabilities;
 using NexoBar.OperationalConfiguration;
 using Npgsql;
 
@@ -8,7 +10,11 @@ namespace NexoBar.Catalog;
 
 internal sealed class CatalogService(
     CatalogDbContext dbContext,
-    IPreparationResponsibilityLookup preparationResponsibilities)
+    IPreparationResponsibilityLookup preparationResponsibilities,
+    IAuthenticatedSessionStabilizer sessionStabilizer,
+    ICatalogConfigurationCapabilityStabilizer catalogConfiguration,
+    IOrderOperationsAuthorization orderOperationsAuthorization,
+    IOperationalInterventionCapabilityStabilizer operationalIntervention)
 {
     private const long ProductCreationLockNamespace = 0x434154414C4F4700;
     private const long ProductPriceChangeLockNamespace = 0x5052494345434800;
@@ -36,6 +42,14 @@ internal sealed class CatalogService(
             $"SELECT pg_advisory_xact_lock({lockKey})",
             cancellationToken);
 
+        var actor = await sessionStabilizer.StabilizeAsync(
+            transaction.GetDbTransaction(), cancellationToken);
+        if (actor is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CreateProductResult.AuthenticationRequired();
+        }
+
         var existingCommand = await dbContext.ProductCreationCommands
             .AsNoTracking()
             .SingleOrDefaultAsync(
@@ -47,11 +61,19 @@ internal sealed class CatalogService(
             await transaction.CommitAsync(cancellationToken);
 
             return existingCommand.Matches(
+                actor.IdentityId,
                 intent.OperationalName,
                 intent.Price,
                 intent.RequiresPreparation)
                 ? CreateProductResult.Created(Map(existingCommand))
                 : CreateProductResult.IdempotencyConflict();
+        }
+
+        if (!await catalogConfiguration.StabilizeResponsibilityAsync(
+                actor.IdentityId, transaction.GetDbTransaction(), cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CreateProductResult.CatalogConfigurationRequired();
         }
 
         var product = new Product(
@@ -61,6 +83,7 @@ internal sealed class CatalogService(
         var response = Map(product);
         var command = new ProductCreationCommand(
             idempotencyKey,
+            actor.IdentityId,
             intent.OperationalName,
             intent.Price,
             intent.RequiresPreparation,
@@ -88,9 +111,24 @@ internal sealed class CatalogService(
         return CreateProductResult.Created(response);
     }
 
-    internal async Task<IReadOnlyList<ProductResponse>> ListActiveProductsAsync(
+    internal async Task<CatalogProductListResult> ListAdministrativeProductsAsync(
         CancellationToken cancellationToken)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            cancellationToken);
+        var actor = await sessionStabilizer.StabilizeAsync(
+            transaction.GetDbTransaction(), cancellationToken);
+        if (actor is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CatalogProductListResult.AuthenticationRequired();
+        }
+        if (!await catalogConfiguration.StabilizeResponsibilityAsync(
+                actor.IdentityId, transaction.GetDbTransaction(), cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CatalogProductListResult.CatalogConfigurationRequired();
+        }
         var products = await dbContext.Products
             .AsNoTracking()
             .Where(product => product.IsActive)
@@ -98,7 +136,8 @@ internal sealed class CatalogService(
             .ThenBy(product => product.Id)
             .ToListAsync(cancellationToken);
 
-        return products.Select(Map).ToArray();
+        await transaction.CommitAsync(cancellationToken);
+        return CatalogProductListResult.Succeeded(products.Select(Map).ToArray());
     }
 
     internal async Task<ChangeProductPriceResult> ChangeProductPriceAsync(
@@ -125,6 +164,14 @@ internal sealed class CatalogService(
             $"SELECT pg_advisory_xact_lock({lockKey})",
             cancellationToken);
 
+        var actor = await sessionStabilizer.StabilizeAsync(
+            transaction.GetDbTransaction(), cancellationToken);
+        if (actor is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ChangeProductPriceResult.AuthenticationRequired();
+        }
+
         var existingCommand = await dbContext.ProductPriceChangeCommands
             .AsNoTracking()
             .SingleOrDefaultAsync(
@@ -136,11 +183,19 @@ internal sealed class CatalogService(
             await transaction.CommitAsync(cancellationToken);
 
             return existingCommand.Matches(
+                actor.IdentityId,
                 productId,
                 intent.ExpectedCurrentPrice,
                 intent.NewPrice)
                 ? ChangeProductPriceResult.Changed(Map(existingCommand))
                 : ChangeProductPriceResult.IdempotencyConflict();
+        }
+
+        if (!await catalogConfiguration.StabilizeResponsibilityAsync(
+                actor.IdentityId, transaction.GetDbTransaction(), cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ChangeProductPriceResult.CatalogConfigurationRequired();
         }
 
         var affectedRows = await dbContext.Database.ExecuteSqlInterpolatedAsync(
@@ -185,6 +240,7 @@ internal sealed class CatalogService(
 
         dbContext.ProductPriceChangeCommands.Add(new ProductPriceChangeCommand(
             idempotencyKey,
+            actor.IdentityId,
             productId,
             intent.ExpectedCurrentPrice,
             intent.NewPrice));
@@ -198,17 +254,35 @@ internal sealed class CatalogService(
                 intent.NewPrice.ToString(CultureInfo.InvariantCulture)));
     }
 
-    internal async Task<ProductResponse?> FindActiveProductAsync(
+    internal async Task<CatalogProductResult> FindAdministrativeProductAsync(
         Guid id,
         CancellationToken cancellationToken)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            cancellationToken);
+        var actor = await sessionStabilizer.StabilizeAsync(
+            transaction.GetDbTransaction(), cancellationToken);
+        if (actor is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CatalogProductResult.AuthenticationRequired();
+        }
+        if (!await catalogConfiguration.StabilizeResponsibilityAsync(
+                actor.IdentityId, transaction.GetDbTransaction(), cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CatalogProductResult.CatalogConfigurationRequired();
+        }
         var product = await dbContext.Products
             .AsNoTracking()
             .SingleOrDefaultAsync(
                 candidate => candidate.Id == id && candidate.IsActive,
                 cancellationToken);
 
-        return product is null ? null : Map(product);
+        await transaction.CommitAsync(cancellationToken);
+        return product is null
+            ? CatalogProductResult.NotFound()
+            : CatalogProductResult.Succeeded(Map(product));
     }
 
     internal async Task<ProductPreparationConfigurationChangeResult>
@@ -228,6 +302,14 @@ internal sealed class CatalogService(
             $"SELECT pg_advisory_xact_lock({lockKey})",
             cancellationToken);
 
+        var actor = await sessionStabilizer.StabilizeAsync(
+            transaction.GetDbTransaction(), cancellationToken);
+        if (actor is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ProductPreparationConfigurationChangeResult.AuthenticationRequired();
+        }
+
         var existingCommand = await dbContext
             .ProductPreparationConfigurationChangeCommands
             .AsNoTracking()
@@ -239,12 +321,20 @@ internal sealed class CatalogService(
         {
             await transaction.CommitAsync(cancellationToken);
             return existingCommand.Matches(
+                actor.IdentityId,
                 productId,
                 request.ExpectedCurrentPreparationResponsibilityId,
                 request.NewPreparationResponsibilityId)
                 ? ProductPreparationConfigurationChangeResult.Changed(
                     Map(existingCommand))
                 : ProductPreparationConfigurationChangeResult.IdempotencyConflict();
+        }
+
+        if (!await catalogConfiguration.StabilizeResponsibilityAsync(
+                actor.IdentityId, transaction.GetDbTransaction(), cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ProductPreparationConfigurationChangeResult.CatalogConfigurationRequired();
         }
 
         if (request.NewPreparationResponsibilityId is Guid responsibilityId &&
@@ -299,6 +389,7 @@ internal sealed class CatalogService(
 
         var command = new ProductPreparationConfigurationChangeCommand(
             idempotencyKey,
+            actor.IdentityId,
             productId,
             request.ExpectedCurrentPreparationResponsibilityId,
             request.NewPreparationResponsibilityId);
@@ -306,6 +397,66 @@ internal sealed class CatalogService(
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return ProductPreparationConfigurationChangeResult.Changed(Map(command));
+    }
+
+    internal async Task<OperationalProductListResult> ListOperationalProductsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            cancellationToken);
+        var authorization = await orderOperationsAuthorization.AuthorizeAsync(
+            transaction.GetDbTransaction(), cancellationToken);
+        if (authorization != OrderOperationsAuthorizationOutcome.Authorized)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return authorization == OrderOperationsAuthorizationOutcome.Unauthenticated
+                ? OperationalProductListResult.AuthenticationRequired()
+                : OperationalProductListResult.OrderOperationsRequired();
+        }
+
+        var session = await sessionStabilizer.StabilizeAsync(
+            transaction.GetDbTransaction(), cancellationToken)
+            ?? throw new InvalidOperationException(
+                "An authorized operational Catalog read lost its stabilized session.");
+        var canReadUnavailable = await operationalIntervention
+            .StabilizeResponsibilityAsync(
+                session.IdentityId, transaction.GetDbTransaction(), cancellationToken);
+        var products = await dbContext.Products.AsNoTracking()
+            .Where(product => product.IsActive &&
+                (canReadUnavailable || product.IsAvailable))
+            .OrderBy(product => product.OperationalName)
+            .ThenBy(product => product.Id)
+            .Select(product => new OperationalProductResponse(
+                product.Id,
+                product.OperationalName,
+                product.Price.ToString(CultureInfo.InvariantCulture),
+                product.IsAvailable))
+            .ToArrayAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return OperationalProductListResult.Succeeded(products);
+    }
+
+    internal async Task<PreparationResponsibilityListResult>
+        ListPreparationResponsibilitiesAsync(CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            cancellationToken);
+        var actor = await sessionStabilizer.StabilizeAsync(
+            transaction.GetDbTransaction(), cancellationToken);
+        if (actor is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PreparationResponsibilityListResult.AuthenticationRequired();
+        }
+        if (!await catalogConfiguration.StabilizeResponsibilityAsync(
+                actor.IdentityId, transaction.GetDbTransaction(), cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PreparationResponsibilityListResult.CatalogConfigurationRequired();
+        }
+        var responsibilities = await preparationResponsibilities.ListAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return PreparationResponsibilityListResult.Succeeded(responsibilities);
     }
 
     private static ProductValidation Validate(CreateProductRequest request)
@@ -484,6 +635,10 @@ internal sealed record ProductPreparationConfigurationChangeResult(
             null,
             null,
             null);
+    internal static ProductPreparationConfigurationChangeResult AuthenticationRequired() =>
+        new(ProductPreparationConfigurationChangeOutcome.AuthenticationRequired, null, null, null);
+    internal static ProductPreparationConfigurationChangeResult CatalogConfigurationRequired() =>
+        new(ProductPreparationConfigurationChangeOutcome.CatalogConfigurationRequired, null, null, null);
 }
 
 internal enum ProductPreparationConfigurationChangeOutcome
@@ -493,7 +648,9 @@ internal enum ProductPreparationConfigurationChangeOutcome
     NotCurrent,
     ResponsibilityNotFound,
     ConcurrencyConflict,
-    IdempotencyConflict
+    IdempotencyConflict,
+    AuthenticationRequired,
+    CatalogConfigurationRequired
 }
 
 internal sealed record PriceChangeValidation(
@@ -537,6 +694,10 @@ internal sealed record ChangeProductPriceResult(
 
     internal static ChangeProductPriceResult IdempotencyConflict() =>
         new(ChangeProductPriceOutcome.IdempotencyConflict, null, null, null, null);
+    internal static ChangeProductPriceResult AuthenticationRequired() =>
+        new(ChangeProductPriceOutcome.AuthenticationRequired, null, null, null, null);
+    internal static ChangeProductPriceResult CatalogConfigurationRequired() =>
+        new(ChangeProductPriceOutcome.CatalogConfigurationRequired, null, null, null, null);
 }
 
 internal enum ChangeProductPriceOutcome
@@ -546,7 +707,9 @@ internal enum ChangeProductPriceOutcome
     NotFound,
     NotCurrent,
     PriceConcurrencyConflict,
-    IdempotencyConflict
+    IdempotencyConflict,
+    AuthenticationRequired,
+    CatalogConfigurationRequired
 }
 
 internal sealed record ProductValidation(
@@ -582,6 +745,10 @@ internal sealed record CreateProductResult(
 
     internal static CreateProductResult Invalid(string field, string error) =>
         new(CreateProductOutcome.Invalid, null, field, error);
+    internal static CreateProductResult AuthenticationRequired() =>
+        new(CreateProductOutcome.AuthenticationRequired, null, null, null);
+    internal static CreateProductResult CatalogConfigurationRequired() =>
+        new(CreateProductOutcome.CatalogConfigurationRequired, null, null, null);
 }
 
 internal enum CreateProductOutcome
@@ -589,5 +756,75 @@ internal enum CreateProductOutcome
     Created,
     Invalid,
     DuplicateName,
-    IdempotencyConflict
+    IdempotencyConflict,
+    AuthenticationRequired,
+    CatalogConfigurationRequired
+}
+
+internal sealed record CatalogProductListResult(
+    CatalogAccessOutcome Outcome,
+    IReadOnlyList<ProductResponse>? Products)
+{
+    internal static CatalogProductListResult Succeeded(IReadOnlyList<ProductResponse> products) =>
+        new(CatalogAccessOutcome.Succeeded, products);
+    internal static CatalogProductListResult AuthenticationRequired() =>
+        new(CatalogAccessOutcome.AuthenticationRequired, null);
+    internal static CatalogProductListResult CatalogConfigurationRequired() =>
+        new(CatalogAccessOutcome.CatalogConfigurationRequired, null);
+}
+
+internal sealed record CatalogProductResult(
+    CatalogProductOutcome Outcome,
+    ProductResponse? Product)
+{
+    internal static CatalogProductResult Succeeded(ProductResponse product) =>
+        new(CatalogProductOutcome.Succeeded, product);
+    internal static CatalogProductResult NotFound() =>
+        new(CatalogProductOutcome.NotFound, null);
+    internal static CatalogProductResult AuthenticationRequired() =>
+        new(CatalogProductOutcome.AuthenticationRequired, null);
+    internal static CatalogProductResult CatalogConfigurationRequired() =>
+        new(CatalogProductOutcome.CatalogConfigurationRequired, null);
+}
+
+internal sealed record OperationalProductListResult(
+    CatalogAccessOutcome Outcome,
+    IReadOnlyList<OperationalProductResponse>? Products)
+{
+    internal static OperationalProductListResult Succeeded(
+        IReadOnlyList<OperationalProductResponse> products) =>
+        new(CatalogAccessOutcome.Succeeded, products);
+    internal static OperationalProductListResult AuthenticationRequired() =>
+        new(CatalogAccessOutcome.AuthenticationRequired, null);
+    internal static OperationalProductListResult OrderOperationsRequired() =>
+        new(CatalogAccessOutcome.OrderOperationsRequired, null);
+}
+
+internal sealed record PreparationResponsibilityListResult(
+    CatalogAccessOutcome Outcome,
+    IReadOnlyList<PreparationResponsibilityReference>? Responsibilities)
+{
+    internal static PreparationResponsibilityListResult Succeeded(
+        IReadOnlyList<PreparationResponsibilityReference> responsibilities) =>
+        new(CatalogAccessOutcome.Succeeded, responsibilities);
+    internal static PreparationResponsibilityListResult AuthenticationRequired() =>
+        new(CatalogAccessOutcome.AuthenticationRequired, null);
+    internal static PreparationResponsibilityListResult CatalogConfigurationRequired() =>
+        new(CatalogAccessOutcome.CatalogConfigurationRequired, null);
+}
+
+internal enum CatalogAccessOutcome
+{
+    Succeeded,
+    AuthenticationRequired,
+    CatalogConfigurationRequired,
+    OrderOperationsRequired
+}
+
+internal enum CatalogProductOutcome
+{
+    Succeeded,
+    NotFound,
+    AuthenticationRequired,
+    CatalogConfigurationRequired
 }

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using NexoBar.OperationalConfiguration;
 
 namespace NexoBar.Catalog;
 
@@ -38,6 +40,7 @@ public static class CatalogModule
     public static IEndpointRouteBuilder MapCatalogEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/catalog/products")
+            .RequireAuthorization()
             .WithTags("Catalog");
 
         group.MapPost(string.Empty, CreateProductAsync)
@@ -45,15 +48,21 @@ public static class CatalogModule
             .Accepts<CreateProductRequest>("application/json")
             .Produces<ProductResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet(string.Empty, ListActiveProductsAsync)
             .WithName("ListActiveCatalogProducts")
-            .Produces<IReadOnlyList<ProductResponse>>();
+            .Produces<IReadOnlyList<ProductResponse>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         group.MapGet("/{id:guid}", FindActiveProductAsync)
             .WithName("GetActiveCatalogProduct")
             .Produces<ProductResponse>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/{productId:guid}/price-changes", ChangeProductPriceAsync)
@@ -61,6 +70,8 @@ public static class CatalogModule
             .Accepts<ChangeProductPriceRequest>("application/json")
             .Produces<ProductPriceResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
@@ -71,8 +82,28 @@ public static class CatalogModule
             .Accepts<ChangeProductPreparationConfigurationRequest>("application/json")
             .Produces<ProductPreparationConfigurationResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapGroup("/api/catalog/operational-products")
+            .RequireAuthorization()
+            .WithTags("Catalog")
+            .MapGet(string.Empty, ListOperationalProductsAsync)
+            .WithName("ListOperationalCatalogProducts")
+            .Produces<IReadOnlyList<OperationalProductResponse>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
+        endpoints.MapGroup("/api/catalog/preparation-responsibilities")
+            .RequireAuthorization()
+            .WithTags("Catalog")
+            .MapGet(string.Empty, ListPreparationResponsibilitiesAsync)
+            .WithName("ListCatalogPreparationResponsibilities")
+            .Produces<IReadOnlyList<PreparationResponsibilityReference>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         return endpoints;
     }
@@ -81,6 +112,8 @@ public static class CatalogModule
         Guid productId,
         [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
         ChangeProductPreparationConfigurationRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
         CatalogService catalog,
         CancellationToken cancellationToken)
     {
@@ -100,6 +133,12 @@ public static class CatalogModule
                 "Invalid Idempotency-Key",
                 "Idempotency-Key must contain a UUID v4.",
                 "catalog.product.preparation_configuration.idempotency_key_invalid");
+        }
+
+        var antiforgeryFailure = await ValidateAntiforgeryAsync(httpContext, antiforgery);
+        if (antiforgeryFailure is not null)
+        {
+            return antiforgeryFailure;
         }
 
         var result = await catalog.ChangeProductPreparationConfigurationAsync(
@@ -146,6 +185,10 @@ public static class CatalogModule
                 "Idempotency-Key was already used for another intention",
                 "The supplied Idempotency-Key identifies an incompatible Product preparation configuration change.",
                 "catalog.product.preparation_configuration.idempotency_key_conflict"),
+            ProductPreparationConfigurationChangeOutcome.AuthenticationRequired =>
+                AuthenticationRequired(),
+            ProductPreparationConfigurationChangeOutcome.CatalogConfigurationRequired =>
+                CatalogConfigurationRequired(),
             _ => throw new UnreachableException()
         };
     }
@@ -154,6 +197,8 @@ public static class CatalogModule
         Guid productId,
         [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
         ChangeProductPriceRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
         CatalogService catalog,
         CancellationToken cancellationToken)
     {
@@ -173,6 +218,12 @@ public static class CatalogModule
                 "Invalid Idempotency-Key",
                 "Idempotency-Key must contain a UUID v4.",
                 "catalog.product.idempotency_key_invalid");
+        }
+
+        var antiforgeryFailure = await ValidateAntiforgeryAsync(httpContext, antiforgery);
+        if (antiforgeryFailure is not null)
+        {
+            return antiforgeryFailure;
         }
 
         var result = await catalog.ChangeProductPriceAsync(
@@ -214,6 +265,9 @@ public static class CatalogModule
                 "Idempotency-Key was already used for another intention",
                 "The supplied Idempotency-Key identifies an incompatible Product price change.",
                 "catalog.product.idempotency_key_conflict"),
+            ChangeProductPriceOutcome.AuthenticationRequired => AuthenticationRequired(),
+            ChangeProductPriceOutcome.CatalogConfigurationRequired =>
+                CatalogConfigurationRequired(),
             _ => throw new UnreachableException()
         };
     }
@@ -272,6 +326,8 @@ public static class CatalogModule
     private static async Task<IResult> CreateProductAsync(
         [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
         CreateProductRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
         CatalogService catalog,
         CancellationToken cancellationToken)
     {
@@ -297,6 +353,12 @@ public static class CatalogModule
                 {
                     ["code"] = "catalog.product.idempotency_key_invalid"
                 });
+        }
+
+        var antiforgeryFailure = await ValidateAntiforgeryAsync(httpContext, antiforgery);
+        if (antiforgeryFailure is not null)
+        {
+            return antiforgeryFailure;
         }
 
         var result = await catalog.CreateProductAsync(
@@ -334,6 +396,9 @@ public static class CatalogModule
                 {
                     ["code"] = "catalog.product.idempotency_key_conflict"
                 }),
+            CreateProductOutcome.AuthenticationRequired => AuthenticationRequired(),
+            CreateProductOutcome.CatalogConfigurationRequired =>
+                CatalogConfigurationRequired(),
             _ => throw new UnreachableException()
         };
     }
@@ -349,25 +414,105 @@ public static class CatalogModule
 
     private static async Task<IResult> ListActiveProductsAsync(
         CatalogService catalog,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await catalog.ListActiveProductsAsync(cancellationToken));
+        CancellationToken cancellationToken)
+    {
+        var result = await catalog.ListAdministrativeProductsAsync(cancellationToken);
+        return result.Outcome switch
+        {
+            CatalogAccessOutcome.Succeeded => Results.Ok(result.Products),
+            CatalogAccessOutcome.AuthenticationRequired => AuthenticationRequired(),
+            CatalogAccessOutcome.CatalogConfigurationRequired =>
+                CatalogConfigurationRequired(),
+            _ => throw new UnreachableException()
+        };
+    }
 
     private static async Task<IResult> FindActiveProductAsync(
         Guid id,
         CatalogService catalog,
         CancellationToken cancellationToken)
     {
-        var product = await catalog.FindActiveProductAsync(id, cancellationToken);
+        var result = await catalog.FindAdministrativeProductAsync(id, cancellationToken);
 
-        return product is null
-            ? Results.Problem(
+        return result.Outcome switch
+        {
+            CatalogProductOutcome.NotFound => Results.Problem(
                 statusCode: StatusCodes.Status404NotFound,
                 title: "Product not found",
                 detail: "No active product exists with the supplied identifier.",
                 extensions: new Dictionary<string, object?>
                 {
                     ["code"] = "catalog.product.not_found"
-                })
-            : Results.Ok(product);
+                }),
+            CatalogProductOutcome.Succeeded => Results.Ok(result.Product),
+            CatalogProductOutcome.AuthenticationRequired => AuthenticationRequired(),
+            CatalogProductOutcome.CatalogConfigurationRequired =>
+                CatalogConfigurationRequired(),
+            _ => throw new UnreachableException()
+        };
     }
+
+    private static async Task<IResult> ListOperationalProductsAsync(
+        CatalogService catalog,
+        CancellationToken cancellationToken)
+    {
+        var result = await catalog.ListOperationalProductsAsync(cancellationToken);
+        return result.Outcome switch
+        {
+            CatalogAccessOutcome.Succeeded => Results.Ok(result.Products),
+            CatalogAccessOutcome.AuthenticationRequired => AuthenticationRequired(),
+            CatalogAccessOutcome.OrderOperationsRequired => Problem(
+                StatusCodes.Status403Forbidden,
+                "Order Operations required",
+                "A current Order Operations and Basic Closure responsibility is required.",
+                "identities_and_capabilities.order_operations.forbidden"),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> ListPreparationResponsibilitiesAsync(
+        CatalogService catalog,
+        CancellationToken cancellationToken)
+    {
+        var result = await catalog.ListPreparationResponsibilitiesAsync(cancellationToken);
+        return result.Outcome switch
+        {
+            CatalogAccessOutcome.Succeeded => Results.Ok(result.Responsibilities),
+            CatalogAccessOutcome.AuthenticationRequired => AuthenticationRequired(),
+            CatalogAccessOutcome.CatalogConfigurationRequired =>
+                CatalogConfigurationRequired(),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult?> ValidateAntiforgeryAsync(
+        HttpContext httpContext,
+        IAntiforgery antiforgery)
+    {
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+            return null;
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Antiforgery validation failed",
+                "A valid antiforgery cookie and request token are required.",
+                "identities_and_capabilities.antiforgery_invalid");
+        }
+    }
+
+    private static IResult AuthenticationRequired() => Problem(
+        StatusCodes.Status401Unauthorized,
+        "Invalid session",
+        "The current session is invalid or expired.",
+        "identities_and_capabilities.invalid_session");
+
+    private static IResult CatalogConfigurationRequired() => Problem(
+        StatusCodes.Status403Forbidden,
+        "Catalog Configuration required",
+        "A current Catalog Configuration responsibility is required.",
+        "identities_and_capabilities.catalog_configuration_required");
 }

@@ -8,12 +8,15 @@ internal sealed class ProductCreationCommand
 
     internal ProductCreationCommand(
         Guid idempotencyKey,
+        Guid actorIdentityId,
         string operationalName,
         decimal price,
         bool requiresPreparation,
         ProductResponse result)
     {
         IdempotencyKey = idempotencyKey;
+        ActorIdentityId = actorIdentityId;
+        CommandKind = CatalogCommandKind.CreateProduct;
         IntentOperationalName = operationalName;
         IntentPrice = price;
         IntentRequiresPreparation = requiresPreparation;
@@ -23,6 +26,8 @@ internal sealed class ProductCreationCommand
     }
 
     internal Guid IdempotencyKey { get; private set; }
+    internal Guid? ActorIdentityId { get; private set; }
+    internal CatalogCommandKind CommandKind { get; private set; }
 
     internal string IntentOperationalName { get; private set; } = string.Empty;
 
@@ -37,9 +42,12 @@ internal sealed class ProductCreationCommand
     internal bool ResultIsAvailable { get; private set; }
 
     internal bool Matches(
+        Guid actorIdentityId,
         string operationalName,
         decimal price,
         bool requiresPreparation) =>
+        ActorIdentityId == actorIdentityId &&
+        CommandKind == CatalogCommandKind.CreateProduct &&
         string.Equals(IntentOperationalName, operationalName, StringComparison.Ordinal) &&
         IntentPrice == price &&
         IntentRequiresPreparation == requiresPreparation;

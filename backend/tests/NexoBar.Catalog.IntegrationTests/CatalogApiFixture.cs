@@ -1,11 +1,15 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NexoBar.Catalog;
+using NexoBar.IdentitiesAndCapabilities;
 using NexoBar.OperationalConfiguration;
 using Testcontainers.PostgreSql;
 
@@ -13,6 +17,8 @@ namespace NexoBar.Catalog.IntegrationTests;
 
 public sealed class CatalogApiFixture : IAsyncLifetime
 {
+    private const string DefaultAdministratorLogin = "catalog-test-administrator";
+    private const string DefaultAdministratorSecret = "secret";
     private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:17.6")
         .WithDatabase("nexobar_catalog_tests")
         .WithUsername("nexobar_tests")
@@ -34,8 +40,13 @@ public sealed class CatalogApiFixture : IAsyncLifetime
         await scope.ServiceProvider
             .GetRequiredService<OperationalConfigurationDbContext>()
             .Database.MigrateAsync();
+        await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .Database.MigrateAsync();
         var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
         await dbContext.Database.MigrateAsync();
+        await EnsureDefaultAdministratorAsync();
+        await AuthenticateAsync(Client, DefaultAdministratorLogin, DefaultAdministratorSecret);
     }
 
     public async Task ResetCatalogAsync(CancellationToken cancellationToken)
@@ -235,12 +246,136 @@ public sealed class CatalogApiFixture : IAsyncLifetime
             .Database.HasPendingModelChanges();
     }
 
+    internal async Task AuthenticateAsync(
+        HttpClient client,
+        string loginIdentifier,
+        string secret)
+    {
+        var token = await GetAntiforgeryAsync(client);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/identity-sessions")
+        {
+            Content = JsonContent.Create(new { loginIdentifier, secret })
+        };
+        request.Headers.Add("X-NexoBar-CSRF", token);
+        using var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        client.DefaultRequestHeaders.Remove("X-NexoBar-CSRF");
+        client.DefaultRequestHeaders.Add(
+            "X-NexoBar-CSRF",
+            await GetAntiforgeryAsync(client));
+    }
+
+    internal async Task<TestCatalogActor> CreateActorAsync(
+        string name,
+        FunctionalResponsibility[] responsibilities,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        var identity = new Identity(name, true);
+        dbContext.Identities.Add(identity);
+        foreach (var responsibility in responsibilities)
+        {
+            dbContext.ResponsibilityAssignments.Add(new ResponsibilityAssignment(
+                identity.Id, responsibility));
+        }
+        await dbContext.SaveChangesAsync(cancellationToken);
+        var login = $"{name.Replace(" ", "", StringComparison.Ordinal).ToLowerInvariant()}-{Guid.NewGuid():N}";
+        await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+            .ProvisionAsync(identity.Id, login, "secret", cancellationToken);
+        return new TestCatalogActor(identity.Id, login, "secret");
+    }
+
+    internal async Task<HttpClient> CreateAuthenticatedClientAsync(
+        TestCatalogActor actor)
+    {
+        var client = application!.CreateClient();
+        await AuthenticateAsync(client, actor.LoginIdentifier, actor.Secret);
+        return client;
+    }
+
+    internal HttpClient CreateUnauthenticatedClient() => application!.CreateClient();
+
+    internal async Task SetProductAvailableAsync(
+        Guid productId,
+        bool isAvailable,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<CatalogDbContext>().Database
+            .ExecuteSqlInterpolatedAsync(
+                $"UPDATE catalog.products SET is_available = {isAvailable} WHERE id = {productId}",
+                cancellationToken);
+    }
+
+    internal async Task RemoveResponsibilityAsync(
+        Guid identityId,
+        FunctionalResponsibility responsibility,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .ResponsibilityAssignments
+            .Where(assignment => assignment.IdentityId == identityId &&
+                assignment.ResponsibilityCode == responsibility)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    internal async Task<Guid?> ReadCreationCommandActorAsync(
+        Guid key,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<CatalogDbContext>()
+            .ProductCreationCommands.AsNoTracking()
+            .Where(command => command.IdempotencyKey == key)
+            .Select(command => command.ActorIdentityId)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    internal async Task InsertLegacyCreationCommandAsync(
+        Guid key,
+        Guid productId,
+        string name,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+        dbContext.Products.Add(new Product(productId, name, 1m));
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO catalog.product_creation_commands
+                (idempotency_key, actor_identity_id, command_kind, intent_operational_name,
+                 intent_price, intent_requires_preparation, result_product_id,
+                 result_is_active, result_is_available)
+            VALUES ({key}, NULL, {"CreateProduct"}, {name}, {1m}, false,
+                    {productId}, true, true)
+            """,
+            cancellationToken);
+    }
+
+    internal async Task VerifyActorMigrationRoundTripAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<CatalogDbContext>().Database;
+        Assert.True(await HasActorColumnsAsync(database, cancellationToken));
+        await database.GetService<IMigrator>().MigrateAsync(
+            "20260830130000_AddProductPreparationConfiguration", cancellationToken);
+        Assert.False(await HasActorColumnsAsync(database, cancellationToken));
+        await database.GetService<IMigrator>().MigrateAsync(cancellationToken: cancellationToken);
+        Assert.True(await HasActorColumnsAsync(database, cancellationToken));
+    }
+
     public async Task RestartApplicationAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Client.Dispose();
         await application!.DisposeAsync();
         StartApplication();
+        await AuthenticateAsync(Client, DefaultAdministratorLogin, DefaultAdministratorSecret);
     }
 
     public async ValueTask DisposeAsync()
@@ -260,6 +395,60 @@ public sealed class CatalogApiFixture : IAsyncLifetime
         application = CreateApplication();
 
         Client = application.CreateClient();
+    }
+
+    private async Task EnsureDefaultAdministratorAsync()
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        if (await dbContext.LocalCredentials.AnyAsync(
+                credential => credential.NormalizedLoginIdentifier ==
+                    DefaultAdministratorLogin))
+        {
+            return;
+        }
+
+        var identity = new Identity("Catalog Test Administrator", true);
+        dbContext.Identities.Add(identity);
+        dbContext.ResponsibilityAssignments.Add(new ResponsibilityAssignment(
+            identity.Id, FunctionalResponsibility.CatalogConfiguration));
+        dbContext.ResponsibilityAssignments.Add(new ResponsibilityAssignment(
+            identity.Id, FunctionalResponsibility.GeneralConfiguration));
+        await dbContext.SaveChangesAsync();
+        await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+            .ProvisionAsync(
+                identity.Id,
+                DefaultAdministratorLogin,
+                DefaultAdministratorSecret,
+                CancellationToken.None);
+    }
+
+    private static async Task<string> GetAntiforgeryAsync(HttpClient client)
+    {
+        using var response = await client.GetAsync("/api/security/antiforgery");
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
+        return document.RootElement.GetProperty("requestToken").GetString()!;
+    }
+
+    private static async Task<bool> HasActorColumnsAsync(
+        DatabaseFacade database,
+        CancellationToken cancellationToken)
+    {
+        var count = await database.SqlQueryRaw<int>(
+                """
+                SELECT COUNT(*) AS "Value"
+                FROM information_schema.columns
+                WHERE table_schema = 'catalog'
+                  AND column_name = 'actor_identity_id'
+                  AND table_name IN (
+                    'product_creation_commands',
+                    'product_price_change_commands',
+                    'product_preparation_configuration_change_commands')
+                """)
+            .SingleAsync(cancellationToken);
+        return count == 3;
     }
 
     private WebApplicationFactory<Program> CreateApplication(
@@ -287,6 +476,11 @@ public sealed class CatalogApiFixture : IAsyncLifetime
             });
     }
 }
+
+internal sealed record TestCatalogActor(
+    Guid IdentityId,
+    string LoginIdentifier,
+    string Secret);
 
 [CollectionDefinition(Name)]
 public sealed class CatalogApiCollection : ICollectionFixture<CatalogApiFixture>

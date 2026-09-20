@@ -8,11 +8,14 @@ internal sealed class ProductPriceChangeCommand
 
     internal ProductPriceChangeCommand(
         Guid idempotencyKey,
+        Guid actorIdentityId,
         Guid productId,
         decimal expectedCurrentPrice,
         decimal newPrice)
     {
         IdempotencyKey = idempotencyKey;
+        ActorIdentityId = actorIdentityId;
+        CommandKind = CatalogCommandKind.ChangeProductPrice;
         ProductId = productId;
         IntentExpectedCurrentPrice = expectedCurrentPrice;
         IntentNewPrice = newPrice;
@@ -20,6 +23,8 @@ internal sealed class ProductPriceChangeCommand
     }
 
     internal Guid IdempotencyKey { get; private set; }
+    internal Guid? ActorIdentityId { get; private set; }
+    internal CatalogCommandKind CommandKind { get; private set; }
 
     internal Guid ProductId { get; private set; }
 
@@ -29,7 +34,13 @@ internal sealed class ProductPriceChangeCommand
 
     internal decimal ResultPrice { get; private set; }
 
-    internal bool Matches(Guid productId, decimal expectedCurrentPrice, decimal newPrice) =>
+    internal bool Matches(
+        Guid actorIdentityId,
+        Guid productId,
+        decimal expectedCurrentPrice,
+        decimal newPrice) =>
+        ActorIdentityId == actorIdentityId &&
+        CommandKind == CatalogCommandKind.ChangeProductPrice &&
         ProductId == productId &&
         IntentExpectedCurrentPrice == expectedCurrentPrice &&
         IntentNewPrice == newPrice;

@@ -79,9 +79,16 @@ namespace NexoBar.Catalog.Migrations
 
             modelBuilder.Entity("NexoBar.Catalog.ProductCreationCommand", b =>
                 {
-                    b.Property<Guid>("IdempotencyKey")
-                        .HasColumnType("uuid")
-                        .HasColumnName("idempotency_key");
+                b.Property<Guid>("IdempotencyKey")
+                    .HasColumnType("uuid")
+                    .HasColumnName("idempotency_key");
+                b.Property<Guid?>("ActorIdentityId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("actor_identity_id");
+                b.Property<string>("CommandKind")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("command_kind");
 
                     b.Property<string>("IntentOperationalName")
                         .IsRequired()
@@ -125,9 +132,16 @@ namespace NexoBar.Catalog.Migrations
 
             modelBuilder.Entity("NexoBar.Catalog.ProductPreparationConfigurationChangeCommand", b =>
                 {
-                    b.Property<Guid>("IdempotencyKey")
-                        .HasColumnType("uuid")
-                        .HasColumnName("idempotency_key");
+                b.Property<Guid>("IdempotencyKey")
+                    .HasColumnType("uuid")
+                    .HasColumnName("idempotency_key");
+                b.Property<Guid?>("ActorIdentityId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("actor_identity_id");
+                b.Property<string>("CommandKind")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("command_kind");
 
                     b.Property<Guid?>("IntentExpectedResponsibilityId")
                         .HasColumnType("uuid")
@@ -159,9 +173,16 @@ namespace NexoBar.Catalog.Migrations
 
             modelBuilder.Entity("NexoBar.Catalog.ProductPriceChangeCommand", b =>
                 {
-                    b.Property<Guid>("IdempotencyKey")
-                        .HasColumnType("uuid")
-                        .HasColumnName("idempotency_key");
+                b.Property<Guid>("IdempotencyKey")
+                    .HasColumnType("uuid")
+                    .HasColumnName("idempotency_key");
+                b.Property<Guid?>("ActorIdentityId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("actor_identity_id");
+                b.Property<string>("CommandKind")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("command_kind");
 
                     b.Property<decimal>("IntentExpectedCurrentPrice")
                         .HasColumnType("numeric")
