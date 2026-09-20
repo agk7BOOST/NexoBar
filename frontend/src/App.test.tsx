@@ -2,7 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.tsx";
-import type { CurrentIdentity } from "./identity/sessionClient.ts";
+import {
+  SessionProblemError,
+  type CurrentIdentity,
+} from "./identity/sessionClient.ts";
 
 const { getCurrentIdentityMock } = vi.hoisted(() => ({
   getCurrentIdentityMock: vi.fn(),
@@ -26,11 +29,16 @@ vi.mock("./catalog/CatalogPanel.tsx", () => ({
 }));
 vi.mock("./generalConfiguration/GeneralConfigurationPanel.tsx", () => ({
   GeneralConfigurationPanel: ({
+    onCurrentIdentityChanged,
     onForbidden,
   }: {
+    onCurrentIdentityChanged: () => Promise<void>;
     onForbidden: () => void;
   }) => (
     <section aria-label="Configuracion general administrativa">
+      <button type="button" onClick={() => void onCurrentIdentityChanged()}>
+        Reconciliar mutacion propia
+      </button>
       <button type="button" onClick={onForbidden}>
         Refrescar configuracion general
       </button>
@@ -180,5 +188,23 @@ describe("App capability-aware administrative mounting", () => {
       ).not.toBeInTheDocument(),
     );
     expect(screen.getByLabelText("Catalog administrativo")).toBeInTheDocument();
+  });
+
+  it("returns to login when a self-deactivation reconciliation finds the revoked session", async () => {
+    getCurrentIdentityMock
+      .mockResolvedValueOnce(identity(["GeneralConfiguration"]))
+      .mockRejectedValueOnce(new SessionProblemError(401, { status: 401 }));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByLabelText("Configuracion general administrativa");
+    await user.click(
+      screen.getByRole("button", { name: "Reconciliar mutacion propia" }),
+    );
+
+    await screen.findByRole("heading", { name: "Ingresar" });
+    expect(
+      screen.queryByLabelText("Configuracion general administrativa"),
+    ).not.toBeInTheDocument();
   });
 });

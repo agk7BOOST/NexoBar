@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  activateIdentity,
+  assignResponsibility,
   createIdentity,
+  deactivateIdentity,
   IdentityAdministrationNetworkError,
   IdentityAdministrationProblemError,
   listAdministrativeIdentities,
   renameIdentity,
+  revokeResponsibility,
   type AdministrativeIdentity,
 } from "./identityAdministrationClient.ts";
 
@@ -84,6 +88,69 @@ describe("identityAdministrationClient", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       operationalName: "Renombrada",
     });
+  });
+
+  it("activates and deactivates through the exact secured routes", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(identity({ isActive: true })), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(identity({ isActive: false })), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+    await activateIdentity("identity/id", "activate-key", "csrf-activate");
+    await deactivateIdentity("identity/id", "deactivate-key", "csrf-deactivate");
+
+    for (const [call, route, key, token] of [
+      [fetchMock.mock.calls[0], "/api/identities/identity%2Fid/activate", "activate-key", "csrf-activate"],
+      [fetchMock.mock.calls[1], "/api/identities/identity%2Fid/deactivate", "deactivate-key", "csrf-deactivate"],
+    ] as const) {
+      const [url, init] = call!;
+      expect(url).toBe(route);
+      expect(init?.method).toBe("POST");
+      expect(init?.credentials).toBe("same-origin");
+      expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe(token);
+      expect(new Headers(init?.headers).get("Idempotency-Key")).toBe(key);
+    }
+  });
+
+  it("assigns and revokes exact closed responsibility codes through secured routes", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(identity({ responsibilities: ["Preparation"] })), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(identity({ responsibilities: [] })), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+    await assignResponsibility("identity-1", "Preparation", "assign-key", "csrf-assign");
+    await revokeResponsibility("identity-1", "Preparation", "revoke-key", "csrf-revoke");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/identities/identity-1/responsibilities/Preparation/assign",
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      "/api/identities/identity-1/responsibilities/Preparation/revoke",
+    );
+    for (const [call, key, token] of [
+      [fetchMock.mock.calls[0], "assign-key", "csrf-assign"],
+      [fetchMock.mock.calls[1], "revoke-key", "csrf-revoke"],
+    ] as const) {
+      const [, init] = call!;
+      expect(init?.method).toBe("POST");
+      expect(init?.credentials).toBe("same-origin");
+      expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe(token);
+      expect(new Headers(init?.headers).get("Idempotency-Key")).toBe(key);
+    }
   });
 
   it("preserves Problem Details and distinguishes a network failure", async () => {

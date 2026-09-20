@@ -16,6 +16,19 @@ export interface RenameIdentityRequest {
   operationalName: string;
 }
 
+export const FUNCTIONAL_RESPONSIBILITIES = [
+  "OrderOperationsAndBasicClosure",
+  "OperationalIntervention",
+  "Preparation",
+  "CatalogConfiguration",
+  "InventoryOperation",
+  "InventoryConfiguration",
+  "GeneralConfiguration",
+] as const;
+
+export type FunctionalResponsibility =
+  (typeof FUNCTIONAL_RESPONSIBILITIES)[number];
+
 export interface IdentityAdministrationProblemDetails {
   title?: string;
   status?: number;
@@ -116,4 +129,71 @@ export async function renameIdentity(
   );
   await requireSuccess(response);
   return (await response.json()) as AdministrativeIdentity;
+}
+
+async function sendIdentityCommand(
+  path: string,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<AdministrativeIdentity> {
+  const response = await send(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Idempotency-Key": idempotencyKey,
+      "X-NexoBar-CSRF": antiforgeryToken,
+    },
+  });
+  await requireSuccess(response);
+  return (await response.json()) as AdministrativeIdentity;
+}
+
+export function activateIdentity(
+  identityId: string,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<AdministrativeIdentity> {
+  return sendIdentityCommand(
+    `/api/identities/${encodeURIComponent(identityId)}/activate`,
+    idempotencyKey,
+    antiforgeryToken,
+  );
+}
+
+export function deactivateIdentity(
+  identityId: string,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<AdministrativeIdentity> {
+  return sendIdentityCommand(
+    `/api/identities/${encodeURIComponent(identityId)}/deactivate`,
+    idempotencyKey,
+    antiforgeryToken,
+  );
+}
+
+export function assignResponsibility(
+  identityId: string,
+  responsibility: FunctionalResponsibility,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<AdministrativeIdentity> {
+  return sendIdentityCommand(
+    `/api/identities/${encodeURIComponent(identityId)}/responsibilities/${encodeURIComponent(responsibility)}/assign`,
+    idempotencyKey,
+    antiforgeryToken,
+  );
+}
+
+export function revokeResponsibility(
+  identityId: string,
+  responsibility: FunctionalResponsibility,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<AdministrativeIdentity> {
+  return sendIdentityCommand(
+    `/api/identities/${encodeURIComponent(identityId)}/responsibilities/${encodeURIComponent(responsibility)}/revoke`,
+    idempotencyKey,
+    antiforgeryToken,
+  );
 }

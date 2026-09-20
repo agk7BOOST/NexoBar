@@ -271,6 +271,8 @@ function App() {
         {canConfigureGeneral && identity !== null && (
           <GeneralConfigurationPanel
             key={`admin-general:${identity.identityId}:${identityLifecycle}:${identity.responsibilities.join(",")}`}
+            currentIdentityId={identity.identityId}
+            onCurrentIdentityChanged={refreshCurrentIdentity}
             onUnauthorized={returnToLogin}
             onForbidden={() => void refreshCurrentIdentity()}
           />

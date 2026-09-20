@@ -1,12 +1,18 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
+  activateIdentity,
+  assignResponsibility,
   createIdentity,
+  deactivateIdentity,
+  FUNCTIONAL_RESPONSIBILITIES,
   IdentityAdministrationNetworkError,
   IdentityAdministrationProblemError,
   listAdministrativeIdentities,
   renameIdentity,
+  revokeResponsibility,
   type AdministrativeIdentity,
   type CreateIdentityRequest,
+  type FunctionalResponsibility,
   type IdentityAdministrationProblemDetails,
   type RenameIdentityRequest,
 } from "./identityAdministrationClient.ts";
@@ -39,14 +45,31 @@ interface RenameEditor {
   operationalName: string;
 }
 
+type IdentityMutationKind =
+  | "activate"
+  | "deactivate"
+  | "assign"
+  | "revoke";
+
+interface IdentityMutationIntention {
+  kind: IdentityMutationKind;
+  identityId: string;
+  operationalName: string;
+  responsibility?: FunctionalResponsibility;
+  idempotencyKey: string;
+  antiforgeryToken: string;
+}
+
 interface GeneralConfigurationPanelProps {
+  currentIdentityId: string;
+  onCurrentIdentityChanged: () => Promise<void>;
   onUnauthorized: () => void;
   onForbidden: () => void;
 }
 
 function messageForProblem(
   problem: IdentityAdministrationProblemDetails,
-  action: "create" | "rename",
+  action: "create" | "rename" | IdentityMutationKind,
 ): string {
   if (problem.code === "identities_and_capabilities.idempotency_conflict") {
     return "La clave de idempotencia pertenece a otra intención. Descartá la intención pendiente e iniciá una nueva.";
@@ -57,9 +80,33 @@ function messageForProblem(
   if (problem.code === "identities_and_capabilities.identity_not_found") {
     return "La Identity ya no existe. Actualizá el listado.";
   }
+  if (
+    problem.code ===
+    "identities_and_capabilities.last_general_configuration_path"
+  ) {
+    return "Debe permanecer al menos una vía administrativa utilizable.";
+  }
+  if (problem.code === "identities_and_capabilities.responsibility_code_invalid") {
+    return "La responsabilidad indicada no es válida.";
+  }
   return action === "create"
     ? "No se pudo crear la Identity. Revisá los datos e intentá nuevamente."
-    : "No se pudo cambiar el nombre operacional. Revisá los datos e intentá nuevamente.";
+    : action === "rename"
+      ? "No se pudo cambiar el nombre operacional. Revisá los datos e intentá nuevamente."
+      : "No se pudo actualizar la Identity. Revisá los datos e intentá nuevamente.";
+}
+
+function mutationLabel(intention: IdentityMutationIntention): string {
+  switch (intention.kind) {
+    case "activate":
+      return `Activación de ${intention.operationalName}`;
+    case "deactivate":
+      return `Desactivación de ${intention.operationalName}`;
+    case "assign":
+      return `Asignación de ${intention.responsibility} a ${intention.operationalName}`;
+    case "revoke":
+      return `Revocación de ${intention.responsibility} a ${intention.operationalName}`;
+  }
 }
 
 function sortIdentities(
@@ -89,6 +136,8 @@ function reconcileIdentity(
 }
 
 export function GeneralConfigurationPanel({
+  currentIdentityId,
+  onCurrentIdentityChanged,
   onUnauthorized,
   onForbidden,
 }: GeneralConfigurationPanelProps) {
@@ -107,6 +156,10 @@ export function GeneralConfigurationPanel({
   const [renameNotice, setRenameNotice] = useState<Notice | null>(null);
   const [uncertainRename, setUncertainRename] =
     useState<RenameIdentityIntention | null>(null);
+  const [isMutatingIdentity, setIsMutatingIdentity] = useState(false);
+  const [mutationNotice, setMutationNotice] = useState<Notice | null>(null);
+  const [uncertainMutation, setUncertainMutation] =
+    useState<IdentityMutationIntention | null>(null);
 
   function retireForbiddenState() {
     setIdentities([]);
@@ -273,6 +326,95 @@ export function GeneralConfigurationPanel({
     }
   }
 
+  async function submitIdentityMutation(
+    intention: IdentityMutationIntention,
+  ) {
+    setMutationNotice(null);
+    setIsMutatingIdentity(true);
+    try {
+      const response =
+        intention.kind === "activate"
+          ? await activateIdentity(
+              intention.identityId,
+              intention.idempotencyKey,
+              intention.antiforgeryToken,
+            )
+          : intention.kind === "deactivate"
+            ? await deactivateIdentity(
+                intention.identityId,
+                intention.idempotencyKey,
+                intention.antiforgeryToken,
+              )
+            : intention.kind === "assign"
+              ? await assignResponsibility(
+                  intention.identityId,
+                  intention.responsibility!,
+                  intention.idempotencyKey,
+                  intention.antiforgeryToken,
+                )
+              : await revokeResponsibility(
+                  intention.identityId,
+                  intention.responsibility!,
+                  intention.idempotencyKey,
+                  intention.antiforgeryToken,
+                );
+      setIdentities((current) => reconcileIdentity(current, response));
+      setUncertainMutation(null);
+      setMutationNotice({
+        kind: "success",
+        message: `${mutationLabel(intention)} realizada correctamente.`,
+      });
+      if (intention.identityId === currentIdentityId) {
+        await onCurrentIdentityChanged();
+      }
+    } catch (error) {
+      if (error instanceof IdentityAdministrationProblemError) {
+        if (error.problem.status === 401) {
+          onUnauthorized();
+          return;
+        }
+        if (error.problem.status === 403) {
+          retireForbiddenState();
+          return;
+        }
+        setUncertainMutation(null);
+        setMutationNotice({
+          kind: "functional-error",
+          message: messageForProblem(error.problem, intention.kind),
+        });
+        return;
+      }
+      setUncertainMutation(intention);
+      setMutationNotice({
+        kind: "uncertain",
+        message:
+          error instanceof IdentityAdministrationNetworkError
+            ? "Resultado no confirmado: se perdió la comunicación y no sabemos si se actualizó la Identity."
+            : "Resultado no confirmado: no fue posible confirmar la respuesta del servidor.",
+      });
+    } finally {
+      setIsMutatingIdentity(false);
+    }
+  }
+
+  async function startIdentityMutation(
+    kind: IdentityMutationKind,
+    identity: AdministrativeIdentity,
+    responsibility?: FunctionalResponsibility,
+  ) {
+    if (isMutatingIdentity || uncertainMutation !== null) return;
+    const antiforgeryToken = await prepareMutation(setMutationNotice);
+    if (antiforgeryToken === null) return;
+    await submitIdentityMutation({
+      kind,
+      identityId: identity.identityId,
+      operationalName: identity.operationalName,
+      responsibility,
+      idempotencyKey: crypto.randomUUID(),
+      antiforgeryToken,
+    });
+  }
+
   async function handleRename(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (renameEditor === null || uncertainRename !== null) return;
@@ -368,6 +510,11 @@ export function GeneralConfigurationPanel({
           {renameNotice.message}
         </p>
       )}
+      {mutationNotice && (
+        <p className={`notice notice--${mutationNotice.kind}`} role="status">
+          {mutationNotice.message}
+        </p>
+      )}
       {isLoading && <p>Cargando Identities…</p>}
       {!isLoading && loadError && <p role="alert">{loadError}</p>}
       {!isLoading && !loadError && identities.length === 0 && (
@@ -382,6 +529,7 @@ export function GeneralConfigurationPanel({
                 <th scope="col">Estado</th>
                 <th scope="col">Credencial local</th>
                 <th scope="col">Identificador de acceso</th>
+                <th scope="col">Responsabilidades</th>
                 <th scope="col">Acciones</th>
               </tr>
             </thead>
@@ -397,6 +545,53 @@ export function GeneralConfigurationPanel({
                   </td>
                   <td>{identity.loginIdentifier ?? ""}</td>
                   <td>
+                    <ul aria-label={`Responsabilidades de ${identity.operationalName}`}>
+                      {FUNCTIONAL_RESPONSIBILITIES.map((responsibility) => {
+                        const isAssigned = identity.responsibilities.includes(
+                          responsibility,
+                        );
+                        return (
+                          <li key={responsibility}>
+                            <span>
+                              {responsibility}: {isAssigned ? "Asignada" : "No asignada"}
+                            </span>{" "}
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() =>
+                                void startIdentityMutation(
+                                  isAssigned ? "revoke" : "assign",
+                                  identity,
+                                  responsibility,
+                                )
+                              }
+                              disabled={
+                                isMutatingIdentity || uncertainMutation !== null
+                              }
+                              aria-label={`${isAssigned ? "Revocar" : "Asignar"} ${responsibility} ${isAssigned ? "a" : "a"} ${identity.operationalName}`}
+                            >
+                              {isAssigned ? "Revocar" : "Asignar"}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </td>
+                  <td>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() =>
+                        void startIdentityMutation(
+                          identity.isActive ? "deactivate" : "activate",
+                          identity,
+                        )
+                      }
+                      disabled={isMutatingIdentity || uncertainMutation !== null}
+                      aria-label={`${identity.isActive ? "Desactivar" : "Activar"} ${identity.operationalName}`}
+                    >
+                      {identity.isActive ? "Desactivar" : "Activar"}
+                    </button>
                     <button
                       className="secondary-button"
                       type="button"
@@ -485,6 +680,35 @@ export function GeneralConfigurationPanel({
               disabled={isRenaming}
             >
               Descartar e iniciar nuevo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {uncertainMutation && (
+        <div
+          className="uncertain-intention"
+          role="region"
+          aria-label="Actualización de Identity con resultado no confirmado"
+        >
+          <h3>Actualización pendiente de confirmación</h3>
+          <p>{mutationLabel(uncertainMutation)}</p>
+          <p>El reintento usa exactamente estos datos y la misma intención.</p>
+          <div className="intention-actions">
+            <button
+              type="button"
+              onClick={() => void submitIdentityMutation(uncertainMutation)}
+              disabled={isMutatingIdentity}
+            >
+              Reintentar misma intención
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setUncertainMutation(null)}
+              disabled={isMutatingIdentity}
+            >
+              Descartar e iniciar nueva
             </button>
           </div>
         </div>
