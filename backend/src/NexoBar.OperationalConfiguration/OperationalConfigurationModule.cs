@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -38,22 +39,29 @@ public static class OperationalConfigurationModule
     {
         var group = endpoints.MapGroup(
                 "/api/operational-configuration/preparation-responsibilities")
+            .RequireAuthorization()
             .WithTags("OperationalConfiguration");
         group.MapPost(string.Empty, CreateAsync)
             .WithName("CreatePreparationResponsibility")
             .Accepts<CreatePreparationResponsibilityRequest>("application/json")
             .Produces<PreparationResponsibilityResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status409Conflict);
         group.MapGet(string.Empty, ListAsync)
             .WithName("ListPreparationResponsibilities")
-            .Produces<IReadOnlyList<PreparationResponsibilityResponse>>();
+            .Produces<IReadOnlyList<PreparationResponsibilityResponse>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
         return endpoints;
     }
 
     private static async Task<IResult> CreateAsync(
         [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
         CreatePreparationResponsibilityRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
         PreparationResponsibilityService service,
         CancellationToken cancellationToken)
     {
@@ -75,6 +83,19 @@ public static class OperationalConfigurationModule
                 "operational_configuration.preparation_responsibility.idempotency_key_invalid");
         }
 
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Antiforgery validation failed",
+                "A valid antiforgery cookie and request token are required.",
+                "identities_and_capabilities.antiforgery_invalid");
+        }
+
         var result = await service.CreateAsync(commandId, request, cancellationToken);
         return result.Outcome switch
         {
@@ -91,6 +112,9 @@ public static class OperationalConfigurationModule
                 "Operational name already in use",
                 "A Preparation Responsibility already uses that operational name, ignoring case.",
                 "operational_configuration.preparation_responsibility.operational_name_conflict"),
+            CreatePreparationResponsibilityOutcome.AuthenticationRequired => AuthenticationRequired(),
+            CreatePreparationResponsibilityOutcome.GeneralConfigurationRequired =>
+                GeneralConfigurationRequired(),
             CreatePreparationResponsibilityOutcome.IdempotencyConflict => Problem(
                 StatusCodes.Status409Conflict,
                 "Idempotency-Key was already used for another intention",
@@ -102,8 +126,36 @@ public static class OperationalConfigurationModule
 
     private static async Task<IResult> ListAsync(
         PreparationResponsibilityService service,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await service.ListAsync(cancellationToken));
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Results.Ok(await service.ListAsync(cancellationToken));
+        }
+        catch (PreparationResponsibilityAuthorizationException exception)
+        {
+            return exception.Outcome switch
+            {
+                CreatePreparationResponsibilityOutcome.AuthenticationRequired =>
+                    AuthenticationRequired(),
+                CreatePreparationResponsibilityOutcome.GeneralConfigurationRequired =>
+                    GeneralConfigurationRequired(),
+                _ => throw new UnreachableException()
+            };
+        }
+    }
+
+    private static IResult AuthenticationRequired() => Problem(
+        StatusCodes.Status401Unauthorized,
+        "Invalid session",
+        "The current session is invalid or expired.",
+        "identities_and_capabilities.invalid_session");
+
+    private static IResult GeneralConfigurationRequired() => Problem(
+        StatusCodes.Status403Forbidden,
+        "General Configuration required",
+        "A current General Configuration responsibility is required.",
+        "identities_and_capabilities.general_configuration_required");
 
     private static IResult Problem(
         int statusCode,

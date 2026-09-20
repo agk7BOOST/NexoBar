@@ -60,6 +60,13 @@ partial class OperationalConfigurationDbContextModelSnapshot : ModelSnapshot
                 b.Property<Guid>("IdempotencyKey")
                     .HasColumnType("uuid")
                     .HasColumnName("idempotency_key");
+                b.Property<Guid?>("ActorIdentityId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("actor_identity_id");
+                b.Property<string>("CommandKind")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("command_kind");
                 b.Property<string>("IntentOperationalName")
                     .IsRequired()
                     .HasColumnType("text")

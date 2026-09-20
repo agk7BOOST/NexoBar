@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using NexoBar.OperationalConfiguration;
 
 namespace NexoBar.IdentitiesAndCapabilities;
 
@@ -78,6 +79,8 @@ public static class IdentitiesAndCapabilitiesModule
         services.AddScoped<SessionCookieManager>();
         services.AddScoped<IAuthenticatedContext, HttpAuthenticatedContext>();
         services.AddScoped<IAuthenticatedSessionStabilizer, AuthenticatedSessionStabilizer>();
+        services.AddScoped<IOperationalConfigurationAuthorization,
+            OperationalConfigurationAuthorization>();
         services.AddScoped<IOperationalInterventionCapabilityStabilizer, OperationalInterventionCapabilityStabilizer>();
         services.AddScoped<IPreparationCapabilityStabilizer,
             PreparationCapabilityStabilizer>();

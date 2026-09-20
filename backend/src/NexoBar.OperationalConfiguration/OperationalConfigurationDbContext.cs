@@ -70,6 +70,11 @@ internal sealed class OperationalConfigurationDbContext(
                     "PK_op_config_preparation_responsibility_creation_commands");
             builder.Property(command => command.IdempotencyKey)
                 .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id");
+            builder.Property(command => command.CommandKind)
+                .HasColumnName("command_kind").HasConversion<string>()
+                .HasColumnType("text").IsRequired();
             builder.Property(command => command.IntentOperationalName)
                 .HasColumnName("intent_operational_name")
                 .HasColumnType("text").IsRequired();

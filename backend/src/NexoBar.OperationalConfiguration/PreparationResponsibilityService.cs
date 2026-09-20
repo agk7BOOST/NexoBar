@@ -1,11 +1,13 @@
 using System.Buffers.Binary;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace NexoBar.OperationalConfiguration;
 
 internal sealed class PreparationResponsibilityService(
-    OperationalConfigurationDbContext dbContext)
+    OperationalConfigurationDbContext dbContext,
+    IOperationalConfigurationAuthorization authorization)
 {
     private const long CreationLockNamespace = 0x5052455052455300;
 
@@ -27,6 +29,15 @@ internal sealed class PreparationResponsibilityService(
             $"SELECT pg_advisory_xact_lock({lockKey})",
             cancellationToken);
 
+        var actor = await authorization.StabilizeSessionAsync(
+            transaction.GetDbTransaction(),
+            cancellationToken);
+        if (actor is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CreatePreparationResponsibilityResult.AuthenticationRequired();
+        }
+
         var existingCommand = await dbContext.PreparationResponsibilityCreationCommands
             .AsNoTracking()
             .SingleOrDefaultAsync(
@@ -36,9 +47,18 @@ internal sealed class PreparationResponsibilityService(
         if (existingCommand is not null)
         {
             await transaction.CommitAsync(cancellationToken);
-            return existingCommand.Matches(operationalName)
+            return existingCommand.Matches(actor.IdentityId, operationalName)
                 ? CreatePreparationResponsibilityResult.Created(Map(existingCommand))
                 : CreatePreparationResponsibilityResult.IdempotencyConflict();
+        }
+
+        if (!await authorization.StabilizeGeneralConfigurationAsync(
+                actor.IdentityId,
+                transaction.GetDbTransaction(),
+                cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CreatePreparationResponsibilityResult.GeneralConfigurationRequired();
         }
 
         var responsibility = new PreparationResponsibility(
@@ -47,7 +67,7 @@ internal sealed class PreparationResponsibilityService(
         dbContext.PreparationResponsibilities.Add(responsibility);
         dbContext.PreparationResponsibilityCreationCommands.Add(
             new PreparationResponsibilityCreationCommand(
-                idempotencyKey, operationalName, response));
+                idempotencyKey, actor.IdentityId, operationalName, response));
 
         try
         {
@@ -72,11 +92,34 @@ internal sealed class PreparationResponsibilityService(
     internal async Task<IReadOnlyList<PreparationResponsibilityResponse>> ListAsync(
         CancellationToken cancellationToken)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            cancellationToken);
+        var actor = await authorization.StabilizeSessionAsync(
+            transaction.GetDbTransaction(),
+            cancellationToken);
+        if (actor is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw new PreparationResponsibilityAuthorizationException(
+                CreatePreparationResponsibilityOutcome.AuthenticationRequired);
+        }
+
+        if (!await authorization.StabilizeGeneralConfigurationAsync(
+                actor.IdentityId,
+                transaction.GetDbTransaction(),
+                cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw new PreparationResponsibilityAuthorizationException(
+                CreatePreparationResponsibilityOutcome.GeneralConfigurationRequired);
+        }
+
         var responsibilities = await dbContext.PreparationResponsibilities
             .AsNoTracking()
             .OrderBy(responsibility => responsibility.OperationalName)
             .ThenBy(responsibility => responsibility.Id)
             .ToArrayAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return responsibilities.Select(Map).ToArray();
     }
 
@@ -111,6 +154,10 @@ internal sealed record CreatePreparationResponsibilityResult(
         new(CreatePreparationResponsibilityOutcome.DuplicateName, null);
     internal static CreatePreparationResponsibilityResult IdempotencyConflict() =>
         new(CreatePreparationResponsibilityOutcome.IdempotencyConflict, null);
+    internal static CreatePreparationResponsibilityResult AuthenticationRequired() =>
+        new(CreatePreparationResponsibilityOutcome.AuthenticationRequired, null);
+    internal static CreatePreparationResponsibilityResult GeneralConfigurationRequired() =>
+        new(CreatePreparationResponsibilityOutcome.GeneralConfigurationRequired, null);
 }
 
 internal enum CreatePreparationResponsibilityOutcome
@@ -118,5 +165,13 @@ internal enum CreatePreparationResponsibilityOutcome
     Created,
     Invalid,
     DuplicateName,
-    IdempotencyConflict
+    IdempotencyConflict,
+    AuthenticationRequired,
+    GeneralConfigurationRequired
+}
+
+internal sealed class PreparationResponsibilityAuthorizationException(
+    CreatePreparationResponsibilityOutcome outcome) : Exception
+{
+    internal CreatePreparationResponsibilityOutcome Outcome { get; } = outcome;
 }

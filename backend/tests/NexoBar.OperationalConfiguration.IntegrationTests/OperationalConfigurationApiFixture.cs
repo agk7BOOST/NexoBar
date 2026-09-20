@@ -2,7 +2,10 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
+using NexoBar.IdentitiesAndCapabilities;
 using NexoBar.OperationalConfiguration;
 using Testcontainers.PostgreSql;
 
@@ -28,6 +31,9 @@ public sealed class OperationalConfigurationApiFixture : IAsyncLifetime
         await scope.ServiceProvider
             .GetRequiredService<OperationalConfigurationDbContext>()
             .Database.MigrateAsync();
+        await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .Database.MigrateAsync();
     }
 
     internal async Task ResetAsync(CancellationToken cancellationToken)
@@ -39,7 +45,15 @@ public sealed class OperationalConfigurationApiFixture : IAsyncLifetime
             """
             TRUNCATE TABLE
                 operational_configuration.preparation_responsibility_creation_commands,
-                operational_configuration.preparation_responsibilities
+                operational_configuration.preparation_responsibilities;
+            TRUNCATE TABLE
+                identities_and_capabilities.administrative_commands,
+                identities_and_capabilities.preparation_enablements,
+                identities_and_capabilities.responsibility_assignments,
+                identities_and_capabilities.sessions,
+                identities_and_capabilities.local_credentials,
+                identities_and_capabilities.installation_provisioning,
+                identities_and_capabilities.identities
             """,
             cancellationToken);
     }
@@ -103,6 +117,133 @@ public sealed class OperationalConfigurationApiFixture : IAsyncLifetime
             .Database.HasPendingModelChanges();
     }
 
+    internal HttpClient CreateClient() => application!.CreateClient();
+
+    internal async Task<TestActor> CreateActorAsync(
+        string operationalName,
+        bool active,
+        FunctionalResponsibility? responsibility,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var identities = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        var identity = new Identity(operationalName, active);
+        identities.Identities.Add(identity);
+        if (responsibility is { } value)
+        {
+            identities.ResponsibilityAssignments.Add(
+                new ResponsibilityAssignment(identity.Id, value));
+        }
+        await identities.SaveChangesAsync(cancellationToken);
+        var login = $"{operationalName.Replace(" ", "", StringComparison.Ordinal).ToLowerInvariant()}-{Guid.NewGuid():N}";
+        await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+            .ProvisionAsync(identity.Id, login, "secret", cancellationToken);
+        return new TestActor(identity.Id, login, "secret");
+    }
+
+    internal async Task RemoveResponsibilityAsync(
+        Guid identityId,
+        FunctionalResponsibility responsibility,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .ResponsibilityAssignments
+            .Where(assignment => assignment.IdentityId == identityId &&
+                assignment.ResponsibilityCode == responsibility)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    internal async Task DeactivateAsync(Guid identityId, CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        var identity = await dbContext.Identities.SingleAsync(
+            candidate => candidate.Id == identityId,
+            cancellationToken);
+        identity.Deactivate();
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    internal async Task RevokeSessionsAsync(Guid identityId, CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .Sessions.Where(session => session.IdentityId == identityId)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(
+                    session => session.RevokedAt,
+                    DateTimeOffset.UtcNow),
+                cancellationToken);
+    }
+
+    internal async Task<Guid?> ReadCommandActorAsync(
+        Guid key,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<OperationalConfigurationDbContext>()
+            .PreparationResponsibilityCreationCommands.AsNoTracking()
+            .Where(command => command.IdempotencyKey == key)
+            .Select(command => command.ActorIdentityId)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    internal async Task VerifyActorMigrationRoundTripAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider
+            .GetRequiredService<OperationalConfigurationDbContext>().Database;
+        Assert.True(await HasActorColumnAsync(database, cancellationToken));
+        var migrator = database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260830120000_InitialOperationalConfiguration", cancellationToken);
+        Assert.False(await HasActorColumnAsync(database, cancellationToken));
+        await migrator.MigrateAsync(cancellationToken: cancellationToken);
+        Assert.True(await HasActorColumnAsync(database, cancellationToken));
+    }
+
+    internal async Task InsertLegacyCommandAsync(
+        Guid key,
+        Guid responsibilityId,
+        string name,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<OperationalConfigurationDbContext>();
+        dbContext.PreparationResponsibilities.Add(
+            new PreparationResponsibility(responsibilityId, name));
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO operational_configuration.preparation_responsibility_creation_commands
+                (idempotency_key, actor_identity_id, command_kind, intent_operational_name,
+                 result_responsibility_id, result_operational_name)
+            VALUES ({key}, NULL, {"Create"}, {name}, {responsibilityId}, {name})
+            """,
+            cancellationToken);
+    }
+
+    private static async Task<bool> HasActorColumnAsync(
+        DatabaseFacade database,
+        CancellationToken cancellationToken)
+    {
+        var count = await database.SqlQueryRaw<int>(
+                """
+                SELECT COUNT(*) AS "Value"
+                FROM information_schema.columns
+                WHERE table_schema = 'operational_configuration'
+                  AND table_name = 'preparation_responsibility_creation_commands'
+                  AND column_name = 'actor_identity_id'
+                """)
+            .SingleAsync(cancellationToken);
+        return count == 1;
+    }
+
     public async ValueTask DisposeAsync()
     {
         Client.Dispose();
@@ -130,6 +271,8 @@ public sealed class OperationalConfigurationApiFixture : IAsyncLifetime
         Client = application.CreateClient();
     }
 }
+
+internal sealed record TestActor(Guid IdentityId, string LoginIdentifier, string Secret);
 
 [CollectionDefinition(Name)]
 public sealed class OperationalConfigurationApiCollection :
