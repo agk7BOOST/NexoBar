@@ -21,6 +21,11 @@ export interface RenameIdentityRequest {
   operationalName: string;
 }
 
+export interface SetLocalCredentialRequest {
+  loginIdentifier?: string;
+  secret: string;
+}
+
 export const FUNCTIONAL_RESPONSIBILITIES = [
   "OrderOperationsAndBasicClosure",
   "OperationalIntervention",
@@ -238,4 +243,27 @@ export function revokePreparationEnablement(
     idempotencyKey,
     antiforgeryToken,
   );
+}
+
+export async function setLocalCredential(
+  identityId: string,
+  request: SetLocalCredentialRequest,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<AdministrativeIdentity> {
+  const response = await send(
+    `/api/identities/${encodeURIComponent(identityId)}/credential`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+        "X-NexoBar-CSRF": antiforgeryToken,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  await requireSuccess(response);
+  return (await response.json()) as AdministrativeIdentity;
 }

@@ -13,12 +13,14 @@ import {
   renameIdentity,
   revokeResponsibility,
   revokePreparationEnablement,
+  setLocalCredential,
   type AdministrativeIdentity,
   type CreateIdentityRequest,
   type FunctionalResponsibility,
   type IdentityAdministrationProblemDetails,
   type PreparationResponsibility,
   type RenameIdentityRequest,
+  type SetLocalCredentialRequest,
 } from "./identityAdministrationClient.ts";
 import {
   getAntiforgeryToken,
@@ -71,6 +73,21 @@ interface EnablementMutationIntention {
   identityId: string;
   operationalName: string;
   preparationResponsibility: PreparationResponsibility;
+  idempotencyKey: string;
+  antiforgeryToken: string;
+}
+
+interface CredentialEditor {
+  identityId: string;
+  hasLocalCredential: boolean;
+  changeLoginIdentifier: boolean;
+  loginIdentifier: string;
+  secret: string;
+}
+
+interface CredentialIntention {
+  identityId: string;
+  request: SetLocalCredentialRequest;
   idempotencyKey: string;
   antiforgeryToken: string;
 }
@@ -192,6 +209,11 @@ export function GeneralConfigurationPanel({
   const [enablementNotice, setEnablementNotice] = useState<Notice | null>(null);
   const [uncertainEnablementMutation, setUncertainEnablementMutation] =
     useState<EnablementMutationIntention | null>(null);
+  const [credentialEditor, setCredentialEditor] = useState<CredentialEditor | null>(null);
+  const [isSettingCredential, setIsSettingCredential] = useState(false);
+  const [credentialNotice, setCredentialNotice] = useState<Notice | null>(null);
+  const [uncertainCredential, setUncertainCredential] =
+    useState<CredentialIntention | null>(null);
 
   function retireForbiddenState() {
     readGeneration.current += 1;
@@ -564,6 +586,80 @@ export function GeneralConfigurationPanel({
     });
   }
 
+  function clearCredentialEditor() {
+    setCredentialEditor(null);
+    setUncertainCredential(null);
+  }
+
+  async function submitCredential(intention: CredentialIntention) {
+    setCredentialNotice(null);
+    setIsSettingCredential(true);
+    try {
+      const response = await setLocalCredential(
+        intention.identityId,
+        intention.request,
+        intention.idempotencyKey,
+        intention.antiforgeryToken,
+      );
+      setIdentities((current) => reconcileIdentity(current, response));
+      clearCredentialEditor();
+      setCredentialNotice({ kind: "success", message: "Credencial actualizada correctamente." });
+      if (intention.identityId === currentIdentityId) {
+        onUnauthorized();
+      }
+    } catch (error) {
+      if (error instanceof IdentityAdministrationProblemError) {
+        if (error.problem.status === 401) {
+          onUnauthorized();
+          return;
+        }
+        if (error.problem.status === 403) {
+          retireForbiddenState();
+          return;
+        }
+        setUncertainCredential(null);
+        setCredentialNotice({
+          kind: "functional-error",
+          message:
+            error.problem.code === "identities_and_capabilities.idempotency_conflict"
+              ? messageForProblem(error.problem, "rename")
+              : error.problem.status === 409
+                ? "El identificador de acceso ya está en uso."
+                : "Revisá el identificador de acceso y la clave secreta.",
+        });
+        return;
+      }
+      setUncertainCredential(intention);
+      setCredentialNotice({
+        kind: "uncertain",
+        message: "Resultado no confirmado: no sabemos si la credencial fue actualizada.",
+      });
+    } finally {
+      setIsSettingCredential(false);
+    }
+  }
+
+  async function handleCredential(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (credentialEditor === null || uncertainCredential !== null) return;
+    if (!credentialEditor.hasLocalCredential && !credentialEditor.loginIdentifier.trim()) {
+      setCredentialNotice({ kind: "functional-error", message: "Ingresá un identificador de acceso." });
+      return;
+    }
+    const antiforgeryToken = await prepareMutation(setCredentialNotice);
+    if (antiforgeryToken === null) return;
+    const request: SetLocalCredentialRequest = { secret: credentialEditor.secret };
+    if (!credentialEditor.hasLocalCredential || credentialEditor.changeLoginIdentifier) {
+      request.loginIdentifier = credentialEditor.loginIdentifier;
+    }
+    await submitCredential({
+      identityId: credentialEditor.identityId,
+      request,
+      idempotencyKey: crypto.randomUUID(),
+      antiforgeryToken,
+    });
+  }
+
   async function handleRename(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (renameEditor === null || uncertainRename !== null) return;
@@ -810,6 +906,26 @@ export function GeneralConfigurationPanel({
                       className="secondary-button"
                       type="button"
                       onClick={() => {
+                        if (!isSettingCredential && uncertainCredential === null) {
+                          setCredentialEditor({
+                            identityId: identity.identityId,
+                            hasLocalCredential: identity.hasLocalCredential,
+                            changeLoginIdentifier: !identity.hasLocalCredential,
+                            loginIdentifier: "",
+                            secret: "",
+                          });
+                          setCredentialNotice(null);
+                        }
+                      }}
+                      disabled={isSettingCredential || uncertainCredential !== null}
+                      aria-label={`Configurar credencial de ${identity.operationalName}`}
+                    >
+                      {identity.hasLocalCredential ? "Reemplazar credencial" : "Configurar credencial"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => {
                         if (uncertainRename === null && !isRenaming) {
                           setRenameEditor({
                             identityId: identity.identityId,
@@ -866,6 +982,44 @@ export function GeneralConfigurationPanel({
             Cancelar
           </button>
         </form>
+      )}
+
+      {credentialNotice && (
+        <p className={`notice notice--${credentialNotice.kind}`} role="status">
+          {credentialNotice.message}
+        </p>
+      )}
+      {credentialEditor && uncertainCredential === null && (
+        <form onSubmit={(event) => void handleCredential(event)} aria-label="Configurar credencial local">
+          <h3>Credencial local</h3>
+          {(!credentialEditor.hasLocalCredential || credentialEditor.changeLoginIdentifier) && (
+            <>
+              <label htmlFor="credential-login-identifier">Identificador de acceso</label>
+              <input
+                id="credential-login-identifier"
+                value={credentialEditor.loginIdentifier}
+                onChange={(event) => setCredentialEditor((current) => current && { ...current, loginIdentifier: event.target.value })}
+                disabled={isSettingCredential}
+              />
+            </>
+          )}
+          {credentialEditor.hasLocalCredential && !credentialEditor.changeLoginIdentifier && (
+            <button type="button" className="secondary-button" onClick={() => setCredentialEditor((current) => current && { ...current, changeLoginIdentifier: true })}>
+              Cambiar identificador de acceso
+            </button>
+          )}
+          <label htmlFor="credential-secret">Nueva clave secreta</label>
+          <input id="credential-secret" type="password" value={credentialEditor.secret} onChange={(event) => setCredentialEditor((current) => current && { ...current, secret: event.target.value })} disabled={isSettingCredential} required />
+          <button type="submit" disabled={isSettingCredential}>{isSettingCredential ? "Actualizando…" : "Guardar credencial"}</button>
+          <button type="button" className="secondary-button" onClick={clearCredentialEditor} disabled={isSettingCredential}>Cancelar</button>
+        </form>
+      )}
+      {uncertainCredential && (
+        <div className="uncertain-intention" role="region" aria-label="Credencial con resultado no confirmado">
+          <h3>Credencial pendiente de confirmación</h3>
+          <button type="button" onClick={() => void submitCredential(uncertainCredential)} disabled={isSettingCredential}>Reintentar misma intención</button>
+          <button type="button" className="secondary-button" onClick={clearCredentialEditor} disabled={isSettingCredential}>Descartar e iniciar nueva</button>
+        </div>
       )}
 
       {uncertainRename && (

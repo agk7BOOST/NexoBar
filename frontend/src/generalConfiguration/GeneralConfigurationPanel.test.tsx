@@ -20,6 +20,7 @@ const {
   renameIdentityMock,
   revokePreparationEnablementMock,
   revokeResponsibilityMock,
+  setLocalCredentialMock,
 } = vi.hoisted(() => ({
   activateIdentityMock: vi.fn(),
   assignResponsibilityMock: vi.fn(),
@@ -32,6 +33,7 @@ const {
   renameIdentityMock: vi.fn(),
   revokePreparationEnablementMock: vi.fn(),
   revokeResponsibilityMock: vi.fn(),
+  setLocalCredentialMock: vi.fn(),
 }));
 
 vi.mock("./identityAdministrationClient.ts", async (importOriginal) => {
@@ -50,6 +52,7 @@ vi.mock("./identityAdministrationClient.ts", async (importOriginal) => {
     renameIdentity: renameIdentityMock,
     revokePreparationEnablement: revokePreparationEnablementMock,
     revokeResponsibility: revokeResponsibilityMock,
+    setLocalCredential: setLocalCredentialMock,
   };
 });
 
@@ -113,6 +116,7 @@ describe("GeneralConfigurationPanel", () => {
     renameIdentityMock.mockReset();
     revokePreparationEnablementMock.mockReset();
     revokeResponsibilityMock.mockReset();
+    setLocalCredentialMock.mockReset();
   });
 
   it("owns the Identity read and renders only the permitted administrative fields", async () => {
@@ -683,6 +687,49 @@ describe("GeneralConfigurationPanel", () => {
 
     expect(await screen.findByText("Inactiva")).toBeInTheDocument();
     await waitFor(() => expect(onCurrentIdentityChanged).toHaveBeenCalledOnce());
+  });
+
+  it("replaces another Identity credential without refreshing the current session and clears the secret", async () => {
+    listAdministrativeIdentitiesMock.mockResolvedValueOnce([
+      identity({ identityId: "identity-2", operationalName: "Beto", loginIdentifier: "beto" }),
+      identity(),
+    ]);
+    setLocalCredentialMock.mockResolvedValueOnce(
+      identity({ identityId: "identity-2", operationalName: "Beto", loginIdentifier: "beto" }),
+    );
+    const { onCurrentIdentityChanged, user } = renderPanel();
+    await screen.findByText("Beto");
+    await user.click(screen.getByRole("button", { name: "Configurar credencial de Beto" }));
+    await user.type(screen.getByLabelText("Nueva clave secreta"), "secret-new");
+    await user.click(screen.getByRole("button", { name: "Guardar credencial" }));
+
+    await screen.findByText("Credencial actualizada correctamente.");
+    expect(setLocalCredentialMock.mock.calls[0]?.[1]).toEqual({ secret: "secret-new" });
+    expect(onCurrentIdentityChanged).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Nueva clave secreta")).not.toBeInTheDocument();
+  });
+
+  it("requires an explicit login identifier for credentialless setup and returns to login after self success", async () => {
+    listAdministrativeIdentitiesMock.mockResolvedValueOnce([
+      identity({ hasLocalCredential: false, loginIdentifier: null }),
+    ]);
+    const { onUnauthorized, user } = renderPanel();
+    await screen.findByText("Ana");
+    await user.click(screen.getByRole("button", { name: "Configurar credencial de Ana" }));
+    await user.type(screen.getByLabelText("Nueva clave secreta"), "secret-new");
+    await user.click(screen.getByRole("button", { name: "Guardar credencial" }));
+    expect(await screen.findByText("Ingresá un identificador de acceso.")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Identificador de acceso"), "ana");
+    setLocalCredentialMock.mockResolvedValueOnce(
+      identity({ hasLocalCredential: true, loginIdentifier: "ana" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Guardar credencial" }));
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalledOnce());
+    expect(setLocalCredentialMock.mock.calls[0]?.[1]).toEqual({
+      loginIdentifier: "ana",
+      secret: "secret-new",
+    });
   });
 
   it("retires stale state after 403 and fences a late read after owner replacement", async () => {

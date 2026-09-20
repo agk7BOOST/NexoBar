@@ -12,6 +12,7 @@ import {
   renameIdentity,
   revokeResponsibility,
   revokePreparationEnablement,
+  setLocalCredential,
   type AdministrativeIdentity,
 } from "./identityAdministrationClient.ts";
 
@@ -215,6 +216,21 @@ describe("identityAdministrationClient", () => {
       expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe(token);
       expect(new Headers(init?.headers).get("Idempotency-Key")).toBe(key);
     }
+  });
+
+  it("sets a local credential with exact secure request semantics", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(identity({ hasLocalCredential: true, loginIdentifier: "ana" })), {
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await setLocalCredential("identity/id", { loginIdentifier: "ana", secret: "new-secret" }, "key-credential", "csrf-credential");
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("/api/identities/identity%2Fid/credential");
+    expect(init?.credentials).toBe("same-origin");
+    expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe("csrf-credential");
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("key-credential");
+    expect(JSON.parse(String(init?.body))).toEqual({ loginIdentifier: "ana", secret: "new-secret" });
   });
 
   it("preserves Problem Details and distinguishes a network failure", async () => {
