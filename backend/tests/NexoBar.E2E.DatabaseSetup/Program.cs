@@ -231,7 +231,21 @@ try
         Guid.CreateVersion7(),
         "Papas E2E intervención",
         7m);
-    catalog.Products.AddRange(authorizedProduct, otherProduct, directProduct, interventionProduct);
+    var s9AvailableProduct = new Product(
+        Guid.CreateVersion7(),
+        "Producto disponible S9 E2E",
+        11m);
+    var s9UnavailableProduct = new Product(
+        Guid.CreateVersion7(),
+        "Producto no disponible S9 E2E",
+        13m);
+    catalog.Products.AddRange(
+        authorizedProduct,
+        otherProduct,
+        directProduct,
+        interventionProduct,
+        s9AvailableProduct,
+        s9UnavailableProduct);
     await catalog.SaveChangesAsync();
     await catalog.Database.ExecuteSqlInterpolatedAsync(
         $"""
@@ -243,6 +257,10 @@ try
             END
         WHERE id IN ({authorizedProduct.Id}, {otherProduct.Id}, {interventionProduct.Id})
         """);
+    // No availability mutation exists yet. This direct fixture state is only
+    // for observing the S9 cross-capability checkpoint's approved gap.
+    await catalog.Database.ExecuteSqlInterpolatedAsync(
+        $"UPDATE catalog.products SET is_available = FALSE WHERE id = {s9UnavailableProduct.Id}");
 
     var order = new Order(Guid.CreateVersion7(), "Mesa seguridad E2E");
     var incorporation = new Incorporation(Guid.CreateVersion7(), order.Id, 1);
