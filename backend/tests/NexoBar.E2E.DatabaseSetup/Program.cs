@@ -87,6 +87,8 @@ try
     var inventoryOperator = new Identity("Operador Inventario E2E", true);
     var inventorySseOperatorA = new Identity("Operador Inventario SSE A E2E", true);
     var inventorySseOperatorB = new Identity("Operador Inventario SSE B E2E", true);
+    var generalConfigurationAdminA = new Identity("Administradora general A E2E", true);
+    var generalConfigurationAdminB = new Identity("Administrador general B E2E", true);
     identitiesAndCapabilities.Identities.AddRange(
         preparer,
         secondPreparer,
@@ -97,7 +99,9 @@ try
         inventoryConfigurator,
         inventoryOperator,
         inventorySseOperatorA,
-        inventorySseOperatorB);
+        inventorySseOperatorB,
+        generalConfigurationAdminA,
+        generalConfigurationAdminB);
     identitiesAndCapabilities.ResponsibilityAssignments.AddRange(
         new ResponsibilityAssignment(
             priceCatalogConfigurator.Id,
@@ -131,7 +135,13 @@ try
             FunctionalResponsibility.InventoryOperation),
         new ResponsibilityAssignment(
             inventorySseOperatorB.Id,
-            FunctionalResponsibility.InventoryOperation));
+            FunctionalResponsibility.InventoryOperation),
+        new ResponsibilityAssignment(
+            generalConfigurationAdminA.Id,
+            FunctionalResponsibility.GeneralConfiguration),
+        new ResponsibilityAssignment(
+            generalConfigurationAdminB.Id,
+            FunctionalResponsibility.GeneralConfiguration));
     identitiesAndCapabilities.PreparationEnablements.AddRange(
         new PreparationEnablement(preparer.Id, kitchen.Id),
         new PreparationEnablement(secondPreparer.Id, kitchen.Id));
@@ -195,6 +205,18 @@ try
             inventorySseOperatorB.Id,
             "inventory-operation-sse-b-e2e",
             "inventory-operation-sse-b-e2e-secret",
+            CancellationToken.None);
+    await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+        .ProvisionAsync(
+            generalConfigurationAdminA.Id,
+            "general-configuration-admin-a-e2e",
+            "general-configuration-admin-a-e2e-secret",
+            CancellationToken.None);
+    await scope.ServiceProvider.GetRequiredService<LocalCredentialProvisioner>()
+        .ProvisionAsync(
+            generalConfigurationAdminB.Id,
+            "general-configuration-admin-b-e2e",
+            "general-configuration-admin-b-e2e-secret",
             CancellationToken.None);
 
     var inventorySseItemId = Guid.CreateVersion7();
