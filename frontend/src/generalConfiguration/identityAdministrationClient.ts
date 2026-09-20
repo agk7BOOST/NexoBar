@@ -8,6 +8,11 @@ export interface AdministrativeIdentity {
   preparationEnablements: string[];
 }
 
+export interface PreparationResponsibility {
+  id: string;
+  operationalName: string;
+}
+
 export interface CreateIdentityRequest {
   operationalName: string;
 }
@@ -87,6 +92,17 @@ export async function listAdministrativeIdentities(): Promise<
   });
   await requireSuccess(response);
   return (await response.json()) as AdministrativeIdentity[];
+}
+
+export async function listPreparationResponsibilities(): Promise<
+  PreparationResponsibility[]
+> {
+  const response = await send(
+    "/api/operational-configuration/preparation-responsibilities",
+    { credentials: "same-origin" },
+  );
+  await requireSuccess(response);
+  return (await response.json()) as PreparationResponsibility[];
 }
 
 export async function createIdentity(
@@ -193,6 +209,32 @@ export function revokeResponsibility(
 ): Promise<AdministrativeIdentity> {
   return sendIdentityCommand(
     `/api/identities/${encodeURIComponent(identityId)}/responsibilities/${encodeURIComponent(responsibility)}/revoke`,
+    idempotencyKey,
+    antiforgeryToken,
+  );
+}
+
+export function grantPreparationEnablement(
+  identityId: string,
+  preparationResponsibilityId: string,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<AdministrativeIdentity> {
+  return sendIdentityCommand(
+    `/api/identities/${encodeURIComponent(identityId)}/preparation-enablement/${encodeURIComponent(preparationResponsibilityId)}/grant`,
+    idempotencyKey,
+    antiforgeryToken,
+  );
+}
+
+export function revokePreparationEnablement(
+  identityId: string,
+  preparationResponsibilityId: string,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<AdministrativeIdentity> {
+  return sendIdentityCommand(
+    `/api/identities/${encodeURIComponent(identityId)}/preparation-enablement/${encodeURIComponent(preparationResponsibilityId)}/revoke`,
     idempotencyKey,
     antiforgeryToken,
   );

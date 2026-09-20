@@ -14,8 +14,11 @@ const {
   createIdentityMock,
   deactivateIdentityMock,
   getAntiforgeryTokenMock,
+  grantPreparationEnablementMock,
   listAdministrativeIdentitiesMock,
+  listPreparationResponsibilitiesMock,
   renameIdentityMock,
+  revokePreparationEnablementMock,
   revokeResponsibilityMock,
 } = vi.hoisted(() => ({
   activateIdentityMock: vi.fn(),
@@ -23,8 +26,11 @@ const {
   createIdentityMock: vi.fn(),
   deactivateIdentityMock: vi.fn(),
   getAntiforgeryTokenMock: vi.fn(),
+  grantPreparationEnablementMock: vi.fn(),
   listAdministrativeIdentitiesMock: vi.fn(),
+  listPreparationResponsibilitiesMock: vi.fn(),
   renameIdentityMock: vi.fn(),
+  revokePreparationEnablementMock: vi.fn(),
   revokeResponsibilityMock: vi.fn(),
 }));
 
@@ -38,8 +44,11 @@ vi.mock("./identityAdministrationClient.ts", async (importOriginal) => {
     assignResponsibility: assignResponsibilityMock,
     createIdentity: createIdentityMock,
     deactivateIdentity: deactivateIdentityMock,
+    grantPreparationEnablement: grantPreparationEnablementMock,
     listAdministrativeIdentities: listAdministrativeIdentitiesMock,
+    listPreparationResponsibilities: listPreparationResponsibilitiesMock,
     renameIdentity: renameIdentityMock,
+    revokePreparationEnablement: revokePreparationEnablementMock,
     revokeResponsibility: revokeResponsibilityMock,
   };
 });
@@ -96,21 +105,26 @@ describe("GeneralConfigurationPanel", () => {
     deactivateIdentityMock.mockReset();
     getAntiforgeryTokenMock.mockReset();
     getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
+    grantPreparationEnablementMock.mockReset();
     listAdministrativeIdentitiesMock.mockReset();
     listAdministrativeIdentitiesMock.mockResolvedValue([]);
+    listPreparationResponsibilitiesMock.mockReset();
+    listPreparationResponsibilitiesMock.mockResolvedValue([]);
     renameIdentityMock.mockReset();
+    revokePreparationEnablementMock.mockReset();
     revokeResponsibilityMock.mockReset();
   });
 
   it("owns the Identity read and renders only the permitted administrative fields", async () => {
     listAdministrativeIdentitiesMock.mockResolvedValueOnce([
-      identity(),
+      identity({ preparationEnablements: [] }),
       identity({
         identityId: "identity-2",
         operationalName: "Beto",
         isActive: false,
         hasLocalCredential: false,
         loginIdentifier: null,
+        preparationEnablements: [],
       }),
     ]);
     renderPanel();
@@ -122,10 +136,10 @@ describe("GeneralConfigurationPanel", () => {
     expect(screen.getByText("Configurada")).toBeInTheDocument();
     expect(screen.getByText("No configurada")).toBeInTheDocument();
     expect(screen.getByText("ana")).toBeInTheDocument();
-    expect(screen.queryByText("destination-1")).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByText(/secret|verifier|hash/i)).not.toBeInTheDocument();
     expect(listAdministrativeIdentitiesMock).toHaveBeenCalledOnce();
+    expect(listPreparationResponsibilitiesMock).toHaveBeenCalledOnce();
   });
 
   it("creates with a UUID-v4 key and reconciles the authoritative response", async () => {
@@ -222,6 +236,241 @@ describe("GeneralConfigurationPanel", () => {
     expect(await screen.findByText("Ingresá un nombre operacional válido.")).toBeInTheDocument();
     expect(screen.getByText("Ana")).toBeInTheDocument();
     expect(screen.queryByText("Nombre fallido")).not.toBeInTheDocument();
+  });
+
+  it("loads the administrative Preparation Responsibility lookup and resolves enablements by operational name", async () => {
+    const kitchen = { id: "preparation-1", operationalName: "Cocina" };
+    listAdministrativeIdentitiesMock.mockResolvedValueOnce([
+      identity({ preparationEnablements: [kitchen.id], responsibilities: [] }),
+    ]);
+    listPreparationResponsibilitiesMock.mockResolvedValueOnce([kitchen]);
+    renderPanel();
+
+    expect(await screen.findByText("Cocina: Habilitada")).toBeInTheDocument();
+    expect(screen.queryByText(kitchen.id)).not.toBeInTheDocument();
+    expect(listPreparationResponsibilitiesMock).toHaveBeenCalledOnce();
+    expect(screen.getByText("Preparation: No asignada")).toBeInTheDocument();
+  });
+
+  it("keeps enablements independent from the Preparation Functional Responsibility and exposes unresolved IDs", async () => {
+    listAdministrativeIdentitiesMock.mockResolvedValueOnce([
+      identity({
+        responsibilities: [],
+        preparationEnablements: ["missing-preparation"],
+      }),
+    ]);
+    listPreparationResponsibilitiesMock.mockResolvedValueOnce([]);
+    renderPanel();
+
+    expect(await screen.findByText("Preparation: No asignada")).toBeInTheDocument();
+    expect(
+      screen.getByText("Responsabilidad de preparación desconocida"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Id: missing-preparation")).toBeInTheDocument();
+  });
+
+  it("retains General Configuration error handling for lookup authorization", async () => {
+    listPreparationResponsibilitiesMock.mockRejectedValueOnce(
+      new IdentityAdministrationProblemError({ status: 401 }),
+    );
+    const unauthorized = renderPanel();
+    await waitFor(() => expect(unauthorized.onUnauthorized).toHaveBeenCalledOnce());
+    unauthorized.unmount();
+
+    listPreparationResponsibilitiesMock.mockReset();
+    listPreparationResponsibilitiesMock.mockRejectedValueOnce(
+      new IdentityAdministrationProblemError({ status: 403 }),
+    );
+    const forbidden = renderPanel();
+    await waitFor(() => expect(forbidden.onForbidden).toHaveBeenCalledOnce());
+    expect(
+      screen.queryByRole("heading", { name: "Configuración general" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("fences a late Preparation Responsibility lookup after panel replacement", async () => {
+    let resolveOldLookup: ((items: { id: string; operationalName: string }[]) => void) | undefined;
+    const oldLookup = new Promise<{ id: string; operationalName: string }[]>(
+      (resolve) => {
+        resolveOldLookup = resolve;
+      },
+    );
+    listPreparationResponsibilitiesMock
+      .mockReturnValueOnce(oldLookup)
+      .mockResolvedValueOnce([{ id: "preparation-2", operationalName: "Barra" }]);
+    listAdministrativeIdentitiesMock.mockResolvedValue([
+      identity({ preparationEnablements: [] }),
+    ]);
+    const { rerender } = render(
+      <GeneralConfigurationPanel
+        key="old"
+        currentIdentityId="identity-1"
+        onCurrentIdentityChanged={vi.fn().mockResolvedValue(undefined)}
+        onForbidden={vi.fn()}
+        onUnauthorized={vi.fn()}
+      />,
+    );
+    rerender(
+      <GeneralConfigurationPanel
+        key="new"
+        currentIdentityId="identity-2"
+        onCurrentIdentityChanged={vi.fn().mockResolvedValue(undefined)}
+        onForbidden={vi.fn()}
+        onUnauthorized={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Barra: No habilitada");
+    resolveOldLookup?.([{ id: "preparation-1", operationalName: "Cocina anterior" }]);
+    await waitFor(() =>
+      expect(screen.queryByText("Cocina anterior: No habilitada")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("grants enablement with a UUID key and reconciles only the authoritative Identity response", async () => {
+    const kitchen = { id: "preparation-1", operationalName: "Cocina" };
+    listAdministrativeIdentitiesMock.mockResolvedValueOnce([
+      identity({ responsibilities: [], preparationEnablements: [] }),
+    ]);
+    listPreparationResponsibilitiesMock.mockResolvedValueOnce([kitchen]);
+    grantPreparationEnablementMock.mockResolvedValueOnce(
+      identity({ responsibilities: [], preparationEnablements: [kitchen.id] }),
+    );
+    const { onCurrentIdentityChanged, user } = renderPanel();
+
+    await screen.findByText("Cocina: No habilitada");
+    await user.click(
+      screen.getByRole("button", { name: "Otorgar habilitación Cocina a Ana" }),
+    );
+
+    expect(await screen.findByText("Cocina: Habilitada")).toBeInTheDocument();
+    const [identityId, responsibilityId, key, token] =
+      grantPreparationEnablementMock.mock.calls[0]!;
+    expect(identityId).toBe("identity-1");
+    expect(responsibilityId).toBe(kitchen.id);
+    expect(key).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(token).toBe("csrf-token");
+    expect(screen.getByText("Preparation: No asignada")).toBeInTheDocument();
+    expect(onCurrentIdentityChanged).not.toHaveBeenCalled();
+  });
+
+  it("reuses an uncertain enablement key and creates a new key for a changed grant", async () => {
+    vi.spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce("11111111-1111-4111-8111-111111111111")
+      .mockReturnValueOnce("22222222-2222-4222-8222-222222222222");
+    const kitchen = { id: "preparation-1", operationalName: "Cocina" };
+    const bar = { id: "preparation-2", operationalName: "Barra" };
+    listAdministrativeIdentitiesMock.mockResolvedValueOnce([
+      identity({ preparationEnablements: [] }),
+    ]);
+    listPreparationResponsibilitiesMock.mockResolvedValueOnce([kitchen, bar]);
+    grantPreparationEnablementMock
+      .mockRejectedValueOnce(new IdentityAdministrationNetworkError())
+      .mockResolvedValueOnce(identity({ preparationEnablements: [kitchen.id] }))
+      .mockRejectedValueOnce(new IdentityAdministrationNetworkError())
+      .mockResolvedValueOnce(identity({ preparationEnablements: [bar.id] }));
+    const { user } = renderPanel();
+
+    await screen.findByText("Cocina: No habilitada");
+    await user.click(screen.getByRole("button", { name: "Otorgar habilitación Cocina a Ana" }));
+    await screen.findByRole("region", {
+      name: "Habilitación de preparación con resultado no confirmado",
+    });
+    const firstCall = grantPreparationEnablementMock.mock.calls[0];
+    await user.click(screen.getByRole("button", { name: "Reintentar misma intención" }));
+    await screen.findByText("Cocina: Habilitada");
+    expect(grantPreparationEnablementMock.mock.calls[1]).toEqual(firstCall);
+
+    await user.click(screen.getByRole("button", { name: "Otorgar habilitación Barra a Ana" }));
+    await screen.findByRole("region", {
+      name: "Habilitación de preparación con resultado no confirmado",
+    });
+    await user.click(screen.getByRole("button", { name: "Descartar e iniciar nueva" }));
+    await user.click(screen.getByRole("button", { name: "Otorgar habilitación Barra a Ana" }));
+    expect(grantPreparationEnablementMock.mock.calls[2]?.[2]).not.toBe(
+      grantPreparationEnablementMock.mock.calls[3]?.[2],
+    );
+  });
+
+  it("revokes an enablement only from an authoritative response and retains it after failure", async () => {
+    const kitchen = { id: "preparation-1", operationalName: "Cocina" };
+    listAdministrativeIdentitiesMock.mockResolvedValueOnce([
+      identity({ preparationEnablements: [kitchen.id] }),
+    ]);
+    listPreparationResponsibilitiesMock.mockResolvedValueOnce([kitchen]);
+    revokePreparationEnablementMock.mockRejectedValueOnce(
+      new IdentityAdministrationProblemError({ status: 400 }),
+    );
+    const { user } = renderPanel();
+
+    await screen.findByText("Cocina: Habilitada");
+    await user.click(screen.getByRole("button", { name: "Revocar habilitación Cocina a Ana" }));
+    expect(await screen.findByText("La responsabilidad de preparación indicada no es válida.")).toBeInTheDocument();
+    expect(screen.getByText("Cocina: Habilitada")).toBeInTheDocument();
+
+    revokePreparationEnablementMock.mockResolvedValueOnce(
+      identity({ preparationEnablements: [] }),
+    );
+    await user.click(screen.getByRole("button", { name: "Revocar habilitación Cocina a Ana" }));
+    expect(await screen.findByText("Cocina: No habilitada")).toBeInTheDocument();
+  });
+
+  it("does not couple Preparation responsibility assignment or revocation to enablements", async () => {
+    const kitchen = { id: "preparation-1", operationalName: "Cocina" };
+    listAdministrativeIdentitiesMock.mockResolvedValueOnce([
+      identity({
+        responsibilities: ["GeneralConfiguration", "Preparation"],
+        preparationEnablements: [kitchen.id],
+      }),
+    ]);
+    listPreparationResponsibilitiesMock.mockResolvedValueOnce([kitchen]);
+    revokeResponsibilityMock.mockResolvedValueOnce(
+      identity({
+        responsibilities: ["GeneralConfiguration"],
+        preparationEnablements: [kitchen.id],
+      }),
+    );
+    assignResponsibilityMock.mockResolvedValueOnce(
+      identity({
+        responsibilities: ["GeneralConfiguration", "Preparation"],
+        preparationEnablements: [kitchen.id],
+      }),
+    );
+    const { user } = renderPanel();
+
+    await screen.findByText("Cocina: Habilitada");
+    await user.click(screen.getByRole("button", { name: "Revocar Preparation a Ana" }));
+    expect(await screen.findByText("Preparation: No asignada")).toBeInTheDocument();
+    expect(screen.getByText("Cocina: Habilitada")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Asignar Preparation a Ana" }));
+    expect(await screen.findByText("Preparation: Asignada")).toBeInTheDocument();
+    expect(screen.getByText("Cocina: Habilitada")).toBeInTheDocument();
+  });
+
+  it("reuses the exact key for an uncertain enablement revocation", async () => {
+    const kitchen = { id: "preparation-1", operationalName: "Cocina" };
+    listAdministrativeIdentitiesMock.mockResolvedValueOnce([
+      identity({ preparationEnablements: [kitchen.id] }),
+    ]);
+    listPreparationResponsibilitiesMock.mockResolvedValueOnce([kitchen]);
+    revokePreparationEnablementMock
+      .mockRejectedValueOnce(new IdentityAdministrationNetworkError())
+      .mockResolvedValueOnce(identity({ preparationEnablements: [] }));
+    const { user } = renderPanel();
+
+    await screen.findByText("Cocina: Habilitada");
+    await user.click(screen.getByRole("button", { name: "Revocar habilitación Cocina a Ana" }));
+    await screen.findByRole("region", {
+      name: "Habilitación de preparación con resultado no confirmado",
+    });
+    const firstCall = revokePreparationEnablementMock.mock.calls[0];
+    await user.click(screen.getByRole("button", { name: "Reintentar misma intención" }));
+
+    await screen.findByText("Cocina: No habilitada");
+    expect(revokePreparationEnablementMock.mock.calls[1]).toEqual(firstCall);
   });
 
   it("renders the fixed closed responsibility set and reconciles activation from the response", async () => {

@@ -5,15 +5,19 @@ import {
   createIdentity,
   deactivateIdentity,
   FUNCTIONAL_RESPONSIBILITIES,
+  grantPreparationEnablement,
   IdentityAdministrationNetworkError,
   IdentityAdministrationProblemError,
   listAdministrativeIdentities,
+  listPreparationResponsibilities,
   renameIdentity,
   revokeResponsibility,
+  revokePreparationEnablement,
   type AdministrativeIdentity,
   type CreateIdentityRequest,
   type FunctionalResponsibility,
   type IdentityAdministrationProblemDetails,
+  type PreparationResponsibility,
   type RenameIdentityRequest,
 } from "./identityAdministrationClient.ts";
 import {
@@ -56,6 +60,17 @@ interface IdentityMutationIntention {
   identityId: string;
   operationalName: string;
   responsibility?: FunctionalResponsibility;
+  idempotencyKey: string;
+  antiforgeryToken: string;
+}
+
+type EnablementMutationKind = "grant" | "revoke";
+
+interface EnablementMutationIntention {
+  kind: EnablementMutationKind;
+  identityId: string;
+  operationalName: string;
+  preparationResponsibility: PreparationResponsibility;
   idempotencyKey: string;
   antiforgeryToken: string;
 }
@@ -109,6 +124,12 @@ function mutationLabel(intention: IdentityMutationIntention): string {
   }
 }
 
+function enablementMutationLabel(
+  intention: EnablementMutationIntention,
+): string {
+  return `${intention.kind === "grant" ? "Asignación" : "Revocación"} de habilitación ${intention.preparationResponsibility.operationalName} a ${intention.operationalName}`;
+}
+
 function sortIdentities(
   identities: AdministrativeIdentity[],
 ): AdministrativeIdentity[] {
@@ -146,6 +167,13 @@ export function GeneralConfigurationPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isForbidden, setIsForbidden] = useState(false);
   const readGeneration = useRef(0);
+  const preparationResponsibilityReadGeneration = useRef(0);
+  const [preparationResponsibilities, setPreparationResponsibilities] =
+    useState<PreparationResponsibility[]>([]);
+  const [isPreparationResponsibilitiesLoading, setIsPreparationResponsibilitiesLoading] =
+    useState(true);
+  const [preparationResponsibilitiesError, setPreparationResponsibilitiesError] =
+    useState<string | null>(null);
   const [creationName, setCreationName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [creationNotice, setCreationNotice] = useState<Notice | null>(null);
@@ -160,9 +188,16 @@ export function GeneralConfigurationPanel({
   const [mutationNotice, setMutationNotice] = useState<Notice | null>(null);
   const [uncertainMutation, setUncertainMutation] =
     useState<IdentityMutationIntention | null>(null);
+  const [isMutatingEnablement, setIsMutatingEnablement] = useState(false);
+  const [enablementNotice, setEnablementNotice] = useState<Notice | null>(null);
+  const [uncertainEnablementMutation, setUncertainEnablementMutation] =
+    useState<EnablementMutationIntention | null>(null);
 
   function retireForbiddenState() {
+    readGeneration.current += 1;
+    preparationResponsibilityReadGeneration.current += 1;
     setIdentities([]);
+    setPreparationResponsibilities([]);
     setIsForbidden(true);
     onForbidden();
   }
@@ -196,10 +231,47 @@ export function GeneralConfigurationPanel({
     }
   }
 
-  useEffect(() => {
+  async function reloadPreparationResponsibilities() {
+    const generation = ++preparationResponsibilityReadGeneration.current;
+    setIsPreparationResponsibilitiesLoading(true);
+    setPreparationResponsibilitiesError(null);
+    try {
+      const loaded = await listPreparationResponsibilities();
+      if (generation === preparationResponsibilityReadGeneration.current) {
+        setPreparationResponsibilities(loaded);
+      }
+    } catch (error) {
+      if (generation !== preparationResponsibilityReadGeneration.current) return;
+      if (error instanceof IdentityAdministrationProblemError) {
+        if (error.problem.status === 401) {
+          onUnauthorized();
+          return;
+        }
+        if (error.problem.status === 403) {
+          retireForbiddenState();
+          return;
+        }
+      }
+      setPreparationResponsibilitiesError(
+        "No se pudo cargar el listado de responsabilidades de preparación.",
+      );
+    } finally {
+      if (generation === preparationResponsibilityReadGeneration.current) {
+        setIsPreparationResponsibilitiesLoading(false);
+      }
+    }
+  }
+
+  function reloadAdministrativeState() {
     void reloadIdentities();
+    void reloadPreparationResponsibilities();
+  }
+
+  useEffect(() => {
+    reloadAdministrativeState();
     return () => {
       readGeneration.current += 1;
+      preparationResponsibilityReadGeneration.current += 1;
     };
   }, []);
 
@@ -415,6 +487,83 @@ export function GeneralConfigurationPanel({
     });
   }
 
+  async function submitEnablementMutation(
+    intention: EnablementMutationIntention,
+  ) {
+    setEnablementNotice(null);
+    setIsMutatingEnablement(true);
+    try {
+      const response =
+        intention.kind === "grant"
+          ? await grantPreparationEnablement(
+              intention.identityId,
+              intention.preparationResponsibility.id,
+              intention.idempotencyKey,
+              intention.antiforgeryToken,
+            )
+          : await revokePreparationEnablement(
+              intention.identityId,
+              intention.preparationResponsibility.id,
+              intention.idempotencyKey,
+              intention.antiforgeryToken,
+            );
+      setIdentities((current) => reconcileIdentity(current, response));
+      setUncertainEnablementMutation(null);
+      setEnablementNotice({
+        kind: "success",
+        message: `${enablementMutationLabel(intention)} realizada correctamente.`,
+      });
+    } catch (error) {
+      if (error instanceof IdentityAdministrationProblemError) {
+        if (error.problem.status === 401) {
+          onUnauthorized();
+          return;
+        }
+        if (error.problem.status === 403) {
+          retireForbiddenState();
+          return;
+        }
+        setUncertainEnablementMutation(null);
+        setEnablementNotice({
+          kind: "functional-error",
+          message:
+            error.problem.status === 400
+              ? "La responsabilidad de preparación indicada no es válida."
+              : messageForProblem(error.problem, "assign"),
+        });
+        return;
+      }
+      setUncertainEnablementMutation(intention);
+      setEnablementNotice({
+        kind: "uncertain",
+        message:
+          error instanceof IdentityAdministrationNetworkError
+            ? "Resultado no confirmado: se perdió la comunicación y no sabemos si se actualizó la habilitación de preparación."
+            : "Resultado no confirmado: no fue posible confirmar la respuesta del servidor.",
+      });
+    } finally {
+      setIsMutatingEnablement(false);
+    }
+  }
+
+  async function startEnablementMutation(
+    kind: EnablementMutationKind,
+    identity: AdministrativeIdentity,
+    preparationResponsibility: PreparationResponsibility,
+  ) {
+    if (isMutatingEnablement || uncertainEnablementMutation !== null) return;
+    const antiforgeryToken = await prepareMutation(setEnablementNotice);
+    if (antiforgeryToken === null) return;
+    await submitEnablementMutation({
+      kind,
+      identityId: identity.identityId,
+      operationalName: identity.operationalName,
+      preparationResponsibility,
+      idempotencyKey: crypto.randomUUID(),
+      antiforgeryToken,
+    });
+  }
+
   async function handleRename(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (renameEditor === null || uncertainRename !== null) return;
@@ -499,8 +648,8 @@ export function GeneralConfigurationPanel({
         <button
           className="secondary-button"
           type="button"
-          onClick={() => void reloadIdentities()}
-          disabled={isLoading}
+          onClick={reloadAdministrativeState}
+          disabled={isLoading || isPreparationResponsibilitiesLoading}
         >
           Actualizar
         </button>
@@ -515,8 +664,19 @@ export function GeneralConfigurationPanel({
           {mutationNotice.message}
         </p>
       )}
+      {enablementNotice && (
+        <p className={`notice notice--${enablementNotice.kind}`} role="status">
+          {enablementNotice.message}
+        </p>
+      )}
       {isLoading && <p>Cargando Identities…</p>}
       {!isLoading && loadError && <p role="alert">{loadError}</p>}
+      {isPreparationResponsibilitiesLoading && (
+        <p>Cargando responsabilidades de preparación…</p>
+      )}
+      {!isPreparationResponsibilitiesLoading && preparationResponsibilitiesError && (
+        <p role="alert">{preparationResponsibilitiesError}</p>
+      )}
       {!isLoading && !loadError && identities.length === 0 && (
         <p>No hay Identities.</p>
       )}
@@ -530,12 +690,23 @@ export function GeneralConfigurationPanel({
                 <th scope="col">Credencial local</th>
                 <th scope="col">Identificador de acceso</th>
                 <th scope="col">Responsabilidades</th>
+                <th scope="col">Habilitaciones de preparación</th>
                 <th scope="col">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {identities.map((identity) => (
-                <tr key={identity.identityId}>
+              {identities.map((identity) => {
+                const unresolvedEnablements =
+                  isPreparationResponsibilitiesLoading
+                    ? []
+                    : identity.preparationEnablements.filter(
+                        (enablementId) =>
+                          !preparationResponsibilities.some(
+                            (responsibility) => responsibility.id === enablementId,
+                          ),
+                      );
+                return (
+                  <tr key={identity.identityId}>
                   <td>{identity.operationalName}</td>
                   <td>{identity.isActive ? "Activa" : "Inactiva"}</td>
                   <td>
@@ -578,6 +749,49 @@ export function GeneralConfigurationPanel({
                     </ul>
                   </td>
                   <td>
+                    <p>Habilitaciones de preparación</p>
+                    <ul
+                      aria-label={`Habilitaciones de preparación de ${identity.operationalName}`}
+                    >
+                      {preparationResponsibilities.map((responsibility) => {
+                        const isEnabled = identity.preparationEnablements.includes(
+                          responsibility.id,
+                        );
+                        return (
+                          <li key={responsibility.id}>
+                            <span>
+                              {responsibility.operationalName}: {isEnabled ? "Habilitada" : "No habilitada"}
+                            </span>{" "}
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() =>
+                                void startEnablementMutation(
+                                  isEnabled ? "revoke" : "grant",
+                                  identity,
+                                  responsibility,
+                                )
+                              }
+                              disabled={
+                                isMutatingEnablement ||
+                                uncertainEnablementMutation !== null
+                              }
+                              aria-label={`${isEnabled ? "Revocar habilitación" : "Otorgar habilitación"} ${responsibility.operationalName} a ${identity.operationalName}`}
+                            >
+                              {isEnabled ? "Revocar habilitación" : "Otorgar habilitación"}
+                            </button>
+                          </li>
+                        );
+                      })}
+                      {unresolvedEnablements.map((enablementId) => (
+                        <li key={enablementId}>
+                          <span>Responsabilidad de preparación desconocida</span>{" "}
+                          <small>Id: {enablementId}</small>
+                        </li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td>
                     <button
                       className="secondary-button"
                       type="button"
@@ -610,8 +824,9 @@ export function GeneralConfigurationPanel({
                       Cambiar nombre
                     </button>
                   </td>
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -707,6 +922,37 @@ export function GeneralConfigurationPanel({
               type="button"
               onClick={() => setUncertainMutation(null)}
               disabled={isMutatingIdentity}
+            >
+              Descartar e iniciar nueva
+            </button>
+          </div>
+        </div>
+      )}
+
+      {uncertainEnablementMutation && (
+        <div
+          className="uncertain-intention"
+          role="region"
+          aria-label="Habilitación de preparación con resultado no confirmado"
+        >
+          <h3>Habilitación de preparación pendiente de confirmación</h3>
+          <p>{enablementMutationLabel(uncertainEnablementMutation)}</p>
+          <p>El reintento usa exactamente estos datos y la misma intención.</p>
+          <div className="intention-actions">
+            <button
+              type="button"
+              onClick={() =>
+                void submitEnablementMutation(uncertainEnablementMutation)
+              }
+              disabled={isMutatingEnablement}
+            >
+              Reintentar misma intención
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setUncertainEnablementMutation(null)}
+              disabled={isMutatingEnablement}
             >
               Descartar e iniciar nueva
             </button>

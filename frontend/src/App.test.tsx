@@ -94,6 +94,10 @@ describe("App capability-aware administrative mounting", () => {
       "/api/identities",
       expect.anything(),
     );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/operational-configuration/preparation-responsibilities",
+      expect.anything(),
+    );
     expect(screen.queryByLabelText("Catalog administrativo")).not.toBeInTheDocument();
   });
 
@@ -124,6 +128,10 @@ describe("App capability-aware administrative mounting", () => {
     ).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith(
       "/api/identities",
+      expect.anything(),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/operational-configuration/preparation-responsibilities",
       expect.anything(),
     );
   });

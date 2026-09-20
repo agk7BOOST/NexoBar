@@ -4,11 +4,14 @@ import {
   assignResponsibility,
   createIdentity,
   deactivateIdentity,
+  grantPreparationEnablement,
   IdentityAdministrationNetworkError,
   IdentityAdministrationProblemError,
   listAdministrativeIdentities,
+  listPreparationResponsibilities,
   renameIdentity,
   revokeResponsibility,
+  revokePreparationEnablement,
   type AdministrativeIdentity,
 } from "./identityAdministrationClient.ts";
 
@@ -45,6 +48,23 @@ describe("identityAdministrationClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/identities", {
       credentials: "same-origin",
     });
+  });
+
+  it("uses the secured OperationalConfiguration administrative lookup", async () => {
+    const responsibilities = [{ id: "preparation-1", operationalName: "Cocina" }];
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(responsibilities), {
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(listPreparationResponsibilities()).resolves.toEqual(
+      responsibilities,
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/operational-configuration/preparation-responsibilities",
+      { credentials: "same-origin" },
+    );
   });
 
   it("creates an Identity with the exact body, antiforgery, and idempotency headers", async () => {
@@ -143,6 +163,50 @@ describe("identityAdministrationClient", () => {
     );
     for (const [call, key, token] of [
       [fetchMock.mock.calls[0], "assign-key", "csrf-assign"],
+      [fetchMock.mock.calls[1], "revoke-key", "csrf-revoke"],
+    ] as const) {
+      const [, init] = call!;
+      expect(init?.method).toBe("POST");
+      expect(init?.credentials).toBe("same-origin");
+      expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe(token);
+      expect(new Headers(init?.headers).get("Idempotency-Key")).toBe(key);
+    }
+  });
+
+  it("grants and revokes preparation enablements through exact secured routes", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(identity({ preparationEnablements: ["preparation/id"] })), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(identity({ preparationEnablements: [] })), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+    await grantPreparationEnablement(
+      "identity/id",
+      "preparation/id",
+      "grant-key",
+      "csrf-grant",
+    );
+    await revokePreparationEnablement(
+      "identity/id",
+      "preparation/id",
+      "revoke-key",
+      "csrf-revoke",
+    );
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/identities/identity%2Fid/preparation-enablement/preparation%2Fid/grant",
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      "/api/identities/identity%2Fid/preparation-enablement/preparation%2Fid/revoke",
+    );
+    for (const [call, key, token] of [
+      [fetchMock.mock.calls[0], "grant-key", "csrf-grant"],
       [fetchMock.mock.calls[1], "revoke-key", "csrf-revoke"],
     ] as const) {
       const [, init] = call!;
