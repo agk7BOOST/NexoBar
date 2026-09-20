@@ -17,7 +17,9 @@ Si después se pierden todos los caminos de `GeneralConfiguration`, el bootstrap
 
 ## S9 — Secure Configuration Foundations
 
-Los endpoints existentes de `Catalog` y `OperationalConfiguration` siguen anónimos y no satisfacen todavía esta frontera. El retrofit debe separar los reads administrativos de los operacionales y autorizar los writes por actor.
+El retrofit de `OperationalConfiguration` está implementado: su listado administrativo de Preparation Responsibilities exige Session utilizable, Identity activa y `GeneralConfiguration`; su creación además exige antiforgery, actor derivado en servidor e idempotencia durable. El replay exacto preserva la regla de actor, command kind e intención canonical sin reautorizar `GeneralConfiguration`, pero nunca omite Session utilizable ni Identity activa.
+
+Los endpoints pendientes de retrofit deben separar los reads administrativos de los operacionales y autorizar los writes por actor.
 
 - `OperationalConfiguration` administra y lista Preparation Responsibilities con `GeneralConfiguration`.
 - La administración de Catalog requiere `CatalogConfiguration`.
@@ -44,7 +46,7 @@ El retrofit AD-SEC-05 está implementado consistentemente en el lookup general d
 
 Este inventario no define políticas nuevas ni afirma seguridad global completa.
 
-- retrofit global de autenticación/autorización para endpoints todavía anónimos, según corresponda: Catalog, OperationalConfiguration y otros endpoints funcionales actuales no cubiertos. Confirmaciones ya tienen el retrofit de Slice 6;
+- retrofit global de autenticación/autorización para endpoints todavía anónimos, según corresponda: otros endpoints funcionales actuales no cubiertos. Confirmaciones ya tienen el retrofit de Slice 6;
 - implementación de recovery extraordinario (`AD-SEC-01`) y UX de recovery ordinario;
 - decisión normativa de parámetros de timeout (`PAR-SEC-02`) y política cuantitativa de brute-force/lockout;
 - frontend administrativo completo;

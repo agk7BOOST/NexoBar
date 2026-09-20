@@ -2,7 +2,7 @@
 
 ## OperationalConfiguration
 
-`OperationalConfiguration` posee `OperationalConfigurationDbContext`, el schema `operational_configuration` y migration history propia sobre la PostgreSQL primaria compartida.
+`OperationalConfiguration` posee el Estado y storage de `PreparationResponsibility`: su `OperationalConfigurationDbContext`, el schema `operational_configuration` y migration history propia sobre la PostgreSQL primaria compartida.
 
 El Estado materializado de `PreparationResponsibility` contiene:
 
@@ -17,16 +17,18 @@ POST /api/operational-configuration/preparation-responsibilities
 GET  /api/operational-configuration/preparation-responsibilities
 ```
 
-La creación es un comando explícito con `Idempotency-Key` UUID v4, idempotencia durable local, identidad UUID v7 asignada por backend, unicidad case-insensitive del nombre operacional y replay desde el resultado persistido.
+### Lectura administrativa
 
-La lista y la creación son administración de `OperationalConfiguration` y requieren `GeneralConfiguration`. `CatalogConfiguration` no adquiere por ello autoridad para crear o cambiar Preparation Responsibilities.
+`GET /api/operational-configuration/preparation-responsibilities` es una lectura administrativa. Requiere Session autenticada y utilizable, Identity activa y `GeneralConfiguration` vigente. `CatalogConfiguration` por sí sola no autoriza este endpoint.
 
-Cuando Catalog configura un Product, obtiene el lookup mínimo `{ id, operationalName }` mediante colaboración explícita `Catalog → OperationalConfiguration`. No se expone el listado administrativo de este módulo para satisfacer ese consumidor ni se accede a su `DbContext`, schema o tablas desde Catalog.
+### Creación e idempotencia
+
+`POST /api/operational-configuration/preparation-responsibilities` crea una Preparation Responsibility mediante un comando nuevo que requiere Session autenticada y utilizable, Identity activa, `GeneralConfiguration` vigente, el antiforgery convencional e `Idempotency-Key` UUID v4 con idempotencia durable local. El actor durable se deriva en servidor de la Identity autenticada; el cliente no lo atribuye. La identidad UUID v7 de la responsabilidad se asigna en backend y el nombre operacional conserva su unicidad case-insensitive.
+
+Un replay exacto ya comprometido requiere Session utilizable, Identity activa, el mismo actor original, el mismo command kind y la misma intención canonical. No se vuelve a exigir `GeneralConfiguration` sólo para devolver ese resultado persistido; los comandos nuevos sí exigen la responsabilidad vigente. Un registro durable anterior al retrofit sin actor atribuible no es replay autenticado: entra en conflicto seguro y no inventa un actor.
+
+Cuando Catalog configura un Product, obtiene el lookup mínimo `{ id, operationalName }` mediante colaboración in-process explícita `Catalog → OperationalConfiguration`. `GeneralConfiguration` es la autoridad del GET administrativo; `CatalogConfiguration` no recibe ese listado. No se accede al `DbContext`, schema o tablas de `OperationalConfiguration` desde Catalog.
 
 No están materializados `IsActive`, retiro, reactivación, delete ni un lifecycle completo de `PreparationResponsibility`.
 
 - Todavía no existe `OperationalConfigurationPanel` productivo ni frontend administrativo completo.
-
-- Los endpoints públicos existentes siguen anónimos: asegurar create/list antes de una UI administrativa productiva es trabajo pendiente de S9. Los comandos deben adoptar el actor durable y la igualdad de replay definidos en las [fronteras de seguridad](../architecture/security-boundaries.md).
-
-Autenticación/autorización pendiente de endpoints actuales: [fronteras de seguridad](../architecture/security-boundaries.md).

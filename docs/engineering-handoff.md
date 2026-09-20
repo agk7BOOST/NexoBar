@@ -38,12 +38,13 @@ Las rutas de instrucciones locales empiezan en [backend](../backend/AGENTS.md), 
 
 **S9-I0 — Initial Installation Provisioning: CLOSED.** El fact durable, backfill conservador, subcomando Host sin superficie HTTP, atomicidad, serialización y retry seguro están materializados. El detalle operativo vive en [Administración de Identity](identities-and-capabilities/administration.md#provisioning-inicial-técnico-ad-sec-06).
 
+**S9-I1A — API existente de OperationalConfiguration: CLOSED.** El GET administrativo y el create de Preparation Responsibilities exigen Session utilizable, Identity activa y `GeneralConfiguration`; el create además preserva antiforgery, actor durable e idempotencia/replay exacto.
+
 La secuencia restante es:
 
-1. **S9-I1A** — asegurar la API existente de OperationalConfiguration.
-2. **S9-I1B** — asegurar y separar reads/writes de Catalog.
-3. **S9-I1C** — adaptar frontend a reads autenticados y conscientes de capacidad para configuración y Catalog operacional.
-4. **S9-I1D** — checkpoint de seguridad cross-capability.
+1. **S9-I1B** — asegurar y separar reads/writes de Catalog.
+2. **S9-I1C** — adaptar frontend a reads autenticados y conscientes de capacidad para configuración y Catalog operacional.
+3. **S9-I1D** — checkpoint de seguridad cross-capability.
 
 Permanecen como trabajo posterior y separado: override de Product no disponible RF-PED-024/RF-PED-025, UI de administración GeneralConfiguration, UI de Preparation Responsibility, Contexts, recovery, Delete Identity, lifecycle restante de Catalog, y SSE de Catalog/OperationalConfiguration. No están implementados por esta planificación.
 
