@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CatalogPanel } from "./catalog/CatalogPanel.tsx";
+import { GeneralConfigurationPanel } from "./generalConfiguration/GeneralConfigurationPanel.tsx";
 import {
   OrderLookup,
   type RequestedOrderLookup,
@@ -122,6 +123,20 @@ function App() {
     setAuthState({ status: "authenticated", identity });
   }, []);
 
+  const refreshCurrentIdentity = useCallback(async () => {
+    const generation = identityGeneration.current;
+    try {
+      const identity = await getCurrentIdentity();
+      if (identityGeneration.current === generation) {
+        setAuthState({ status: "authenticated", identity });
+      }
+    } catch (error) {
+      if (error instanceof SessionProblemError && error.status === 401) {
+        returnToLogin();
+      }
+    }
+  }, [returnToLogin]);
+
   function activateOrder(operationalReference: string) {
     setActiveOperationalReference(operationalReference);
     setActiveOrderId(null);
@@ -169,6 +184,8 @@ function App() {
     authState.status === "authenticated" ? authState.identity : null;
   const canConfigureCatalog =
     identity !== null && hasResponsibility(identity, "CatalogConfiguration");
+  const canConfigureGeneral =
+    identity !== null && hasResponsibility(identity, "GeneralConfiguration");
   const canComposeOrders =
     identity !== null &&
     hasResponsibility(identity, "OrderOperationsAndBasicClosure");
@@ -248,6 +265,14 @@ function App() {
           <CatalogPanel
             key={`admin-catalog:${identity.identityId}:${identityLifecycle}:${identity.responsibilities.join(",")}`}
             onUnauthorized={returnToLogin}
+          />
+        )}
+
+        {canConfigureGeneral && identity !== null && (
+          <GeneralConfigurationPanel
+            key={`admin-general:${identity.identityId}:${identityLifecycle}:${identity.responsibilities.join(",")}`}
+            onUnauthorized={returnToLogin}
+            onForbidden={() => void refreshCurrentIdentity()}
           />
         )}
 
