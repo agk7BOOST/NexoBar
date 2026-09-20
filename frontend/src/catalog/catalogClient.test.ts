@@ -4,11 +4,51 @@ import {
   CatalogProblemError,
   changeProductPrice,
   createProduct,
+  listOperationalProducts,
+  listProducts,
+  type OperationalProduct,
   type ChangeProductPriceResponse,
   type Product,
 } from "./catalogClient.ts";
 
 const fetchMock = vi.fn<typeof fetch>();
+
+describe("Catalog reads", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("uses the secured administrative Product read", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("[]", { status: 200 }));
+    await expect(listProducts()).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith("/api/catalog/products", {
+      credentials: "same-origin",
+    });
+  });
+
+  it("uses the distinct secured operational Product read and narrow model", async () => {
+    const products: OperationalProduct[] = [
+      {
+        id: "product-1",
+        operationalName: "Agua",
+        price: "10.00",
+        isAvailable: true,
+      },
+    ];
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(products), { status: 200 }),
+    );
+
+    await expect(listOperationalProducts()).resolves.toEqual(products);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/catalog/operational-products",
+      {
+        credentials: "same-origin",
+      },
+    );
+  });
+});
 
 describe("createProduct", () => {
   beforeEach(() => {
@@ -40,6 +80,7 @@ describe("createProduct", () => {
           requiresPreparation: false,
         },
         "product-creation-key",
+        "csrf-token",
       ),
     ).resolves.toEqual(response);
 
@@ -49,6 +90,8 @@ describe("createProduct", () => {
     const headers = new Headers(init?.headers);
     expect(headers.get("Content-Type")).toBe("application/json");
     expect(headers.get("Idempotency-Key")).toBe("product-creation-key");
+    expect(headers.get("X-NexoBar-CSRF")).toBe("csrf-token");
+    expect(init?.credentials).toBe("same-origin");
     expect(JSON.parse(String(init?.body))).toEqual({
       operationalName: "Soda",
       price: "10.50",
@@ -78,6 +121,7 @@ describe("createProduct", () => {
         requiresPreparation: false,
       },
       "key",
+      "csrf-token",
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(CatalogProblemError);
@@ -99,6 +143,7 @@ describe("createProduct", () => {
           requiresPreparation: false,
         },
         "key",
+        "csrf-token",
       ),
     ).rejects.toBeInstanceOf(CatalogNetworkError);
   });
@@ -127,6 +172,7 @@ describe("changeProductPrice", () => {
         "product/id",
         { expectedCurrentPrice: "10.00", newPrice: "0" },
         "idempotency-key",
+        "csrf-token",
       ),
     ).resolves.toEqual(response);
 
@@ -136,6 +182,8 @@ describe("changeProductPrice", () => {
     expect(new Headers(init?.headers).get("Idempotency-Key")).toBe(
       "idempotency-key",
     );
+    expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe("csrf-token");
+    expect(init?.credentials).toBe("same-origin");
     expect(JSON.parse(String(init?.body))).toEqual({
       expectedCurrentPrice: "10.00",
       newPrice: "0",
@@ -161,6 +209,7 @@ describe("changeProductPrice", () => {
       "product",
       { expectedCurrentPrice: "10.00", newPrice: "15.00" },
       "key",
+      "csrf-token",
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(CatalogProblemError);
@@ -175,6 +224,7 @@ describe("changeProductPrice", () => {
         "product",
         { expectedCurrentPrice: "10", newPrice: "12" },
         "key",
+        "csrf-token",
       ),
     ).rejects.toBeInstanceOf(CatalogNetworkError);
   });

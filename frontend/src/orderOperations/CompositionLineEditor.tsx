@@ -1,11 +1,11 @@
-import type { Product } from "../catalog/catalogClient.ts";
+import type { OperationalProduct } from "../catalog/catalogClient.ts";
 import { canonicalizeConfirmationInstruction } from "./confirmationInstruction.ts";
 import type { CompositionLine } from "./composition.ts";
 
 interface CompositionLineEditorProps {
   line: CompositionLine;
   lineNumber: number;
-  product: Product;
+  product: OperationalProduct;
   isLocked: boolean;
   shouldFocusInstruction: boolean;
   onInstructionChange: (draftLineId: string, instruction: string) => void;

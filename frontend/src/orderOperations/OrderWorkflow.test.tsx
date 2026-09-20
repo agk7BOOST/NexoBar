@@ -18,6 +18,7 @@ const {
   startPendingCompositionMock,
   discardPendingCompositionMock,
   getAntiforgeryTokenMock,
+  listOperationalProductsMock,
   pendingAuthorityState,
 } = vi.hoisted(() => ({
   confirmFirstMock: vi.fn(),
@@ -26,6 +27,7 @@ const {
   startPendingCompositionMock: vi.fn(),
   discardPendingCompositionMock: vi.fn(),
   getAntiforgeryTokenMock: vi.fn(),
+  listOperationalProductsMock: vi.fn(),
   pendingAuthorityState: {
     marker: null as {
       pendingCompositionId: string;
@@ -54,10 +56,17 @@ vi.mock("../identity/sessionClient.ts", async (importOriginal) => {
   return { ...original, getAntiforgeryToken: getAntiforgeryTokenMock };
 });
 
+vi.mock("../catalog/catalogClient.ts", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("../catalog/catalogClient.ts")>();
+  return { ...original, listOperationalProducts: listOperationalProductsMock };
+});
+
 beforeEach(() => {
   pendingAuthorityState.marker = null;
   getAntiforgeryTokenMock.mockReset();
   getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
+  listOperationalProductsMock.mockReset();
   getPendingCompositionMock.mockReset();
   getPendingCompositionMock.mockImplementation(async (orderId: string) => ({
     orderId,
@@ -421,6 +430,81 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
   });
 
+  it("keeps unavailable operational Products visible but non-actionable alongside available Products", async () => {
+    const unavailable = {
+      ...water,
+      id: "product-unavailable",
+      operationalName: "Cerveza",
+      isAvailable: false,
+    };
+    const user = userEvent.setup();
+    render(
+      <OrderWorkflow
+        products={[water, unavailable]}
+        activeOperationalReference={null}
+        onActivateOrder={() => undefined}
+        onStartNewOrder={() => undefined}
+        onOrderChanged={() => undefined}
+        onUnauthorized={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("No disponible")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Agregar Agua a Composición inicial",
+      }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", {
+        name: "Agregar Cerveza a Composición inicial",
+      }),
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar Agua a Composición inicial",
+      }),
+    );
+    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    expect(
+      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+    ).toBeEnabled();
+  });
+
+  it("blocks ordinary Confirmation if a drafted Product becomes unavailable", async () => {
+    const user = userEvent.setup();
+    const workflowProps = {
+      activeOperationalReference: null,
+      onActivateOrder: () => undefined,
+      onStartNewOrder: () => undefined,
+      onOrderChanged: () => undefined,
+      onUnauthorized: () => undefined,
+    };
+    const { rerender } = render(
+      <OrderWorkflow products={[water]} {...workflowProps} />,
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar Agua a Composición inicial",
+      }),
+    );
+    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    expect(
+      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+    ).toBeEnabled();
+
+    rerender(
+      <OrderWorkflow
+        products={[{ ...water, isAvailable: false }]}
+        {...workflowProps}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+    ).toBeDisabled();
+  });
+
   it("envía Primera Confirmación exacta, activa el Pedido y solicita lookup", async () => {
     confirmFirstMock.mockResolvedValueOnce(firstResponse);
     const onActivate = vi.fn();
@@ -685,6 +769,120 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       "Agua",
     );
     expect(screen.getByLabelText("Cantidad de Agua")).toHaveTextContent("1");
+  });
+});
+
+describe("OrderWorkflow - lectura operacional de Products", () => {
+  it("owns GET operational-products instead of the administrative Catalog read", async () => {
+    listOperationalProductsMock.mockResolvedValueOnce([
+      {
+        id: water.id,
+        operationalName: water.operationalName,
+        price: water.price,
+        isAvailable: true,
+      },
+    ]);
+    render(
+      <OrderWorkflow
+        activeOperationalReference={null}
+        onActivateOrder={vi.fn()}
+        onStartNewOrder={vi.fn()}
+        onOrderChanged={vi.fn()}
+        onUnauthorized={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Agregar Agua a Composición inicial",
+      }),
+    ).toBeEnabled();
+    expect(listOperationalProductsMock).toHaveBeenCalledOnce();
+  });
+
+  it("retires operational Products on a 403", async () => {
+    listOperationalProductsMock.mockRejectedValueOnce(
+      new (await import("../catalog/catalogClient.ts")).CatalogProblemError({
+        status: 403,
+      }),
+    );
+    render(
+      <OrderWorkflow
+        activeOperationalReference={null}
+        onActivateOrder={vi.fn()}
+        onStartNewOrder={vi.fn()}
+        onOrderChanged={vi.fn()}
+        onUnauthorized={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(
+        /lectura operacional de Productos ya no está autorizada/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("fences a late operational read after the composition owner is replaced", async () => {
+    let resolveOldRead:
+      | ((
+          products: {
+            id: string;
+            operationalName: string;
+            price: string;
+            isAvailable: boolean;
+          }[],
+        ) => void)
+      | undefined;
+    const oldRead = new Promise<
+      {
+        id: string;
+        operationalName: string;
+        price: string;
+        isAvailable: boolean;
+      }[]
+    >((resolve) => {
+      resolveOldRead = resolve;
+    });
+    listOperationalProductsMock
+      .mockReturnValueOnce(oldRead)
+      .mockResolvedValueOnce([
+        {
+          id: "product-new",
+          operationalName: "Soda",
+          price: "12.00",
+          isAvailable: true,
+        },
+      ]);
+    const workflowProps = {
+      activeOperationalReference: null,
+      onActivateOrder: vi.fn(),
+      onStartNewOrder: vi.fn(),
+      onOrderChanged: vi.fn(),
+      onUnauthorized: vi.fn(),
+    };
+    const { rerender } = render(
+      <OrderWorkflow key="identity-old" {...workflowProps} />,
+    );
+
+    rerender(<OrderWorkflow key="identity-new" {...workflowProps} />);
+    expect(
+      await screen.findByRole("button", {
+        name: "Agregar Soda a Composición inicial",
+      }),
+    ).toBeEnabled();
+    resolveOldRead?.([
+      {
+        id: "product-old",
+        operationalName: "Producto anterior",
+        price: "1.00",
+        isAvailable: true,
+      },
+    ]);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Producto anterior")).not.toBeInTheDocument(),
+    );
   });
 });
 

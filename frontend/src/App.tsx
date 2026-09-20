@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CatalogPanel } from "./catalog/CatalogPanel.tsx";
-import { listProducts, type Product } from "./catalog/catalogClient.ts";
 import {
   OrderLookup,
   type RequestedOrderLookup,
@@ -14,13 +13,17 @@ import { SessionBar } from "./identity/SessionBar.tsx";
 import {
   discardAntiforgeryToken,
   getCurrentIdentity,
+  hasResponsibility,
   SessionProblemError,
   type CurrentIdentity,
 } from "./identity/sessionClient.ts";
 import { PreparationPanel } from "./preparation/PreparationPanel.tsx";
 import { DeliveryPanel } from "./delivery/DeliveryPanel.tsx";
 import { InventoryPanel } from "./inventory/InventoryPanel.tsx";
-import { isOrderCompletelyCancelled, type OrderResponse } from "./orderOperations/orderOperationsClient.ts";
+import {
+  isOrderCompletelyCancelled,
+  type OrderResponse,
+} from "./orderOperations/orderOperationsClient.ts";
 import { OperationalInterventionPanel } from "./orderOperations/OperationalInterventionPanel.tsx";
 import { NotificationSseProvider } from "./notifications/NotificationSseProvider.tsx";
 
@@ -30,9 +33,6 @@ type AuthState =
   | { status: "authenticated"; identity: CurrentIdentity };
 
 function App() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeOperationalReference, setActiveOperationalReference] = useState<
     string | null
   >(null);
@@ -44,6 +44,7 @@ function App() {
     useState<string | null>(null);
   const [authState, setAuthState] = useState<AuthState>({ status: "loading" });
   const identityGeneration = useRef(0);
+  const [identityLifecycle, setIdentityLifecycle] = useState(0);
   const [terminalOrders, setTerminalOrders] = useState<Record<string, boolean>>(
     {},
   );
@@ -66,52 +67,17 @@ function App() {
   const rememberOrderState = useCallback((order: OrderResponse) => {
     setTerminalOrders((current) => ({
       ...current,
-      [order.operationalReference]: order.isFrozen || order.isClosed || isOrderCompletelyCancelled(order),
+      [order.operationalReference]:
+        order.isFrozen || order.isClosed || isOrderCompletelyCancelled(order),
     }));
   }, []);
   const rememberEndingBusy = useCallback((reference: string, busy: boolean) => {
     setEndingOrders((current) => ({ ...current, [reference]: busy }));
     if (!busy) {
-      setEndingRefresh(current => current + 1);
-      setPreparationRefresh(current => current + 1);
-      setDeliveryRefresh(current => current + 1);
+      setEndingRefresh((current) => current + 1);
+      setPreparationRefresh((current) => current + 1);
+      setDeliveryRefresh((current) => current + 1);
     }
-  }, []);
-
-  const reloadProducts = useCallback(async () => {
-    setIsLoading(true);
-    setLoadError(null);
-
-    try {
-      setProducts(await listProducts());
-    } catch {
-      setLoadError("No se pudo cargar el listado de productos.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let isCurrent = true;
-
-    void listProducts().then(
-      (loadedProducts) => {
-        if (isCurrent) {
-          setProducts(loadedProducts);
-          setIsLoading(false);
-        }
-      },
-      () => {
-        if (isCurrent) {
-          setLoadError("No se pudo cargar el listado de productos.");
-          setIsLoading(false);
-        }
-      },
-    );
-
-    return () => {
-      isCurrent = false;
-    };
   }, []);
 
   useEffect(() => {
@@ -138,6 +104,7 @@ function App() {
 
   const returnToLogin = useCallback(() => {
     identityGeneration.current += 1;
+    setIdentityLifecycle((current) => current + 1);
     discardAntiforgeryToken();
     setAuthState({ status: "unauthenticated" });
     setActiveOperationalReference(null);
@@ -151,6 +118,7 @@ function App() {
 
   const setAuthenticatedIdentity = useCallback((identity: CurrentIdentity) => {
     identityGeneration.current += 1;
+    setIdentityLifecycle((current) => current + 1);
     setAuthState({ status: "authenticated", identity });
   }, []);
 
@@ -177,7 +145,8 @@ function App() {
     setRequestedTarget(undefined);
   }, []);
   const rememberActiveOrderId = useCallback(
-    (_operationalReference: string, orderId: string) => setActiveOrderId(orderId),
+    (_operationalReference: string, orderId: string) =>
+      setActiveOrderId(orderId),
     [],
   );
 
@@ -196,120 +165,135 @@ function App() {
     }));
   }
 
+  const identity =
+    authState.status === "authenticated" ? authState.identity : null;
+  const canConfigureCatalog =
+    identity !== null && hasResponsibility(identity, "CatalogConfiguration");
+  const canComposeOrders =
+    identity !== null &&
+    hasResponsibility(identity, "OrderOperationsAndBasicClosure");
+
   return (
     <NotificationSseProvider
       key={`sse-session:${authState.status === "authenticated" ? authState.identity.identityId : "anonymous"}`}
       identityId={
-        authState.status === "authenticated" ? authState.identity.identityId : null
+        authState.status === "authenticated"
+          ? authState.identity.identityId
+          : null
       }
     >
-    <main className="page-shell">
-      <header className="page-header">
-        <p className="eyebrow">NexoBar</p>
-        <h1>Catálogo de productos</h1>
-        <p>Alta, consulta y operación con productos vigentes.</p>
-      </header>
+      <main className="page-shell">
+        <header className="page-header">
+          <p className="eyebrow">NexoBar</p>
+          <h1>Catálogo de productos</h1>
+          <p>Alta, consulta y operación con productos vigentes.</p>
+        </header>
 
-      {authState.status === "loading" && <p>Cargando sesión…</p>}
-      {authState.status === "unauthenticated" && (
-        <LoginPanel
-          onAuthenticated={setAuthenticatedIdentity}
-        />
-      )}
-      {authState.status === "authenticated" && (
-        <>
-          <SessionBar
-            identity={authState.identity}
-            onLoggedOut={returnToLogin}
-          />
-          <OperationalInterventionPanel key={authState.identity.identityId} onUnauthorized={returnToLogin}
-            isOrderBlocked={reference => terminalOrders[reference] === true || endingOrders[reference] === true} />
-          <PreparationPanel
-            refreshSequence={preparationRefresh}
-            onBusyOrdersChange={setPreparationBusy}
-            onWorkChanged={refreshAfterPreparation}
+        {authState.status === "loading" && <p>Cargando sesión…</p>}
+        {authState.status === "unauthenticated" && (
+          <LoginPanel onAuthenticated={setAuthenticatedIdentity} />
+        )}
+        {authState.status === "authenticated" && (
+          <>
+            <SessionBar
+              identity={authState.identity}
+              onLoggedOut={returnToLogin}
+            />
+            <OperationalInterventionPanel
+              key={authState.identity.identityId}
+              onUnauthorized={returnToLogin}
+              isOrderBlocked={(reference) =>
+                terminalOrders[reference] === true ||
+                endingOrders[reference] === true
+              }
+            />
+            <PreparationPanel
+              refreshSequence={preparationRefresh}
+              onBusyOrdersChange={setPreparationBusy}
+              onWorkChanged={refreshAfterPreparation}
+              onUnauthorized={returnToLogin}
+              isOrderBlocked={(reference) =>
+                terminalOrders[reference] === true ||
+                endingOrders[reference] === true ||
+                deliveryBusy[reference] === true
+              }
+            />
+            <InventoryPanel onUnauthorized={returnToLogin} />
+            {canComposeOrders && (
+              <OrderWorkflow
+                key={`operational-products:${identity.identityId}:${identityLifecycle}:${identity.responsibilities.join(",")}`}
+                endingRefreshSequence={endingRefresh}
+                activeOperationalReference={activeOperationalReference}
+                activeOrderId={activeOrderId}
+                requestedTarget={requestedTarget}
+                onActivateOrder={activateOrder}
+                onActiveOrderId={rememberActiveOrderId}
+                onStartNewOrder={startNewOrder}
+                onOrderChanged={requestOrderRefresh}
+                onActiveOrderRetired={retireActiveOrder}
+                onUnauthorized={returnToLogin}
+                ordinaryMutationsBlocked={
+                  activeOperationalReference !== null &&
+                  (terminalOrders[activeOperationalReference] === true ||
+                    endingOrders[activeOperationalReference] === true ||
+                    deliveryBusy[activeOperationalReference] === true ||
+                    preparationBusy.includes(activeOperationalReference))
+                }
+              />
+            )}
+          </>
+        )}
+
+        {canConfigureCatalog && identity !== null && (
+          <CatalogPanel
+            key={`admin-catalog:${identity.identityId}:${identityLifecycle}:${identity.responsibilities.join(",")}`}
             onUnauthorized={returnToLogin}
-            isOrderBlocked={(reference) =>
-              terminalOrders[reference] === true ||
-              endingOrders[reference] === true ||
-              deliveryBusy[reference] === true
-            }
           />
-          <InventoryPanel onUnauthorized={returnToLogin} />
-          <OrderWorkflow
-            endingRefreshSequence={endingRefresh}
-            products={products}
-            activeOperationalReference={activeOperationalReference}
-            activeOrderId={activeOrderId}
-            requestedTarget={requestedTarget}
-            onActivateOrder={activateOrder}
-            onActiveOrderId={rememberActiveOrderId}
-            onStartNewOrder={startNewOrder}
-            onOrderChanged={requestOrderRefresh}
-            onActiveOrderRetired={retireActiveOrder}
+        )}
+
+        <OrderLookup
+          key={
+            authState.status === "authenticated"
+              ? authState.identity.identityId
+              : "anonymous"
+          }
+          requestedLookup={requestedLookup}
+          activeOperationalReference={activeOperationalReference}
+          activeOrderId={activeOrderId}
+          onContinueOrder={requestContinueOrder}
+          onOpenDelivery={setDeliveryOperationalReference}
+          identityId={
+            authState.status === "authenticated"
+              ? authState.identity.identityId
+              : undefined
+          }
+          onUnauthorized={returnToLogin}
+          onOrderState={rememberOrderState}
+          onEndingBusy={rememberEndingBusy}
+          onActiveOrderRetired={retireActiveOrder}
+          isOrderMutationBusy={(reference) =>
+            deliveryBusy[reference] === true ||
+            preparationBusy.includes(reference)
+          }
+        />
+
+        {authState.status === "authenticated" && (
+          <DeliveryPanel
+            refreshSequence={deliveryRefresh}
+            onBusyChange={rememberDeliveryBusy}
+            operationalReference={deliveryOperationalReference}
             onUnauthorized={returnToLogin}
             ordinaryMutationsBlocked={
-              activeOperationalReference !== null &&
-              (terminalOrders[activeOperationalReference] === true ||
-                endingOrders[activeOperationalReference] === true ||
-                deliveryBusy[activeOperationalReference] === true ||
-                preparationBusy.includes(activeOperationalReference))
+              deliveryOperationalReference !== null &&
+              (terminalOrders[deliveryOperationalReference] === true ||
+                endingOrders[deliveryOperationalReference] === true ||
+                preparationBusy.includes(deliveryOperationalReference))
             }
+            onOrderChanged={requestOrderRefresh}
+            onOrderRetired={retireActiveOrder}
           />
-        </>
-      )}
-
-      <CatalogPanel
-        products={products}
-        isLoading={isLoading}
-        loadError={loadError}
-        reloadProducts={reloadProducts}
-      />
-
-      <OrderLookup
-        key={
-          authState.status === "authenticated"
-            ? authState.identity.identityId
-            : "anonymous"
-        }
-        products={products}
-        requestedLookup={requestedLookup}
-        activeOperationalReference={activeOperationalReference}
-        activeOrderId={activeOrderId}
-        onContinueOrder={requestContinueOrder}
-        onOpenDelivery={setDeliveryOperationalReference}
-        identityId={
-          authState.status === "authenticated"
-            ? authState.identity.identityId
-            : undefined
-        }
-        onUnauthorized={returnToLogin}
-        onOrderState={rememberOrderState}
-        onEndingBusy={rememberEndingBusy}
-        onActiveOrderRetired={retireActiveOrder}
-        isOrderMutationBusy={(reference) =>
-          deliveryBusy[reference] === true ||
-          preparationBusy.includes(reference)
-        }
-      />
-
-      {authState.status === "authenticated" && (
-        <DeliveryPanel
-          refreshSequence={deliveryRefresh}
-          onBusyChange={rememberDeliveryBusy}
-          operationalReference={deliveryOperationalReference}
-          onUnauthorized={returnToLogin}
-          ordinaryMutationsBlocked={
-            deliveryOperationalReference !== null &&
-            (terminalOrders[deliveryOperationalReference] === true ||
-              endingOrders[deliveryOperationalReference] === true ||
-              preparationBusy.includes(deliveryOperationalReference))
-          }
-          onOrderChanged={requestOrderRefresh}
-          onOrderRetired={retireActiveOrder}
-        />
-      )}
-    </main>
+        )}
+      </main>
     </NotificationSseProvider>
   );
 }

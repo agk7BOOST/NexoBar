@@ -13,6 +13,17 @@ export interface Product {
   requiresPreparation: boolean;
 }
 
+/**
+ * Narrow Product projection owned by Order composition.  It deliberately does
+ * not expose administrative or preparation-configuration fields.
+ */
+export interface OperationalProduct {
+  id: string;
+  operationalName: string;
+  price: string;
+  isAvailable: boolean;
+}
+
 export interface ChangeProductPriceRequest {
   expectedCurrentPrice: string;
   newPrice: string;
@@ -74,7 +85,9 @@ async function readProblem(response: Response): Promise<ProblemDetails> {
 }
 
 export async function listProducts(): Promise<Product[]> {
-  const response = await send("/api/catalog/products");
+  const response = await send("/api/catalog/products", {
+    credentials: "same-origin",
+  });
 
   if (!response.ok) {
     throw new CatalogProblemError(await readProblem(response));
@@ -83,16 +96,31 @@ export async function listProducts(): Promise<Product[]> {
   return (await response.json()) as Product[];
 }
 
+export async function listOperationalProducts(): Promise<OperationalProduct[]> {
+  const response = await send("/api/catalog/operational-products", {
+    credentials: "same-origin",
+  });
+
+  if (!response.ok) {
+    throw new CatalogProblemError(await readProblem(response));
+  }
+
+  return (await response.json()) as OperationalProduct[];
+}
+
 export async function createProduct(
   request: CreateProductRequest,
   idempotencyKey: string,
+  antiforgeryToken: string,
 ): Promise<Product> {
   const response = await send("/api/catalog/products", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Idempotency-Key": idempotencyKey,
+      "X-NexoBar-CSRF": antiforgeryToken,
     },
+    credentials: "same-origin",
     body: JSON.stringify(request),
   });
 
@@ -107,6 +135,7 @@ export async function changeProductPrice(
   productId: string,
   request: ChangeProductPriceRequest,
   idempotencyKey: string,
+  antiforgeryToken: string,
 ): Promise<ChangeProductPriceResponse> {
   const response = await send(
     `/api/catalog/products/${encodeURIComponent(productId)}/price-changes`,
@@ -115,7 +144,9 @@ export async function changeProductPrice(
       headers: {
         "Content-Type": "application/json",
         "Idempotency-Key": idempotencyKey,
+        "X-NexoBar-CSRF": antiforgeryToken,
       },
+      credentials: "same-origin",
       body: JSON.stringify(request),
     },
   );

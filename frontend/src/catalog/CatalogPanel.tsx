@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
   CatalogNetworkError,
   CatalogProblemError,
@@ -8,7 +8,12 @@ import {
   type CreateProductRequest,
   type ProblemDetails,
   type Product,
+  listProducts,
 } from "./catalogClient.ts";
+import {
+  getAntiforgeryToken,
+  SessionProblemError,
+} from "../identity/sessionClient.ts";
 
 type Notice =
   | { kind: "success"; message: string }
@@ -18,6 +23,7 @@ type Notice =
 interface ProductCreationIntention {
   request: CreateProductRequest;
   idempotencyKey: string;
+  antiforgeryToken: string;
 }
 
 interface PriceEditor {
@@ -32,13 +38,16 @@ interface ProductPriceChangeIntention {
   operationalName: string;
   request: ChangeProductPriceRequest;
   idempotencyKey: string;
+  antiforgeryToken: string;
 }
 
 interface CatalogPanelProps {
-  products: Product[];
-  isLoading: boolean;
-  loadError: string | null;
-  reloadProducts: () => Promise<void>;
+  onUnauthorized?: () => void;
+  /** Legacy test seam; mounted production panels own their administrative read. */
+  products?: Product[];
+  isLoading?: boolean;
+  loadError?: string | null;
+  reloadProducts?: () => Promise<void>;
 }
 
 function creationErrorMessage(problem: ProblemDetails): string {
@@ -79,11 +88,17 @@ function priceChangeErrorMessage(problem: ProblemDetails): string {
 }
 
 export function CatalogPanel({
-  products,
-  isLoading,
-  loadError,
-  reloadProducts,
+  onUnauthorized = () => undefined,
+  products: providedProducts,
+  isLoading: providedIsLoading,
+  loadError: providedLoadError,
+  reloadProducts: providedReloadProducts,
 }: CatalogPanelProps) {
+  const [loadedProducts, setLoadedProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isForbidden, setIsForbidden] = useState(false);
+  const readGeneration = useRef(0);
   const [operationalName, setOperationalName] = useState("");
   const [price, setPrice] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -96,6 +111,65 @@ export function CatalogPanel({
   const [uncertainPriceChange, setUncertainPriceChange] =
     useState<ProductPriceChangeIntention | null>(null);
 
+  async function reloadCatalog() {
+    const generation = ++readGeneration.current;
+    setIsLoading(true);
+    setLoadError(null);
+
+    try {
+      const loadedProducts = await listProducts();
+      if (generation === readGeneration.current) {
+        setLoadedProducts(loadedProducts);
+      }
+    } catch (error) {
+      if (generation !== readGeneration.current) return;
+      if (error instanceof CatalogProblemError) {
+        if (error.problem.status === 401) {
+          onUnauthorized();
+          return;
+        }
+        if (error.problem.status === 403) {
+          setLoadedProducts([]);
+          setIsForbidden(true);
+          return;
+        }
+      }
+      setLoadError("No se pudo cargar el listado de productos.");
+    } finally {
+      if (generation === readGeneration.current) {
+        setIsLoading(false);
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (providedProducts !== undefined) return;
+    void reloadCatalog();
+    return () => {
+      readGeneration.current += 1;
+    };
+  }, [providedProducts]); // The parent key fences this read at each Identity lifecycle.
+
+  const products = providedProducts ?? loadedProducts;
+  const displayedIsLoading = providedIsLoading ?? isLoading;
+  const displayedLoadError = providedLoadError ?? loadError;
+  const reloadProducts = providedReloadProducts ?? reloadCatalog;
+
+  async function prepareMutation(): Promise<string | null> {
+    try {
+      return await getAntiforgeryToken();
+    } catch (error) {
+      if (error instanceof SessionProblemError && error.status === 401) {
+        onUnauthorized();
+      }
+      setCreationNotice({
+        kind: "functional-error",
+        message: "No se pudo preparar la operación segura del Catálogo.",
+      });
+      return null;
+    }
+  }
+
   async function submitCreation(intention: ProductCreationIntention) {
     setCreationNotice(null);
     setIsCreating(true);
@@ -105,7 +179,11 @@ export function CatalogPanel({
       price === intention.request.price;
 
     try {
-      await createProduct(intention.request, intention.idempotencyKey);
+      await createProduct(
+        intention.request,
+        intention.idempotencyKey,
+        intention.antiforgeryToken,
+      );
       setUncertainCreation(null);
       if (formMatchesIntention) {
         setOperationalName("");
@@ -118,6 +196,15 @@ export function CatalogPanel({
       await reloadProducts();
     } catch (error) {
       if (error instanceof CatalogProblemError) {
+        if (error.problem.status === 401) {
+          onUnauthorized();
+          return;
+        }
+        if (error.problem.status === 403) {
+          setLoadedProducts([]);
+          setIsForbidden(true);
+          return;
+        }
         setUncertainCreation(null);
         setCreationNotice({
           kind: "functional-error",
@@ -145,6 +232,9 @@ export function CatalogPanel({
       return;
     }
 
+    const antiforgeryToken = await prepareMutation();
+    if (antiforgeryToken === null) return;
+
     await submitCreation({
       request: {
         operationalName,
@@ -152,6 +242,7 @@ export function CatalogPanel({
         requiresPreparation: false,
       },
       idempotencyKey: crypto.randomUUID(),
+      antiforgeryToken,
     });
   }
 
@@ -187,6 +278,7 @@ export function CatalogPanel({
         intention.productId,
         intention.request,
         intention.idempotencyKey,
+        intention.antiforgeryToken,
       );
       setUncertainPriceChange(null);
       setPriceEditor(null);
@@ -197,6 +289,15 @@ export function CatalogPanel({
       await reloadProducts();
     } catch (error) {
       if (error instanceof CatalogProblemError) {
+        if (error.problem.status === 401) {
+          onUnauthorized();
+          return;
+        }
+        if (error.problem.status === 403) {
+          setLoadedProducts([]);
+          setIsForbidden(true);
+          return;
+        }
         setUncertainPriceChange(null);
         setPriceEditor(null);
         setPriceNotice({
@@ -230,6 +331,9 @@ export function CatalogPanel({
       return;
     }
 
+    const antiforgeryToken = await prepareMutation();
+    if (antiforgeryToken === null) return;
+
     await submitPriceChange({
       productId: priceEditor.productId,
       operationalName: priceEditor.operationalName,
@@ -238,6 +342,7 @@ export function CatalogPanel({
         newPrice: priceEditor.newPrice,
       },
       idempotencyKey: crypto.randomUUID(),
+      antiforgeryToken,
     });
   }
 
@@ -249,6 +354,10 @@ export function CatalogPanel({
       message:
         "El cambio incierto fue descartado. El resultado previo sigue sin confirmarse; un cambio futuro será una intención nueva.",
     });
+  }
+
+  if (isForbidden) {
+    return null;
   }
 
   const creationFormDiffers =
@@ -412,12 +521,14 @@ export function CatalogPanel({
           </div>
         )}
 
-        {isLoading && <p>Cargando productos…</p>}
-        {!isLoading && loadError && <p role="alert">{loadError}</p>}
-        {!isLoading && !loadError && products.length === 0 && (
-          <p>No hay productos vigentes.</p>
+        {displayedIsLoading && <p>Cargando productos…</p>}
+        {!displayedIsLoading && displayedLoadError && (
+          <p role="alert">{displayedLoadError}</p>
         )}
-        {!isLoading && !loadError && products.length > 0 && (
+        {!displayedIsLoading &&
+          !displayedLoadError &&
+          products.length === 0 && <p>No hay productos vigentes.</p>}
+        {!displayedIsLoading && !displayedLoadError && products.length > 0 && (
           <div className="table-scroll">
             <table>
               <thead>

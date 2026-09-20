@@ -14,7 +14,7 @@ import {
   evaluateCompleteCancellation,
   type CompleteCancellationEvaluation,
 } from "./completeCancellationClient.ts";
-import type { Product } from "../catalog/catalogClient.ts";
+import type { OperationalProduct } from "../catalog/catalogClient.ts";
 import {
   getOrder,
   isOrderCompletelyCancelled,
@@ -30,7 +30,7 @@ export interface RequestedOrderLookup {
 }
 
 interface OrderLookupProps {
-  products: Product[];
+  products?: OperationalProduct[];
   requestedLookup?: RequestedOrderLookup;
   activeOperationalReference: string | null;
   activeOrderId?: string | null;
@@ -60,7 +60,7 @@ function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
 }
 
 export function OrderLookup({
-  products,
+  products = [],
   requestedLookup,
   activeOperationalReference,
   activeOrderId = null,
@@ -343,8 +343,19 @@ export function OrderLookup({
             <AppliedPriceCorrection
               key={`price:${identityId}:${order.operationalReference}`}
               orderId={order.operationalReference}
-              canAct={!isLoading && !endingBusy && !cancellationBusy && !isOrderMutationBusy?.(order.operationalReference)}
-              isTerminal={order.isLiquidated || order.isFrozen || order.isClosed || isOrderCompletelyCancelled(order) || evaluation?.isTerminal === true}
+              canAct={
+                !isLoading &&
+                !endingBusy &&
+                !cancellationBusy &&
+                !isOrderMutationBusy?.(order.operationalReference)
+              }
+              isTerminal={
+                order.isLiquidated ||
+                order.isFrozen ||
+                order.isClosed ||
+                isOrderCompletelyCancelled(order) ||
+                evaluation?.isTerminal === true
+              }
               onRefresh={() => lookup(order.operationalReference, true)}
               onUnauthorized={() => onUnauthorized?.()}
               onBusyChange={(busy) => {

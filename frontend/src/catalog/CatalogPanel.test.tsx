@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CatalogPanel } from "./CatalogPanel.tsx";
@@ -8,9 +8,16 @@ import {
   type Product,
 } from "./catalogClient.ts";
 
-const { changeProductPriceMock, createProductMock } = vi.hoisted(() => ({
+const {
+  changeProductPriceMock,
+  createProductMock,
+  getAntiforgeryTokenMock,
+  listProductsMock,
+} = vi.hoisted(() => ({
   changeProductPriceMock: vi.fn(),
   createProductMock: vi.fn(),
+  getAntiforgeryTokenMock: vi.fn(),
+  listProductsMock: vi.fn(),
 }));
 
 vi.mock("./catalogClient.ts", async (importOriginal) => {
@@ -19,7 +26,14 @@ vi.mock("./catalogClient.ts", async (importOriginal) => {
     ...original,
     changeProductPrice: changeProductPriceMock,
     createProduct: createProductMock,
+    listProducts: listProductsMock,
   };
+});
+
+vi.mock("../identity/sessionClient.ts", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("../identity/sessionClient.ts")>();
+  return { ...original, getAntiforgeryToken: getAntiforgeryTokenMock };
 });
 
 function product(overrides?: Partial<Product>): Product {
@@ -74,6 +88,9 @@ describe("CatalogPanel - alta y listado", () => {
   beforeEach(() => {
     createProductMock.mockReset();
     changeProductPriceMock.mockReset();
+    getAntiforgeryTokenMock.mockReset();
+    getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
+    listProductsMock.mockReset();
   });
 
   it("presenta el listado vigente sin una acción de Composición", () => {
@@ -195,6 +212,9 @@ describe("CatalogPanel - cambio de Precio", () => {
   beforeEach(() => {
     createProductMock.mockReset();
     changeProductPriceMock.mockReset();
+    getAntiforgeryTokenMock.mockReset();
+    getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
+    listProductsMock.mockReset();
   });
 
   it("congela expectedCurrentPrice, acepta zero string y recarga tras éxito", async () => {
@@ -316,5 +336,52 @@ describe("CatalogPanel - cambio de Precio", () => {
     await screen.findByText(/actualizado correctamente/);
 
     expect(changeProductPriceMock.mock.calls[1]?.[2]).not.toBe(firstKey);
+  });
+});
+
+describe("CatalogPanel - lectura administrativa segura", () => {
+  beforeEach(() => {
+    listProductsMock.mockReset();
+  });
+
+  it("owns the administrative Product read when mounted", async () => {
+    listProductsMock.mockResolvedValueOnce([product()]);
+    render(<CatalogPanel onUnauthorized={vi.fn()} />);
+
+    expect(await screen.findByText("Agua tónica")).toBeInTheDocument();
+    expect(listProductsMock).toHaveBeenCalledOnce();
+  });
+
+  it("retires its state after an administrative 403", async () => {
+    listProductsMock.mockRejectedValueOnce(
+      new CatalogProblemError({ status: 403, code: "forbidden" }),
+    );
+    render(<CatalogPanel onUnauthorized={vi.fn()} />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      screen.queryByRole("heading", { name: "Crear producto" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("fences a late administrative response after the Catalog owner is replaced", async () => {
+    let resolveOldRead: ((products: Product[]) => void) | undefined;
+    const oldRead = new Promise<Product[]>((resolve) => {
+      resolveOldRead = resolve;
+    });
+    listProductsMock
+      .mockReturnValueOnce(oldRead)
+      .mockResolvedValueOnce([product({ operationalName: "Soda" })]);
+    const { rerender } = render(
+      <CatalogPanel key="identity-old" onUnauthorized={vi.fn()} />,
+    );
+
+    rerender(<CatalogPanel key="identity-new" onUnauthorized={vi.fn()} />);
+    expect(await screen.findByText("Soda")).toBeInTheDocument();
+    resolveOldRead?.([product({ operationalName: "Producto anterior" })]);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Producto anterior")).not.toBeInTheDocument(),
+    );
   });
 });

@@ -5,7 +5,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Product } from "../catalog/catalogClient.ts";
+import {
+  CatalogProblemError,
+  listOperationalProducts,
+  type OperationalProduct,
+} from "../catalog/catalogClient.ts";
 import { getAntiforgeryToken } from "../identity/sessionClient.ts";
 import { canonicalizeConfirmationInstruction } from "./confirmationInstruction.ts";
 import {
@@ -49,7 +53,7 @@ interface SubsequentConfirmationIntention {
 }
 
 interface PendingAddAction {
-  product: Product;
+  product: OperationalProduct;
   anotherLine: boolean;
 }
 
@@ -74,7 +78,8 @@ export interface OrderTargetRequest {
 }
 
 interface OrderWorkflowProps {
-  products: Product[];
+  /** Test seam only; the mounted workflow owns the production operational read. */
+  products?: OperationalProduct[];
   activeOperationalReference: string | null;
   activeOrderId?: string | null;
   requestedTarget?: OrderTargetRequest;
@@ -90,7 +95,7 @@ interface OrderWorkflowProps {
 
 function confirmationErrorMessage(
   problem: OrderOperationsProblemDetails,
-  products: Product[],
+  products: OperationalProduct[],
   isSubsequent: boolean,
 ): string {
   const product = products.find(
@@ -145,6 +150,11 @@ export function OrderWorkflow({
   ordinaryMutationsBlocked = false,
   endingRefreshSequence = 0,
 }: OrderWorkflowProps) {
+  const [operationalProducts, setOperationalProducts] = useState<
+    OperationalProduct[]
+  >(products ?? []);
+  const [operationalReadRetired, setOperationalReadRetired] = useState(false);
+  const operationalReadGeneration = useRef(0);
   const [composition, setComposition] = useState<CompositionLine[]>([]);
   const [context, setContext] = useState("");
   const [isConfirming, setIsConfirming] = useState(false);
@@ -182,6 +192,42 @@ export function OrderWorkflow({
   const pendingReadSequence = useRef(0);
   const [staleComposition, setStaleComposition] = useState(false);
   activeOrderRef.current = activeOperationalReference;
+
+  useEffect(() => {
+    if (products !== undefined) {
+      setOperationalProducts(products);
+      return;
+    }
+
+    const generation = ++operationalReadGeneration.current;
+    void listOperationalProducts().then(
+      (loadedProducts) => {
+        if (generation === operationalReadGeneration.current) {
+          setOperationalProducts(loadedProducts);
+          setOperationalReadRetired(false);
+        }
+      },
+      (error: unknown) => {
+        if (generation !== operationalReadGeneration.current) return;
+        if (error instanceof CatalogProblemError) {
+          if (error.problem.status === 401) {
+            onUnauthorized();
+            return;
+          }
+          if (error.problem.status === 403) {
+            setOperationalProducts([]);
+            setOperationalReadRetired(true);
+            return;
+          }
+        }
+        setOperationalProducts([]);
+      },
+    );
+
+    return () => {
+      operationalReadGeneration.current += 1;
+    };
+  }, [onUnauthorized, products]);
 
   function rememberLocalPending(
     value: { orderId: string; marker: PendingComposition } | null,
@@ -323,10 +369,7 @@ export function OrderWorkflow({
     return () => window.clearTimeout(timeoutId);
   }, [activeOperationalReference, reconcilePending, endingRefreshSequence]);
 
-  useEffect(
-    () => () => pendingReadCoordinator.current.cancel(),
-    [],
-  );
+  useEffect(() => () => pendingReadCoordinator.current.cancel(), []);
 
   const invalidatePendingComposition = useCallback(() => {
     const orderId = activeOrderRef.current;
@@ -336,7 +379,10 @@ export function OrderWorkflow({
     });
   }, [reconcilePending]);
 
-  function applyAddToComposition(product: Product, anotherLine: boolean) {
+  function applyAddToComposition(
+    product: OperationalProduct,
+    anotherLine: boolean,
+  ) {
     if (anotherLine) {
       const draftLineId = crypto.randomUUID();
       setDraftLineToFocus(draftLineId);
@@ -379,7 +425,7 @@ export function OrderWorkflow({
     });
   }
 
-  async function beginAdd(product: Product, anotherLine: boolean) {
+  async function beginAdd(product: OperationalProduct, anotherLine: boolean) {
     if (!product.isAvailable || isCompositionLocked) {
       return;
     }
@@ -645,7 +691,11 @@ export function OrderWorkflow({
         if (!handleKnownAuthorization(error)) {
           setConfirmationNotice({
             kind: "functional-error",
-            message: confirmationErrorMessage(error.problem, products, false),
+            message: confirmationErrorMessage(
+              error.problem,
+              operationalProducts,
+              false,
+            ),
           });
         }
       } else {
@@ -701,7 +751,11 @@ export function OrderWorkflow({
             kind: "functional-error",
             message: isStale
               ? "La Composición autoritativa cambió. Este borrador no se reenviará automáticamente con otro identificador."
-              : confirmationErrorMessage(error.problem, products, true),
+              : confirmationErrorMessage(
+                  error.problem,
+                  operationalProducts,
+                  true,
+                ),
           });
         }
       } else {
@@ -853,6 +907,11 @@ export function OrderWorkflow({
 
   const canConfirm =
     composition.length > 0 &&
+    composition.every(
+      (line) =>
+        operationalProducts.find((product) => product.id === line.productId)
+          ?.isAvailable === true,
+    ) &&
     !isCompositionLocked &&
     !hasDuplicateCompositionLines(composition) &&
     (isSubsequent || context.trim().length > 0) &&
@@ -980,7 +1039,11 @@ export function OrderWorkflow({
         aria-label="Productos para la Composición"
       >
         <h3>Productos disponibles</h3>
-        {products.length === 0 ? (
+        {operationalReadRetired ? (
+          <p role="alert">
+            La lectura operacional de Productos ya no está autorizada.
+          </p>
+        ) : operationalProducts.length === 0 ? (
           <p>No hay productos vigentes para agregar.</p>
         ) : (
           <div className="table-scroll">
@@ -994,7 +1057,7 @@ export function OrderWorkflow({
                 </tr>
               </thead>
               <tbody>
-                {products.map((product) => (
+                {operationalProducts.map((product) => (
                   <tr key={product.id}>
                     <td>{product.operationalName}</td>
                     <td>{product.price}</td>
@@ -1082,7 +1145,7 @@ export function OrderWorkflow({
           <ConfirmationSnapshot
             context={uncertainFirst.request.context}
             items={uncertainFirst.request.items}
-            products={products}
+            products={operationalProducts}
           />
           <div className="intention-actions">
             <button
@@ -1111,7 +1174,7 @@ export function OrderWorkflow({
           </dl>
           <ConfirmationSnapshot
             items={uncertainSubsequent.request.items}
-            products={products}
+            products={operationalProducts}
           />
           <div className="intention-actions">
             <button
@@ -1199,7 +1262,7 @@ export function OrderWorkflow({
               </thead>
               <tbody>
                 {composition.map((entry, index) => {
-                  const product = products.find(
+                  const product = operationalProducts.find(
                     (candidate) => candidate.id === entry.productId,
                   );
 
@@ -1242,7 +1305,7 @@ interface ConfirmationSnapshotProps {
     quantity: number;
     instruction: string | null;
   }[];
-  products: Product[];
+  products: OperationalProduct[];
 }
 
 function ConfirmationSnapshot({
