@@ -12,6 +12,8 @@ public sealed class InstallationProvisioningPersistenceTests(
         "20260831190000_AddIdentityAdministrationCommands";
     private const string CurrentMigration =
         "20260919120000_AddInstallationProvisioningFact";
+    private const string LatestMigration =
+        "20260920120000_AddInstallationRecoveryPersistence";
 
     [Fact]
     public async Task Migration_creates_installation_provisioning_table()
@@ -50,6 +52,7 @@ public sealed class InstallationProvisioningPersistenceTests(
         Assert.Equal(identityId, fact.InitialIdentityId);
         Assert.Equal(fingerprint, fact.RetryIntentFingerprint);
         Assert.Equal("slow-verifier", fact.RetrySecretVerifier);
+        Assert.Null(fact.RetryRecoveryFactorVerifier);
 
         await using var connection = await fixture.OpenConnectionAsync(token);
         await using var command = connection.CreateCommand();
@@ -100,6 +103,7 @@ public sealed class InstallationProvisioningPersistenceTests(
         {
             await fixture.MigrateIdentitiesAndCapabilitiesAsync(PreviousMigration, token);
             await fixture.MigrateIdentitiesAndCapabilitiesAsync(CurrentMigration, token);
+            await fixture.MigrateIdentitiesAndCapabilitiesAsync(LatestMigration, token);
 
             Assert.Null(await fixture.ReadInstallationProvisioningFactAsync(token));
         }
@@ -153,6 +157,7 @@ public sealed class InstallationProvisioningPersistenceTests(
             }
 
             await fixture.MigrateIdentitiesAndCapabilitiesAsync(CurrentMigration, token);
+            await fixture.MigrateIdentitiesAndCapabilitiesAsync(LatestMigration, token);
             return Assert.IsType<InstallationProvisioningFactSnapshot>(
                 await fixture.ReadInstallationProvisioningFactAsync(token));
         }
@@ -178,7 +183,7 @@ public sealed class InstallationProvisioningPersistenceTests(
 
     private async Task RestoreLatestMigrationAsync(CancellationToken cancellationToken)
     {
-        await fixture.MigrateIdentitiesAndCapabilitiesAsync(CurrentMigration, cancellationToken);
+        await fixture.MigrateIdentitiesAndCapabilitiesAsync(LatestMigration, cancellationToken);
         await fixture.ResetAsync(cancellationToken);
     }
 
@@ -191,5 +196,6 @@ public sealed class InstallationProvisioningPersistenceTests(
         Assert.Null(fact.InitialIdentityId);
         Assert.Null(fact.RetryIntentFingerprint);
         Assert.Null(fact.RetrySecretVerifier);
+        Assert.Null(fact.RetryRecoveryFactorVerifier);
     }
 }

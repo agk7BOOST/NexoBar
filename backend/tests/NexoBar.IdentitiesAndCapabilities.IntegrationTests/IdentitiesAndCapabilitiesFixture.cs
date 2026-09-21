@@ -56,6 +56,8 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                identities_and_capabilities.extraordinary_general_configuration_recovery_commands,
+                identities_and_capabilities.installation_recovery_state,
                 identities_and_capabilities.installation_provisioning,
                 identities_and_capabilities.administrative_commands,
                 identities_and_capabilities.sessions,
@@ -334,8 +336,74 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
                 fact.ProvisioningCommandId,
                 fact.InitialIdentityId,
                 fact.RetryIntentFingerprint,
-                fact.RetrySecretVerifier))
+                fact.RetrySecretVerifier,
+                fact.RetryRecoveryFactorVerifier))
             .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    internal async Task<InstallationRecoveryStateSnapshot?>
+        ReadInstallationRecoveryStateAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .InstallationRecoveryStates.AsNoTracking()
+            .Select(state => new InstallationRecoveryStateSnapshot(
+                state.Key,
+                state.RecoveryFactorVerifier,
+                state.Generation,
+                state.EstablishedAt,
+                state.LastRotatedAt))
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    internal async Task InsertInstallationRecoveryStateAsync(
+        InstallationRecoveryState state,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        dbContext.InstallationRecoveryStates.Add(state);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    internal async Task<ExtraordinaryRecoveryCommandSnapshot?>
+        ReadExtraordinaryRecoveryCommandAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .ExtraordinaryGeneralConfigurationRecoveryCommands.AsNoTracking()
+            .Select(command => new ExtraordinaryRecoveryCommandSnapshot(
+                command.CommandId,
+                command.TargetIdentityId,
+                command.LoginIntentMode,
+                command.RequestedLoginIdentifier,
+                command.RetryCredentialVerifier,
+                command.RecoveryFactorGeneration,
+                command.CompletedAt))
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    internal async Task InsertExtraordinaryRecoveryCommandAsync(
+        ExtraordinaryGeneralConfigurationRecoveryCommand command,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        dbContext.ExtraordinaryGeneralConfigurationRecoveryCommands.Add(command);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    internal async Task<int> CountInstallationRecoveryStatesAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .InstallationRecoveryStates.CountAsync(cancellationToken);
     }
 
     internal async Task InsertInstallationProvisioningFactAsync(
@@ -530,7 +598,24 @@ internal sealed record InstallationProvisioningFactSnapshot(
     Guid? ProvisioningCommandId,
     Guid? InitialIdentityId,
     byte[]? RetryIntentFingerprint,
-    string? RetrySecretVerifier);
+    string? RetrySecretVerifier,
+    string? RetryRecoveryFactorVerifier);
+
+internal sealed record InstallationRecoveryStateSnapshot(
+    short Key,
+    string RecoveryFactorVerifier,
+    int Generation,
+    DateTimeOffset EstablishedAt,
+    DateTimeOffset? LastRotatedAt);
+
+internal sealed record ExtraordinaryRecoveryCommandSnapshot(
+    Guid CommandId,
+    Guid TargetIdentityId,
+    ExtraordinaryRecoveryLoginIntentMode LoginIntentMode,
+    string? RequestedLoginIdentifier,
+    string RetryCredentialVerifier,
+    int RecoveryFactorGeneration,
+    DateTimeOffset CompletedAt);
 
 internal sealed class ManualTimeProvider : TimeProvider
 {

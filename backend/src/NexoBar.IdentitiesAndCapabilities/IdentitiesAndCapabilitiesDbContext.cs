@@ -24,6 +24,13 @@ internal sealed class IdentitiesAndCapabilitiesDbContext(
     internal DbSet<InstallationProvisioningFact> InstallationProvisioningFacts =>
         Set<InstallationProvisioningFact>();
 
+    internal DbSet<InstallationRecoveryState> InstallationRecoveryStates =>
+        Set<InstallationRecoveryState>();
+
+    internal DbSet<ExtraordinaryGeneralConfigurationRecoveryCommand>
+        ExtraordinaryGeneralConfigurationRecoveryCommands =>
+        Set<ExtraordinaryGeneralConfigurationRecoveryCommand>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("identities_and_capabilities");
@@ -34,6 +41,9 @@ internal sealed class IdentitiesAndCapabilitiesDbContext(
         modelBuilder.ApplyConfiguration(new PreparationEnablementConfiguration());
         modelBuilder.ApplyConfiguration(new IdentityAdministrativeCommandConfiguration());
         modelBuilder.ApplyConfiguration(new InstallationProvisioningFactConfiguration());
+        modelBuilder.ApplyConfiguration(new InstallationRecoveryStateConfiguration());
+        modelBuilder.ApplyConfiguration(
+            new ExtraordinaryGeneralConfigurationRecoveryCommandConfiguration());
     }
 
     private sealed class InstallationProvisioningFactConfiguration :
@@ -91,6 +101,113 @@ internal sealed class IdentitiesAndCapabilitiesDbContext(
             builder.Property(fact => fact.RetrySecretVerifier)
                 .HasColumnName("retry_secret_verifier")
                 .HasColumnType("text");
+            builder.Property(fact => fact.RetryRecoveryFactorVerifier)
+                .HasColumnName("retry_recovery_factor_verifier")
+                .HasColumnType("text");
+        }
+    }
+
+    private sealed class InstallationRecoveryStateConfiguration :
+        IEntityTypeConfiguration<InstallationRecoveryState>
+    {
+        public void Configure(EntityTypeBuilder<InstallationRecoveryState> builder)
+        {
+            builder.ToTable(
+                "installation_recovery_state",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_installation_recovery_state_singleton",
+                        "singleton_key = 1");
+                    table.HasCheckConstraint(
+                        "CK_installation_recovery_state_generation",
+                        "generation > 0");
+                    table.HasCheckConstraint(
+                        "CK_installation_recovery_state_rotation_time",
+                        "last_rotated_at IS NULL OR last_rotated_at >= established_at");
+                    table.HasCheckConstraint(
+                        "CK_installation_recovery_state_verifier",
+                        "length(recovery_factor_verifier) > 0");
+                });
+            builder.HasKey(state => state.Key)
+                .HasName("PK_installation_recovery_state");
+            builder.Property(state => state.Key)
+                .HasColumnName("singleton_key")
+                .ValueGeneratedNever();
+            builder.Property(state => state.RecoveryFactorVerifier)
+                .HasColumnName("recovery_factor_verifier")
+                .HasColumnType("text")
+                .IsRequired();
+            builder.Property(state => state.Generation)
+                .HasColumnName("generation")
+                .IsRequired();
+            builder.Property(state => state.EstablishedAt)
+                .HasColumnName("established_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.Property(state => state.LastRotatedAt)
+                .HasColumnName("last_rotated_at")
+                .HasColumnType("timestamp with time zone");
+        }
+    }
+
+    private sealed class ExtraordinaryGeneralConfigurationRecoveryCommandConfiguration :
+        IEntityTypeConfiguration<ExtraordinaryGeneralConfigurationRecoveryCommand>
+    {
+        public void Configure(
+            EntityTypeBuilder<ExtraordinaryGeneralConfigurationRecoveryCommand> builder)
+        {
+            builder.ToTable(
+                "extraordinary_general_configuration_recovery_commands",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_extraordinary_recovery_command_login_intent",
+                        "login_intent_mode IN ('PreserveExisting', 'ExplicitIdentifier')");
+                    table.HasCheckConstraint(
+                        "CK_extraordinary_recovery_command_requested_login",
+                        "(login_intent_mode = 'PreserveExisting' AND " +
+                        "requested_login_identifier IS NULL) OR " +
+                        "(login_intent_mode = 'ExplicitIdentifier' AND " +
+                        "requested_login_identifier IS NOT NULL AND " +
+                        "length(requested_login_identifier) > 0)");
+                    table.HasCheckConstraint(
+                        "CK_extraordinary_recovery_command_generation",
+                        "recovery_factor_generation > 0");
+                    table.HasCheckConstraint(
+                        "CK_extraordinary_recovery_command_credential_verifier",
+                        "length(retry_credential_verifier) > 0");
+                });
+            builder.HasKey(command => command.CommandId)
+                .HasName("PK_extraordinary_general_configuration_recovery_commands");
+            builder.Property(command => command.CommandId)
+                .HasColumnName("command_id")
+                .ValueGeneratedNever();
+            builder.Property(command => command.TargetIdentityId)
+                .HasColumnName("target_identity_id")
+                .ValueGeneratedNever();
+            builder.Property(command => command.LoginIntentMode)
+                .HasColumnName("login_intent_mode")
+                .HasConversion<string>()
+                .HasColumnType("text")
+                .IsRequired();
+            builder.Property(command => command.RequestedLoginIdentifier)
+                .HasColumnName("requested_login_identifier")
+                .HasColumnType("text");
+            builder.Property(command => command.RetryCredentialVerifier)
+                .HasColumnName("retry_credential_verifier")
+                .HasColumnType("text")
+                .IsRequired();
+            builder.Property(command => command.RecoveryFactorGeneration)
+                .HasColumnName("recovery_factor_generation")
+                .IsRequired();
+            builder.Property(command => command.CompletedAt)
+                .HasColumnName("completed_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.HasIndex(command => command.TargetIdentityId)
+                .HasDatabaseName(
+                    "IX_extraordinary_recovery_commands_target_identity_id");
         }
     }
 

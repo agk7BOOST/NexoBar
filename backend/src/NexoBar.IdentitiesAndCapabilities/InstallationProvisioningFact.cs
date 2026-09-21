@@ -72,6 +72,8 @@ internal sealed class InstallationProvisioningFact
     internal byte[]? RetryIntentFingerprint { get; private set; }
 
     internal string? RetrySecretVerifier { get; private set; }
+
+    internal string? RetryRecoveryFactorVerifier { get; private set; }
 }
 
 internal enum InstallationProvisioningOrigin

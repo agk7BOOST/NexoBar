@@ -44,6 +44,9 @@ partial class IdentitiesAndCapabilitiesDbContextModelSnapshot : ModelSnapshot
                 b.Property<byte[]>("RetryIntentFingerprint")
                     .HasColumnType("bytea")
                     .HasColumnName("retry_intent_fingerprint");
+                b.Property<string>("RetryRecoveryFactorVerifier")
+                    .HasColumnType("text")
+                    .HasColumnName("retry_recovery_factor_verifier");
                 b.Property<string>("RetrySecretVerifier")
                     .HasColumnType("text")
                     .HasColumnName("retry_secret_verifier");
@@ -76,6 +79,104 @@ partial class IdentitiesAndCapabilitiesDbContextModelSnapshot : ModelSnapshot
                             "initial_identity_id IS NULL AND " +
                             "retry_intent_fingerprint IS NULL AND " +
                             "retry_secret_verifier IS NULL)");
+                    });
+            });
+
+        modelBuilder.Entity(
+            "NexoBar.IdentitiesAndCapabilities.ExtraordinaryGeneralConfigurationRecoveryCommand",
+            b =>
+            {
+                b.Property<Guid>("CommandId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("command_id");
+                b.Property<DateTimeOffset>("CompletedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("completed_at");
+                b.Property<string>("LoginIntentMode")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("login_intent_mode");
+                b.Property<int>("RecoveryFactorGeneration")
+                    .HasColumnType("integer")
+                    .HasColumnName("recovery_factor_generation");
+                b.Property<string>("RequestedLoginIdentifier")
+                    .HasColumnType("text")
+                    .HasColumnName("requested_login_identifier");
+                b.Property<string>("RetryCredentialVerifier")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("retry_credential_verifier");
+                b.Property<Guid>("TargetIdentityId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("target_identity_id");
+                b.HasKey("CommandId")
+                    .HasName("PK_extraordinary_general_configuration_recovery_commands");
+                b.HasIndex("TargetIdentityId")
+                    .HasDatabaseName(
+                        "IX_extraordinary_recovery_commands_target_identity_id");
+                b.ToTable(
+                    "extraordinary_general_configuration_recovery_commands",
+                    "identities_and_capabilities",
+                    t =>
+                    {
+                        t.HasCheckConstraint(
+                            "CK_extraordinary_recovery_command_login_intent",
+                            "login_intent_mode IN ('PreserveExisting', 'ExplicitIdentifier')");
+                        t.HasCheckConstraint(
+                            "CK_extraordinary_recovery_command_requested_login",
+                            "(login_intent_mode = 'PreserveExisting' AND " +
+                            "requested_login_identifier IS NULL) OR " +
+                            "(login_intent_mode = 'ExplicitIdentifier' AND " +
+                            "requested_login_identifier IS NOT NULL AND " +
+                            "length(requested_login_identifier) > 0)");
+                        t.HasCheckConstraint(
+                            "CK_extraordinary_recovery_command_generation",
+                            "recovery_factor_generation > 0");
+                        t.HasCheckConstraint(
+                            "CK_extraordinary_recovery_command_credential_verifier",
+                            "length(retry_credential_verifier) > 0");
+                    });
+            });
+
+        modelBuilder.Entity(
+            "NexoBar.IdentitiesAndCapabilities.InstallationRecoveryState",
+            b =>
+            {
+                b.Property<short>("Key")
+                    .HasColumnType("smallint")
+                    .HasColumnName("singleton_key");
+                b.Property<DateTimeOffset>("EstablishedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("established_at");
+                b.Property<int>("Generation")
+                    .HasColumnType("integer")
+                    .HasColumnName("generation");
+                b.Property<DateTimeOffset?>("LastRotatedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("last_rotated_at");
+                b.Property<string>("RecoveryFactorVerifier")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("recovery_factor_verifier");
+                b.HasKey("Key")
+                    .HasName("PK_installation_recovery_state");
+                b.ToTable(
+                    "installation_recovery_state",
+                    "identities_and_capabilities",
+                    t =>
+                    {
+                        t.HasCheckConstraint(
+                            "CK_installation_recovery_state_singleton",
+                            "singleton_key = 1");
+                        t.HasCheckConstraint(
+                            "CK_installation_recovery_state_generation",
+                            "generation > 0");
+                        t.HasCheckConstraint(
+                            "CK_installation_recovery_state_rotation_time",
+                            "last_rotated_at IS NULL OR last_rotated_at >= established_at");
+                        t.HasCheckConstraint(
+                            "CK_installation_recovery_state_verifier",
+                            "length(recovery_factor_verifier) > 0");
                     });
             });
 
