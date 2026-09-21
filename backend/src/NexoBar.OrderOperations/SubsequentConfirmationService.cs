@@ -13,6 +13,7 @@ internal sealed class SubsequentConfirmationService(
     IOrderConfirmationCatalog catalog,
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
+    IOperationalInterventionCapabilityStabilizer operationalInterventionCapabilityStabilizer,
     IPreparationDestinationInvalidationPublisher invalidations,
     IOrderInvalidationPublisher orderInvalidations)
 {
@@ -89,6 +90,15 @@ internal sealed class SubsequentConfirmationService(
             return SubsequentConfirmationResult.Forbidden();
         }
 
+        if (intent.Items.Any(item => item.UnavailableProductExceptionRequested) &&
+            !await operationalInterventionCapabilityStabilizer.StabilizeResponsibilityAsync(
+                stabilizedSession.IdentityId,
+                transaction.GetDbTransaction(),
+                cancellationToken))
+        {
+            return SubsequentConfirmationResult.OperationalInterventionRequired();
+        }
+
         var order = await dbContext.Orders
             .FromSqlInterpolated(
                 $"""
@@ -139,7 +149,7 @@ internal sealed class SubsequentConfirmationService(
                 return SubsequentConfirmationResult.ProductNotCurrent(item.ProductId);
             }
 
-            if (!product.IsAvailable)
+            if (!product.IsAvailable && !item.UnavailableProductExceptionRequested)
             {
                 return SubsequentConfirmationResult.ProductUnavailable(item.ProductId);
             }
@@ -188,13 +198,16 @@ internal sealed class SubsequentConfirmationService(
             var item = intent.Items[index];
             var contentOrdinal = checked(index + 1);
             var product = productsById[item.ProductId];
+            var unavailableProductExceptionApplied =
+                !product.IsAvailable && item.UnavailableProductExceptionRequested;
             var creation = ConfirmedContentFactory
                 .CreateConfirmedContent(
-                incorporationId,
-                contentOrdinal,
-                item.Quantity,
-                item.Instruction,
-                product);
+                    incorporationId,
+                    contentOrdinal,
+                    item.Quantity,
+                    item.Instruction,
+                    unavailableProductExceptionApplied,
+                    product);
             dbContext.IncorporationContents.Add(creation.Content);
             if (creation.PreparationWork is not null)
             {
@@ -210,12 +223,14 @@ internal sealed class SubsequentConfirmationService(
                     contentOrdinal,
                     item.ProductId,
                     item.Quantity,
-                    item.Instruction));
+                    item.Instruction,
+                    item.UnavailableProductExceptionRequested));
             responseItems.Add(new ConfirmedItemResponse(
                 item.ProductId,
                 item.Quantity,
                 product.Price.ToString(CultureInfo.InvariantCulture),
-                item.Instruction));
+                item.Instruction,
+                unavailableProductExceptionApplied));
         }
 
         dbContext.PendingCompositions.Remove(pendingComposition);
@@ -262,7 +277,8 @@ internal sealed class SubsequentConfirmationService(
                 content.ProductId,
                 content.Quantity,
                 content.AppliedPrice.ToString(CultureInfo.InvariantCulture),
-                content.Instruction))
+                content.Instruction,
+                content.UnavailableProductExceptionApplied))
             .ToArray();
 
         return new SubsequentConfirmationResponse(
@@ -307,7 +323,8 @@ internal sealed class SubsequentConfirmationService(
             items.Add(new ValidatedSubsequentConfirmationItem(
                 item.ProductId,
                 item.Quantity,
-                ConfirmationInstruction.Canonicalize(item.Instruction)));
+                ConfirmationInstruction.Canonicalize(item.Instruction),
+                item.UnavailableProductExceptionRequested));
         }
 
         var duplicateLine = items
@@ -341,6 +358,8 @@ internal sealed class SubsequentConfirmationService(
         contents.Zip(intent.Items).All(pair =>
             pair.First.ProductId == pair.Second.ProductId &&
             pair.First.Quantity == pair.Second.Quantity &&
+            pair.First.IntentUnavailableProductExceptionRequested ==
+                pair.Second.UnavailableProductExceptionRequested &&
             string.Equals(
                 pair.First.Instruction,
                 pair.Second.Instruction,
@@ -375,7 +394,8 @@ internal sealed record ValidatedSubsequentConfirmationIntent(
 internal sealed record ValidatedSubsequentConfirmationItem(
     Guid ProductId,
     int Quantity,
-    string? Instruction);
+    string? Instruction,
+    bool UnavailableProductExceptionRequested);
 
 internal sealed record SubsequentConfirmationResult(
     SubsequentConfirmationOutcome Outcome,
@@ -428,6 +448,9 @@ internal sealed record SubsequentConfirmationResult(
 
     internal static SubsequentConfirmationResult Forbidden() =>
         new(SubsequentConfirmationOutcome.Forbidden, null, null);
+
+    internal static SubsequentConfirmationResult OperationalInterventionRequired() =>
+        new(SubsequentConfirmationOutcome.OperationalInterventionRequired, null, null);
 }
 
 internal enum SubsequentConfirmationOutcome
@@ -446,5 +469,6 @@ internal enum SubsequentConfirmationOutcome
     OrderCancelled,
     OrderFrozen,
     Unauthenticated,
-    Forbidden
+    Forbidden,
+    OperationalInterventionRequired
 }

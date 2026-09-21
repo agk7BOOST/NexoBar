@@ -41,6 +41,91 @@ public sealed class OrderInvalidationTests(OrderOperationsApiFixture fixture)
     }
 
     [Fact]
+    public async Task Exceptional_confirmations_publish_existing_scopes_once_and_not_on_replay()
+    {
+        await fixture.ResetAsync(Token);
+        var destination = Guid.NewGuid();
+        var firstProduct = await fixture.CreateProductAsync("Exceptional first", "5", Token);
+        var subsequentProduct = await fixture.CreateProductAsync(
+            "Exceptional subsequent", "7", Token);
+        await fixture.SetProductPreparationAsync(firstProduct.Id, destination, Token);
+        await fixture.SetProductPreparationAsync(subsequentProduct.Id, destination, Token);
+        await fixture.SetProductStateAsync(firstProduct.Id, true, false, Token);
+        await fixture.SetProductStateAsync(subsequentProduct.Id, true, false, Token);
+        var actor = await fixture.CreateConfirmationActorAsync(true, true, Token);
+        var notifications = new Recorder();
+        using var application = fixture.CreateApplicationWithChangeNotificationPublisher(
+            notifications);
+        using var client = await fixture.LoginAsync(actor, Token, application);
+        var firstKey = Guid.NewGuid();
+        var firstBody = new FirstConfirmationRequest("S10 invalidation",
+            [new(firstProduct.Id, 1, null, true)]);
+
+        notifications.IsCommitted = () => CommandExists(
+            "first_confirmation_commands", firstKey);
+        using var first = await PostAsync(
+            client, "/api/order-operations/first-confirmations", firstBody, firstKey);
+        first.EnsureSuccessStatusCode();
+        var firstResponse = Assert.IsType<FirstConfirmationResponse>(
+            await first.Content.ReadFromJsonAsync<FirstConfirmationResponse>(Token));
+        var firstEvent = Assert.Single(notifications.Events);
+        Assert.Equal("preparation.destination.changed", firstEvent.Kind);
+        Assert.Equal(destination, firstEvent.Scope.DestinationId);
+        Assert.All(notifications.Committed, Assert.True);
+        using (var replay = await PostAsync(
+            client, "/api/order-operations/first-confirmations", firstBody, firstKey))
+            replay.EnsureSuccessStatusCode();
+        Assert.Single(notifications.Events);
+        using (var rejected = await PostAsync(
+            client,
+            "/api/order-operations/first-confirmations",
+            new FirstConfirmationRequest(
+                "S10 rejected invalidation",
+                [new(firstProduct.Id, 1)]),
+            Guid.NewGuid()))
+            Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        Assert.Single(notifications.Events);
+
+        var pending = await fixture.StartPendingCompositionAsync(
+            firstResponse.OperationalReference, Token, client);
+        notifications.Clear();
+        var subsequentKey = Guid.NewGuid();
+        var subsequentBody = new SubsequentConfirmationRequest(
+            pending.PendingCompositionId,
+            [new(subsequentProduct.Id, 1, null, true)]);
+        notifications.IsCommitted = () => CommandExists(
+            "subsequent_confirmation_commands", subsequentKey);
+        var path = $"/api/order-operations/orders/{firstResponse.OperationalReference}/confirmations";
+        using var subsequent = await PostAsync(
+            client, path, subsequentBody, subsequentKey);
+        subsequent.EnsureSuccessStatusCode();
+        Assert.Equal(2, notifications.Events.Count);
+        Assert.Single(notifications.Events, notification =>
+            notification.Kind == "order.changed" &&
+            notification.Scope == ChangeNotificationScope.ActiveOrder(
+                Guid.Parse(firstResponse.OperationalReference)));
+        Assert.Single(notifications.Events, notification =>
+            notification.Kind == "preparation.destination.changed" &&
+            notification.Scope.DestinationId == destination);
+        Assert.All(notifications.Committed, Assert.True);
+        using (var replay = await PostAsync(
+            client, path, subsequentBody, subsequentKey))
+            replay.EnsureSuccessStatusCode();
+        Assert.Equal(2, notifications.Events.Count);
+
+        bool CommandExists(string table, Guid key)
+        {
+            using var connection = new NpgsqlConnection(fixture.ConnectionString);
+            connection.Open();
+            using var command = new NpgsqlCommand(
+                $"SELECT EXISTS (SELECT 1 FROM order_operations.{table} WHERE idempotency_key = @key)",
+                connection);
+            command.Parameters.AddWithValue("key", key);
+            return (bool)command.ExecuteScalar()!;
+        }
+    }
+
+    [Fact]
     public async Task Preparation_progress_corrections_and_intervention_publish_both_exact_scopes()
     {
         await fixture.ResetAsync(Token);

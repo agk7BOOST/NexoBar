@@ -13,12 +13,13 @@ public sealed partial class OperationalInterventionTests
     {
         const string previous = "20260907054805_AddContentCancellation";
         const string current = "20260910120000_AllowZeroInterventionResults";
+        const string latest = "20260921120000_AddUnavailableProductException";
         var s = await Setup(3, ready ? 3 : 0, 0, 3); using var client = s.Client;
         var original = HistorySnapshot(await fixture.ReadPreparationHistoryAsync(Token));
         await fixture.MigrateOrderOperationsAsync(previous, Token);
         await fixture.MigrateOrderOperationsAsync(current, Token);
+        await fixture.MigrateOrderOperationsAsync(latest, Token);
         Assert.Equal(original, HistorySnapshot(await fixture.ReadPreparationHistoryAsync(Token)));
-        await fixture.MigrateOrderOperationsAsync("20260910222430_AddCompleteOrderCancellation", Token);
         using var intervention = await Intervene(client, s.Target, ready, 3);
         var result = await Success(intervention);
         var histories = HistorySnapshot(await fixture.ReadPreparationHistoryAsync(Token));
@@ -40,8 +41,7 @@ public sealed partial class OperationalInterventionTests
         try { await fixture.MigrateOrderOperationsAsync(previous, Token); }
         finally
         {
-            await fixture.MigrateOrderOperationsAsync(current, Token);
-            await fixture.MigrateOrderOperationsAsync("20260910222430_AddCompleteOrderCancellation", Token);
+            await fixture.MigrateOrderOperationsAsync(latest, Token);
         }
         Assert.False(await fixture.HasPendingModelChangesAsync());
     }

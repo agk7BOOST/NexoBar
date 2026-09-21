@@ -112,6 +112,12 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             hasPreparation: false,
             enabledResponsibilityId: null,
             cancellationToken);
+        var identities = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        identities.ResponsibilityAssignments.Add(new ResponsibilityAssignment(
+            DefaultOrderOperationsActor.IdentityId,
+            FunctionalResponsibility.CatalogConfiguration));
+        await identities.SaveChangesAsync(cancellationToken);
         OrderOperationsClient?.Dispose();
         OrderOperationsClient = await LoginAsync(
             DefaultOrderOperationsActor,
@@ -200,6 +206,31 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         return new PreparationActor(identity.Id, loginIdentifier, secret);
     }
 
+    internal async Task<PreparationActor> CreateConfirmationActorAsync(
+        bool hasOrderOperations,
+        bool hasOperationalIntervention,
+        CancellationToken cancellationToken)
+    {
+        var actor = await CreateDeliveryActorAsync(
+            hasOrderOperations,
+            hasPreparation: false,
+            enabledResponsibilityId: null,
+            cancellationToken);
+        if (!hasOperationalIntervention)
+        {
+            return actor;
+        }
+
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
+        dbContext.ResponsibilityAssignments.Add(new ResponsibilityAssignment(
+            actor.IdentityId,
+            FunctionalResponsibility.OperationalIntervention));
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return actor;
+    }
+
     internal async Task RevokeOrderOperationsAssignmentAsync(
         Guid identityId,
         CancellationToken cancellationToken)
@@ -210,6 +241,19 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 assignment.IdentityId == identityId &&
                 assignment.ResponsibilityCode ==
                     FunctionalResponsibility.OrderOperationsAndBasicClosure)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    internal async Task RevokeOperationalInterventionAssignmentAsync(
+        Guid identityId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .ResponsibilityAssignments.Where(assignment =>
+                assignment.IdentityId == identityId &&
+                assignment.ResponsibilityCode ==
+                    FunctionalResponsibility.OperationalIntervention)
             .ExecuteDeleteAsync(cancellationToken);
     }
 
@@ -401,7 +445,10 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
 
-        using var response = await Client.SendAsync(request, cancellationToken);
+        using var response = await SendWithAntiforgeryAsync(
+            OrderOperationsClient,
+            request,
+            cancellationToken);
         response.EnsureSuccessStatusCode();
         return Assert.IsType<ProductResponse>(
             await response.Content.ReadFromJsonAsync<ProductResponse>(cancellationToken));

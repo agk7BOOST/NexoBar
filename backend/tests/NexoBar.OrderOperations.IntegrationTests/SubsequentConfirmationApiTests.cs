@@ -833,7 +833,13 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
                 .GetProperty("properties").EnumerateObject()
                 .Select(property => property.Name).ToArray());
         Assert.Equal(
-            new[] { "productId", "quantity", "instruction" },
+            new[]
+            {
+                "productId",
+                "quantity",
+                "instruction",
+                "unavailableProductExceptionRequested"
+            },
             schemas.GetProperty(nameof(SubsequentConfirmationItemRequest))
                 .GetProperty("properties").EnumerateObject()
                 .Select(property => property.Name).ToArray());
@@ -853,6 +859,21 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
             schemas.GetProperty(nameof(ConfirmedItemResponse))
                 .GetProperty("properties").GetProperty("instruction"),
             "string");
+        AssertSchemaType(
+            schemas.GetProperty(nameof(SubsequentConfirmationItemRequest))
+                .GetProperty("properties")
+                .GetProperty("unavailableProductExceptionRequested"),
+            "boolean");
+        AssertSchemaType(
+            schemas.GetProperty(nameof(ConfirmedItemResponse))
+                .GetProperty("properties")
+                .GetProperty("unavailableProductExceptionApplied"),
+            "boolean");
+        Assert.Contains(
+            "unavailableProductExceptionApplied",
+            schemas.GetProperty(nameof(ConfirmedItemResponse))
+                .GetProperty("required").EnumerateArray()
+                .Select(value => value.GetString()));
     }
 
     private async Task<FirstConfirmationResponse> CreateOrderAsync(
@@ -988,7 +1009,10 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
                 newPrice))
         };
         message.Headers.Add("Idempotency-Key", NewIdempotencyKey());
-        return await (client ?? fixture.OrderOperationsClient).SendAsync(message, cancellationToken);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            client ?? fixture.OrderOperationsClient,
+            message,
+            cancellationToken);
     }
 
     private async Task<bool> WaitForAdvisoryLockWaiterAsync(

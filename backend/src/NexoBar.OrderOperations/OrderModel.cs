@@ -178,7 +178,8 @@ internal sealed class IncorporationContent
         int quantity,
         bool requiresPreparationAtConfirmation,
         decimal appliedPrice,
-        string? instruction)
+        string? instruction,
+        bool unavailableProductExceptionApplied = false)
     {
         IncorporationId = incorporationId;
         ContentOrdinal = contentOrdinal;
@@ -187,6 +188,7 @@ internal sealed class IncorporationContent
         RequiresPreparationAtConfirmation = requiresPreparationAtConfirmation;
         AppliedPrice = appliedPrice;
         Instruction = instruction;
+        UnavailableProductExceptionApplied = unavailableProductExceptionApplied;
     }
 
     internal Guid IncorporationId { get; private set; }
@@ -196,6 +198,7 @@ internal sealed class IncorporationContent
     internal bool RequiresPreparationAtConfirmation { get; private set; }
     internal decimal AppliedPrice { get; private set; }
     internal string? Instruction { get; private set; }
+    internal bool UnavailableProductExceptionApplied { get; private set; }
 }
 
 internal sealed class DeliveryState
@@ -474,13 +477,16 @@ internal sealed class FirstConfirmationCommandContent
         int lineOrdinal,
         Guid productId,
         int quantity,
-        string? instruction)
+        string? instruction,
+        bool intentUnavailableProductExceptionRequested = false)
     {
         IdempotencyKey = idempotencyKey;
         LineOrdinal = lineOrdinal;
         ProductId = productId;
         Quantity = quantity;
         Instruction = instruction;
+        IntentUnavailableProductExceptionRequested =
+            intentUnavailableProductExceptionRequested;
     }
 
     internal Guid IdempotencyKey { get; private set; }
@@ -488,4 +494,5 @@ internal sealed class FirstConfirmationCommandContent
     internal Guid ProductId { get; private set; }
     internal int Quantity { get; private set; }
     internal string? Instruction { get; private set; }
+    internal bool IntentUnavailableProductExceptionRequested { get; private set; }
 }

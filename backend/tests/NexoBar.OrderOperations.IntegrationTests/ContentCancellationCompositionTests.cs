@@ -86,6 +86,7 @@ public sealed class ContentCancellationCompositionTests(OrderOperationsApiFixtur
         {
             await fixture.MigrateOrderOperationsAsync("20260906163222_AddContentCorrection", token);
             await fixture.MigrateOrderOperationsAsync("20260907054805_AddContentCancellation", token);
+            await fixture.MigrateOrderOperationsAsync("20260921120000_AddUnavailableProductException", token);
             await using var scope = fixture.Services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
             var state = await db.ContentQuantityStates.AsNoTracking().SingleAsync(token);
@@ -93,7 +94,6 @@ public sealed class ContentCancellationCompositionTests(OrderOperationsApiFixtur
             Assert.Equal(1, state.RemovedByCorrectionQuantity);
             Assert.Equal(original, await fixture.ReadConfirmedContentsAsync(token));
             Assert.Equal(work, await fixture.ReadPreparationWorkAsync(token));
-            await fixture.MigrateOrderOperationsAsync("20260910222430_AddCompleteOrderCancellation", token);
             using var cancel = await ContentCancellationTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), 1, token);
             await ContentCancellationTestSupport.SuccessAsync(cancel, token);
             var error = await Assert.ThrowsAsync<PostgresException>(() =>
@@ -102,6 +102,6 @@ public sealed class ContentCancellationCompositionTests(OrderOperationsApiFixtur
             Assert.Equal(1, (await db.ContentQuantityStates.AsNoTracking().SingleAsync(token)).CancelledQuantity);
             await ContentCancellationTestSupport.CountsAsync(fixture, 1, token);
         }
-        finally { await fixture.MigrateOrderOperationsAsync("20260910222430_AddCompleteOrderCancellation", token); }
+        finally { await fixture.MigrateOrderOperationsAsync("20260921120000_AddUnavailableProductException", token); }
     }
 }

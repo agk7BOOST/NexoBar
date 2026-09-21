@@ -567,7 +567,9 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
                         services.GetRequiredService<CatalogDbContext>()),
                     catalogLocked,
                     releaseCatalog),
-                new ExistingPreparationResponsibilityLookup());
+                new ExistingPreparationResponsibilityLookup(
+                    new(a, "A"),
+                    new(b, "B")));
         using var client = await fixture.LoginAsync(
             fixture.DefaultOrderOperationsActor,
             token,
@@ -887,7 +889,10 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
             })
         };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
-        return await client.SendAsync(request, token);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            client,
+            request,
+            token);
     }
 
     private static async Task<FirstConfirmationResponse> ReadFirstAsync(
@@ -977,12 +982,31 @@ internal sealed class ObservingProductOperationalReferenceLookup(
     }
 }
 
-internal sealed class ExistingPreparationResponsibilityLookup :
+internal sealed class ExistingPreparationResponsibilityLookup(
+    params PreparationResponsibilityReference[] responsibilities) :
     IPreparationResponsibilityLookup
 {
+    private readonly IReadOnlyList<PreparationResponsibilityReference> responsibilities =
+        responsibilities
+            .OrderBy(responsibility => responsibility.OperationalName)
+            .ThenBy(responsibility => responsibility.Id)
+            .ToArray();
+
     public Task<bool> ExistsAsync(
         Guid responsibilityId,
-        CancellationToken cancellationToken) => Task.FromResult(true);
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(responsibilities.Any(candidate =>
+            candidate.Id == responsibilityId));
+    }
+
+    public Task<IReadOnlyList<PreparationResponsibilityReference>> ListAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(responsibilities);
+    }
 
     public Task<IReadOnlyList<PreparationResponsibilityReference>> ReadByIdsAsync(
         IReadOnlyCollection<Guid> responsibilityIds,

@@ -15,7 +15,7 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
     private const string CurrentMigration =
         "20260830210000_ReidentifyIncorporationContent";
     private const string LatestMigration =
-        "20260911160042_AddAppliedPriceCorrection";
+        "20260921120000_AddUnavailableProductException";
 
     private static readonly Guid OrderId =
         Guid.Parse("01910000-0000-7000-8000-000000000001");

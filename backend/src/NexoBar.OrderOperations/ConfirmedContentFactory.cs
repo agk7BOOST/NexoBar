@@ -9,6 +9,7 @@ internal static class ConfirmedContentFactory
         int contentOrdinal,
         int quantity,
         string? instruction,
+        bool unavailableProductExceptionApplied,
         OrderConfirmationCatalogProduct product)
     {
         var requiresPreparationAtConfirmation = product.RequiresPreparation;
@@ -19,7 +20,8 @@ internal static class ConfirmedContentFactory
             quantity,
             requiresPreparationAtConfirmation,
             product.Price,
-            instruction);
+            instruction,
+            unavailableProductExceptionApplied);
         var deliveryState = new DeliveryState(incorporationId, contentOrdinal);
         var quantityState = new ContentQuantityState(incorporationId, contentOrdinal);
         var appliedPriceState = new ContentAppliedPriceState(incorporationId, contentOrdinal, product.Price);

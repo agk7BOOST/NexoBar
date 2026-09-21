@@ -653,7 +653,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
             NewIdempotencyKey(),
             cancellationToken);
         using var priceChange = await PostPriceChangeAsync(
-            fixture.Client,
+            fixture.OrderOperationsClient,
             product.Id,
             "10",
             "12",
@@ -785,7 +785,13 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         Assert.False(operationalReferenceSchema.TryGetProperty("format", out _));
         var requestItemProperties = schemas.GetProperty(nameof(FirstConfirmationItemRequest))
             .GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray();
-        Assert.Equal(new[] { "productId", "quantity", "instruction" },
+        Assert.Equal(new[]
+        {
+            "productId",
+            "quantity",
+            "instruction",
+            "unavailableProductExceptionRequested"
+        },
             requestItemProperties);
         var requiredItemProperties = schemas.GetProperty(nameof(FirstConfirmationItemRequest))
             .GetProperty("required").EnumerateArray()
@@ -793,6 +799,9 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         Assert.Contains("productId", requiredItemProperties);
         Assert.Contains("quantity", requiredItemProperties);
         Assert.DoesNotContain("instruction", requiredItemProperties);
+        Assert.DoesNotContain(
+            "unavailableProductExceptionRequested",
+            requiredItemProperties);
         AssertSchemaType(
             schemas.GetProperty(nameof(FirstConfirmationItemRequest))
                 .GetProperty("properties").GetProperty("instruction"),
@@ -801,6 +810,21 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
             schemas.GetProperty(nameof(ConfirmedItemResponse))
                 .GetProperty("properties").GetProperty("instruction"),
             "string");
+        AssertSchemaType(
+            schemas.GetProperty(nameof(FirstConfirmationItemRequest))
+                .GetProperty("properties")
+                .GetProperty("unavailableProductExceptionRequested"),
+            "boolean");
+        AssertSchemaType(
+            schemas.GetProperty(nameof(ConfirmedItemResponse))
+                .GetProperty("properties")
+                .GetProperty("unavailableProductExceptionApplied"),
+            "boolean");
+        Assert.Contains(
+            "unavailableProductExceptionApplied",
+            schemas.GetProperty(nameof(ConfirmedItemResponse))
+                .GetProperty("required").EnumerateArray()
+                .Select(value => value.GetString()));
     }
 
     private async Task<HttpResponseMessage> PostFirstConfirmationAsync(
@@ -850,7 +874,10 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
                 newPrice))
         };
         message.Headers.Add("Idempotency-Key", NewIdempotencyKey());
-        return await client.SendAsync(message, cancellationToken);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            client,
+            message,
+            cancellationToken);
     }
 
     private async Task<HttpResponseMessage> PostRawAsync(

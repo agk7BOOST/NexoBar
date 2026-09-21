@@ -12,7 +12,8 @@ internal sealed record FirstConfirmationRequest(
 internal sealed record FirstConfirmationItemRequest(
     [property: Required, JsonRequired] Guid ProductId,
     [property: Required, JsonRequired] int Quantity,
-    string? Instruction = null);
+    string? Instruction = null,
+    bool UnavailableProductExceptionRequested = false);
 
 internal sealed record FirstConfirmationResponse(
     string OperationalReference,
@@ -28,4 +29,5 @@ internal sealed record ConfirmedItemResponse(
     Guid ProductId,
     int Quantity,
     string AppliedPrice,
-    string? Instruction);
+    string? Instruction,
+    bool UnavailableProductExceptionApplied);

@@ -65,7 +65,8 @@ internal sealed class OrderQueryService(
                     content.ProductId,
                     content.Quantity,
                     content.AppliedPrice.ToString(CultureInfo.InvariantCulture),
-                    content.Instruction))
+                    content.Instruction,
+                    content.UnavailableProductExceptionApplied))
                 .ToArray());
 
         var incorporations = incorporationHeaders

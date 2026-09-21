@@ -34,13 +34,16 @@ internal sealed class SubsequentConfirmationCommandContent
         int lineOrdinal,
         Guid productId,
         int quantity,
-        string? instruction)
+        string? instruction,
+        bool intentUnavailableProductExceptionRequested = false)
     {
         IdempotencyKey = idempotencyKey;
         LineOrdinal = lineOrdinal;
         ProductId = productId;
         Quantity = quantity;
         Instruction = instruction;
+        IntentUnavailableProductExceptionRequested =
+            intentUnavailableProductExceptionRequested;
     }
 
     internal Guid IdempotencyKey { get; private set; }
@@ -48,4 +51,5 @@ internal sealed class SubsequentConfirmationCommandContent
     internal Guid ProductId { get; private set; }
     internal int Quantity { get; private set; }
     internal string? Instruction { get; private set; }
+    internal bool IntentUnavailableProductExceptionRequested { get; private set; }
 }

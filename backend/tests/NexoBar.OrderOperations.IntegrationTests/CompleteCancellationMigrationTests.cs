@@ -11,6 +11,7 @@ public sealed partial class CompleteCancellationTests
     {
         const string previous = "20260910120000_AllowZeroInterventionResults";
         const string current = "20260910222430_AddCompleteOrderCancellation";
+        const string latest = "20260921120000_AddUnavailableProductException";
         var target = await Setup();
         using var partial = await ContentCancellationTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), 7, Token);
         partial.EnsureSuccessStatusCode();
@@ -24,6 +25,7 @@ public sealed partial class CompleteCancellationTests
             query.CommandText = "SELECT to_regclass('order_operations.order_cancellation_states') IS NULL";
             Assert.True((bool)(await query.ExecuteScalarAsync(Token))!);
             await fixture.MigrateOrderOperationsAsync(current, Token);
+            await fixture.MigrateOrderOperationsAsync(latest, Token);
             await Counts(0);
             Assert.Equal(quantities, (await fixture.ReadContentQuantityStatesAsync(Token))
                 .Select(x => (x.IncorporationId, x.ContentOrdinal, x.RemovedByCorrectionQuantity, x.CancelledQuantity)).ToArray());
@@ -41,7 +43,7 @@ public sealed partial class CompleteCancellationTests
         }
         finally
         {
-            await fixture.MigrateOrderOperationsAsync(current, Token);
+            await fixture.MigrateOrderOperationsAsync(latest, Token);
             await fixture.ResetAsync(Token);
         }
     }

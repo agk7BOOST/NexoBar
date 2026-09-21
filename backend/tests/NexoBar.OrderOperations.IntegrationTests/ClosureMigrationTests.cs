@@ -7,6 +7,8 @@ namespace NexoBar.OrderOperations.IntegrationTests;
 [Collection(OrderOperationsApiCollection.Name)]
 public sealed class ClosureMigrationTests(OrderOperationsApiFixture fixture)
 {
+    private const string LatestMigration = "20260921120000_AddUnavailableProductException";
+
     [Fact]
     public async Task Migration_preserves_liquidated_orders_without_automatically_closing_and_is_reversible()
     {
@@ -22,6 +24,7 @@ public sealed class ClosureMigrationTests(OrderOperationsApiFixture fixture)
             command.CommandText = "SELECT to_regclass('order_operations.closures') IS NULL";
             Assert.True(Assert.IsType<bool>(await command.ExecuteScalarAsync(token)));
             await fixture.MigrateOrderOperationsAsync("20260911160042_AddAppliedPriceCorrection", token);
+            await fixture.MigrateOrderOperationsAsync(LatestMigration, token);
             await ClosureTestSupport.AssertCountsAsync(fixture, 0, token);
             Assert.Equal(liquidation.Id, Assert.Single(await fixture.ReadLiquidationsAsync(token)).Id);
             Assert.Single(await fixture.ReadLiquidationHistoryAsync(token));
@@ -34,7 +37,7 @@ public sealed class ClosureMigrationTests(OrderOperationsApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateOrderOperationsAsync("20260911160042_AddAppliedPriceCorrection", token);
+            await fixture.MigrateOrderOperationsAsync(LatestMigration, token);
             await fixture.ResetAsync(token);
         }
     }

@@ -822,6 +822,9 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("applied_price").HasColumnType("numeric").IsRequired();
             builder.Property(content => content.Instruction)
                 .HasColumnName("instruction").HasColumnType("text");
+            builder.Property(content => content.UnavailableProductExceptionApplied)
+                .HasColumnName("unavailable_product_exception_applied")
+                .IsRequired();
             builder.HasOne<Incorporation>().WithMany()
                 .HasForeignKey(content => content.IncorporationId)
                 .HasConstraintName("FK_order_operations_incorporation_contents_incorporations")
@@ -925,6 +928,9 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("quantity").IsRequired();
             builder.Property(content => content.Instruction)
                 .HasColumnName("instruction").HasColumnType("text");
+            builder.Property(content => content.IntentUnavailableProductExceptionRequested)
+                .HasColumnName("intent_unavailable_product_exception_requested")
+                .IsRequired();
             builder.HasOne<FirstConfirmationCommand>().WithMany()
                 .HasForeignKey(content => content.IdempotencyKey)
                 .HasConstraintName(
@@ -1004,6 +1010,9 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("quantity").IsRequired();
             builder.Property(content => content.Instruction)
                 .HasColumnName("instruction").HasColumnType("text");
+            builder.Property(content => content.IntentUnavailableProductExceptionRequested)
+                .HasColumnName("intent_unavailable_product_exception_requested")
+                .IsRequired();
             builder.HasOne<SubsequentConfirmationCommand>().WithMany()
                 .HasForeignKey(content => content.IdempotencyKey)
                 .HasConstraintName(

@@ -469,7 +469,10 @@ public sealed class ConfirmationInstructionApiTests(OrderOperationsApiFixture fi
             })
         };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
-        return await client.SendAsync(request, token);
+        return await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            client,
+            request,
+            token);
     }
 
     private static async Task<FirstConfirmationResponse> ReadFirstAsync(

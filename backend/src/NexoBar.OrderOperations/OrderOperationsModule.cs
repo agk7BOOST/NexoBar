@@ -1241,6 +1241,11 @@ public static partial class OrderOperationsModule
                 "Confirmation forbidden",
                 "The current Identity is not authorized for Order Operations.",
                 "order_operations.confirmation.forbidden"),
+            SubsequentConfirmationOutcome.OperationalInterventionRequired => Problem(
+                StatusCodes.Status403Forbidden,
+                "Operational Intervention required",
+                "The exceptional Confirmation requires Operational Intervention authority.",
+                "order_operations.confirmation.operational_intervention_required"),
             _ => throw new UnreachableException()
         };
     }
@@ -1487,6 +1492,11 @@ public static partial class OrderOperationsModule
                 "Confirmation forbidden",
                 "The current Identity is not authorized for Order Operations.",
                 "order_operations.confirmation.forbidden"),
+            FirstConfirmationOutcome.OperationalInterventionRequired => Problem(
+                StatusCodes.Status403Forbidden,
+                "Operational Intervention required",
+                "The exceptional Confirmation requires Operational Intervention authority.",
+                "order_operations.confirmation.operational_intervention_required"),
             _ => throw new UnreachableException()
         };
     }

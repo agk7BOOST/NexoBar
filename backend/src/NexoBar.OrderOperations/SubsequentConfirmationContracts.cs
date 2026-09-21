@@ -12,7 +12,8 @@ internal sealed record SubsequentConfirmationRequest(
 internal sealed record SubsequentConfirmationItemRequest(
     [property: Required, JsonRequired] Guid ProductId,
     [property: Required, JsonRequired] int Quantity,
-    string? Instruction = null);
+    string? Instruction = null,
+    bool UnavailableProductExceptionRequested = false);
 
 internal sealed record SubsequentConfirmationResponse(
     string OperationalReference,

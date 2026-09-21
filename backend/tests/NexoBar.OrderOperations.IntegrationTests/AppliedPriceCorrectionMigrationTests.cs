@@ -10,6 +10,7 @@ public sealed class AppliedPriceCorrectionMigrationTests(OrderOperationsApiFixtu
 {
     private const string Previous = "20260910222430_AddCompleteOrderCancellation";
     private const string Current = "20260911160042_AddAppliedPriceCorrection";
+    private const string Latest = "20260921120000_AddUnavailableProductException";
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -21,6 +22,7 @@ public sealed class AppliedPriceCorrectionMigrationTests(OrderOperationsApiFixtu
         {
             await fixture.MigrateOrderOperationsAsync(Previous, Token);
             await fixture.MigrateOrderOperationsAsync(Current, Token);
+            await fixture.MigrateOrderOperationsAsync(Latest, Token);
             await using (var scope = fixture.Services.CreateAsyncScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
@@ -41,7 +43,7 @@ public sealed class AppliedPriceCorrectionMigrationTests(OrderOperationsApiFixtu
         }
         finally
         {
-            await fixture.MigrateOrderOperationsAsync(Current, Token);
+            await fixture.MigrateOrderOperationsAsync(Latest, Token);
             await fixture.ResetAsync(Token);
         }
     }
@@ -94,7 +96,7 @@ public sealed class AppliedPriceCorrectionMigrationTests(OrderOperationsApiFixtu
         }
         finally
         {
-            await fixture.MigrateOrderOperationsAsync(Current, Token);
+            await fixture.MigrateOrderOperationsAsync(Latest, Token);
             await fixture.ResetAsync(Token);
         }
     }
