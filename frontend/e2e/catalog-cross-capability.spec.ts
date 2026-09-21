@@ -6,6 +6,7 @@ import {
   type Page,
   type Response,
 } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 
 const availableProduct = "Producto disponible S9 E2E";
 const unavailableProduct = "Producto no disponible S9 E2E";
@@ -90,6 +91,22 @@ async function authenticateThroughCurrent(
 
 async function newContext(browser: Browser): Promise<BrowserContext> {
   return browser.newContext();
+}
+
+async function readOperationalProducts(context: BrowserContext): Promise<
+  {
+    id: string;
+    operationalName: string;
+    isAvailable: boolean;
+  }[]
+> {
+  const response = await context.request.get("/api/catalog/operational-products");
+  expect(response.ok()).toBeTruthy();
+  return (await response.json()) as {
+    id: string;
+    operationalName: string;
+    isAvailable: boolean;
+  }[];
 }
 
 test("S9 Catalog separates administration, ordinary composition, and unavailable Product visibility", async ({
@@ -224,5 +241,193 @@ test("S9 Catalog separates administration, ordinary composition, and unavailable
       ordinaryContext.close(),
       interventionContext.close(),
     ]);
+  }
+});
+
+test("S10 unavailable Product intervention requires dual authority and preserves Catalog availability", async ({
+  browser,
+}) => {
+  const ordinaryContext = await newContext(browser);
+  const interventionContext = await newContext(browser);
+
+  try {
+    const ordinaryPage = await ordinaryContext.newPage();
+    await authenticateThroughCurrent(ordinaryPage, ordinaryOperator);
+    const ordinaryProducts = await readOperationalProducts(ordinaryContext);
+    expect(ordinaryProducts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          operationalName: availableProduct,
+          isAvailable: true,
+        }),
+      ]),
+    );
+    expect(ordinaryProducts).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ operationalName: unavailableProduct }),
+      ]),
+    );
+
+    const interventionPage = await interventionContext.newPage();
+    await authenticateThroughCurrent(interventionPage, interventionOperator);
+    const interventionProducts = await readOperationalProducts(
+      interventionContext,
+    );
+    const available = interventionProducts.find(
+      (product) => product.operationalName === availableProduct,
+    );
+    const unavailable = interventionProducts.find(
+      (product) => product.operationalName === unavailableProduct,
+    );
+    expect(available).toMatchObject({ isAvailable: true });
+    expect(unavailable).toMatchObject({ isAvailable: false });
+    expect(unavailable).toHaveProperty("id");
+
+    const antiforgery = await ordinaryContext.request.get(
+      "/api/security/antiforgery",
+    );
+    expect(antiforgery.ok()).toBeTruthy();
+    const { requestToken } = (await antiforgery.json()) as {
+      requestToken: string;
+    };
+    const rejected = await ordinaryContext.request.post(
+      "/api/order-operations/first-confirmations",
+      {
+        headers: {
+          "Idempotency-Key": randomUUID(),
+          "X-NexoBar-CSRF": requestToken,
+        },
+        data: {
+          context: "Mesa intervención denegada E2E",
+          items: [
+            {
+              productId: unavailable!.id,
+              quantity: 1,
+              instruction: null,
+              unavailableProductExceptionRequested: true,
+            },
+          ],
+        },
+      },
+    );
+    expect(rejected.status()).toBe(403);
+    const rejection = (await rejected.json()) as {
+      code: string;
+      operationalReference?: string;
+    };
+    expect(rejection.code).toBe(
+      "order_operations.confirmation.operational_intervention_required",
+    );
+    expect(rejection.operationalReference).toBeUndefined();
+    await expect(
+      ordinaryPage.getByRole("region", { name: "Pedido activo" }),
+    ).toHaveCount(0);
+
+    const composition = interventionPage.getByRole("region", {
+      name: "Composición inicial",
+    });
+    const unavailableRow = composition.getByRole("row").filter({
+      has: interventionPage.getByRole("cell", {
+        name: unavailableProduct,
+        exact: true,
+      }),
+    });
+    await expect(
+      unavailableRow.getByRole("button", {
+        name: `Agregar ${unavailableProduct} a Composición inicial`,
+      }),
+    ).toBeDisabled();
+    const interventionAdd = unavailableRow.getByRole("button", {
+      name: `Agregar ${unavailableProduct} mediante intervención a Composición inicial`,
+    });
+    await expect(interventionAdd).toBeEnabled();
+    await interventionAdd.click();
+    await expect(composition.getByText("Intervención solicitada")).toBeVisible();
+    await composition
+      .getByRole("button", {
+        name: `Agregar ${availableProduct} a Composición inicial`,
+      })
+      .click();
+    await composition.getByLabel("Contexto").fill("Mesa intervención E2E");
+    await expect(
+      composition.getByText(
+        "Esta Confirmación incluye Productos actualmente marcados como no disponibles.",
+      ),
+    ).toBeVisible();
+    const confirmation = interventionPage.waitForResponse(
+      (response) =>
+        pathOf(response.url()) === "/api/order-operations/first-confirmations" &&
+        response.request().method() === "POST",
+    );
+    await composition
+      .getByRole("button", { name: "Confirmar con intervención" })
+      .click();
+    const confirmed = await confirmation;
+    expect(confirmed.ok()).toBeTruthy();
+    const confirmationBody = (await confirmed.json()) as {
+      operationalReference: string;
+      firstIncorporation: {
+        items: {
+          productId: string;
+          unavailableProductExceptionApplied: boolean;
+        }[];
+      };
+    };
+    expect(confirmationBody.firstIncorporation.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          productId: available!.id,
+          unavailableProductExceptionApplied: false,
+        }),
+        expect.objectContaining({
+          productId: unavailable!.id,
+          unavailableProductExceptionApplied: true,
+        }),
+      ]),
+    );
+
+    const orderResponse = await interventionContext.request.get(
+      `/api/order-operations/orders/${encodeURIComponent(confirmationBody.operationalReference)}`,
+    );
+    expect(orderResponse.ok()).toBeTruthy();
+    const order = (await orderResponse.json()) as {
+      incorporations: {
+        items: {
+          productId: string;
+          unavailableProductExceptionApplied: boolean;
+        }[];
+      }[];
+    };
+    expect(order.incorporations).toHaveLength(1);
+    expect(order.incorporations[0]!.items).toHaveLength(2);
+    expect(order.incorporations[0]!.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          productId: available!.id,
+          unavailableProductExceptionApplied: false,
+        }),
+        expect.objectContaining({
+          productId: unavailable!.id,
+          unavailableProductExceptionApplied: true,
+        }),
+      ]),
+    );
+    await expect(
+      interventionPage.getByText("Incorporado mediante intervención"),
+    ).toBeVisible();
+
+    const productsAfterConfirmation = await readOperationalProducts(
+      interventionContext,
+    );
+    expect(productsAfterConfirmation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: unavailable!.id,
+          isAvailable: false,
+        }),
+      ]),
+    );
+  } finally {
+    await Promise.all([ordinaryContext.close(), interventionContext.close()]);
   }
 });
