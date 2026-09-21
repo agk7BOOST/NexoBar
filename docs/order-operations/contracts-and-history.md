@@ -72,7 +72,7 @@ El matching de intención incluye `ProductId`, `Quantity` y canonical instructio
 - El lookup de Order se reconstruye exclusivamente desde `OrderOperations`; `Catalog` no reconstruye condiciones históricas.
 - Las propiedades JSON autoritativas no reconocidas se rechazan en los comandos donde esta regla está materializada.
 
-Los items de request de First y Subsequent contienen `productId`, `quantity` e `instruction` optional/nullable. Los items de la respuesta confirmada contienen `productId`, `quantity`, `appliedPrice` e `instruction`; el lookup de Order devuelve también `instruction` nullable por item. La consulta autorizada de Preparation Work devuelve `productOperationalName` vigente e `instruction` nullable, y obtiene `productId` e instruction desde Content. Delivery expone `contentOrdinal` únicamente junto con `incorporationId` como identidad técnica del target. Ningún contrato público expone `draftLineId`.
+Los items de request de First y Subsequent contienen `productId`, `quantity`, `instruction` optional/nullable e `unavailableProductExceptionRequested`. Los items de la respuesta confirmada contienen `productId`, `quantity`, `appliedPrice`, `instruction` e `unavailableProductExceptionApplied`; el lookup de Order devuelve también `instruction` y el marcador aplicado por item. La consulta autorizada de Preparation Work devuelve `productOperationalName` vigente e `instruction` nullable, y obtiene `productId` e instruction desde Content. Delivery expone `contentOrdinal` únicamente junto con `incorporationId` como identidad técnica del target. Ningún contrato público expone `draftLineId`.
 
 Contratos de terminación y marcador de Slice 6:
 
@@ -88,3 +88,15 @@ POST /api/orders/{orderId}/close
 - En una Confirmación posterior, el matching incluye actor, `Order`, marcador exacto `pendingCompositionId` e items canonicalizados; el orden del array no lo altera.
 
 - `operationalReference` es opaca en HTTP y OpenAPI, aunque actualmente derive internamente del Order ID.
+
+## RF-PED-024/025 — intención, Historia y replay de excepción de disponibilidad
+
+Los items de First y Subsequent persisten `IntentUnavailableProductExceptionRequested` como parte de la intención durable por línea. Los registros históricos anteriores se interpretan como `false`; la intención no se infiere de la disponibilidad actual de Catalog, de las responsabilidades del actor ni del resultado aplicado.
+
+El contenido confirmado persiste `UnavailableProductExceptionApplied` en `IncorporationContent`. `true` significa que el snapshot autoritativo estaba no disponible y que una solicitud explícita autorizada permitió incorporar el Content; `false` significa que no se aplicó una excepción. En particular, una solicitud `true` frente a un Product disponible produce `Applied = false`. No es una copia de la intención.
+
+`ConfirmationHistory` continúa aportando actor, timestamp y contexto de la incorporación. Junto con `UnavailableProductExceptionApplied` en `IncorporationContent`, hace trazable quién, cuándo, qué y si la excepción se aplicó, sin una tabla de eventos de intervención separada, motivo de texto libre ni framework genérico adicional.
+
+La igualdad durable incluye `IntentUnavailableProductExceptionRequested` en cada línea: una misma key que cambie cualquier línea entre ordinaria y excepcional produce el conflicto de idempotencia existente. El replay exacto conserva actor/session utilizable e Identity activa, pero no vuelve a exigir las responsabilidades funcionales ni a consultar Catalog; tampoco crea otra Incorporation, History o publicación de invalidación.
+
+La respuesta y la lectura de Order exponen `UnavailableProductExceptionApplied` como hecho histórico del Content. La lectura no expone la intención de retry como si fuera State vigente.

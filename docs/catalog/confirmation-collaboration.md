@@ -19,3 +19,13 @@ El orden efectivo serializa las operaciones. Una Confirmación que estabilizó p
 Una Confirmación deduplica los `ProductId`, estabiliza una sola vez cada `Product` distinto mediante `Catalog` y reutiliza ese snapshot para todas sus líneas. Por tanto, todas las líneas del mismo Product dentro de una Confirmación comparten coherentemente `appliedPrice`, `RequiresPreparation` y `PreparationResponsibilityId`, sin alterar el lock ordering ni la atomicidad existentes.
 
 Si el Product estabilizado tiene `RequiresPreparation = false` y una línea contiene `instruction != null`, la Confirmación responde `409 Conflict` con `order_operations.confirmation.instruction_requires_preparation` y no produce efectos. La instrucción no se descarta, no fuerza Preparation y no crea Work por sí sola. Si una Confirmación estabiliza primero un Product preparado y luego espera una configuración concurrente `true → false`, puede completar y su Work conserva el snapshot anterior; si `false` ya estaba aplicado al estabilizar, la Confirmación falla con ese `409`.
+
+## Incorporación excepcional de Product no disponible — RF-PED-024/025, S10
+
+Catalog conserva la autoridad sobre el snapshot actual de Product. La colaboración `IOrderConfirmationCatalog` ya entrega a Confirmation identidad, `IsActive`, `IsAvailable`, precio vigente y configuración de Preparation bajo el lock transaccional existente. OrderOperations decide únicamente si una intención explícita puede aplicar la excepción; no accede a `CatalogDbContext`, no agrega un endpoint HTTP entre módulos y no modifica `IsAvailable`.
+
+La excepción sólo aplica a un Product actual/activo. Product inexistente, inactivo, retirado o no vigente conserva el error existente de Product no vigente. Para un Product actual con `IsAvailable = false`, una línea ordinaria conserva el `409 product_unavailable`; una línea con intención excepcional explícita puede incorporarse cuando el actor tiene las dos responsabilidades requeridas. Después de la incorporación el Product puede seguir siendo `IsAvailable = false`.
+
+La intención es por línea: `unavailableProductExceptionRequested` omitido o `false` significa incorporación ordinaria; `true` solicita explícitamente la excepción. No existe override global de Confirmation. Las líneas mixtas se validan y confirman atómicamente: una línea no disponible ordinaria rechaza toda la Confirmation, aunque otra línea solicite la excepción.
+
+La incorporación excepcional usa exactamente el precio actual autoritativo y la configuración normal de Preparation del snapshot. No introduce precio arbitrario, Applied Price Correction, reglas especiales de cantidad, Delivery o Preparation, ni efectos automáticos de Inventory.

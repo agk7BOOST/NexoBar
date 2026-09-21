@@ -1,6 +1,6 @@
 # Composición, consulta y terminación frontend
 
-- La Composición usa `CompositionLine { draftLineId, productId, quantity, instruction }`. `draftLineId` se crea con `crypto.randomUUID()`, es estable mientras vive la línea y existe solo en frontend: no se envía, no pertenece al dominio y no es el `Idempotency-Key`.
+- La Composición usa `CompositionLine { draftLineId, productId, quantity, instruction, unavailableProductExceptionRequested }`. `draftLineId` se crea con `crypto.randomUUID()`, es estable mientras vive la línea y existe solo en frontend: no se envía, no pertenece al dominio y no es el `Idempotency-Key`. La intención excepcional sí forma parte del contenido de Confirmation y se conserva por línea.
 - Cantidad `+/-`, remove e instruction editable operan por `draftLineId`, por lo que pueden coexistir múltiples líneas del mismo Product. “Agregar” incrementa la línea existente sin instruction canonical; “Agregar otra línea” crea una nueva línea del mismo Product.
 - El frontend detecta líneas duplicadas por `(ProductId, canonicalInstruction)` y bloquea la Confirmación sin combinar cantidades.
 - Ante incertidumbre de First o Subsequent, el workflow congela exactamente la key, destination u order reference relevante, context donde corresponde, marcador de Subsequent y cada `productId`, `quantity` e instruction canonical. Mientras existe incertidumbre no permite editar la Composición ni cambiar destination; retry reenvía el mismo request exacto con la misma key. No ofrece descarte ordinario de la intención incierta.
@@ -27,3 +27,17 @@
 
 - La acción distinta «Corregir precio aplicado» identifica el Content exacto por `(IncorporationId, ContentOrdinal)`. Muestra separadamente precio confirmado original, precio aplicado efectivo actual y precio vigente de Catalog; no ofrece input monetario libre.
 - La evaluación autoritativa determina disponibilidad y bloqueadores. Tras éxito refresca la evaluación de precio y el Estado económico/de terminación del Order; no trata una mutación optimista de Delivery o importe como autoritativa. Puede reutilizar el read de Delivery para la identidad exacta, pero la elegibilidad de precio procede de su evaluación autoritativa.
+
+### RF-PED-024/025 — intervención explícita sobre Product no disponible (S10)
+
+La UI deriva una señal de presentación sólo cuando la Identity actual tiene conjuntamente `OrderOperationsAndBasicClosure` y `OperationalIntervention`. El backend sigue siendo la autoridad: la señal no es una autorización persistida ni sustituye la comprobación de Confirmation.
+
+El browse operacional conserva sus fronteras: el actor con sólo `OrderOperationsAndBasicClosure` no ve Products no disponibles; el actor dual sí los ve con `isAvailable = false`. Para un Product no disponible, el Add ordinario permanece deshabilitado y aparece una acción distinta, «Agregar mediante intervención», únicamente para el actor dual. Esa acción crea una línea con `unavailableProductExceptionRequested = true`; el Add ordinario crea `false`.
+
+La intención vive en cada línea de Composition y no se recalcula desde disponibilidad o responsabilidades actuales. Una línea excepcional muestra «Intervención solicitada». Si la Composition contiene alguna, la Confirmation usa CTA y aviso explícitos de intervención. Antes de la respuesta autoritativa no se muestra el marcador histórico «Incorporado mediante intervención».
+
+Tras una Confirmation exitosa, el lookup de Order muestra «Incorporado mediante intervención» sólo cuando el backend devuelve `unavailableProductExceptionApplied = true`. Una solicitud excepcional frente a un Product que ya está disponible puede completar con `Applied = false` y no muestra ese marcador.
+
+Si se pierde `OperationalIntervention` mientras la Composition está abierta, la línea y su intención se conservan; un `403 order_operations.confirmation.operational_intervention_required` informa que debe recuperarse la autoridad. Si una línea ordinaria recibe `product_unavailable`, se refresca el browse sin convertirla automáticamente en excepcional.
+
+Ante una respuesta incierta de First o Subsequent se conserva exactamente Idempotency-Key, contenido canonical, quantity, instruction y `unavailableProductExceptionRequested`. El retry no vuelve a calcular la intención desde Catalog ni desde las responsabilidades actuales.

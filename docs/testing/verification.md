@@ -46,3 +46,13 @@ scripts\verify.cmd --e2e
 ./scripts/verify.sh
 ./scripts/verify.sh --e2e
 ```
+
+## Slice 10 — Operational Intervention on Unavailable Products
+
+S10-I1 tiene evidencia focalizada de la Confirmation excepcional: First `5 passed`, Subsequent `2 passed`, autoridad/idempotencia/replay `5 passed`, migración `2 passed`, `HasPendingModelChanges` `1 passed` e invalidación `1 passed`. La evidencia incluye la distinción `Requested=true` con snapshot no disponible → `Applied=true`, y `Requested=true` con snapshot disponible → `Applied=false`, además de inmutabilidad de Catalog y replay tras revocación de responsabilidades.
+
+El checkpoint final de OrderOperations fue **778 discovered, 778 passed, 0 failed, 0 skipped**. No se afirma éxito de la suite backend completa.
+
+S10-I2 tiene evidencia frontend focalizada: `OrderWorkflow 48/48`, `OrderLookup 13/13`, `App 11/11`, `orderOperationsClient 11/11` y `tsconfig.app.json` typecheck passed. No se afirma un typecheck frontend completo fuera de ese proyecto.
+
+S10-I3 tiene un escenario Playwright focalizado: **1 discovered, 1 passed, 0 failed, 0 skipped**. Actor A, con sólo `OrderOperationsAndBasicClosure`, no ve el Product no disponible y recibe `403 order_operations.confirmation.operational_intervention_required` en un intento HTTP directo. Actor B, con `OrderOperationsAndBasicClosure` + `OperationalIntervention`, lo ve como `isAvailable=false`, no puede usar Add ordinario, usa la acción explícita de intervención, confirma una Composition mixta, obtiene `Applied=true` sólo para esa línea, ve el marcador histórico y deja el Product no disponible en Catalog. No fueron necesarios fixes de producción.

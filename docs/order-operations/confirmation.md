@@ -149,3 +149,19 @@ advisory idempotency
 - El nacimiento de Work no introduce una idempotencia adicional: queda cubierto por la idempotencia y transacción de la Confirmación que lo origina.
 
 Composición no es Pedido. Corrección no significa Cancelación; las [fronteras abiertas](pending.md) conservan esa separación.
+
+### Incorporación excepcional de Product no disponible — RF-PED-024/025 (S10)
+
+Un Product actual/activo cuya disponibilidad autoritativa es temporalmente falsa puede incorporarse sólo mediante una intención excepcional explícita por línea. `unavailableProductExceptionRequested` omitido o `false` conserva la intención ordinaria; `true` solicita la excepción. No existe un override global de Confirmation y una Confirmation mixta sigue siendo atómica: una línea no disponible ordinaria rechaza toda la operación, incluso si otra línea solicita la excepción.
+
+La autoridad de una intención nueva se evalúa en este orden semántico: se estabilizan Session utilizable e Identity activa; se resuelve primero el replay durable exacto por actor e intención; sólo una intención nueva vuelve a autorizar responsabilidades. Para una nueva Confirmation se exige primero `OrderOperationsAndBasicClosure`; si alguna línea solicita la excepción, también se exige `OperationalIntervention` vigente para la misma Identity. `OperationalIntervention` por sí sola nunca basta. Una Confirmation ordinaria no disponible continúa devolviendo el `409 product_unavailable`, aunque el actor tenga ambas responsabilidades.
+
+La excepción no evita la validación de Product vigente/activo. Product inexistente, inactivo, retirado o no actual conserva el error existente de Product no vigente. Si el Product era disponible al preparar una línea ordinaria y pasa a no disponible antes del snapshot autoritativo, la línea ordinaria falla y no se convierte automáticamente. Si una línea excepcional preparada cuando el Product estaba no disponible encuentra el Product disponible al confirmar, puede completarse normalmente pero `UnavailableProductExceptionApplied` queda en `false`.
+
+El snapshot de Confirmation usa el precio actual autoritativo y la configuración normal de Preparation. El Content resultante sigue las reglas ordinarias de cantidad, Preparation y Delivery; no hay precio especial, Applied Price Correction, efecto automático de Inventory ni mutación de Catalog. Una incorporación excepcional puede dejar el Product en `IsAvailable = false`.
+
+La igualdad durable de First y Subsequent incluye la intención excepcional de cada línea. Cambiar cualquier línea de ordinaria a excepcional, o viceversa, con la misma `Idempotency-Key` produce el conflicto de idempotencia existente. El replay exacto devuelve el resultado confirmado, no vuelve a leer Catalog, no reautoriza responsabilidades, no duplica Incorporation/History y no publica invalidaciones duplicadas.
+
+El contrato HTTP conserva las fronteras existentes: unavailable ordinario responde `409 product_unavailable`; solicitud excepcional sin `OperationalIntervention` responde `403 order_operations.confirmation.operational_intervention_required`; una Identity con `OperationalIntervention` pero sin `OrderOperationsAndBasicClosure` recibe el forbidden base; Product no vigente conserva su error de Product no actual. Una solicitud nueva con la misma key y distinta intención excepcional produce el conflicto de idempotencia del endpoint.
+
+Una Confirmation excepcional exitosa reutiliza las invalidaciones existentes: First conserva la invalidación normal de Preparation cuando corresponde y Subsequent publica el `order.changed` ya existente junto con las invalidaciones normales. No se agrega un tipo SSE. Una operación rechazada no publica y un replay exacto no duplica publicaciones.

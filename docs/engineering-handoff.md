@@ -44,6 +44,14 @@ Las rutas de instrucciones locales empiezan en [backend](../backend/AGENTS.md), 
 
 **S9-I3 — Extraordinary Recovery: CLOSED.** El factor obligatorio para instalaciones nuevas, su establecimiento/rotación ordinarios y `recover-general-configuration` como modo Host sin HTTP restauran una vía `GeneralConfiguration` tras pérdida de acceso ordinario, con atomicidad e idempotencia técnica durable. El detalle operativo y los límites están en [Administración de Identity](identities-and-capabilities/administration.md#recovery-factor-ordinario-y-recovery-extraordinario-ad-sec-07).
 
-El trabajo posterior no pertenece por sí mismo a Slice 9: override de Product no disponible RF-PED-024/RF-PED-025; lifecycle/completitud de Catalog; UI de configuración de preparación de Product si sigue ausente; lifecycle/UI de Preparation Responsibility; lifecycle/corrección de unidades de Inventory; Contexts si se aprueban; Historia terminal de Order; Delete Identity si una norma posterior lo exige; administración arbitraria de Sessions; y hardening de piloto/RNF. No se reabren UI de bootstrap, recovery anónimo ni un superadministrador técnico.
+**S10-I1 — Incorporación excepcional de Product no disponible: CLOSED.** First y Subsequent Confirmation aceptan intención excepcional por línea, exigen ambas responsabilidades para comandos nuevos, conservan replay consciente de actor e intención, y persisten el marcador aplicado histórico sin mutar Catalog.
+
+**S10-I2 — Frontend flow for exceptional unavailable-Product incorporation: CLOSED.** El workflow operacional muestra Products no disponibles al actor dual, mantiene Add ordinario deshabilitado, conserva la intención por línea y distingue «Intervención solicitada» de la marca histórica aplicada.
+
+**S10-I3 — Cross-capability E2E for unavailable Product intervention: CLOSED.** El recorrido Playwright dirigido prueba las fronteras reales de `/current`, browse operacional, rechazo directo del actor base, acción UI explícita del actor dual, Content aplicado y disponibilidad inmutable de Catalog.
+
+**Slice 10 — Operational Intervention on Unavailable Products: CLOSED.** RF-PED-024/RF-PED-025 ya no son un gap pendiente: la incorporación excepcional exige intención explícita por línea y `OrderOperationsAndBasicClosure + OperationalIntervention`; no habilita por sí sola cambios administrativos de disponibilidad.
+
+El trabajo restante preservado fuera de Slice 10 incluye lifecycle/completitud de Catalog; UI y lifecycle de Preparation Responsibility; lifecycle/corrección de unidades de Inventory; Contexts si se aprueban; Historia terminal de Order; Delete Identity si una norma posterior lo exige; administración arbitraria de Sessions; y hardening de piloto/RNF. No se elige ni implementa el siguiente Slice aquí, ni se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
 
 Solo para trazabilidad: [checkpoints históricos de slices](history/slice-checkpoints.md) y [auditoría de esta reorganización](context-audit.md). No son fuentes de nuevas decisiones ni lecturas de arranque obligatorias.
