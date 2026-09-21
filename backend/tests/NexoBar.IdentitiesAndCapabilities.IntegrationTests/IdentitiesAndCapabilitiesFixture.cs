@@ -404,6 +404,15 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    internal async Task<int> CountExtraordinaryRecoveryCommandsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .ExtraordinaryGeneralConfigurationRecoveryCommands.CountAsync(cancellationToken);
+    }
+
     internal async Task InsertExtraordinaryRecoveryCommandAsync(
         ExtraordinaryGeneralConfigurationRecoveryCommand command,
         CancellationToken cancellationToken)
@@ -469,6 +478,17 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
         return await scope.ServiceProvider
             .GetRequiredService<IInitialProvisioningService>()
             .ProvisionAsync(request, cancellationToken);
+    }
+
+    internal async Task<ExtraordinaryGeneralConfigurationRecoveryResult>
+        RecoverGeneralConfigurationAsync(
+            ExtraordinaryGeneralConfigurationRecoveryRequest request,
+            CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IExtraordinaryGeneralConfigurationRecoveryService>()
+            .RecoverAsync(request, cancellationToken);
     }
 
     internal async Task<LoginResult> LoginAsync(

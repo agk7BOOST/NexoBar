@@ -18,6 +18,16 @@ if (commandSelection.Mode == HostExecutionMode.ProvisionInitialAdmin)
         CancellationToken.None);
 }
 
+if (commandSelection.Mode == HostExecutionMode.RecoverGeneralConfiguration)
+{
+    return await HostExtraordinaryGeneralConfigurationRecoveryCommand.ExecuteAsync(
+        commandSelection,
+        Console.In,
+        Console.Out,
+        Console.IsInputRedirected,
+        CancellationToken.None);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddProblemDetails();

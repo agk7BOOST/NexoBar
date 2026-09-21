@@ -7,16 +7,30 @@ namespace NexoBar.Host;
 internal static class HostCommandLine
 {
     internal const string ProvisionInitialAdminCommand = "provision-initial-admin";
+    internal const string RecoverGeneralConfigurationCommand = "recover-general-configuration";
 
     internal static HostCommandSelection Parse(string[] args)
     {
-        if (args.Length == 0 || !string.Equals(
-                args[0],
-                ProvisionInitialAdminCommand,
-                StringComparison.Ordinal))
+        if (args.Length == 0)
         {
             return HostCommandSelection.Web();
         }
+
+        if (string.Equals(args[0], ProvisionInitialAdminCommand, StringComparison.Ordinal))
+        {
+            return ParseInitialProvisioning(args);
+        }
+
+        if (string.Equals(args[0], RecoverGeneralConfigurationCommand, StringComparison.Ordinal))
+        {
+            return ParseExtraordinaryRecovery(args);
+        }
+
+        return HostCommandSelection.Web();
+    }
+
+    private static HostCommandSelection ParseInitialProvisioning(string[] args)
+    {
 
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
         for (var index = 1; index < args.Length; index += 2)
@@ -42,6 +56,41 @@ internal static class HostCommandLine
             new HostInitialProvisioningInput(commandId, operationalName, loginIdentifier));
     }
 
+    private static HostCommandSelection ParseExtraordinaryRecovery(string[] args)
+    {
+        var values = ParseOptionValues(args);
+        if (values is null ||
+            values.Keys.Any(option => option is not "--login-identifier" and not "--command-id" and not "--target-identity-id") ||
+            !values.TryGetValue("--command-id", out var commandIdText) ||
+            !values.TryGetValue("--target-identity-id", out var targetIdentityIdText) ||
+            !Guid.TryParse(commandIdText, out var commandId) ||
+            !IsUuidVersion4(commandId) ||
+            !Guid.TryParse(targetIdentityIdText, out var targetIdentityId) ||
+            targetIdentityId == Guid.Empty)
+        {
+            return HostCommandSelection.InvalidExtraordinaryRecoveryInput();
+        }
+
+        values.TryGetValue("--login-identifier", out var loginIdentifier);
+        return HostCommandSelection.RecoverGeneralConfiguration(
+            new HostExtraordinaryRecoveryInput(commandId, targetIdentityId, loginIdentifier));
+    }
+
+    private static Dictionary<string, string>? ParseOptionValues(string[] args)
+    {
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var index = 1; index < args.Length; index += 2)
+        {
+            if (index + 1 >= args.Length || !args[index].StartsWith("--", StringComparison.Ordinal) ||
+                !values.TryAdd(args[index], args[index + 1]))
+            {
+                return null;
+            }
+        }
+
+        return values;
+    }
+
     private static bool IsUuidVersion4(Guid value) =>
         value != Guid.Empty && (value.ToByteArray(bigEndian: true)[6] >> 4) == 4;
 }
@@ -49,29 +98,44 @@ internal static class HostCommandLine
 internal sealed record HostCommandSelection(
     HostExecutionMode Mode,
     HostInitialProvisioningInput? InitialProvisioningInput,
-    bool HasInvalidProvisioningInput)
+    HostExtraordinaryRecoveryInput? ExtraordinaryRecoveryInput,
+    bool HasInvalidProvisioningInput,
+    bool HasInvalidExtraordinaryRecoveryInput)
 {
     internal static HostCommandSelection Web() =>
-        new(HostExecutionMode.Web, null, false);
+        new(HostExecutionMode.Web, null, null, false, false);
 
     internal static HostCommandSelection ProvisionInitialAdmin(
         HostInitialProvisioningInput input) =>
-        new(HostExecutionMode.ProvisionInitialAdmin, input, false);
+        new(HostExecutionMode.ProvisionInitialAdmin, input, null, false, false);
 
     internal static HostCommandSelection InvalidProvisioningInput() =>
-        new(HostExecutionMode.ProvisionInitialAdmin, null, true);
+        new(HostExecutionMode.ProvisionInitialAdmin, null, null, true, false);
+
+    internal static HostCommandSelection RecoverGeneralConfiguration(
+        HostExtraordinaryRecoveryInput input) =>
+        new(HostExecutionMode.RecoverGeneralConfiguration, null, input, false, false);
+
+    internal static HostCommandSelection InvalidExtraordinaryRecoveryInput() =>
+        new(HostExecutionMode.RecoverGeneralConfiguration, null, null, false, true);
 }
 
 internal enum HostExecutionMode
 {
     Web,
-    ProvisionInitialAdmin
+    ProvisionInitialAdmin,
+    RecoverGeneralConfiguration
 }
 
 internal sealed record HostInitialProvisioningInput(
     Guid CommandId,
     string OperationalName,
     string LoginIdentifier);
+
+internal sealed record HostExtraordinaryRecoveryInput(
+    Guid CommandId,
+    Guid TargetIdentityId,
+    string? LoginIdentifier);
 
 internal static class HostInitialProvisioningCommand
 {

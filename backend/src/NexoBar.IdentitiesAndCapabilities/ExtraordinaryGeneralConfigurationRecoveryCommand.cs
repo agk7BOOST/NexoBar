@@ -89,7 +89,7 @@ internal sealed class ExtraordinaryGeneralConfigurationRecoveryCommand
     internal DateTimeOffset CompletedAt { get; private set; }
 }
 
-internal enum ExtraordinaryRecoveryLoginIntentMode
+public enum ExtraordinaryRecoveryLoginIntentMode
 {
     PreserveExisting,
     ExplicitIdentifier

@@ -109,6 +109,9 @@ public static class IdentitiesAndCapabilitiesModule
         services.AddScoped<PreparationEnablementService>();
         services.AddScoped<IdentityAdministrationService>();
         services.AddScoped<InstallationRecoveryFactorService>();
+        services.AddScoped<ExtraordinaryGeneralConfigurationRecoveryService>();
+        services.AddScoped<IExtraordinaryGeneralConfigurationRecoveryService>(services =>
+            services.GetRequiredService<ExtraordinaryGeneralConfigurationRecoveryService>());
 
         return services;
     }

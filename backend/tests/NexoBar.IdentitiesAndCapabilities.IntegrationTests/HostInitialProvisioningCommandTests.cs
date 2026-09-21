@@ -111,6 +111,87 @@ public sealed class HostInitialProvisioningCommandTests
     }
 
     [Fact]
+    public void Extraordinary_recovery_subcommand_selects_technical_mode()
+    {
+        var selection = HostCommandLine.Parse(
+        [
+            HostCommandLine.RecoverGeneralConfigurationCommand,
+            "--command-id", Guid.NewGuid().ToString("D"),
+            "--target-identity-id", Guid.NewGuid().ToString("D"),
+            "--login-identifier", "recover.login"
+        ]);
+
+        Assert.Equal(HostExecutionMode.RecoverGeneralConfiguration, selection.Mode);
+        Assert.False(selection.HasInvalidExtraordinaryRecoveryInput);
+        Assert.NotNull(selection.ExtraordinaryRecoveryInput);
+    }
+
+    [Theory]
+    [InlineData("not-a-guid", "00000000-0000-0000-0000-000000000001")]
+    [InlineData("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001")]
+    [InlineData("00000000-0000-4000-8000-000000000001", "not-a-guid")]
+    [InlineData("00000000-0000-4000-8000-000000000001", "00000000-0000-0000-0000-000000000000")]
+    public void Extraordinary_recovery_rejects_invalid_command_or_target_identifier(
+        string commandId,
+        string targetIdentityId)
+    {
+        var selection = HostCommandLine.Parse(
+        [
+            HostCommandLine.RecoverGeneralConfigurationCommand,
+            "--command-id", commandId,
+            "--target-identity-id", targetIdentityId
+        ]);
+
+        Assert.Equal(HostExecutionMode.RecoverGeneralConfiguration, selection.Mode);
+        Assert.True(selection.HasInvalidExtraordinaryRecoveryInput);
+    }
+
+    [Fact]
+    public async Task Extraordinary_recovery_rejects_interactive_missing_extra_and_invalid_factor_input()
+    {
+        using var interactiveOutput = new StringWriter();
+        var interactive = await HostExtraordinaryGeneralConfigurationRecoveryCommand.ExecuteAsync(
+            ValidExtraordinaryRecoverySelection(),
+            new StringReader($"{Factor()}\nnew secret\n"),
+            interactiveOutput,
+            isStandardInputRedirected: false,
+            TestContext.Current.CancellationToken);
+
+        using var missingOutput = new StringWriter();
+        var missing = await HostExtraordinaryGeneralConfigurationRecoveryCommand.ExecuteAsync(
+            ValidExtraordinaryRecoverySelection(),
+            new StringReader($"{Factor()}\n"),
+            missingOutput,
+            isStandardInputRedirected: true,
+            TestContext.Current.CancellationToken);
+
+        using var extraOutput = new StringWriter();
+        var extra = await HostExtraordinaryGeneralConfigurationRecoveryCommand.ExecuteAsync(
+            ValidExtraordinaryRecoverySelection(),
+            new StringReader($"{Factor()}\nnew secret\nextra\n"),
+            extraOutput,
+            isStandardInputRedirected: true,
+            TestContext.Current.CancellationToken);
+
+        using var invalidFactorOutput = new StringWriter();
+        var invalidFactor = await HostExtraordinaryGeneralConfigurationRecoveryCommand.ExecuteAsync(
+            ValidExtraordinaryRecoverySelection(),
+            new StringReader("invalid\nnew secret\n"),
+            invalidFactorOutput,
+            isStandardInputRedirected: true,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, interactive);
+        Assert.Equal(2, missing);
+        Assert.Equal(2, extra);
+        Assert.Equal(2, invalidFactor);
+        Assert.Equal("invalid_input", interactiveOutput.ToString().Trim());
+        Assert.Equal("invalid_input", missingOutput.ToString().Trim());
+        Assert.Equal("invalid_input", extraOutput.ToString().Trim());
+        Assert.Equal("invalid_input", invalidFactorOutput.ToString().Trim());
+    }
+
+    [Fact]
     public async Task Real_host_process_provisions_from_redirected_stdin_without_web_server()
     {
         var token = TestContext.Current.CancellationToken;
@@ -207,6 +288,14 @@ public sealed class HostInitialProvisioningCommandTests
         "--login-identifier", "initial",
         "--command-id", Guid.NewGuid().ToString("D")
     ]);
+
+    private static HostCommandSelection ValidExtraordinaryRecoverySelection() =>
+        HostCommandLine.Parse(
+        [
+            HostCommandLine.RecoverGeneralConfigurationCommand,
+            "--command-id", Guid.NewGuid().ToString("D"),
+            "--target-identity-id", Guid.NewGuid().ToString("D")
+        ]);
 
     private static string Factor() =>
         Convert.ToBase64String(Enumerable.Range(0, 32).Select(value => (byte)value).ToArray())
