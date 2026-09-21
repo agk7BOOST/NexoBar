@@ -433,7 +433,12 @@ export function OrderLookup({
                           key={`${item.productId}:${item.instruction ?? ""}`}
                           aria-label={`${product?.operationalName ?? item.productId}, cantidad ${item.quantity}, ${item.instruction ?? "sin instrucción"}`}
                         >
-                          <td>{product?.operationalName ?? item.productId}</td>
+                          <td>
+                            {product?.operationalName ?? item.productId}
+                            {item.unavailableProductExceptionApplied && (
+                              <span> Incorporado mediante intervención</span>
+                            )}
+                          </td>
                           <td>{item.quantity}</td>
                           <td>{item.appliedPrice}</td>
                           <td className="confirmed-instruction">

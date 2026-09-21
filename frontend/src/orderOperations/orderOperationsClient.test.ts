@@ -34,6 +34,7 @@ describe("confirmFirst", () => {
             quantity: 2,
             appliedPrice: "10.50",
             instruction: "sin hielo",
+            unavailableProductExceptionApplied: false,
           },
         ],
       },
@@ -54,8 +55,14 @@ describe("confirmFirst", () => {
               productId: "product-1",
               quantity: 2,
               instruction: "sin hielo",
+              unavailableProductExceptionRequested: false,
             },
-            { productId: "product-2", quantity: 1, instruction: null },
+            {
+              productId: "product-2",
+              quantity: 1,
+              instruction: null,
+              unavailableProductExceptionRequested: false,
+            },
           ],
         },
         "first-confirmation-key",
@@ -73,13 +80,69 @@ describe("confirmFirst", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       context: "Mesa 7",
       items: [
-        { productId: "product-1", quantity: 2, instruction: "sin hielo" },
-        { productId: "product-2", quantity: 1, instruction: null },
+        {
+          productId: "product-1",
+          quantity: 2,
+          instruction: "sin hielo",
+          unavailableProductExceptionRequested: false,
+        },
+        {
+          productId: "product-2",
+          quantity: 1,
+          instruction: null,
+          unavailableProductExceptionRequested: false,
+        },
       ],
     });
     expect(String(init?.body)).not.toMatch(
       /price|name|availability|requiresPreparation/i,
     );
+  });
+
+  it("serializes explicit unavailable-Product exception intent without authority data", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          operationalReference: "order-reference",
+          context: "Mesa 7",
+          firstIncorporation: {
+            id: "incorporation-1",
+            confirmedAt: "2026-08-29T14:30:00Z",
+            items: [],
+          },
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await confirmFirst(
+      {
+        context: "Mesa 7",
+        items: [
+          {
+            productId: "product-unavailable",
+            quantity: 1,
+            instruction: null,
+            unavailableProductExceptionRequested: true,
+          },
+        ],
+      },
+      "key",
+      "csrf-token",
+    );
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(JSON.parse(String(init?.body))).toEqual({
+      context: "Mesa 7",
+      items: [
+        {
+          productId: "product-unavailable",
+          quantity: 1,
+          instruction: null,
+          unavailableProductExceptionRequested: true,
+        },
+      ],
+    });
   });
 
   it("convierte Problem Details y conserva sus extensiones", async () => {
@@ -100,7 +163,7 @@ describe("confirmFirst", () => {
     const error = await confirmFirst(
       {
         context: "Mesa 7",
-        items: [{ productId: "product-1", quantity: 1, instruction: null }],
+        items: [{ productId: "product-1", quantity: 1, instruction: null, unavailableProductExceptionRequested: false }],
       },
       "key",
       "csrf-token",
@@ -121,7 +184,7 @@ describe("confirmFirst", () => {
     const error = await confirmFirst(
       {
         context: "Mesa 7",
-        items: [{ productId: "product-1", quantity: 1, instruction: null }],
+        items: [{ productId: "product-1", quantity: 1, instruction: null, unavailableProductExceptionRequested: false }],
       },
       "key",
       "csrf-token",
@@ -276,6 +339,7 @@ describe("getOrder", () => {
               quantity: 2,
               appliedPrice: "10.50",
               instruction: null,
+              unavailableProductExceptionApplied: false,
             },
           ],
         },
@@ -317,6 +381,7 @@ describe("confirmSubsequent", () => {
             quantity: 2,
             appliedPrice: "12.00",
             instruction: "sin hielo",
+            unavailableProductExceptionApplied: false,
           },
         ],
       },
@@ -338,8 +403,14 @@ describe("confirmSubsequent", () => {
               productId: "product-1",
               quantity: 2,
               instruction: "sin hielo",
+              unavailableProductExceptionRequested: false,
             },
-            { productId: "product-2", quantity: 1, instruction: null },
+            {
+              productId: "product-2",
+              quantity: 1,
+              instruction: null,
+              unavailableProductExceptionRequested: false,
+            },
           ],
         },
         "same-key",
@@ -356,13 +427,70 @@ describe("confirmSubsequent", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       pendingCompositionId: "pending-1",
       items: [
-        { productId: "product-1", quantity: 2, instruction: "sin hielo" },
-        { productId: "product-2", quantity: 1, instruction: null },
+        {
+          productId: "product-1",
+          quantity: 2,
+          instruction: "sin hielo",
+          unavailableProductExceptionRequested: false,
+        },
+        {
+          productId: "product-2",
+          quantity: 1,
+          instruction: null,
+          unavailableProductExceptionRequested: false,
+        },
       ],
     });
     expect(String(init?.body)).not.toMatch(
       /context|price|name|availability|requiresPreparation/i,
     );
+  });
+
+  it("serializes exceptional intent for a Subsequent Confirmation", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          operationalReference: "reference",
+          incorporation: {
+            id: "incorporation-2",
+            ordinal: 2,
+            confirmedAt: "2026-08-29T16:00:00Z",
+            items: [],
+          },
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await confirmSubsequent(
+      "reference",
+      {
+        pendingCompositionId: "pending-1",
+        items: [
+          {
+            productId: "product-unavailable",
+            quantity: 1,
+            instruction: null,
+            unavailableProductExceptionRequested: true,
+          },
+        ],
+      },
+      "key",
+      "csrf-token",
+    );
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(JSON.parse(String(init?.body))).toEqual({
+      pendingCompositionId: "pending-1",
+      items: [
+        {
+          productId: "product-unavailable",
+          quantity: 1,
+          instruction: null,
+          unavailableProductExceptionRequested: true,
+        },
+      ],
+    });
   });
 
   it("distingue Problem Details de incertidumbre de red", async () => {

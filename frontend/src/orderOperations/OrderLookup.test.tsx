@@ -54,12 +54,14 @@ const order: OrderResponse = {
           quantity: 2,
           appliedPrice: "10.50",
           instruction: "sin hielo",
+          unavailableProductExceptionApplied: false,
         },
         {
           productId: "product-not-in-current-catalog",
           quantity: 1,
           appliedPrice: "7.25",
           instruction: null,
+          unavailableProductExceptionApplied: false,
         },
       ],
     },
@@ -175,12 +177,14 @@ describe("OrderLookup", () => {
               quantity: 1,
               appliedPrice: "10.50",
               instruction: null,
+              unavailableProductExceptionApplied: false,
             },
             {
               productId: currentProduct.id,
               quantity: 2,
               appliedPrice: "10.50",
               instruction: "sin hielo",
+              unavailableProductExceptionApplied: false,
             },
           ],
         },
@@ -360,5 +364,39 @@ describe("OrderLookup", () => {
     expect(
       within(result).queryByRole("button", { name: "Continuar este Pedido" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders the intervention marker only from the persisted applied fact", async () => {
+    getOrderMock.mockResolvedValueOnce({
+      ...order,
+      incorporations: [
+        {
+          ...order.incorporations[0]!,
+          items: [
+            {
+              ...order.incorporations[0]!.items[0]!,
+              unavailableProductExceptionApplied: true,
+            },
+            {
+              ...order.incorporations[0]!.items[1]!,
+              unavailableProductExceptionApplied: false,
+            },
+          ],
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderLookup([currentProduct]);
+
+    await search(user, "order-reference");
+    const result = await screen.findByRole("region", {
+      name: "Pedido consultado",
+    });
+    expect(
+      within(result).getByText("Incorporado mediante intervención"),
+    ).toBeInTheDocument();
+    expect(
+      within(result).getAllByText("Incorporado mediante intervención"),
+    ).toHaveLength(1);
   });
 });

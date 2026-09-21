@@ -55,6 +55,7 @@ interface SubsequentConfirmationIntention {
 interface PendingAddAction {
   product: OperationalProduct;
   anotherLine: boolean;
+  unavailableProductExceptionRequested: boolean;
 }
 
 interface StartPendingIntention {
@@ -89,6 +90,7 @@ interface OrderWorkflowProps {
   onOrderChanged: (operationalReference: string) => void;
   onActiveOrderRetired?: (operationalReference: string) => void;
   onUnauthorized: () => void;
+  canRequestUnavailableProductException?: boolean;
   ordinaryMutationsBlocked?: boolean;
   endingRefreshSequence?: number;
 }
@@ -119,7 +121,10 @@ function confirmationErrorMessage(
     case "order_operations.first_confirmation.product_not_current":
       return `Un Producto de la Composición ya no está vigente.${productLabel}`;
     case "order_operations.first_confirmation.product_unavailable":
+    case "order_operations.confirmation.product_unavailable":
       return `Un Producto de la Composición ya no está disponible.${productLabel}`;
+    case "order_operations.confirmation.operational_intervention_required":
+      return "La Identidad actual ya no tiene autoridad para la intervención solicitada. Conservá la Composición y solicitá la autoridad necesaria antes de confirmar.";
     case "order_operations.first_confirmation.requires_preparation_not_supported":
       return `Un Producto requiere preparación, que todavía no está admitida.${productLabel}`;
     case "order_operations.order.operational_reference_invalid":
@@ -147,6 +152,7 @@ export function OrderWorkflow({
   onOrderChanged,
   onActiveOrderRetired,
   onUnauthorized,
+  canRequestUnavailableProductException = false,
   ordinaryMutationsBlocked = false,
   endingRefreshSequence = 0,
 }: OrderWorkflowProps) {
@@ -382,6 +388,7 @@ export function OrderWorkflow({
   function applyAddToComposition(
     product: OperationalProduct,
     anotherLine: boolean,
+    unavailableProductExceptionRequested: boolean,
   ) {
     if (anotherLine) {
       const draftLineId = crypto.randomUUID();
@@ -393,6 +400,7 @@ export function OrderWorkflow({
           productId: product.id,
           quantity: 1,
           instruction: "",
+          unavailableProductExceptionRequested,
         },
       ]);
       setConfirmationNotice(null);
@@ -403,7 +411,9 @@ export function OrderWorkflow({
       const existing = current.find(
         (line) =>
           line.productId === product.id &&
-          canonicalizeConfirmationInstruction(line.instruction) === null,
+          canonicalizeConfirmationInstruction(line.instruction) === null &&
+          line.unavailableProductExceptionRequested ===
+            unavailableProductExceptionRequested,
       );
       if (existing === undefined) {
         return [
@@ -413,6 +423,7 @@ export function OrderWorkflow({
             productId: product.id,
             quantity: 1,
             instruction: "",
+            unavailableProductExceptionRequested,
           },
         ];
       }
@@ -425,13 +436,24 @@ export function OrderWorkflow({
     });
   }
 
-  async function beginAdd(product: OperationalProduct, anotherLine: boolean) {
-    if (!product.isAvailable || isCompositionLocked) {
+  async function beginAdd(
+    product: OperationalProduct,
+    anotherLine: boolean,
+    unavailableProductExceptionRequested = false,
+  ) {
+    if (
+      isCompositionLocked ||
+      (!product.isAvailable && !unavailableProductExceptionRequested)
+    ) {
       return;
     }
 
     if (activeOperationalReference === null) {
-      applyAddToComposition(product, anotherLine);
+      applyAddToComposition(
+        product,
+        anotherLine,
+        unavailableProductExceptionRequested,
+      );
       return;
     }
 
@@ -441,7 +463,11 @@ export function OrderWorkflow({
       currentPendingAuthority?.pendingCompositionId ===
         owned.marker.pendingCompositionId
     ) {
-      applyAddToComposition(product, anotherLine);
+      applyAddToComposition(
+        product,
+        anotherLine,
+        unavailableProductExceptionRequested,
+      );
       return;
     }
 
@@ -471,7 +497,7 @@ export function OrderWorkflow({
         idempotencyKey: crypto.randomUUID(),
         antiforgeryToken,
       },
-      action: { product, anotherLine },
+      action: { product, anotherLine, unavailableProductExceptionRequested },
     });
   }
 
@@ -522,7 +548,11 @@ export function OrderWorkflow({
       return true;
     }
 
-    if (error.problem.status === 403) {
+    if (
+      error.problem.status === 403 &&
+      error.problem.code !==
+        "order_operations.confirmation.operational_intervention_required"
+    ) {
       setConfirmationNotice({
         kind: "functional-error",
         message:
@@ -532,6 +562,21 @@ export function OrderWorkflow({
     }
 
     return false;
+  }
+
+  function refreshOperationalProductsAfterAvailabilityChange() {
+    if (products !== undefined) return;
+
+    const generation = ++operationalReadGeneration.current;
+    void listOperationalProducts().then(
+      (loadedProducts) => {
+        if (generation === operationalReadGeneration.current) {
+          setOperationalProducts(loadedProducts);
+          setOperationalReadRetired(false);
+        }
+      },
+      () => undefined,
+    );
   }
 
   async function submitStartPending(intention: StartPendingIntention) {
@@ -549,6 +594,7 @@ export function OrderWorkflow({
         applyAddToComposition(
           intention.action.product,
           intention.action.anotherLine,
+          intention.action.unavailableProductExceptionRequested,
         );
       } else {
         setConfirmationNotice({
@@ -688,6 +734,14 @@ export function OrderWorkflow({
     } catch (error) {
       if (error instanceof OrderOperationsProblemError) {
         setUncertainFirst(null);
+        if (
+          error.problem.code ===
+            "order_operations.first_confirmation.product_unavailable" ||
+          error.problem.code ===
+            "order_operations.confirmation.product_unavailable"
+        ) {
+          refreshOperationalProductsAfterAvailabilityChange();
+        }
         if (!handleKnownAuthorization(error)) {
           setConfirmationNotice({
             kind: "functional-error",
@@ -739,6 +793,14 @@ export function OrderWorkflow({
     } catch (error) {
       if (error instanceof OrderOperationsProblemError) {
         setUncertainSubsequent(null);
+        if (
+          error.problem.code ===
+            "order_operations.subsequent_confirmation.product_unavailable" ||
+          error.problem.code ===
+            "order_operations.confirmation.product_unavailable"
+        ) {
+          refreshOperationalProductsAfterAvailabilityChange();
+        }
         if (!handleKnownAuthorization(error)) {
           const isStale =
             error.problem.code === "order.pending_composition_stale";
@@ -789,11 +851,19 @@ export function OrderWorkflow({
       return;
     }
 
-    const items = composition.map(({ productId, quantity, instruction }) => ({
-      productId,
-      quantity,
-      instruction: canonicalizeConfirmationInstruction(instruction),
-    }));
+    const items = composition.map(
+      ({
+        productId,
+        quantity,
+        instruction,
+        unavailableProductExceptionRequested,
+      }) => ({
+        productId,
+        quantity,
+        instruction: canonicalizeConfirmationInstruction(instruction),
+        unavailableProductExceptionRequested,
+      }),
+    );
 
     let antiforgeryToken: string;
     try {
@@ -908,9 +978,15 @@ export function OrderWorkflow({
   const canConfirm =
     composition.length > 0 &&
     composition.every(
-      (line) =>
-        operationalProducts.find((product) => product.id === line.productId)
-          ?.isAvailable === true,
+      (line) => {
+        const product = operationalProducts.find(
+          (candidate) => candidate.id === line.productId,
+        );
+        return (
+          product?.isAvailable === true ||
+          line.unavailableProductExceptionRequested
+        );
+      },
     ) &&
     !isCompositionLocked &&
     !hasDuplicateCompositionLines(composition) &&
@@ -918,6 +994,9 @@ export function OrderWorkflow({
     (!isSubsequent ||
       (localPending !== null && currentPendingAuthority !== null));
   const modeLabel = isSubsequent ? "Nueva Composición" : "Composición inicial";
+  const hasUnavailableProductExceptionRequested = composition.some(
+    (line) => line.unavailableProductExceptionRequested,
+  );
   const requestedDestinationMessage =
     requestedExistingReference === null
       ? null
@@ -1084,6 +1163,20 @@ export function OrderWorkflow({
                         >
                           Agregar otra línea
                         </button>
+                        {!product.isAvailable &&
+                          canRequestUnavailableProductException && (
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() =>
+                                void beginAdd(product, false, true)
+                              }
+                              disabled={isCompositionLocked}
+                              aria-label={`Agregar ${product.operationalName} mediante intervención a ${modeLabel}`}
+                            >
+                              Agregar mediante intervención
+                            </button>
+                          )}
                       </div>
                     </td>
                   </tr>
@@ -1113,10 +1206,18 @@ export function OrderWorkflow({
         <button type="submit" disabled={!canConfirm}>
           {isConfirming
             ? "Confirmando…"
-            : isSubsequent
+            : hasUnavailableProductExceptionRequested
+              ? "Confirmar con intervención"
+              : isSubsequent
               ? "Confirmar nueva Incorporación"
               : "Confirmar Primera Composición"}
         </button>
+        {hasUnavailableProductExceptionRequested && (
+          <p className="notice notice--functional-error" role="status">
+            Esta Confirmación incluye Productos actualmente marcados como no
+            disponibles.
+          </p>
+        )}
       </form>
 
       {confirmationNotice && (
@@ -1304,6 +1405,7 @@ interface ConfirmationSnapshotProps {
     productId: string;
     quantity: number;
     instruction: string | null;
+    unavailableProductExceptionRequested: boolean;
   }[];
   products: OperationalProduct[];
 }
@@ -1333,6 +1435,8 @@ function ConfirmationSnapshot({
               <dd>
                 Cantidad: {item.quantity}. Instrucción:{" "}
                 {item.instruction ?? "Sin instrucción"}
+                {item.unavailableProductExceptionRequested &&
+                  ". Intervención solicitada"}
               </dd>
             </div>
           );

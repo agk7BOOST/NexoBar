@@ -189,6 +189,10 @@ function App() {
   const canComposeOrders =
     identity !== null &&
     hasResponsibility(identity, "OrderOperationsAndBasicClosure");
+  const canRequestUnavailableProductException =
+    canComposeOrders &&
+    identity !== null &&
+    hasResponsibility(identity, "OperationalIntervention");
 
   return (
     <NotificationSseProvider
@@ -238,7 +242,7 @@ function App() {
             <InventoryPanel onUnauthorized={returnToLogin} />
             {canComposeOrders && (
               <OrderWorkflow
-                key={`operational-products:${identity.identityId}:${identityLifecycle}:${identity.responsibilities.join(",")}`}
+                key={`operational-products:${identity.identityId}:${identityLifecycle}`}
                 endingRefreshSequence={endingRefresh}
                 activeOperationalReference={activeOperationalReference}
                 activeOrderId={activeOrderId}
@@ -249,6 +253,9 @@ function App() {
                 onOrderChanged={requestOrderRefresh}
                 onActiveOrderRetired={retireActiveOrder}
                 onUnauthorized={returnToLogin}
+                canRequestUnavailableProductException={
+                  canRequestUnavailableProductException
+                }
                 ordinaryMutationsBlocked={
                   activeOperationalReference !== null &&
                   (terminalOrders[activeOperationalReference] === true ||

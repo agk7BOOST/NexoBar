@@ -48,8 +48,8 @@ beforeEach(() => {
   vi.clearAllMocks(); mutation.mockReset(); discardAntiforgeryToken();
   readStatus = 200; failOrderRefresh = false;
   order = { operationalReference: orderId, context: "Mesa 1", incorporations: [{ id: incorporationId, ordinal: 1, confirmedAt: "2026-09-11T10:00:00Z", items: [
-    { productId: "same-product", quantity: 2, appliedPrice: "10", instruction: "sin sal" },
-    { productId: "same-product", quantity: 2, appliedPrice: "10", instruction: "con sal" },
+    { productId: "same-product", quantity: 2, appliedPrice: "10", instruction: "sin sal", unavailableProductExceptionApplied: false },
+    { productId: "same-product", quantity: 2, appliedPrice: "10", instruction: "con sal", unavailableProductExceptionApplied: false },
   ] }], functionalAmount: "20", isLiquidationEligible: false, liquidationBlockers: ["pending_composition"],
     isLiquidated: false, isFrozen: false, liquidatedAmount: null, liquidationMode: null, declaredPaymentMedium: null, isClosed: false, closedAt: null, isClosureEligible: false };
   delivery = { orderId, operationalReference: orderId, currentContext: "Mesa 1", contents: [3, 7].map(contentOrdinal => ({ incorporationId, incorporationOrdinal: 1, contentOrdinal, productId: "same-product", productOperationalName: "Producto", instruction: contentOrdinal === 3 ? "sin sal" : "con sal", totalQuantity: 2, confirmedQuantity: 2, currentFulfillmentQuantity: 2, requiresPreparationAtConfirmation: false, readyQuantity: null, deliveredQuantity: contentOrdinal === 3 ? 2 : 0, deliverableQuantity: 0, remainingQuantity: 0 })) };

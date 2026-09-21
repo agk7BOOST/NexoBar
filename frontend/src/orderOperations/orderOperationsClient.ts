@@ -2,6 +2,7 @@ export interface FirstConfirmationItemRequest {
   productId: string;
   quantity: number;
   instruction: string | null;
+  unavailableProductExceptionRequested: boolean;
 }
 
 export interface FirstConfirmationRequest {
@@ -14,6 +15,7 @@ export interface ConfirmedItem {
   quantity: number;
   appliedPrice: string;
   instruction: string | null;
+  unavailableProductExceptionApplied: boolean;
 }
 
 export interface FirstIncorporation {
@@ -32,6 +34,7 @@ export interface SubsequentConfirmationItemRequest {
   productId: string;
   quantity: number;
   instruction: string | null;
+  unavailableProductExceptionRequested: boolean;
 }
 
 export interface SubsequentConfirmationRequest {
@@ -74,6 +77,7 @@ export interface OrderItem {
   quantity: number;
   appliedPrice: string;
   instruction: string | null;
+  unavailableProductExceptionApplied: boolean;
 }
 
 export interface OrderIncorporation {

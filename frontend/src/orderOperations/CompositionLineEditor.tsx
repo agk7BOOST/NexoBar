@@ -33,7 +33,12 @@ export function CompositionLineEditor({
     <tr
       aria-label={`${product.operationalName}, línea de Composición ${lineNumber}, ${canonicalInstruction ?? "sin instrucción"}`}
     >
-      <td>{product.operationalName}</td>
+      <td>
+        {product.operationalName}
+        {line.unavailableProductExceptionRequested && (
+          <span> Intervención solicitada</span>
+        )}
+      </td>
       <td>{product.price}</td>
       <td aria-label={`Cantidad de ${product.operationalName}`}>
         {line.quantity}

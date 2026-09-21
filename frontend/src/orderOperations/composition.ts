@@ -5,6 +5,7 @@ export interface CompositionLine {
   productId: string;
   quantity: number;
   instruction: string;
+  unavailableProductExceptionRequested: boolean;
 }
 
 export function hasDuplicateCompositionLines(

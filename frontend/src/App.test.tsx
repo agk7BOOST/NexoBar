@@ -7,8 +7,9 @@ import {
   type CurrentIdentity,
 } from "./identity/sessionClient.ts";
 
-const { getCurrentIdentityMock } = vi.hoisted(() => ({
+const { getCurrentIdentityMock, orderWorkflowPropsMock } = vi.hoisted(() => ({
   getCurrentIdentityMock: vi.fn(),
+  orderWorkflowPropsMock: vi.fn(),
 }));
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -46,7 +47,10 @@ vi.mock("./generalConfiguration/GeneralConfigurationPanel.tsx", () => ({
   ),
 }));
 vi.mock("./orderOperations/OrderWorkflow.tsx", () => ({
-  OrderWorkflow: () => <section aria-label="Composicion operacional" />,
+  OrderWorkflow: (props: unknown) => {
+    orderWorkflowPropsMock(props);
+    return <section aria-label="Composicion operacional" />;
+  },
 }));
 vi.mock("./orderOperations/OrderLookup.tsx", () => ({ OrderLookup: () => null }));
 vi.mock("./orderOperations/OperationalInterventionPanel.tsx", () => ({
@@ -80,6 +84,7 @@ describe("App capability-aware administrative mounting", () => {
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
     getCurrentIdentityMock.mockReset();
+    orderWorkflowPropsMock.mockReset();
   });
 
   it("does not mount General Configuration while unauthenticated", async () => {
@@ -109,6 +114,33 @@ describe("App capability-aware administrative mounting", () => {
 
     await screen.findByLabelText("Composicion operacional");
     expect(screen.queryByLabelText("Catalog administrativo")).not.toBeInTheDocument();
+  });
+
+  it("does not expose an Order workflow to an OperationalIntervention-only Identity", async () => {
+    getCurrentIdentityMock.mockResolvedValueOnce(
+      identity(["OperationalIntervention"]),
+    );
+    render(<App />);
+
+    await screen.findByRole("button", { name: "Salir" });
+    expect(screen.queryByLabelText("Composicion operacional")).not.toBeInTheDocument();
+  });
+
+  it("derives the unavailable-Product intervention presentation capability from both current responsibilities", async () => {
+    getCurrentIdentityMock.mockResolvedValueOnce(
+      identity([
+        "OrderOperationsAndBasicClosure",
+        "OperationalIntervention",
+      ]),
+    );
+    render(<App />);
+
+    await screen.findByLabelText("Composicion operacional");
+    expect(orderWorkflowPropsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        canRequestUnavailableProductException: true,
+      }),
+    );
   });
 
   it("mounts CatalogConfiguration only for its current responsibility", async () => {

@@ -103,6 +103,13 @@ const soda: Product = {
   price: "12.00",
 };
 
+const unavailableJuice: Product = {
+  ...water,
+  id: "product-unavailable-juice",
+  operationalName: "Jugo agotado",
+  isAvailable: false,
+};
+
 it("bloquea la Composición del Pedido congelado y permite iniciar otro Pedido", async () => {
   const onStartNewOrder = vi.fn();
   render(
@@ -149,6 +156,7 @@ const firstResponse: FirstConfirmationResponse = {
         quantity: 2,
         appliedPrice: "10.00",
         instruction: null,
+        unavailableProductExceptionApplied: false,
       },
     ],
   },
@@ -166,6 +174,7 @@ const subsequentResponse: SubsequentConfirmationResponse = {
         quantity: 2,
         appliedPrice: "12.00",
         instruction: null,
+        unavailableProductExceptionApplied: false,
       },
     ],
   },
@@ -177,6 +186,8 @@ interface HarnessProps {
   onActivate?: (reference: string) => void;
   onChanged?: (reference: string) => void;
   onUnauthorized?: () => void;
+  products?: Product[];
+  canRequestUnavailableProductException?: boolean;
 }
 
 function Harness({
@@ -185,12 +196,14 @@ function Harness({
   onActivate = () => undefined,
   onChanged = () => undefined,
   onUnauthorized = () => undefined,
+  products = [water, soda, burger],
+  canRequestUnavailableProductException = false,
 }: HarnessProps) {
   const [activeReference, setActiveReference] = useState(initialReference);
 
   return (
     <OrderWorkflow
-      products={[water, soda, burger]}
+      products={products}
       activeOperationalReference={activeReference}
       requestedTarget={requestedTarget}
       onActivateOrder={(reference) => {
@@ -200,6 +213,9 @@ function Harness({
       onStartNewOrder={() => setActiveReference(null)}
       onOrderChanged={onChanged}
       onUnauthorized={onUnauthorized}
+      canRequestUnavailableProductException={
+        canRequestUnavailableProductException
+      }
     />
   );
 }
@@ -240,6 +256,175 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
   beforeEach(() => {
     confirmFirstMock.mockReset();
     confirmSubsequentMock.mockReset();
+  });
+
+  it("shows a distinct intervention action only for an unavailable Product and the dual capability", async () => {
+    const user = userEvent.setup();
+    render(
+      <Harness
+        products={[water, unavailableJuice]}
+        canRequestUnavailableProductException
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Agregar Agua a Composición inicial",
+      }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole("button", {
+        name: "Agregar Agua mediante intervención a Composición inicial",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Agregar Jugo agotado a Composición inicial",
+      }),
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+      }),
+    );
+
+    expect(screen.getByText("Intervención solicitada")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Confirmar con intervención" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Esta Confirmación incluye Productos actualmente marcados como no disponibles.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("does not expose intervention to an OpsBasic-only actor", () => {
+    render(<Harness products={[unavailableJuice]} />);
+
+    expect(
+      screen.getByRole("button", {
+        name: "Agregar Jugo agotado a Composición inicial",
+      }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("button", {
+        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps ordinary and exceptional intent in separate lines rather than merging them", async () => {
+    const user = userEvent.setup();
+    const workflowProps = {
+      activeOperationalReference: null,
+      onActivateOrder: vi.fn(),
+      onStartNewOrder: vi.fn(),
+      onOrderChanged: vi.fn(),
+      onUnauthorized: vi.fn(),
+      canRequestUnavailableProductException: true,
+    };
+    const { rerender } = render(
+      <OrderWorkflow products={[water]} {...workflowProps} />,
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar Agua a Composición inicial",
+      }),
+    );
+
+    rerender(
+      <OrderWorkflow
+        products={[{ ...water, isAvailable: false }]}
+        {...workflowProps}
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar Agua mediante intervención a Composición inicial",
+      }),
+    );
+
+    expect(screen.getAllByLabelText("Cantidad de Agua")).toHaveLength(2);
+    expect(screen.getAllByText("Intervención solicitada")).toHaveLength(1);
+    expect(screen.getByRole("alert")).toHaveTextContent(/líneas duplicadas/);
+  });
+
+  it("removes an exceptional line and only recreates that intent through the explicit action", async () => {
+    const user = userEvent.setup();
+    render(
+      <Harness
+        products={[unavailableJuice]}
+        canRequestUnavailableProductException
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Retirar Jugo agotado, línea 1, de la composición",
+      }),
+    );
+    expect(screen.queryByText("Intervención solicitada")).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+      }),
+    );
+    expect(screen.getByText("Intervención solicitada")).toBeInTheDocument();
+  });
+
+  it("sends exceptional intent per line and keeps it after authority loss", async () => {
+    confirmFirstMock.mockRejectedValueOnce(
+      new OrderOperationsProblemError({
+        status: 403,
+        code: "order_operations.confirmation.operational_intervention_required",
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <Harness
+        products={[water, unavailableJuice]}
+        canRequestUnavailableProductException
+      />,
+    );
+    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await addProduct(user, water, "Composición inicial");
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar con intervención" }),
+    );
+
+    expect(confirmFirstMock.mock.calls[0]?.[0]).toEqual({
+      context: "Mesa 7",
+      items: [
+        {
+          productId: water.id,
+          quantity: 1,
+          instruction: null,
+          unavailableProductExceptionRequested: false,
+        },
+        {
+          productId: unavailableJuice.id,
+          quantity: 1,
+          instruction: null,
+          unavailableProductExceptionRequested: true,
+        },
+      ],
+    });
+    expect(
+      await screen.findByText(/ya no tiene autoridad para la intervención solicitada/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Intervención solicitada")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar con intervención" })).toBeEnabled();
   });
 
   it("mantiene una entry por Product y cantidades enteras positivas", async () => {
@@ -522,7 +707,14 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const [request, key] = confirmFirstMock.mock.calls[0]!;
     expect(request).toEqual({
       context: "Mesa 7",
-      items: [{ productId: water.id, quantity: 2, instruction: null }],
+      items: [
+        {
+          productId: water.id,
+          quantity: 2,
+          instruction: null,
+          unavailableProductExceptionRequested: false,
+        },
+      ],
     });
     expect(key).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
@@ -561,11 +753,17 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     expect(request).toEqual({
       context: "Mesa 8",
       items: [
-        { productId: burger.id, quantity: 1, instruction: null },
+        {
+          productId: burger.id,
+          quantity: 1,
+          instruction: null,
+          unavailableProductExceptionRequested: false,
+        },
         {
           productId: burger.id,
           quantity: 1,
           instruction: "SIN  cebolla!",
+          unavailableProductExceptionRequested: false,
         },
       ],
     });
@@ -667,6 +865,42 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
         name: "Primera Confirmación con resultado no confirmado",
       }),
     ).not.toBeInTheDocument();
+  });
+
+  it("retries the exact exceptional First Confirmation snapshot", async () => {
+    confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
+    const user = userEvent.setup();
+    render(
+      <Harness
+        products={[unavailableJuice]}
+        canRequestUnavailableProductException
+      />,
+    );
+    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar con intervención" }),
+    );
+    await screen.findByRole("region", {
+      name: "Primera Confirmación con resultado no confirmado",
+    });
+    const firstCall = confirmFirstMock.mock.calls[0];
+    expect(firstCall?.[0].items[0]?.unavailableProductExceptionRequested).toBe(
+      true,
+    );
+
+    confirmFirstMock.mockResolvedValueOnce(firstResponse);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Reintentar misma Primera Confirmación",
+      }),
+    );
+    await screen.findByRole("heading", { name: "Nueva Composición" });
+    expect(confirmFirstMock.mock.calls[1]).toEqual(firstCall);
   });
 
   it("congela instruction canonical en incertidumbre First y reintenta request/key exactos", async () => {
@@ -823,6 +1057,50 @@ describe("OrderWorkflow - lectura operacional de Products", () => {
     ).toBeInTheDocument();
   });
 
+  it("refreshes operational Products after ordinary availability rejection without changing intent", async () => {
+    listOperationalProductsMock
+      .mockResolvedValueOnce([water])
+      .mockResolvedValueOnce([{ ...water, isAvailable: false }]);
+    confirmFirstMock.mockRejectedValueOnce(
+      new OrderOperationsProblemError({
+        status: 409,
+        code: "order_operations.first_confirmation.product_unavailable",
+        productId: water.id,
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <OrderWorkflow
+        activeOperationalReference={null}
+        onActivateOrder={vi.fn()}
+        onStartNewOrder={vi.fn()}
+        onOrderChanged={vi.fn()}
+        onUnauthorized={vi.fn()}
+        canRequestUnavailableProductException
+      />,
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Agregar Agua a Composición inicial",
+      }),
+    );
+    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
+    );
+
+    expect(await screen.findByText(/ya no está disponible/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(listOperationalProductsMock).toHaveBeenCalledTimes(2),
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Agregar Agua mediante intervención a Composición inicial",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Intervención solicitada")).not.toBeInTheDocument();
+  });
+
   it("fences a late operational read after the composition owner is replaced", async () => {
     let resolveOldRead:
       | ((
@@ -911,8 +1189,18 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     expect(request).toEqual({
       pendingCompositionId: "pending-local",
       items: [
-        { productId: soda.id, quantity: 1, instruction: null },
-        { productId: water.id, quantity: 2, instruction: null },
+        {
+          productId: soda.id,
+          quantity: 1,
+          instruction: null,
+          unavailableProductExceptionRequested: false,
+        },
+        {
+          productId: water.id,
+          quantity: 2,
+          instruction: null,
+          unavailableProductExceptionRequested: false,
+        },
       ],
     });
     expect(JSON.stringify(request)).not.toMatch(
@@ -950,8 +1238,18 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     expect(confirmSubsequentMock.mock.calls[0]?.[1]).toEqual({
       pendingCompositionId: "pending-local",
       items: [
-        { productId: burger.id, quantity: 2, instruction: null },
-        { productId: burger.id, quantity: 1, instruction: "sin tomate" },
+        {
+          productId: burger.id,
+          quantity: 2,
+          instruction: null,
+          unavailableProductExceptionRequested: false,
+        },
+        {
+          productId: burger.id,
+          quantity: 1,
+          instruction: "sin tomate",
+          unavailableProductExceptionRequested: false,
+        },
       ],
     });
     expect(
@@ -1027,6 +1325,44 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     ).toBeInTheDocument();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(confirmSubsequentMock).toHaveBeenCalledOnce();
+
+    confirmSubsequentMock.mockResolvedValueOnce(subsequentResponse);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Reintentar misma Confirmación posterior",
+      }),
+    );
+    await screen.findByText("Nueva Incorporación confirmada correctamente.");
+    expect(confirmSubsequentMock.mock.calls[1]).toEqual(firstCall);
+  });
+
+  it("retries the exact exceptional Subsequent Confirmation snapshot", async () => {
+    confirmSubsequentMock.mockRejectedValueOnce(
+      new OrderOperationsNetworkError(),
+    );
+    const user = userEvent.setup();
+    render(
+      <Harness
+        initialReference="order-active"
+        products={[unavailableJuice]}
+        canRequestUnavailableProductException
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Agregar Jugo agotado mediante intervención a Nueva Composición",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar con intervención" }),
+    );
+    await screen.findByRole("region", {
+      name: "Confirmación posterior con resultado no confirmado",
+    });
+    const firstCall = confirmSubsequentMock.mock.calls[0];
+    expect(firstCall?.[1].items[0]?.unavailableProductExceptionRequested).toBe(
+      true,
+    );
 
     confirmSubsequentMock.mockResolvedValueOnce(subsequentResponse);
     await user.click(
