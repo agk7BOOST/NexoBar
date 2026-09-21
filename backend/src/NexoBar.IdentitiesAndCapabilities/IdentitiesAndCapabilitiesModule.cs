@@ -76,6 +76,7 @@ public static class IdentitiesAndCapabilitiesModule
         services.AddHttpContextAccessor();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ISecretVerifier, PasswordSecretVerifier>();
+        services.AddSingleton<IRecoveryFactorVerifier, PasswordRecoveryFactorVerifier>();
         services.AddScoped<SessionCookieManager>();
         services.AddScoped<IAuthenticatedContext, HttpAuthenticatedContext>();
         services.AddScoped<IAuthenticatedSessionStabilizer, AuthenticatedSessionStabilizer>();

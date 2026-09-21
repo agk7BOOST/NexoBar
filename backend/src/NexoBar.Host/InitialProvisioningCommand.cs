@@ -92,7 +92,11 @@ internal static class HostInitialProvisioningCommand
         }
 
         var secret = await standardInput.ReadLineAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(secret))
+        var recoveryFactor = await standardInput.ReadLineAsync(cancellationToken);
+        var unexpectedInput = await standardInput.ReadLineAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(secret) || recoveryFactor is null ||
+            unexpectedInput is not null ||
+            !RecoveryFactorFormat.IsCanonical(recoveryFactor))
         {
             await standardOutput.WriteLineAsync("invalid_input");
             return 2;
@@ -111,7 +115,8 @@ internal static class HostInitialProvisioningCommand
                         selection.InitialProvisioningInput.CommandId,
                         selection.InitialProvisioningInput.OperationalName,
                         selection.InitialProvisioningInput.LoginIdentifier,
-                        secret),
+                        secret,
+                        recoveryFactor),
                     cancellationToken);
             await WriteResultAsync(standardOutput, result);
             return ExitCode(result.Outcome);

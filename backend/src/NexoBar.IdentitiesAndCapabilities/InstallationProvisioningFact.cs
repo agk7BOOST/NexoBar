@@ -13,7 +13,8 @@ internal sealed class InstallationProvisioningFact
         Guid initialIdentityId,
         DateTimeOffset completedAt,
         byte[] retryIntentFingerprint,
-        string retrySecretVerifier)
+        string retrySecretVerifier,
+        string retryRecoveryFactorVerifier)
     {
         if (provisioningCommandId == Guid.Empty)
         {
@@ -50,6 +51,13 @@ internal sealed class InstallationProvisioningFact
                 nameof(retrySecretVerifier));
         }
 
+        if (string.IsNullOrWhiteSpace(retryRecoveryFactorVerifier))
+        {
+            throw new ArgumentException(
+                "Retry recovery factor verifier is required.",
+                nameof(retryRecoveryFactorVerifier));
+        }
+
         Key = SingletonKey;
         Origin = InstallationProvisioningOrigin.InitialProvisioning;
         ProvisioningCommandId = provisioningCommandId;
@@ -57,6 +65,7 @@ internal sealed class InstallationProvisioningFact
         CompletedAt = completedAt;
         RetryIntentFingerprint = retryIntentFingerprint.ToArray();
         RetrySecretVerifier = retrySecretVerifier;
+        RetryRecoveryFactorVerifier = retryRecoveryFactorVerifier;
     }
 
     internal short Key { get; private set; }

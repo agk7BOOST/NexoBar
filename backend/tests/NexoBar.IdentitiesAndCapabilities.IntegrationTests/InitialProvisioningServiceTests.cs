@@ -15,6 +15,7 @@ public sealed class InitialProvisioningServiceTests(
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
         const string secret = "first secret";
+        var recoveryFactor = Factor(1);
         var commandId = Guid.NewGuid();
 
         var result = await fixture.ProvisionInitialAsync(
@@ -22,7 +23,8 @@ public sealed class InitialProvisioningServiceTests(
                 commandId,
                 "  Initial Administrator  ",
                 "  initial-admin  ",
-                secret),
+                secret,
+                recoveryFactor),
             token);
 
         Assert.Equal(InitialProvisioningOutcome.Succeeded, result.Outcome);
@@ -43,6 +45,21 @@ public sealed class InitialProvisioningServiceTests(
         Assert.Equal(commandId, fact.ProvisioningCommandId);
         Assert.Equal(identity.Id, fact.InitialIdentityId);
         Assert.Equal(result.CompletedAt, fact.CompletedAt);
+        Assert.NotNull(fact.RetryRecoveryFactorVerifier);
+        Assert.NotEqual(recoveryFactor, fact.RetryRecoveryFactorVerifier);
+        var state = await fixture.ReadInstallationRecoveryStateAsync(token);
+        Assert.NotNull(state);
+        Assert.Equal(InstallationRecoveryState.SingletonKey, state.Key);
+        Assert.Equal(1, state.Generation);
+        Assert.Equal(result.CompletedAt, state.EstablishedAt);
+        Assert.Null(state.LastRotatedAt);
+        Assert.NotEqual(recoveryFactor, state.RecoveryFactorVerifier);
+        Assert.True(RecoveryFactor.TryParse(recoveryFactor, out var parsedFactor));
+        var verifier = new PasswordRecoveryFactorVerifier();
+        Assert.NotEqual(SecretVerificationResult.Failed,
+            verifier.Verify(state.RecoveryFactorVerifier, parsedFactor!));
+        Assert.NotEqual(SecretVerificationResult.Failed,
+            verifier.Verify(fact.RetryRecoveryFactorVerifier!, parsedFactor!));
     }
 
     [Fact]
@@ -62,6 +79,11 @@ public sealed class InitialProvisioningServiceTests(
         Assert.Equal(first.CompletedAt, replay.CompletedAt);
         Assert.Single(await fixture.ReadIdentitiesAsync(token));
         Assert.Equal(1, await fixture.CountInstallationProvisioningFactsAsync(token));
+        var state = await fixture.ReadInstallationRecoveryStateAsync(token);
+        Assert.NotNull(state);
+        Assert.Equal(first.CompletedAt, state.EstablishedAt);
+        Assert.Equal(1, state.Generation);
+        Assert.Null(state.LastRotatedAt);
     }
 
     [Theory]
@@ -86,6 +108,21 @@ public sealed class InitialProvisioningServiceTests(
         Assert.Equal(InitialProvisioningOutcome.IntentConflict, conflict.Outcome);
         Assert.Single(await fixture.ReadIdentitiesAsync(token));
         Assert.Equal(1, await fixture.CountInstallationProvisioningFactsAsync(token));
+    }
+
+    [Fact]
+    public async Task Matching_command_with_changed_recovery_factor_conflicts()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var commandId = Guid.NewGuid();
+        await fixture.ProvisionInitialAsync(
+            Request(commandId, "Replay Administrator", "replay", "secret", Factor(1)), token);
+
+        var conflict = await fixture.ProvisionInitialAsync(
+            Request(commandId, "Replay Administrator", "replay", "secret", Factor(2)), token);
+
+        Assert.Equal(InitialProvisioningOutcome.IntentConflict, conflict.Outcome);
     }
 
     [Fact]
@@ -118,6 +155,7 @@ public sealed class InitialProvisioningServiceTests(
         Assert.Equal([existing], await fixture.ReadIdentitiesAsync(token));
         Assert.Equal(0, await fixture.CountAssignmentsAsync(token));
         Assert.Equal(0, await fixture.CountInstallationProvisioningFactsAsync(token));
+        Assert.Equal(0, await fixture.CountInstallationRecoveryStatesAsync(token));
     }
 
     [Fact]
@@ -133,6 +171,7 @@ public sealed class InitialProvisioningServiceTests(
         var service = new InitialProvisioningService(
             dbContext,
             new PasswordSecretVerifier(),
+            new PasswordRecoveryFactorVerifier(),
             fixture.Clock,
             NullLogger<InitialProvisioningService>.Instance);
 
@@ -143,6 +182,7 @@ public sealed class InitialProvisioningServiceTests(
         Assert.Empty(await fixture.ReadIdentitiesAsync(token));
         Assert.Equal(0, await fixture.CountAssignmentsAsync(token));
         Assert.Equal(0, await fixture.CountInstallationProvisioningFactsAsync(token));
+        Assert.Equal(0, await fixture.CountInstallationRecoveryStatesAsync(token));
     }
 
     [Fact]
@@ -163,6 +203,7 @@ public sealed class InitialProvisioningServiceTests(
             result.Outcome == InitialProvisioningOutcome.AlreadyInitialized));
         Assert.Single(await fixture.ReadIdentitiesAsync(token));
         Assert.Equal(1, await fixture.CountInstallationProvisioningFactsAsync(token));
+        Assert.Equal(1, await fixture.CountInstallationRecoveryStatesAsync(token));
     }
 
     [Fact]
@@ -182,6 +223,76 @@ public sealed class InitialProvisioningServiceTests(
     }
 
     [Fact]
+    public async Task Recovery_state_without_provisioning_fact_fails_closed()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        await fixture.InsertInstallationRecoveryStateAsync(
+            new InstallationRecoveryState("persisted-recovery-verifier", 1, fixture.Clock.GetUtcNow()),
+            token);
+
+        var result = await fixture.ProvisionInitialAsync(
+            Request(Guid.NewGuid(), "Initial", "initial", "secret"), token);
+
+        Assert.Equal(InitialProvisioningOutcome.InfrastructureFailure, result.Outcome);
+        Assert.Empty(await fixture.ReadIdentitiesAsync(token));
+        Assert.Equal(0, await fixture.CountInstallationProvisioningFactsAsync(token));
+        Assert.Equal(1, await fixture.CountInstallationRecoveryStatesAsync(token));
+    }
+
+    [Fact]
+    public async Task Legacy_initial_provisioning_fact_never_replays_or_establishes_recovery()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var commandId = Guid.NewGuid();
+        await InsertHistoricalInitialProvisioningFactAsync(commandId, token);
+
+        var result = await fixture.ProvisionInitialAsync(
+            Request(commandId, "Initial", "initial", "secret"), token);
+
+        Assert.Equal(InitialProvisioningOutcome.AlreadyInitialized, result.Outcome);
+        Assert.Equal(0, await fixture.CountInstallationRecoveryStatesAsync(token));
+    }
+
+    [Fact]
+    public async Task Legacy_backfill_never_establishes_recovery()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        await InsertLegacyBackfillFactAsync(token);
+
+        var result = await fixture.ProvisionInitialAsync(
+            Request(Guid.NewGuid(), "Initial", "initial", "secret"), token);
+
+        Assert.Equal(InitialProvisioningOutcome.AlreadyInitialized, result.Outcome);
+        Assert.Equal(0, await fixture.CountInstallationRecoveryStatesAsync(token));
+    }
+
+    [Fact]
+    public async Task Replay_uses_historical_recovery_factor_after_current_factor_changes()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var commandId = Guid.NewGuid();
+        var original = Request(commandId, "Initial", "initial", "secret", Factor(1));
+        await fixture.ProvisionInitialAsync(original, token);
+        Assert.True(RecoveryFactor.TryParse(Factor(2), out var rotatedFactor));
+        var rotatedVerifier = new PasswordRecoveryFactorVerifier().Hash(rotatedFactor!);
+        await ReplaceCurrentRecoveryVerifierAsync(rotatedVerifier, token);
+
+        var replay = await fixture.ProvisionInitialAsync(original, token);
+        var conflict = await fixture.ProvisionInitialAsync(
+            Request(commandId, "Initial", "initial", "secret", Factor(2)), token);
+
+        Assert.Equal(InitialProvisioningOutcome.ReplayedSuccess, replay.Outcome);
+        Assert.Equal(InitialProvisioningOutcome.IntentConflict, conflict.Outcome);
+        var state = await fixture.ReadInstallationRecoveryStateAsync(token);
+        Assert.NotNull(state);
+        Assert.Equal(rotatedVerifier, state.RecoveryFactorVerifier);
+    }
+
+    [Fact]
     public async Task Secrets_are_only_stored_as_verifiers_and_not_returned()
     {
         var token = TestContext.Current.CancellationToken;
@@ -197,17 +308,79 @@ public sealed class InitialProvisioningServiceTests(
         Assert.NotEqual(secret, credential.SecretVerifier);
         Assert.NotNull(fact);
         Assert.NotEqual(secret, fact.RetrySecretVerifier);
+        Assert.NotNull(fact.RetryRecoveryFactorVerifier);
+        Assert.NotEqual(Factor(0), fact.RetryRecoveryFactorVerifier);
         Assert.DoesNotContain(
             typeof(InitialProvisioningResult).GetProperties(),
-            property => property.Name.Contains("Verifier", StringComparison.Ordinal));
+            property => property.Name.Contains("Verifier", StringComparison.Ordinal) ||
+                property.Name.Contains("Recovery", StringComparison.Ordinal));
     }
 
     private static InitialProvisioningRequest Request(
         Guid commandId,
         string operationalName,
         string loginIdentifier,
-        string secret) =>
-        new(commandId, operationalName, loginIdentifier, secret);
+        string secret,
+        string? recoveryFactor = null) =>
+        new(commandId, operationalName, loginIdentifier, secret, recoveryFactor ?? Factor(0));
+
+    private static string Factor(int seed) =>
+        Convert.ToBase64String(Enumerable.Range(seed, 32).Select(value => (byte)value).ToArray())
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+    private async Task InsertHistoricalInitialProvisioningFactAsync(
+        Guid commandId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await fixture.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO identities_and_capabilities.installation_provisioning (
+                singleton_key, origin, completed_at, provisioning_command_id,
+                initial_identity_id, retry_intent_fingerprint, retry_secret_verifier)
+            VALUES (1, 'InitialProvisioning', @completedAt, @commandId, @identityId,
+                @fingerprint, 'historical-slow-verifier')
+            """;
+        command.Parameters.AddWithValue("completedAt", fixture.Clock.GetUtcNow());
+        command.Parameters.AddWithValue("commandId", commandId);
+        command.Parameters.AddWithValue("identityId", Guid.NewGuid());
+        command.Parameters.AddWithValue("fingerprint", new byte[] { 1 });
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private async Task InsertLegacyBackfillFactAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await fixture.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO identities_and_capabilities.installation_provisioning (singleton_key, origin)
+            VALUES (1, 'LegacyBackfill')
+            """;
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private async Task ReplaceCurrentRecoveryVerifierAsync(
+        string verifier,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await fixture.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE identities_and_capabilities.installation_recovery_state
+            SET recovery_factor_verifier = @verifier,
+                generation = 2,
+                last_rotated_at = @rotatedAt
+            WHERE singleton_key = 1
+            """;
+        command.Parameters.AddWithValue("verifier", verifier);
+        command.Parameters.AddWithValue("rotatedAt", fixture.Clock.GetUtcNow());
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
 
     private sealed class ThrowBeforeCommitInterceptor : SaveChangesInterceptor
     {

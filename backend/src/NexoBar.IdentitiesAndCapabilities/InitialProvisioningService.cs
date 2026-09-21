@@ -10,6 +10,7 @@ namespace NexoBar.IdentitiesAndCapabilities;
 internal sealed class InitialProvisioningService(
     IdentitiesAndCapabilitiesDbContext dbContext,
     ISecretVerifier secretVerifier,
+    IRecoveryFactorVerifier recoveryFactorVerifier,
     TimeProvider timeProvider,
     ILogger<InitialProvisioningService> logger) : IInitialProvisioningService
 {
@@ -45,6 +46,16 @@ internal sealed class InitialProvisioningService(
                 .SingleOrDefaultAsync(cancellationToken);
             if (fact is not null)
             {
+                if (fact.Origin != InstallationProvisioningOrigin.InitialProvisioning ||
+                    fact.RetryRecoveryFactorVerifier is null)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                    logger.LogWarning(
+                        "Initial provisioning rejected because the installation is already initialized. CommandId: {CommandId}",
+                        request.CommandId);
+                    return InitialProvisioningResult.AlreadyInitialized();
+                }
+
                 var replay = IsMatchingRetry(fact, request.CommandId, validated);
                 await transaction.CommitAsync(cancellationToken);
                 if (replay)
@@ -74,6 +85,15 @@ internal sealed class InitialProvisioningService(
                 return InitialProvisioningResult.AlreadyInitialized();
             }
 
+            if (await dbContext.InstallationRecoveryStates.AnyAsync(cancellationToken))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                logger.LogError(
+                    "Initial provisioning encountered recovery state without a provisioning fact. CommandId: {CommandId}",
+                    request.CommandId);
+                return InitialProvisioningResult.InfrastructureFailure();
+            }
+
             if (await dbContext.LocalCredentials.AnyAsync(
                     credential => credential.NormalizedLoginIdentifier ==
                         validated.NormalizedLoginIdentifier,
@@ -88,6 +108,7 @@ internal sealed class InitialProvisioningService(
 
             var identity = new Identity(validated.OperationalName, isActive: true);
             var credentialVerifier = secretVerifier.Hash(validated.Secret);
+            var recoveryVerifier = recoveryFactorVerifier.Hash(validated.RecoveryFactor);
             var credential = new LocalCredential(
                 identity.Id,
                 validated.LoginIdentifier,
@@ -99,13 +120,18 @@ internal sealed class InitialProvisioningService(
                 identity.Id,
                 completedAt,
                 validated.IntentFingerprint,
-                credentialVerifier);
+                credentialVerifier,
+                recoveryVerifier);
 
             dbContext.Identities.Add(identity);
             dbContext.LocalCredentials.Add(credential);
             dbContext.ResponsibilityAssignments.Add(new ResponsibilityAssignment(
                 identity.Id,
                 FunctionalResponsibility.GeneralConfiguration));
+            dbContext.InstallationRecoveryStates.Add(new InstallationRecoveryState(
+                recoveryVerifier,
+                generation: 1,
+                establishedAt: completedAt));
             dbContext.InstallationProvisioningFacts.Add(provisioningFact);
             await dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -153,7 +179,11 @@ internal sealed class InitialProvisioningService(
         fact.RetryIntentFingerprint.SequenceEqual(request.IntentFingerprint) &&
         fact.RetrySecretVerifier is not null &&
         secretVerifier.Verify(fact.RetrySecretVerifier, request.Secret) !=
-            SecretVerificationResult.Failed;
+            SecretVerificationResult.Failed &&
+        fact.RetryRecoveryFactorVerifier is not null &&
+        recoveryFactorVerifier.Verify(
+            fact.RetryRecoveryFactorVerifier,
+            request.RecoveryFactor) != SecretVerificationResult.Failed;
 
     private static ValidatedInitialProvisioning? Validate(
         InitialProvisioningRequest request)
@@ -172,7 +202,8 @@ internal sealed class InitialProvisioningService(
         var loginIdentifier = LoginIdentifierNormalizer.Trim(request.LoginIdentifier);
         var normalizedLoginIdentifier = LoginIdentifierNormalizer.Normalize(loginIdentifier);
         if (loginIdentifier is null || normalizedLoginIdentifier is null ||
-            string.IsNullOrWhiteSpace(request.Secret))
+            string.IsNullOrWhiteSpace(request.Secret) ||
+            !RecoveryFactor.TryParse(request.RecoveryFactor, out var recoveryFactor))
         {
             return null;
         }
@@ -188,6 +219,7 @@ internal sealed class InitialProvisioningService(
             loginIdentifier,
             normalizedLoginIdentifier,
             request.Secret,
+            recoveryFactor!,
             intentFingerprint);
     }
 
@@ -199,6 +231,7 @@ internal sealed class InitialProvisioningService(
         string LoginIdentifier,
         string NormalizedLoginIdentifier,
         string Secret,
+        RecoveryFactor RecoveryFactor,
         byte[] IntentFingerprint);
 }
 
@@ -213,7 +246,8 @@ public sealed record InitialProvisioningRequest(
     Guid CommandId,
     string? OperationalName,
     string? LoginIdentifier,
-    string? Secret);
+    string? Secret,
+    string? RecoveryFactor);
 
 public sealed record InitialProvisioningResult(
     InitialProvisioningOutcome Outcome,

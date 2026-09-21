@@ -45,6 +45,63 @@ public sealed class HostInitialProvisioningCommandTests
     }
 
     [Fact]
+    public async Task Missing_recovery_factor_input_fails_before_web_startup()
+    {
+        using var output = new StringWriter();
+
+        var exitCode = await HostInitialProvisioningCommand.ExecuteAsync(
+            ValidSelection(),
+            new StringReader("credential-secret\n"),
+            output,
+            isStandardInputRedirected: true,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal("invalid_input", output.ToString().Trim());
+    }
+
+    [Fact]
+    public async Task Invalid_or_additional_recovery_input_fails_before_web_startup()
+    {
+        using var invalidOutput = new StringWriter();
+        var invalidExitCode = await HostInitialProvisioningCommand.ExecuteAsync(
+            ValidSelection(),
+            new StringReader("credential-secret\ninvalid-factor\n"),
+            invalidOutput,
+            isStandardInputRedirected: true,
+            TestContext.Current.CancellationToken);
+
+        using var additionalOutput = new StringWriter();
+        var additionalExitCode = await HostInitialProvisioningCommand.ExecuteAsync(
+            ValidSelection(),
+            new StringReader($"credential-secret\n{Factor()}\nunexpected\n"),
+            additionalOutput,
+            isStandardInputRedirected: true,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, invalidExitCode);
+        Assert.Equal("invalid_input", invalidOutput.ToString().Trim());
+        Assert.Equal(2, additionalExitCode);
+        Assert.Equal("invalid_input", additionalOutput.ToString().Trim());
+    }
+
+    [Fact]
+    public async Task Interactive_standard_input_is_rejected()
+    {
+        using var output = new StringWriter();
+
+        var exitCode = await HostInitialProvisioningCommand.ExecuteAsync(
+            ValidSelection(),
+            new StringReader($"credential-secret\n{Factor()}\n"),
+            output,
+            isStandardInputRedirected: false,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal("invalid_input", output.ToString().Trim());
+    }
+
+    [Fact]
     public void Normal_host_invocation_selects_web_mode()
     {
         var selection = HostCommandLine.Parse([]);
@@ -68,6 +125,7 @@ public sealed class HostInitialProvisioningCommandTests
             "Initial Process Administrator",
             "process-admin",
             "process-secret",
+            Factor(),
             token);
 
         Assert.Equal(0, first.ExitCode);
@@ -75,6 +133,9 @@ public sealed class HostInitialProvisioningCommandTests
         Assert.Equal(
             LoginOutcome.Succeeded,
             (await fixture.LoginAsync("process-admin", "process-secret", token)).Outcome);
+        var recoveryState = await fixture.ReadInstallationRecoveryStateAsync(token);
+        Assert.NotNull(recoveryState);
+        Assert.Equal(1, recoveryState.Generation);
 
         var second = await RunHostAsync(
             fixture.ConnectionString,
@@ -82,6 +143,7 @@ public sealed class HostInitialProvisioningCommandTests
             "Second Process Administrator",
             "second-process-admin",
             "second-process-secret",
+            Factor(),
             token);
 
         Assert.Equal(3, second.ExitCode);
@@ -97,6 +159,7 @@ public sealed class HostInitialProvisioningCommandTests
         string operationalName,
         string loginIdentifier,
         string secret,
+        string recoveryFactor,
         CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo("dotnet")
@@ -120,6 +183,7 @@ public sealed class HostInitialProvisioningCommandTests
         using var process = Process.Start(startInfo) ??
             throw new InvalidOperationException("The Host process could not start.");
         await process.StandardInput.WriteLineAsync(secret);
+        await process.StandardInput.WriteLineAsync(recoveryFactor);
         process.StandardInput.Close();
         var standardOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var standardError = process.StandardError.ReadToEndAsync(cancellationToken);
@@ -135,4 +199,18 @@ public sealed class HostInitialProvisioningCommandTests
         int ExitCode,
         string StandardOutput,
         string StandardError);
+
+    private static HostCommandSelection ValidSelection() => HostCommandLine.Parse(
+    [
+        HostCommandLine.ProvisionInitialAdminCommand,
+        "--operational-name", "Initial",
+        "--login-identifier", "initial",
+        "--command-id", Guid.NewGuid().ToString("D")
+    ]);
+
+    private static string Factor() =>
+        Convert.ToBase64String(Enumerable.Range(0, 32).Select(value => (byte)value).ToArray())
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
 }

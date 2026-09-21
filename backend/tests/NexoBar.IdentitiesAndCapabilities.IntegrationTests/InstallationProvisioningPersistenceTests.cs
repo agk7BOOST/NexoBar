@@ -40,7 +40,8 @@ public sealed class InstallationProvisioningPersistenceTests(
                 identityId,
                 completedAt,
                 fingerprint,
-                "slow-verifier"),
+                "slow-verifier",
+                "slow-recovery-verifier"),
             token);
 
         var fact = await fixture.ReadInstallationProvisioningFactAsync(token);
@@ -52,7 +53,7 @@ public sealed class InstallationProvisioningPersistenceTests(
         Assert.Equal(identityId, fact.InitialIdentityId);
         Assert.Equal(fingerprint, fact.RetryIntentFingerprint);
         Assert.Equal("slow-verifier", fact.RetrySecretVerifier);
-        Assert.Null(fact.RetryRecoveryFactorVerifier);
+        Assert.Equal("slow-recovery-verifier", fact.RetryRecoveryFactorVerifier);
 
         await using var connection = await fixture.OpenConnectionAsync(token);
         await using var command = connection.CreateCommand();
