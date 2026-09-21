@@ -13,7 +13,21 @@ Una instalación nueva se inicializa una sola vez mediante provisioning técnico
 
 No es funcionalidad ordinaria de la aplicación, no crea un administrador técnico permanente ni un superadministrador, y no es un endpoint HTTP anónimo permanente. Debe ser técnicamente trazable. Está materializado por `provision-initial-admin`, ejecutado bajo autoridad de deployment/proceso, con stdin redirigido para el secret y sin listeners HTTP. El detalle operativo, gates, retry, observabilidad y exits está en la [administración de Identity](../identities-and-capabilities/administration.md#provisioning-inicial-técnico-ad-sec-06).
 
-Si después se pierden todos los caminos de `GeneralConfiguration`, el bootstrap no se reactiva: aplica el recovery extraordinario pendiente de `AD-SEC-01`.
+Si después se pierden todos los caminos de `GeneralConfiguration`, el bootstrap no se reactiva: aplica el recovery extraordinario materializado por `AD-SEC-07`.
+
+## AD-SEC-07 — Recovery extraordinario de GeneralConfiguration
+
+La arquitectura de recovery combina un factor obligatorio en el provisioning inicial nuevo, `InstallationRecoveryState` como Estado del factor actual y su establecimiento/rotación ordinarios por una Identity activa con `GeneralConfiguration`. El factor sólo se persiste como verifier; el historial de retry de provisioning es independiente del Estado actual del factor.
+
+`POST /api/installation-recovery-factor/rotate` es la vía ordinaria protegida: para una intención nueva requiere Session utilizable, Identity activa, `GeneralConfiguration`, antiforgery e `Idempotency-Key` UUID v4. Establece generación 1 solamente en una instalación genuinamente provisionada que no tenga State, o rota N a N+1. No se entrega ni requiere el factor anterior. Las instalaciones legacy con fact de provisioning y sin `InstallationRecoveryState` permanecen `recovery_not_configured`; la migración no inventa un factor y no hay bypass técnico MVP.
+
+Ante pérdida total de administración ordinaria, sólo el proceso Host `recover-general-configuration` puede ejecutar el recovery. Recibe command ID UUID v4, Identity target existente y login opcional por CLI; recibe factor actual y secret de credencial nuevo por las dos líneas de stdin redirigido. No inicia HTTP/Kestrel. Su autoridad es la ejecución de deployment/proceso y el factor para comandos nuevos, no una Session, Identity o rol técnico. No existe endpoint HTTP anónimo/de break-glass, Identity técnica ni superadministrador.
+
+Recovery activa únicamente la Identity target, asegura `GeneralConfiguration`, crea o reemplaza su `LocalCredential` y revoca sus Sessions. No crea, elimina o renombra Identities, no modifica otras responsabilidades ni habilitaciones de Preparation, y no modifica Catalog, Inventory ni Orders. Preserva el login existente cuando hay credencial salvo reemplazo explícito; una Identity sin credencial requiere login explícito y nunca se deriva desde el nombre operacional.
+
+Establecimiento, rotación y recovery comparten un advisory lock PostgreSQL transaction-scoped; recovery bloquea además la fila Identity target. De este modo las operaciones sobre el mismo target se serializan sin una serialización global de administraciones no relacionadas. Activación, assignment, credencial, revocación de Sessions y command durable son una única transacción.
+
+El command durable de recovery da idempotencia técnica: misma intención de command ID, target, login y credencial nueva devuelve `replayed_success`; otra intención durable devuelve `intent_conflict`. El factor no pertenece a la intención de replay: autoriza un comando nuevo, pero un command ya comprometido se reproduce sin revalidar el factor vigente aun después de rotación, sin reaplicar mutaciones.
 
 ## S9 — Secure Configuration Foundations
 
@@ -47,7 +61,7 @@ El retrofit AD-SEC-05 está implementado consistentemente en el lookup general d
 Este inventario no define políticas nuevas ni afirma seguridad global completa.
 
 - retrofit global de autenticación/autorización para endpoints todavía anónimos, según corresponda: otros endpoints funcionales actuales no cubiertos. Confirmaciones ya tienen el retrofit de Slice 6;
-- implementación de recovery extraordinario (`AD-SEC-01`) y UX de recovery ordinario;
+- UX adicional de administración ordinaria del factor de recovery, si se prioriza; el establecimiento/rotación API y el recovery extraordinario `AD-SEC-07` ya están materializados;
 - decisión normativa de parámetros de timeout (`PAR-SEC-02`) y política cuantitativa de brute-force/lockout;
 - frontend administrativo restante más allá del vertical actual de GeneralConfiguration;
 - elegibilidad de Delete Identity y coordinación con Historia;

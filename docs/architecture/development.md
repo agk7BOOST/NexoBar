@@ -8,7 +8,7 @@
 - Docker es necesario para las suites de integración. Chromium de Playwright es necesario solo para `--e2e`.
 - E2E requiere libres los puertos técnicos `5028` y `5173`; el harness falla si están ocupados y no mata ni reutiliza procesos ajenos.
 - `compose.yaml` proporciona un PostgreSQL local descartable para Development; no representa la topología productiva.
-- Fuera de integración y E2E, `provision-initial-admin` materializa sólo el provisioning inicial técnico; requiere una base ya migrada y no ejecuta auto-migrate. El tooling general para aplicar migraciones continúa pendiente de estandarización para onboarding/deployment.
+- Fuera de integración y E2E, `provision-initial-admin` y `recover-general-configuration` son modos técnicos Host sin servidor HTTP; requieren una base ya migrada y no ejecutan auto-migrate. El primero sólo inicializa una instalación nueva; el segundo requiere el factor de recovery vigente por stdin redirigido. El tooling general para aplicar migraciones continúa pendiente de estandarización para onboarding/deployment.
 - `NexoBar.E2E.DatabaseSetup` es parte del harness E2E, no una herramienta general de Development.
 
 ## `InternalsVisibleTo`

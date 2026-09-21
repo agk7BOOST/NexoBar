@@ -18,7 +18,7 @@ POST /api/identities/{identityId}/preparation-enablement/{responsibilityId}/revo
 
 `GET /api/identities` requiere `GeneralConfiguration` y devuelve Estado de Identity, capabilities, enablements y login identifier; no devuelve verifier, tokens ni detalles de sesiones.
 
-La administración ordinaria debe preservar al menos un camino operacional vigente de `GeneralConfiguration`. La definición técnica actual del camino es: Identity activa + assignment `GeneralConfiguration` + `LocalCredential` utilizable. No requiere una sesión activa. Un advisory lock estable, transaction-scoped, serializa las mutaciones administrativas relevantes y evita carreras de revocación/desactivación que dejen cero caminos. Esto no implementa recovery extraordinario: `AD-SEC-01` continúa pendiente productivamente.
+La administración ordinaria debe preservar al menos un camino operacional vigente de `GeneralConfiguration`. La definición técnica actual del camino es: Identity activa + assignment `GeneralConfiguration` + `LocalCredential` utilizable. No requiere una sesión activa. Un advisory lock estable, transaction-scoped, serializa las mutaciones administrativas relevantes y evita carreras de revocación/desactivación que dejen cero caminos. Si ese camino se pierde pese a esas salvaguardas, aplica el recovery extraordinario materializado por `AD-SEC-07`.
 
 ## Vertical web S9-I2 — General Configuration
 
@@ -40,15 +40,15 @@ Create Identity no crea `LocalCredential`. Cuando el request omite `isActive`, e
 
 ### Provisioning inicial técnico (`AD-SEC-06`)
 
-El primer camino de una instalación nueva procede del subcomando Host `provision-initial-admin`. Crea exactamente una Identity activa, una `LocalCredential` y la asignación `GeneralConfiguration`; no acepta responsabilidades adicionales, habilitaciones de Preparation ni un flag de actividad.
+El primer camino de una instalación nueva procede del subcomando Host `provision-initial-admin`. Crea exactamente una Identity activa, una `LocalCredential`, la asignación `GeneralConfiguration` y `InstallationRecoveryState` en generación 1; no acepta responsabilidades adicionales, habilitaciones de Preparation ni un flag de actividad.
 
-Sus entradas obligatorias son `--operational-name`, `--login-identifier`, `--command-id` UUID v4 y el secret de credencial por stdin redirigido. El secret no es un argumento. Una invocación conceptual es:
+Sus entradas no secretas obligatorias son `--operational-name`, `--login-identifier` y `--command-id` UUID v4. Stdin debe estar redirigido y contiene exactamente dos líneas: primero el secret inicial de credencial y después el recovery factor. Ninguno es argumento. El factor es Base64URL canónico sin padding de exactamente 256 bits (32 bytes); sólo su verifier lento se persiste. Una invocación conceptual es:
 
 ```text
 <protected-secret-source> | dotnet NexoBar.Host.dll provision-initial-admin --operational-name "<operational-name>" --login-identifier "<login>" --command-id "<uuid-v4>"
 ```
 
-`<protected-secret-source>` representa un mecanismo de secreto del entorno de despliegue que escribe una sola línea; no debe reemplazarse por un secret literal en el historial de shell. Stdin interactivo se rechaza. El Host entra en este modo antes de construir `WebApplication`: compone sólo lo necesario, no abre listeners HTTP y termina al devolver el resultado.
+`<protected-secret-source>` representa un mecanismo de secreto del entorno de despliegue que escribe las dos líneas protegidas; no debe reemplazarse por secretos literales en el historial de shell. Stdin interactivo se rechaza. El Host entra en este modo antes de construir `WebApplication`: compone sólo lo necesario, no abre listeners HTTP y termina al devolver el resultado.
 
 La autoridad es la de ejecución del proceso/deployment. Antes del provisioning no existe Session ni Identity NexoBar que autorice el acto; no existe responsabilidad Bootstrap y no se crea una Identity técnica, superadministrador ni comando administrativo ordinario.
 
@@ -56,15 +56,31 @@ Hay dos gates acumulativos: el proceso debe invocar explícitamente `provision-i
 
 El fact pertenece a `IdentitiesAndCapabilities`. La migración inserta exactamente un `LegacyBackfill` si una base pre-feature contiene cualquier Identity, incluso inactiva o sin credencial/`GeneralConfiguration`; una base vacía no recibe un fact inventado. Por eso el operador sólo debe ejecutar el subcomando contra una base positivamente destinada a una instalación nueva: una base vacía no se considera automáticamente fresca o segura.
 
-Identity, `LocalCredential`, asignación `GeneralConfiguration` y `InstallationProvisioningFact` se confirman juntos en una transacción de `IdentitiesAndCapabilities`. Un advisory transaction lock PostgreSQL serializa las tentativas y deja como máximo una tentativa independiente exitosa.
+Identity, `LocalCredential`, asignación `GeneralConfiguration`, `InstallationProvisioningFact` e `InstallationRecoveryState` se confirman juntos en una transacción de `IdentitiesAndCapabilities`. El Estado actual del factor y el verifier histórico para reintentar provisioning son conceptos separados. Un advisory transaction lock PostgreSQL serializa las tentativas y deja como máximo una tentativa independiente exitosa.
 
-El operador/deployment conserva el command ID mientras el resultado sea incierto. El mismo command ID, intención canónica (nombre operacional y login normalizado) y secret produce `replayed_success`; el mismo ID con intención o secret distinto produce `intent_conflict`; un ID distinto tras el éxito produce `already_initialized`. El reintento compara el secret mediante un verifier lento persistido; no expone `RetrySecretVerifier`.
+El operador/deployment conserva el command ID mientras el resultado sea incierto. El mismo command ID, intención canónica (nombre operacional y login normalizado), secret y factor produce `replayed_success`; el mismo ID con intención, secret o factor distinto produce `intent_conflict`; un ID distinto tras el éxito produce `already_initialized`. Los reintentos comparan los secretos mediante verificadores lentos persistidos; no exponen ningún verifier.
 
 Los outcomes y exits son estables para scripts: `success`/`replayed_success` = 0, `infrastructure_failure` = 1, `invalid_input` = 2, `already_initialized` = 3, `intent_conflict` = 4 y `duplicate_login` = 5. La salida ordinaria no contiene secret ni verifier/hash.
 
 `InstallationProvisioningFact` es el hecho durable del provisioning exitoso. Los logs estructurados registran metadatos seguros de intento, outcome, command ID y, en el éxito, Identity ID; excluyen secrets y verifiers. No existe por ello una facilidad genérica de auditoría administrativa durable.
 
-Una vez inicializada la instalación, bootstrap no es administración ordinaria ni recovery. Desactivar/eliminar administradores, perder credenciales o perder Sessions no reactiva el subcomando. La recuperación extraordinaria posterior pertenece a `AD-SEC-01`, que sigue separada y pendiente. Véanse las [fronteras de seguridad](../architecture/security-boundaries.md).
+Una vez inicializada la instalación, bootstrap no es administración ordinaria ni recovery y queda permanentemente indisponible. Desactivar/eliminar administradores, perder credenciales o perder Sessions no reactiva el subcomando. La recuperación extraordinaria posterior está materializada por `AD-SEC-07`; véanse las [fronteras de seguridad](../architecture/security-boundaries.md).
+
+### Recovery factor ordinario y recovery extraordinario (`AD-SEC-07`)
+
+`InstallationRecoveryState` guarda el factor de recovery actual de la instalación, nunca el factor legible. Una instalación previa a `AD-SEC-07` puede tener `InstallationProvisioningFact` pero no este Estado: se encuentra en `recovery_not_configured`. La migración nunca inventa un factor. No existe un bypass técnico de legacy en MVP: una Identity activa con `GeneralConfiguration` puede establecer legítimamente la generación 1 mediante la operación ordinaria protegida.
+
+La operación ordinaria es `POST /api/installation-recovery-factor/rotate`. Para un comando nuevo exige Session utilizable, Identity activa, `GeneralConfiguration` vigente, antiforgery e `Idempotency-Key` UUID v4. Si no hay State, establece generación 1 sólo si la instalación está genuinamente provisionada; desde generación N rota a N+1. No requiere el factor anterior y nunca permite leer el factor. Un replay exactamente comprometido conserva la semántica administrativa local: requiere Session e Identity activas, pero no vuelve a autorizar `GeneralConfiguration` para devolver el resultado. El lock de transacción advisory de PostgreSQL dedicado es común a establecimiento, rotación y recovery.
+
+El recovery extraordinario es exclusivamente el subcomando Host `recover-general-configuration`; no existe endpoint HTTP break-glass, Identity técnica ni superadministrador. Sus entradas no secretas son `--command-id` UUID v4, `--target-identity-id` UUID y, sólo cuando se necesita, `--login-identifier`. Stdin redirigido contiene exactamente dos líneas: el factor actual y el secret nuevo de `LocalCredential`. No inicia Kestrel ni servidor HTTP. La autoridad para un comando nuevo es la ejecución del proceso/deployment y un factor actual válido; ninguna Session, Identity ni responsabilidad participa como actor.
+
+El target debe ser una Identity existente. Recovery puede solamente activarla, asegurar `GeneralConfiguration`, crear o reemplazar su `LocalCredential` y revocar sus Sessions. No crea, elimina ni renombra Identities; no altera responsabilidades no relacionadas ni habilitaciones de Preparation; no toca Catalog, Inventory ni Orders y no normaliza globalmente administradores.
+
+Para un target con credencial se preserva por defecto su login; `--login-identifier` permite reemplazarlo explícitamente. Para un target sin credencial el identificador explícito es obligatorio. Nunca se infiere un login desde `operationalName`.
+
+La recuperación y su comando durable se confirman atómicamente: activación, assignment `GeneralConfiguration`, reemplazo de credencial, revocación de Sessions y command de recovery. El lock dedicado serializa factor y recovery; la recuperación además bloquea la fila Identity target, por lo que la administración ordinaria del mismo target se serializa con ella sin serializar globalmente administraciones no relacionadas.
+
+La idempotencia técnica durable compara command ID, target, intención de login y la intención de la credencial nueva mediante verifier lento. La misma intención comprometida devuelve `replayed_success`; una intención durable distinta devuelve `intent_conflict`. El factor autoriza solamente comandos nuevos y no es parte de la intención comprometida: tras una rotación, el factor anterior no autoriza un comando nuevo, pero el mismo comando ya comprometido puede reproducirse sin revalidar el factor actual. Ese replay es de sólo lectura y no reaplica recovery.
 
 Los comandos administrativos durables usan `Idempotency-Key` UUID v4 y persisten `ActorIdentityId`, command kind, fingerprint estructural y result payload. La misma combinación actor/key/intención hace replay; una key reutilizada con actor o intención diferentes produce conflicto. `SessionId` no es actor durable.
 
