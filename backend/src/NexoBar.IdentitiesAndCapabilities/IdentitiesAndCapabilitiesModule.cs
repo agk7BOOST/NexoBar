@@ -108,6 +108,7 @@ public static class IdentitiesAndCapabilitiesModule
             services.GetRequiredService<InitialProvisioningService>());
         services.AddScoped<PreparationEnablementService>();
         services.AddScoped<IdentityAdministrationService>();
+        services.AddScoped<InstallationRecoveryFactorService>();
 
         return services;
     }

@@ -48,6 +48,7 @@ app.UseAuthorization();
 app.MapOpenApi();
 app.MapIdentitySessionEndpoints();
 app.MapIdentityAdministrationEndpoints();
+app.MapInstallationRecoveryFactorEndpoints();
 app.MapInventoryEndpoints();
 app.MapOperationalConfigurationEndpoints();
 app.MapCatalogEndpoints();

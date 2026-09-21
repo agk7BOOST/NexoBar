@@ -226,12 +226,15 @@ partial class IdentitiesAndCapabilitiesDbContextModelSnapshot : ModelSnapshot
                             "'AssignResponsibility', " +
                             "'RevokeResponsibility', " +
                             "'GrantPreparationEnablement', " +
-                            "'RevokePreparationEnablement')");
+                            "'RevokePreparationEnablement', " +
+                            "'RotateInstallationRecoveryFactor')");
                         t.HasCheckConstraint(
                             "CK_administrative_command_secret_intent",
-                            "(command_kind = 'SetLocalCredential' AND " +
+                            "(command_kind IN ('SetLocalCredential', " +
+                            "'RotateInstallationRecoveryFactor') AND " +
                             "intent_secret_verifier IS NOT NULL) OR " +
-                            "(command_kind <> 'SetLocalCredential' AND " +
+                            "(command_kind NOT IN ('SetLocalCredential', " +
+                            "'RotateInstallationRecoveryFactor') AND " +
                             "intent_secret_verifier IS NULL)");
                     });
             });

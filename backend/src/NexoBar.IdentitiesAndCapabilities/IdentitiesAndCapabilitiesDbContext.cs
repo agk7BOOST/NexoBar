@@ -231,12 +231,15 @@ internal sealed class IdentitiesAndCapabilitiesDbContext(
                         "'AssignResponsibility', " +
                         "'RevokeResponsibility', " +
                         "'GrantPreparationEnablement', " +
-                        "'RevokePreparationEnablement')");
+                        "'RevokePreparationEnablement', " +
+                        "'RotateInstallationRecoveryFactor')");
                     table.HasCheckConstraint(
                         "CK_administrative_command_secret_intent",
-                        "(command_kind = 'SetLocalCredential' AND " +
+                        "(command_kind IN ('SetLocalCredential', " +
+                        "'RotateInstallationRecoveryFactor') AND " +
                         "intent_secret_verifier IS NOT NULL) OR " +
-                        "(command_kind <> 'SetLocalCredential' AND " +
+                        "(command_kind NOT IN ('SetLocalCredential', " +
+                        "'RotateInstallationRecoveryFactor') AND " +
                         "intent_secret_verifier IS NULL)");
                 });
             builder.HasKey(command => command.IdempotencyKey)

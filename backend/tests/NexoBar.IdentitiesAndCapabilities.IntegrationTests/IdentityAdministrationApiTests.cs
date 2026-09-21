@@ -457,10 +457,22 @@ public sealed class IdentityAdministrationApiTests(
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
         var (client, _) = await CreateAdministratorAsync("family-admin", token);
-        var preparationResponsibilityId =
-            await fixture.CreatePreparationResponsibilityAsync("Family Kitchen", token);
         using (client)
         {
+            using var preparationResponsibility = await SendCommandAsync(
+                client,
+                "/api/operational-configuration/preparation-responsibilities",
+                new { operationalName = "Family Kitchen" },
+                token);
+            preparationResponsibility.EnsureSuccessStatusCode();
+            using var preparationResponsibilityDocument = await JsonDocument.ParseAsync(
+                await preparationResponsibility.Content.ReadAsStreamAsync(token),
+                cancellationToken: token);
+            var preparationResponsibilityId = preparationResponsibilityDocument
+                .RootElement
+                .GetProperty("id")
+                .GetGuid();
+
             var createKey = Guid.NewGuid();
             using var create = await SendCommandAsync(
                 client,

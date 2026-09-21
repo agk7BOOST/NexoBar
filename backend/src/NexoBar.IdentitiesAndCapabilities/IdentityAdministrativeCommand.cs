@@ -53,5 +53,6 @@ internal enum AdministrativeCommandKind
     AssignResponsibility,
     RevokeResponsibility,
     GrantPreparationEnablement,
-    RevokePreparationEnablement
+    RevokePreparationEnablement,
+    RotateInstallationRecoveryFactor
 }

@@ -59,4 +59,35 @@ internal sealed class InstallationRecoveryState
     internal DateTimeOffset EstablishedAt { get; private set; }
 
     internal DateTimeOffset? LastRotatedAt { get; private set; }
+
+    internal void Rotate(
+        string recoveryFactorVerifier,
+        int generation,
+        DateTimeOffset rotatedAt)
+    {
+        if (string.IsNullOrWhiteSpace(recoveryFactorVerifier))
+        {
+            throw new ArgumentException(
+                "Recovery factor verifier is required.",
+                nameof(recoveryFactorVerifier));
+        }
+
+        if (generation <= Generation)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(generation),
+                "Recovery factor generation must advance.");
+        }
+
+        if (rotatedAt.Offset != TimeSpan.Zero || rotatedAt < EstablishedAt)
+        {
+            throw new ArgumentException(
+                "Rotation time must be UTC and cannot precede establishment.",
+                nameof(rotatedAt));
+        }
+
+        RecoveryFactorVerifier = recoveryFactorVerifier;
+        Generation = generation;
+        LastRotatedAt = rotatedAt;
+    }
 }

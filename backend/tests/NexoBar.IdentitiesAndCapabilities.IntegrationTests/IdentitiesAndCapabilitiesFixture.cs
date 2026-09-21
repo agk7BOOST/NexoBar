@@ -312,6 +312,24 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
             .AdministrativeCommands.CountAsync(cancellationToken);
     }
 
+    internal async Task<AdministrativeCommandSnapshot?> ReadAdministrativeCommandAsync(
+        Guid idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
+            .AdministrativeCommands.AsNoTracking()
+            .Where(command => command.IdempotencyKey == idempotencyKey)
+            .Select(command => new AdministrativeCommandSnapshot(
+                command.IdempotencyKey,
+                command.ActorIdentityId,
+                command.CommandKind,
+                command.IntentSecretVerifier,
+                command.ResultPayload))
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
     internal async Task MigrateIdentitiesAndCapabilitiesAsync(
         string? targetMigration,
         CancellationToken cancellationToken)
@@ -590,6 +608,13 @@ internal sealed record SessionSnapshot(
     DateTimeOffset LastActivityAt,
     DateTimeOffset AbsoluteExpiresAt,
     DateTimeOffset? RevokedAt);
+
+internal sealed record AdministrativeCommandSnapshot(
+    Guid IdempotencyKey,
+    Guid ActorIdentityId,
+    AdministrativeCommandKind CommandKind,
+    string? IntentSecretVerifier,
+    string ResultPayload);
 
 internal sealed record InstallationProvisioningFactSnapshot(
     short Key,
