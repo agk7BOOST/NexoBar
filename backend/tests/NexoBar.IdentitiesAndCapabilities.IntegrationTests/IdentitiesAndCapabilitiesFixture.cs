@@ -673,6 +673,8 @@ internal sealed class ManualTimeProvider : TimeProvider
     internal void Advance(TimeSpan interval) => utcNow += interval;
 
     internal void Reset() => utcNow = InitialUtcNow;
+
+    internal void SetUtcNow(DateTimeOffset value) => utcNow = value;
 }
 
 [CollectionDefinition(Name)]
