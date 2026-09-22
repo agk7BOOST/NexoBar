@@ -16,6 +16,7 @@ public sealed class ContentQuantityStateMigrationTests(OrderOperationsApiFixture
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
+        await fixture.EnsureConfiguredTestContextAsync("legacy", token);
         await fixture.MigrateOrderOperationsAsync(PreviousMigration, token);
         try
         {

@@ -13,7 +13,7 @@ public sealed partial class OperationalInterventionTests
     {
         const string previous = "20260907054805_AddContentCancellation";
         const string current = "20260910120000_AllowZeroInterventionResults";
-        const string latest = "20260921120000_AddUnavailableProductException";
+        const string latest = "20260922140000_AddConfiguredOrderContexts";
         var s = await Setup(3, ready ? 3 : 0, 0, 3); using var client = s.Client;
         var original = HistorySnapshot(await fixture.ReadPreparationHistoryAsync(Token));
         await fixture.MigrateOrderOperationsAsync(previous, Token);

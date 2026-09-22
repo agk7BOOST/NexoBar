@@ -14,6 +14,9 @@ namespace NexoBar.OrderOperations.Migrations
     partial class OrderOperationsDbContextModelSnapshot : ModelSnapshot
     {
         protected override void BuildModel(ModelBuilder modelBuilder)
+            => BuildLatestModel(modelBuilder);
+
+        internal static void BuildLatestModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -364,6 +367,10 @@ namespace NexoBar.OrderOperations.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("confirmed_context");
+
+                    b.Property<Guid>("ConfirmedContextId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmed_context_id");
 
                     b.Property<Guid>("IncorporationId")
                         .HasColumnType("uuid")
@@ -1010,6 +1017,10 @@ namespace NexoBar.OrderOperations.Migrations
                         .HasColumnType("text")
                         .HasColumnName("intent_context");
 
+                    b.Property<Guid>("IntentContextId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("intent_context_id");
+
                     b.Property<Guid>("ResultIncorporationId")
                         .HasColumnType("uuid")
                         .HasColumnName("result_incorporation_id");
@@ -1322,7 +1333,11 @@ namespace NexoBar.OrderOperations.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("Context")
+                    b.Property<Guid>("CurrentContextId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("current_context_id");
+
+                    b.Property<string>("CurrentContextOperationalName")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("context");

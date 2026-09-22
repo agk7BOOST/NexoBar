@@ -86,7 +86,7 @@ public sealed class ContentCancellationCompositionTests(OrderOperationsApiFixtur
         {
             await fixture.MigrateOrderOperationsAsync("20260906163222_AddContentCorrection", token);
             await fixture.MigrateOrderOperationsAsync("20260907054805_AddContentCancellation", token);
-            await fixture.MigrateOrderOperationsAsync("20260921120000_AddUnavailableProductException", token);
+            await fixture.MigrateOrderOperationsAsync("20260922140000_AddConfiguredOrderContexts", token);
             await using var scope = fixture.Services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
             var state = await db.ContentQuantityStates.AsNoTracking().SingleAsync(token);
@@ -102,6 +102,6 @@ public sealed class ContentCancellationCompositionTests(OrderOperationsApiFixtur
             Assert.Equal(1, (await db.ContentQuantityStates.AsNoTracking().SingleAsync(token)).CancelledQuantity);
             await ContentCancellationTestSupport.CountsAsync(fixture, 1, token);
         }
-        finally { await fixture.MigrateOrderOperationsAsync("20260921120000_AddUnavailableProductException", token); }
+        finally { await fixture.MigrateOrderOperationsAsync("20260922140000_AddConfiguredOrderContexts", token); }
     }
 }

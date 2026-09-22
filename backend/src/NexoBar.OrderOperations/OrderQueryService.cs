@@ -26,7 +26,11 @@ internal sealed class OrderQueryService(
         var context = await dbContext.Orders
             .AsNoTracking()
             .Where(order => order.Id == orderId)
-            .Select(order => order.Context)
+            .Select(order => new
+            {
+                order.CurrentContextId,
+                order.CurrentContextOperationalName
+            })
             .SingleOrDefaultAsync(cancellationToken);
 
         if (context is null)
@@ -103,7 +107,8 @@ internal sealed class OrderQueryService(
 
         var response = new OrderQueryResponse(
             orderId.ToString("D"),
-            context,
+            context.CurrentContextOperationalName,
+            context.CurrentContextId,
             incorporations,
             economicState.FunctionalAmount.ToString(CultureInfo.InvariantCulture),
             blockers.Count == 0,

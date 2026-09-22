@@ -11,7 +11,7 @@ public sealed partial class CompleteCancellationTests
     {
         const string previous = "20260910120000_AllowZeroInterventionResults";
         const string current = "20260910222430_AddCompleteOrderCancellation";
-        const string latest = "20260921120000_AddUnavailableProductException";
+        const string latest = "20260922140000_AddConfiguredOrderContexts";
         var target = await Setup();
         using var partial = await ContentCancellationTestSupport.PostAsync(fixture.OrderOperationsClient, target, Guid.NewGuid(), 7, Token);
         partial.EnsureSuccessStatusCode();

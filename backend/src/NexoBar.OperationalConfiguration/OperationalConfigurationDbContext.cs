@@ -12,6 +12,9 @@ internal sealed class OperationalConfigurationDbContext(
     internal DbSet<PreparationResponsibilityCreationCommand>
         PreparationResponsibilityCreationCommands =>
             Set<PreparationResponsibilityCreationCommand>();
+    internal DbSet<OperationalContext> Contexts => Set<OperationalContext>();
+    internal DbSet<OperationalContextCreationCommand> OperationalContextCreationCommands =>
+        Set<OperationalContextCreationCommand>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -19,6 +22,66 @@ internal sealed class OperationalConfigurationDbContext(
         modelBuilder.ApplyConfiguration(new PreparationResponsibilityConfiguration());
         modelBuilder.ApplyConfiguration(
             new PreparationResponsibilityCreationCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new OperationalContextConfiguration());
+        modelBuilder.ApplyConfiguration(new OperationalContextCreationCommandConfiguration());
+    }
+
+    private sealed class OperationalContextConfiguration :
+        IEntityTypeConfiguration<OperationalContext>
+    {
+        public void Configure(EntityTypeBuilder<OperationalContext> builder)
+        {
+            builder.ToTable(
+                "contexts",
+                table => table.HasCheckConstraint(
+                    "CK_operational_configuration_contexts_name_not_empty",
+                    "length(btrim(operational_name)) > 0"));
+            builder.HasKey(context => context.Id)
+                .HasName("PK_operational_configuration_contexts");
+            builder.Property(context => context.Id).HasColumnName("id").ValueGeneratedNever();
+            builder.Property(context => context.OperationalName)
+                .HasColumnName("operational_name").HasColumnType("text").IsRequired();
+            builder.Property(context => context.NormalizedOperationalName)
+                .HasColumnName("normalized_operational_name")
+                .HasColumnType("text")
+                .HasComputedColumnSql("lower(operational_name)", stored: true);
+            builder.HasIndex(context => context.NormalizedOperationalName)
+                .HasDatabaseName("UX_operational_configuration_contexts_normalized_name")
+                .IsUnique();
+        }
+    }
+
+    private sealed class OperationalContextCreationCommandConfiguration :
+        IEntityTypeConfiguration<OperationalContextCreationCommand>
+    {
+        public void Configure(EntityTypeBuilder<OperationalContextCreationCommand> builder)
+        {
+            builder.ToTable(
+                "context_creation_commands",
+                table => table.HasCheckConstraint(
+                    "CK_operational_configuration_context_creation_command_names_not_empty",
+                    "length(btrim(intent_operational_name)) > 0 AND " +
+                    "length(btrim(result_operational_name)) > 0"));
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_operational_configuration_context_creation_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id");
+            builder.Property(command => command.IntentOperationalName)
+                .HasColumnName("intent_operational_name").HasColumnType("text").IsRequired();
+            builder.Property(command => command.ResultContextId)
+                .HasColumnName("result_context_id").ValueGeneratedNever();
+            builder.Property(command => command.ResultOperationalName)
+                .HasColumnName("result_operational_name").HasColumnType("text").IsRequired();
+            builder.HasIndex(command => command.ResultContextId)
+                .HasDatabaseName("UX_op_config_context_creation_command_result")
+                .IsUnique();
+            builder.HasOne<OperationalContext>().WithMany()
+                .HasForeignKey(command => command.ResultContextId)
+                .HasConstraintName("FK_op_config_context_creation_command_context")
+                .OnDelete(DeleteBehavior.Restrict);
+        }
     }
 
     private sealed class PreparationResponsibilityConfiguration :

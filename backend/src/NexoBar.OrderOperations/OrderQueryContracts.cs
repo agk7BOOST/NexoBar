@@ -3,6 +3,7 @@ namespace NexoBar.OrderOperations;
 internal sealed record OrderQueryResponse(
     string OperationalReference,
     string Context,
+    Guid ContextId,
     IReadOnlyList<OrderIncorporationResponse> Incorporations,
     string FunctionalAmount,
     bool IsLiquidationEligible,

@@ -10,7 +10,7 @@ internal sealed class ActiveOrderReadState(OrderOperationsDbContext dbContext)
         // All terminal writers lock Order first. Hold this lock through the read,
         // so Closure or Complete Cancellation cannot commit between check and State.
         if (!await dbContext.Orders.FromSqlInterpolated(
-                $"SELECT id, context FROM order_operations.orders WHERE id = {orderId} FOR SHARE")
+                $"SELECT id, current_context_id, context FROM order_operations.orders WHERE id = {orderId} FOR SHARE")
             .AsNoTracking().AnyAsync(token)) return false;
 
         return await dbContext.Incorporations.AsNoTracking().AnyAsync(x => x.OrderId == orderId, token) &&

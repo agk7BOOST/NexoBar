@@ -81,7 +81,7 @@ internal sealed class DeliveryQuantityService(
 
         await dbContext.Orders
             .FromSqlInterpolated(
-                $"SELECT id, context FROM order_operations.orders WHERE id = {orderId.Value} FOR UPDATE")
+                $"SELECT id, current_context_id, context FROM order_operations.orders WHERE id = {orderId.Value} FOR UPDATE")
             .AsNoTracking()
             .AnyAsync(cancellationToken);
         if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId.Value, cancellationToken))

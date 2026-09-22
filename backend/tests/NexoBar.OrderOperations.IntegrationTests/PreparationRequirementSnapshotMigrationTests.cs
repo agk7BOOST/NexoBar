@@ -10,13 +10,14 @@ public sealed class PreparationRequirementSnapshotMigrationTests(
     private const string CurrentMigration =
         "20260831202815_CapturePreparationRequirementAtConfirmation";
     private const string LatestMigration =
-        "20260910222430_AddCompleteOrderCancellation";
+        "20260922140000_AddConfiguredOrderContexts";
 
     [Fact]
     public async Task Migration_backfills_by_exact_content_identity_and_has_no_default()
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
+        await fixture.EnsureConfiguredTestContextAsync("Mesa snapshot migration", token);
         await fixture.MigrateOrderOperationsAsync(PreviousMigration, token);
 
         try

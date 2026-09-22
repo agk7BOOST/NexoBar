@@ -4,14 +4,16 @@ internal sealed class Order
 {
     private Order() { }
 
-    internal Order(Guid id, string context)
+    internal Order(Guid id, Guid currentContextId, string currentContextOperationalName)
     {
         Id = id;
-        Context = context;
+        CurrentContextId = currentContextId;
+        CurrentContextOperationalName = currentContextOperationalName;
     }
 
     internal Guid Id { get; private set; }
-    internal string Context { get; private set; } = string.Empty;
+    internal Guid CurrentContextId { get; private set; }
+    internal string CurrentContextOperationalName { get; private set; } = string.Empty;
 }
 
 internal sealed class Liquidation
@@ -428,12 +430,14 @@ internal sealed class ConfirmationHistory
     internal ConfirmationHistory(
         Guid id,
         Guid incorporationId,
+        Guid confirmedContextId,
         string confirmedContext,
         Guid actorIdentityId,
         DateTimeOffset occurredAt)
     {
         Id = id;
         IncorporationId = incorporationId;
+        ConfirmedContextId = confirmedContextId;
         ConfirmedContext = confirmedContext;
         ActorIdentityId = actorIdentityId;
         OccurredAt = occurredAt;
@@ -441,6 +445,7 @@ internal sealed class ConfirmationHistory
 
     internal Guid Id { get; private set; }
     internal Guid IncorporationId { get; private set; }
+    internal Guid ConfirmedContextId { get; private set; }
     internal string ConfirmedContext { get; private set; } = string.Empty;
     internal Guid? ActorIdentityId { get; private set; }
     internal DateTimeOffset OccurredAt { get; private set; }
@@ -453,17 +458,20 @@ internal sealed class FirstConfirmationCommand
     internal FirstConfirmationCommand(
         Guid idempotencyKey,
         Guid actorIdentityId,
+        Guid intentContextId,
         string intentContext,
         Guid resultIncorporationId)
     {
         IdempotencyKey = idempotencyKey;
         ActorIdentityId = actorIdentityId;
+        IntentContextId = intentContextId;
         IntentContext = intentContext;
         ResultIncorporationId = resultIncorporationId;
     }
 
     internal Guid IdempotencyKey { get; private set; }
     internal Guid? ActorIdentityId { get; private set; }
+    internal Guid IntentContextId { get; private set; }
     internal string IntentContext { get; private set; } = string.Empty;
     internal Guid ResultIncorporationId { get; private set; }
 }

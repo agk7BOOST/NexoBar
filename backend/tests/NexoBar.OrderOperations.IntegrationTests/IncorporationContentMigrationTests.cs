@@ -15,7 +15,7 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
     private const string CurrentMigration =
         "20260830210000_ReidentifyIncorporationContent";
     private const string LatestMigration =
-        "20260921120000_AddUnavailableProductException";
+        "20260922140000_AddConfiguredOrderContexts";
 
     private static readonly Guid OrderId =
         Guid.Parse("01910000-0000-7000-8000-000000000001");
@@ -43,6 +43,7 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
+        await fixture.EnsureConfiguredTestContextAsync("Mesa 7", token);
         await fixture.MigrateOrderOperationsAsync(PreviousMigration, token);
 
         try

@@ -5,8 +5,18 @@ namespace NexoBar.OrderOperations;
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record FirstConfirmationRequest(
-    [property: Required] string? Context,
-    [property: Required] IReadOnlyList<FirstConfirmationItemRequest>? Items);
+    Guid? ContextId,
+    string? Context,
+    [property: Required] IReadOnlyList<FirstConfirmationItemRequest>? Items)
+{
+    // Kept for internal replay fixtures representing pre-ContextId payloads.
+    internal FirstConfirmationRequest(
+        string? legacyContext,
+        IReadOnlyList<FirstConfirmationItemRequest>? items)
+        : this(null, legacyContext, items)
+    {
+    }
+}
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record FirstConfirmationItemRequest(
@@ -17,6 +27,7 @@ internal sealed record FirstConfirmationItemRequest(
 
 internal sealed record FirstConfirmationResponse(
     string OperationalReference,
+    Guid ContextId,
     string Context,
     FirstIncorporationResponse FirstIncorporation);
 

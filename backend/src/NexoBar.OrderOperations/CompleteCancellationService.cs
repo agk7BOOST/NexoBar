@@ -43,7 +43,7 @@ internal sealed class CompleteCancellationService(
         if (!await operations.StabilizeResponsibilityAsync(session.IdentityId, transaction.GetDbTransaction(), token))
             return new("forbidden");
         if (!await dbContext.Orders.FromSqlInterpolated(
-                $"SELECT id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE").AsNoTracking().AnyAsync(token))
+                $"SELECT id, current_context_id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE").AsNoTracking().AnyAsync(token))
             return new("order_not_found");
 
         // Only the advisory read uses AD-SEC-05; command and durable replay retain their semantics.

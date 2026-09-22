@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +9,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using NexoBar.Catalog;
 using NexoBar.Host.Notifications;
 using NexoBar.IdentitiesAndCapabilities;
@@ -110,7 +113,9 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 identities_and_capabilities.responsibility_assignments,
                 identities_and_capabilities.identities,
                 operational_configuration.preparation_responsibility_creation_commands,
-                operational_configuration.preparation_responsibilities
+                operational_configuration.preparation_responsibilities,
+                operational_configuration.context_creation_commands,
+                operational_configuration.contexts
             """,
             cancellationToken);
 
@@ -267,9 +272,14 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
     internal async Task<HttpClient> LoginAsync(
         PreparationActor actor,
         CancellationToken cancellationToken,
-        WebApplicationFactory<Program>? targetApplication = null)
+        WebApplicationFactory<Program>? targetApplication = null,
+        bool adaptLegacyTestRequests = true)
     {
         var client = (targetApplication ?? application!).CreateClient();
+        if (!adaptLegacyTestRequests)
+        {
+            client.DefaultRequestHeaders.Add("X-NexoBar-Test-Raw-Context-Contract", "true");
+        }
         using var antiforgery = await client.GetAsync(
             "/api/security/antiforgery",
             cancellationToken);
@@ -293,6 +303,14 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         response.EnsureSuccessStatusCode();
         return client;
     }
+
+    internal async Task<HttpClient> LoginWithoutLegacyRequestAdapterAsync(
+        PreparationActor actor,
+        CancellationToken cancellationToken) =>
+        await LoginAsync(
+            actor,
+            cancellationToken,
+            adaptLegacyTestRequests: false);
 
     internal static async Task<string> GetAntiforgeryTokenAsync(
         HttpClient client,
@@ -548,6 +566,24 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"UPDATE order_operations.orders SET context = {context} WHERE id = {orderId}",
             cancellationToken);
+    }
+
+    internal async Task<Guid> EnsureConfiguredTestContextAsync(
+        string operationalName,
+        CancellationToken cancellationToken)
+    {
+        var canonicalName = operationalName.Trim();
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<OperationalConfigurationDbContext>();
+        var contextId = Guid.CreateVersion7();
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO operational_configuration.contexts (id, operational_name) VALUES ({contextId}, {canonicalName}) ON CONFLICT (normalized_operational_name) DO NOTHING",
+            cancellationToken);
+        return await dbContext.Contexts
+            .Where(context => context.NormalizedOperationalName == canonicalName.ToLower())
+            .Select(context => context.Id)
+            .SingleAsync(cancellationToken);
     }
 
     internal async Task<IReadOnlyList<PreparationWorkSnapshot>> ReadPreparationWorkAsync(
@@ -1253,6 +1289,17 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             .MigrateAsync(targetMigration, cancellationToken);
     }
 
+    internal async Task MigrateOperationalConfigurationAsync(
+        string targetMigration,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<OperationalConfigurationDbContext>();
+        await dbContext.GetService<IMigrator>()
+            .MigrateAsync(targetMigration, cancellationToken);
+    }
+
     internal async Task RestartApplicationAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -1514,6 +1561,8 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                     "NexoBarSecurity:Cookies:AntiforgeryName",
                     "nexobar-order-operations-antiforgery-test");
                 builder.UseSetting("NexoBarSecurity:Cookies:Secure", "false");
+                builder.ConfigureTestServices(services =>
+                    services.AddSingleton<IStartupFilter, LegacyContextRequestStartupFilter>());
                 configure?.Invoke(builder);
             });
 
@@ -1572,6 +1621,67 @@ internal sealed record ConfirmedContentSnapshot(
     int ContentOrdinal,
     Guid ProductId,
     bool RequiresPreparationAtConfirmation);
+
+internal sealed class LegacyContextRequestStartupFilter : IStartupFilter
+{
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.Use(async (context, nextMiddleware) =>
+        {
+            if (context.Request.Method == "POST" &&
+                context.Request.Path == "/api/order-operations/first-confirmations" &&
+                !context.Request.Headers.ContainsKey("X-NexoBar-Test-Raw-Context-Contract") &&
+                context.Request.ContentLength > 0)
+            {
+                using var document = await System.Text.Json.JsonDocument.ParseAsync(
+                    context.Request.Body,
+                    cancellationToken: context.RequestAborted);
+                var root = document.RootElement;
+                if (root.TryGetProperty("context", out var legacyContext) &&
+                    legacyContext.ValueKind == System.Text.Json.JsonValueKind.String &&
+                    (!root.TryGetProperty("contextId", out var suppliedContextId) ||
+                     suppliedContextId.ValueKind == System.Text.Json.JsonValueKind.Null))
+                {
+                    var name = legacyContext.GetString()?.Trim() ?? string.Empty;
+                    var dbContext = context.RequestServices
+                        .GetRequiredService<OperationalConfigurationDbContext>();
+                    if (!string.IsNullOrWhiteSpace(name))
+                    {
+                        var contextId = Guid.CreateVersion7();
+                        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                            $"INSERT INTO operational_configuration.contexts (id, operational_name) VALUES ({contextId}, {name}) ON CONFLICT (normalized_operational_name) DO NOTHING",
+                            context.RequestAborted);
+                        var configuredId = await dbContext.Contexts
+                            .Where(candidate => candidate.NormalizedOperationalName == name.ToLower())
+                            .Select(candidate => candidate.Id)
+                            .SingleAsync(context.RequestAborted);
+                        var rewrittenProperties = new Dictionary<string, object?>
+                        {
+                            ["contextId"] = configuredId
+                        };
+                        foreach (var property in root.EnumerateObject())
+                        {
+                            if (property.Name is not ("context" or "contextId"))
+                            {
+                                rewrittenProperties[property.Name] = property.Value;
+                            }
+                        }
+
+                        var body = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
+                            rewrittenProperties);
+                        context.Request.Body = new MemoryStream(body);
+                        context.Request.ContentLength = body.Length;
+                        context.Request.ContentType = "application/json";
+                    }
+                }
+            }
+
+            await nextMiddleware();
+        });
+        next(app);
+    };
+
+}
 
 internal sealed record PreparationActor(
     Guid IdentityId,

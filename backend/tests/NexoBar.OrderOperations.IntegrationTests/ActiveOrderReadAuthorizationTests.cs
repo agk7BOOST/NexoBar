@@ -148,7 +148,7 @@ public sealed class ActiveOrderReadAuthorizationTests(OrderOperationsApiFixture 
         {
             using var response = await client.GetAsync(Paths(target)[0], Token);
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Token));
-            Assert.Equal(new[] { "operationalReference", "context", "incorporations", "functionalAmount", "isLiquidationEligible", "liquidationBlockers", "isLiquidated", "isFrozen", "liquidatedAmount", "liquidationMode", "declaredPaymentMedium", "isClosed", "closedAt", "isClosureEligible" }.Order(),
+            Assert.Equal(new[] { "operationalReference", "context", "contextId", "incorporations", "functionalAmount", "isLiquidationEligible", "liquidationBlockers", "isLiquidated", "isFrozen", "liquidatedAmount", "liquidationMode", "declaredPaymentMedium", "isClosed", "closedAt", "isClosureEligible" }.Order(),
                 json.RootElement.EnumerateObject().Select(x => x.Name).Order());
             var state = json.RootElement;
             Assert.Equal(target.OperationalReference, state.GetProperty("operationalReference").GetString());

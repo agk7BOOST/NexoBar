@@ -63,7 +63,7 @@ internal sealed class AppliedPriceCorrectionService(
         if (!await capabilityStabilizer.StabilizeResponsibilityAsync(session.IdentityId, transaction.GetDbTransaction(), cancellationToken))
             return new(AppliedPriceCorrectionOutcome.Forbidden);
         if (!await dbContext.Orders.FromSqlInterpolated(
-                $"SELECT id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE")
+                $"SELECT id, current_context_id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE")
             .AsNoTracking().AnyAsync(cancellationToken))
             return new(AppliedPriceCorrectionOutcome.ContentNotFound);
         if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken))

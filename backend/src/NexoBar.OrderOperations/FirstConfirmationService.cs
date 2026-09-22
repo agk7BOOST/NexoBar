@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using NexoBar.Catalog;
 using NexoBar.IdentitiesAndCapabilities;
+using NexoBar.OperationalConfiguration;
 
 namespace NexoBar.OrderOperations;
 
@@ -14,6 +15,7 @@ internal sealed class FirstConfirmationService(
     IAuthenticatedSessionStabilizer sessionStabilizer,
     IOrderOperationsCapabilityStabilizer capabilityStabilizer,
     IOperationalInterventionCapabilityStabilizer operationalInterventionCapabilityStabilizer,
+    IOrderContextConfiguration contextConfiguration,
     IPreparationDestinationInvalidationPublisher invalidations)
 {
     private const long FirstConfirmationLockNamespace = 0x4F524445524F5000;
@@ -96,6 +98,19 @@ internal sealed class FirstConfirmationService(
             return FirstConfirmationResult.OperationalInterventionRequired();
         }
 
+        if (intent.ContextId is null)
+        {
+            return FirstConfirmationResult.ContextIdRequired();
+        }
+
+        var configuredContext = await contextConfiguration.ResolveConfiguredContextAsync(
+            intent.ContextId.Value,
+            cancellationToken);
+        if (configuredContext is null)
+        {
+            return FirstConfirmationResult.ContextNotCurrent();
+        }
+
         var catalogProducts = await catalog.ReadProductsAsync(
             intent.Items.Select(item => item.ProductId).Distinct().ToArray(),
             transaction.GetDbTransaction(),
@@ -129,18 +144,23 @@ internal sealed class FirstConfirmationService(
             utcNow.Ticks - (utcNow.Ticks % TimeSpan.TicksPerMicrosecond),
             TimeSpan.Zero);
 
-        dbContext.Orders.Add(new Order(orderId, intent.Context));
+        dbContext.Orders.Add(new Order(
+            orderId,
+            configuredContext.ContextId,
+            configuredContext.OperationalName));
         dbContext.Incorporations.Add(new Incorporation(incorporationId, orderId, ordinal: 1));
         dbContext.ConfirmationHistory.Add(new ConfirmationHistory(
             Guid.CreateVersion7(),
             incorporationId,
-            intent.Context,
+            configuredContext.ContextId,
+            configuredContext.OperationalName,
             stabilizedSession.IdentityId,
             confirmedAt));
         dbContext.FirstConfirmationCommands.Add(new FirstConfirmationCommand(
             idempotencyKey,
             stabilizedSession.IdentityId,
-            intent.Context,
+            configuredContext.ContextId,
+            configuredContext.OperationalName,
             incorporationId));
 
         var responseItems = new List<ConfirmedItemResponse>(intent.Items.Count);
@@ -192,7 +212,8 @@ internal sealed class FirstConfirmationService(
         return FirstConfirmationResult.Confirmed(
             new FirstConfirmationResponse(
                 orderId.ToString("D"),
-                intent.Context,
+                configuredContext.ContextId,
+                configuredContext.OperationalName,
                 new FirstIncorporationResponse(
                     incorporationId,
                     confirmedAt,
@@ -214,6 +235,7 @@ internal sealed class FirstConfirmationService(
             {
                 OrderId = order.Id,
                 IncorporationId = incorporation.Id,
+                history.ConfirmedContextId,
                 history.ConfirmedContext,
                 history.OccurredAt
             }).SingleAsync(cancellationToken);
@@ -234,6 +256,7 @@ internal sealed class FirstConfirmationService(
 
         return new FirstConfirmationResponse(
             header.OrderId.ToString("D"),
+            header.ConfirmedContextId,
             header.ConfirmedContext,
             new FirstIncorporationResponse(
                 header.IncorporationId,
@@ -243,10 +266,20 @@ internal sealed class FirstConfirmationService(
 
     private static FirstConfirmationValidation Validate(FirstConfirmationRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Context))
+        var legacyContext = string.IsNullOrWhiteSpace(request.Context)
+            ? null
+            : request.Context.Trim();
+        if (request.ContextId is null && legacyContext is null)
         {
             return FirstConfirmationValidation.Invalid(
                 FirstConfirmationResult.ContextRequired());
+        }
+
+        if (request.ContextId == Guid.Empty ||
+            (request.ContextId is not null && legacyContext is not null))
+        {
+            return FirstConfirmationValidation.Invalid(
+                FirstConfirmationResult.RequestInvalid());
         }
 
         if (request.Items is null || request.Items.Count == 0)
@@ -287,7 +320,8 @@ internal sealed class FirstConfirmationService(
         }
 
         return FirstConfirmationValidation.Valid(new ValidatedFirstConfirmationIntent(
-            request.Context.Trim(),
+            request.ContextId,
+            legacyContext,
             items.OrderBy(item => item.ProductId)
                 .ThenBy(item => item.Instruction is null ? 0 : 1)
                 .ThenBy(item => item.Instruction, StringComparer.Ordinal)
@@ -300,7 +334,7 @@ internal sealed class FirstConfirmationService(
         Guid actorIdentityId,
         ValidatedFirstConfirmationIntent intent) =>
         command.ActorIdentityId == actorIdentityId &&
-        string.Equals(command.IntentContext, intent.Context, StringComparison.Ordinal) &&
+        MatchesContext(command, intent) &&
         contents.Count == intent.Items.Count &&
         contents.Zip(intent.Items).All(pair =>
             pair.First.ProductId == pair.Second.ProductId &&
@@ -311,6 +345,17 @@ internal sealed class FirstConfirmationService(
                 pair.First.Instruction,
                 pair.Second.Instruction,
                 StringComparison.Ordinal));
+
+    private static bool MatchesContext(
+        FirstConfirmationCommand command,
+        ValidatedFirstConfirmationIntent intent) =>
+        intent.ContextId is not null
+            ? command.IntentContextId == intent.ContextId.Value
+            : intent.LegacyContext is not null &&
+                string.Equals(
+                    command.IntentContext,
+                    intent.LegacyContext,
+                    StringComparison.Ordinal);
 
     private static long CreateTransactionLockKey(Guid idempotencyKey)
     {
@@ -335,7 +380,8 @@ internal sealed record FirstConfirmationValidation(
 }
 
 internal sealed record ValidatedFirstConfirmationIntent(
-    string Context,
+    Guid? ContextId,
+    string? LegacyContext,
     IReadOnlyList<ValidatedFirstConfirmationItem> Items);
 
 internal sealed record ValidatedFirstConfirmationItem(
@@ -354,6 +400,12 @@ internal sealed record FirstConfirmationResult(
 
     internal static FirstConfirmationResult ContextRequired() =>
         new(FirstConfirmationOutcome.ContextRequired, null, null);
+
+    internal static FirstConfirmationResult ContextNotCurrent() =>
+        new(FirstConfirmationOutcome.ContextNotCurrent, null, null);
+
+    internal static FirstConfirmationResult ContextIdRequired() =>
+        new(FirstConfirmationOutcome.ContextIdRequired, null, null);
 
     internal static FirstConfirmationResult CompositionEmpty() =>
         new(FirstConfirmationOutcome.CompositionEmpty, null, null);
@@ -394,6 +446,8 @@ internal enum FirstConfirmationOutcome
 {
     Confirmed,
     ContextRequired,
+    ContextNotCurrent,
+    ContextIdRequired,
     CompositionEmpty,
     RequestInvalid,
     QuantityInvalid,

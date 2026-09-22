@@ -84,6 +84,8 @@ public static class IdentitiesAndCapabilitiesModule
             CatalogConfigurationCapabilityStabilizer>();
         services.AddScoped<IOperationalConfigurationAuthorization,
             OperationalConfigurationAuthorization>();
+        services.AddScoped<IOrderContextLookupAuthorization,
+            OrderContextLookupAuthorization>();
         services.AddScoped<IOperationalInterventionCapabilityStabilizer, OperationalInterventionCapabilityStabilizer>();
         services.AddScoped<IPreparationCapabilityStabilizer,
             PreparationCapabilityStabilizer>();

@@ -493,7 +493,9 @@ internal sealed class OrderOperationsDbContext(
                     "length(btrim(context)) > 0"));
             builder.HasKey(order => order.Id).HasName("PK_order_operations_orders");
             builder.Property(order => order.Id).HasColumnName("id").ValueGeneratedNever();
-            builder.Property(order => order.Context)
+            builder.Property(order => order.CurrentContextId)
+                .HasColumnName("current_context_id").ValueGeneratedNever();
+            builder.Property(order => order.CurrentContextOperationalName)
                 .HasColumnName("context").HasColumnType("text").IsRequired();
         }
     }
@@ -848,6 +850,8 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("id").ValueGeneratedNever();
             builder.Property(history => history.IncorporationId)
                 .HasColumnName("incorporation_id").ValueGeneratedNever();
+            builder.Property(history => history.ConfirmedContextId)
+                .HasColumnName("confirmed_context_id").ValueGeneratedNever();
             builder.Property(history => history.ConfirmedContext)
                 .HasColumnName("confirmed_context").HasColumnType("text").IsRequired();
             builder.Property(history => history.ActorIdentityId)
@@ -880,6 +884,8 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("idempotency_key").ValueGeneratedNever();
             builder.Property(command => command.ActorIdentityId)
                 .HasColumnName("actor_identity_id");
+            builder.Property(command => command.IntentContextId)
+                .HasColumnName("intent_context_id").ValueGeneratedNever();
             builder.Property(command => command.IntentContext)
                 .HasColumnName("intent_context").HasColumnType("text").IsRequired();
             builder.Property(command => command.ResultIncorporationId)

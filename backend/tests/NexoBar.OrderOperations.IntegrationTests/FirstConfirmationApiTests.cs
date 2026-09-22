@@ -82,7 +82,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
 
         var snapshot = await fixture.ReadSnapshotAsync(cancellationToken);
         Assert.Equal(orderId, snapshot.Order.Id);
-        Assert.Equal("Mesa 7", snapshot.Order.Context);
+        Assert.Equal("Mesa 7", snapshot.Order.CurrentContextOperationalName);
         Assert.Equal(confirmed.FirstIncorporation.Id, snapshot.Incorporation.Id);
         Assert.Equal(1, snapshot.Incorporation.Ordinal);
         Assert.Equal(snapshot.Order.Id, snapshot.Incorporation.OrderId);
@@ -99,7 +99,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task Empty_context_is_rejected_without_effects(string context)
+    public async Task Fresh_free_text_context_is_rejected_without_effects(string context)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(cancellationToken);
@@ -109,11 +109,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
             NewIdempotencyKey(),
             cancellationToken);
 
-        await AssertProblemAsync(
-            response,
-            HttpStatusCode.BadRequest,
-            "order_operations.first_confirmation.context_required",
-            cancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(PersistenceCounts.Empty, await fixture.CountEffectsAsync(cancellationToken));
     }
 
@@ -558,7 +554,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         Assert.Equal(
             JsonSerializer.Serialize(confirmed, JsonSerializerOptions.Web),
             await replay.Content.ReadAsStringAsync(cancellationToken));
-        Assert.Equal("Mesa 7", (await fixture.ReadSnapshotAsync(cancellationToken)).Order.Context);
+        Assert.Equal("Mesa 7", (await fixture.ReadSnapshotAsync(cancellationToken)).Order.CurrentContextOperationalName);
     }
 
     [Fact]

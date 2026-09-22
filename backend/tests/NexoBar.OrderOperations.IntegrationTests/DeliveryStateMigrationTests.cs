@@ -9,13 +9,14 @@ public sealed class DeliveryStateMigrationTests(OrderOperationsApiFixture fixtur
     private const string PreviousMigration = "20260831063910_AddPreparationStart";
     private const string CurrentMigration = "20260831171256_AddDeliveryState";
     private const string LatestMigration =
-        "20260910222430_AddCompleteOrderCancellation";
+        "20260922140000_AddConfiguredOrderContexts";
 
     [Fact]
     public async Task Migration_backfills_every_existing_content_and_has_safe_down()
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
+        await fixture.EnsureConfiguredTestContextAsync("Mesa migration", token);
         await fixture.MigrateOrderOperationsAsync(PreviousMigration, token);
 
         try

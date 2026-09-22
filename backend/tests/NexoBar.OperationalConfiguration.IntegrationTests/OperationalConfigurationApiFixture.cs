@@ -44,6 +44,8 @@ public sealed class OperationalConfigurationApiFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                operational_configuration.context_creation_commands,
+                operational_configuration.contexts,
                 operational_configuration.preparation_responsibility_creation_commands,
                 operational_configuration.preparation_responsibilities;
             TRUNCATE TABLE

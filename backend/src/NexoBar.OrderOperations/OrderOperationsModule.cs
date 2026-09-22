@@ -1438,6 +1438,16 @@ public static partial class OrderOperationsModule
                 "Context is required",
                 "Context must contain non-whitespace text.",
                 "order_operations.first_confirmation.context_required"),
+            FirstConfirmationOutcome.ContextIdRequired => Problem(
+                StatusCodes.Status400BadRequest,
+                "Configured Context ID is required",
+                "New First Confirmations must select a configured Context by ID.",
+                "order_operations.first_confirmation.context_id_required"),
+            FirstConfirmationOutcome.ContextNotCurrent => Problem(
+                StatusCodes.Status409Conflict,
+                "Context is not current",
+                "The supplied Context does not exist in current OperationalConfiguration.",
+                "order_operations.first_confirmation.context_not_current"),
             FirstConfirmationOutcome.CompositionEmpty => Problem(
                 StatusCodes.Status400BadRequest,
                 "Composition is empty",

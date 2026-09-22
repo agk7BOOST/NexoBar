@@ -1124,7 +1124,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
     {
         var context = await dbContext.Orders.AsNoTracking()
             .Where(order => order.Id == orderId)
-            .Select(order => order.Context)
+            .Select(order => order.CurrentContextOperationalName)
             .SingleAsync(cancellationToken);
         var incorporations = await dbContext.Incorporations.AsNoTracking()
             .Where(incorporation => incorporation.OrderId == orderId)

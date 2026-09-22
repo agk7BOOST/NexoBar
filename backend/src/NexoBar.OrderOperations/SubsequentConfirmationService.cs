@@ -102,7 +102,7 @@ internal sealed class SubsequentConfirmationService(
         var order = await dbContext.Orders
             .FromSqlInterpolated(
                 $"""
-                SELECT id, context
+                SELECT id, current_context_id, context
                 FROM order_operations.orders
                 WHERE id = {orderId}
                 FOR UPDATE
@@ -181,7 +181,8 @@ internal sealed class SubsequentConfirmationService(
         dbContext.ConfirmationHistory.Add(new ConfirmationHistory(
             Guid.CreateVersion7(),
             incorporationId,
-            order.Context,
+            order.CurrentContextId,
+            order.CurrentContextOperationalName,
             stabilizedSession.IdentityId,
             confirmedAt));
         dbContext.SubsequentConfirmationCommands.Add(new SubsequentConfirmationCommand(

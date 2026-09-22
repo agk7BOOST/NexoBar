@@ -15,13 +15,14 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
     private const string CurrentMigration =
         "20260830230000_AddConfirmationInstructions";
     private const string LatestMigration =
-        "20260921120000_AddUnavailableProductException";
+        "20260922140000_AddConfiguredOrderContexts";
 
     [Fact]
     public async Task Migration_preserves_I3A_data_replay_queries_and_has_safe_down()
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
+        await fixture.EnsureConfiguredTestContextAsync("Mesa 7", token);
         var prepared = await fixture.CreateProductAsync("Hamburguesa", "10", token);
         var plain = await fixture.CreateProductAsync("Agua", "3", token);
         var responsibility = Guid.CreateVersion7();

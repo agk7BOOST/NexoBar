@@ -230,7 +230,7 @@ internal sealed class PendingCompositionService(
         CancellationToken cancellationToken) =>
         await dbContext.Orders
             .FromSqlInterpolated(
-                $"SELECT id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE")
+                $"SELECT id, current_context_id, context FROM order_operations.orders WHERE id = {orderId} FOR UPDATE")
             .AsNoTracking()
             .AnyAsync(cancellationToken);
 

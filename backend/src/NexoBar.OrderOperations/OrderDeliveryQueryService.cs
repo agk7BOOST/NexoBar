@@ -86,7 +86,7 @@ internal sealed class OrderDeliveryQueryService(
             orderby incorporation.Ordinal, content.ContentOrdinal
             select new DeliverySnapshotRow(
                 order.Id,
-                order.Context,
+                order.CurrentContextOperationalName,
                 (Guid?)incorporation.Id,
                 (int?)incorporation.Ordinal,
                 (int?)content.ContentOrdinal,

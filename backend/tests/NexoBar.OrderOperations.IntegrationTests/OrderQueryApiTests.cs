@@ -32,7 +32,7 @@ public sealed class OrderQueryApiTests(OrderOperationsApiFixture fixture)
             await orderOperations.Orders
                 .Where(order => order.Id == orderId)
                 .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(order => order.Context, "Barra"),
+                    setters => setters.SetProperty(order => order.CurrentContextOperationalName, "Barra"),
                     cancellationToken);
             await orderOperations.ConfirmationHistory
                 .Where(history => history.IncorporationId == confirmed.FirstIncorporation.Id)

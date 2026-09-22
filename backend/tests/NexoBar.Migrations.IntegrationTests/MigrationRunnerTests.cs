@@ -28,7 +28,7 @@ public sealed class MigrationRunnerTests
             Assert.Equal(0L, (long)(await command.ExecuteScalarAsync(cancellationToken))!);
         }
         var firstRun = await RunProductionEntrypointAsync(connectionString, cancellationToken);
-        Assert.Equal(0, firstRun.ExitCode);
+        Assert.True(firstRun.ExitCode == 0, firstRun.Output);
         Assert.True(
             firstRun.Output.IndexOf("Migrating OperationalConfiguration", StringComparison.Ordinal) <
             firstRun.Output.IndexOf("Migrating OrderOperations", StringComparison.Ordinal));

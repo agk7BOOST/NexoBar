@@ -12,6 +12,9 @@ namespace NexoBar.OperationalConfiguration.Migrations;
 partial class OperationalConfigurationDbContextModelSnapshot : ModelSnapshot
 {
     protected override void BuildModel(ModelBuilder modelBuilder)
+        => BuildLatestModel(modelBuilder);
+
+    internal static void BuildLatestModel(ModelBuilder modelBuilder)
     {
 #pragma warning disable 612, 618
         modelBuilder
@@ -20,6 +23,36 @@ partial class OperationalConfigurationDbContextModelSnapshot : ModelSnapshot
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+        modelBuilder.Entity(
+            "NexoBar.OperationalConfiguration.OperationalContext",
+            b =>
+            {
+                b.Property<Guid>("Id").HasColumnType("uuid").HasColumnName("id");
+                b.Property<string>("NormalizedOperationalName").IsRequired().ValueGeneratedOnAddOrUpdate().HasColumnType("text").HasColumnName("normalized_operational_name").HasComputedColumnSql("lower(operational_name)", true);
+                b.Property<string>("OperationalName").IsRequired().HasColumnType("text").HasColumnName("operational_name");
+                b.HasKey("Id").HasName("PK_operational_configuration_contexts");
+                b.HasIndex("NormalizedOperationalName").IsUnique().HasDatabaseName("UX_operational_configuration_contexts_normalized_name");
+                b.ToTable("contexts", "operational_configuration", t => t.HasCheckConstraint("CK_operational_configuration_contexts_name_not_empty", "length(btrim(operational_name)) > 0"));
+            });
+
+        modelBuilder.Entity(
+            "NexoBar.OperationalConfiguration.OperationalContextCreationCommand",
+            b =>
+            {
+                b.Property<Guid>("IdempotencyKey").HasColumnType("uuid").HasColumnName("idempotency_key");
+                b.Property<Guid>("ActorIdentityId").HasColumnType("uuid").HasColumnName("actor_identity_id");
+                b.Property<string>("IntentOperationalName").IsRequired().HasColumnType("text").HasColumnName("intent_operational_name");
+                b.Property<Guid>("ResultContextId").HasColumnType("uuid").HasColumnName("result_context_id");
+                b.Property<string>("ResultOperationalName").IsRequired().HasColumnType("text").HasColumnName("result_operational_name");
+                b.HasKey("IdempotencyKey").HasName("PK_operational_configuration_context_creation_commands");
+                b.HasIndex("ResultContextId").IsUnique().HasDatabaseName("UX_op_config_context_creation_command_result");
+                b.ToTable("context_creation_commands", "operational_configuration", t => t.HasCheckConstraint("CK_operational_configuration_context_creation_command_names_not_empty", "length(btrim(intent_operational_name)) > 0 AND length(btrim(result_operational_name)) > 0"));
+            });
+
+        modelBuilder.Entity(
+            "NexoBar.OperationalConfiguration.OperationalContextCreationCommand",
+            b => b.HasOne("NexoBar.OperationalConfiguration.OperationalContext", null).WithMany().HasForeignKey("ResultContextId").OnDelete(DeleteBehavior.Restrict).IsRequired().HasConstraintName("FK_op_config_context_creation_command_context"));
 
         modelBuilder.Entity(
             "NexoBar.OperationalConfiguration.PreparationResponsibility",
