@@ -1,6 +1,18 @@
 # Migraciones de OrderOperations
 
-Este inventario incluye las migraciones materializadas hasta S7-I2 y no sustituye los archivos versionados.
+Este inventario resume migraciones seleccionadas del baseline vigente y no sustituye los archivos versionados.
+
+## Migración de Context configurado — MVP-FC-CTX
+
+La actualización de Context usa `OperationalConfiguration` antes de `OrderOperations`, aplicado por el runner productivo en el orden explícito `OperationalConfiguration → IdentitiesAndCapabilities → Catalog → Inventory → OrderOperations`. El Host ordinario no ejecuta migraciones al arrancar: deployment las aplica como etapa explícita. El propósito y los comandos del runner están en [Tooling y Development](../architecture/development.md#tooling-development-y-migraciones).
+
+`20260922130000_AddOperationalContexts` crea `operational_configuration.contexts` y, sólo durante upgrade cuando ya existen las tablas históricas correspondientes, importa nombres usados por Orders, Confirmation History y First Confirmation commands. Recorta whitespace exterior; nombres equivalentes por normalización case-insensitive se agrupan determinísticamente, eligiendo la forma display con prioridad Order, Confirmation History y luego comando, con desempate ordinal. La migración asigna identidad configurada común por nombre equivalente.
+
+`20260922140000_AddConfiguredOrderContexts` backfillea `orders.current_context_id`, `confirmation_history.confirmed_context_id` y `first_confirmation_commands.intent_context_id` desde `operational_configuration.contexts`, exige que ninguna fila quede sin mapear y deja los IDs requeridos. Los snapshots textuales legados (`orders.context`, `confirmed_context`, `intent_context`) no se reescriben. Por eso varios Orders legados bajo un Contexto equivalente comparten el mismo ID configurado sin alterar su texto histórico.
+
+Los comandos nuevos de First Confirmation envían `contextId`; una First Confirmation nueva por texto libre se rechaza. Para un comando legacy ya comprometido, su texto y el ID importado se preservan para que el matching exacto de la intención histórica permita replay idempotente. Este camino es compatibilidad interna limitada al replay confirmado, no un fallback textual para nuevas operaciones.
+
+`20260922150000_AddOrderContextChanges` agrega Historia semántica y resultados durables de Context Change, con secuencia única por Order. No crea FK hacia Contextos de OperationalConfiguration; cada módulo conserva propiedad de su Estado.
 
 Las migraciones relevantes de S3-I3 son:
 

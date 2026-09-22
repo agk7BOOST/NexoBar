@@ -4,8 +4,14 @@
 
 La primera Confirmación crea el `Order` y su primera `Incorporation`; cada Confirmación posterior crea una nueva `Incorporation` del mismo `Order`. Ambas aceptan Products preparados.
 
-- La mutación sobre un `Order` existente expresa la intención de una nueva Confirmación. La `operationalReference` es opaca; el request contiene `pendingCompositionId` e items y no modifica el `Context` del `Order`.
+- La mutación sobre un `Order` existente expresa la intención de una nueva Confirmación. La `operationalReference` es opaca; el request contiene `pendingCompositionId` e items y no modifica el Context actual del `Order`.
 - Cada Confirmación posterior exitosa crea una `Incorporation` con ordinal sucesivo, una nueva `ConfirmationHistory` y contenido con el `appliedPrice` vigente estabilizado para esa Confirmación.
+
+### Context de Primera Confirmación — MVP-FC-CTX
+
+First Confirmation requiere seleccionar un Context configurado. El frontend carga las opciones mediante el lookup operacional estrecho y envía `contextId`; no ofrece entrada libre de texto. OrderOperations resuelve ese ID contra el Context configurado y obtiene el `operationalName` canónico. Una Identity activa con `OrderOperationsAndBasicClosure` puede seleccionar Context durante la operación; administrar Context requiere aparte `GeneralConfiguration`.
+
+El nuevo `Order` nace con `CurrentContextId` y `CurrentContextOperationalName`. `ConfirmationHistory` conserva por separado `ConfirmedContextId` y el snapshot `ConfirmedContext` de esa incorporación. Context sólo coordina la operación: no altera precio, disponibilidad, requisito ni destino de Preparation, Inventory, autorización o Functional Amount. El import legado y el tratamiento limitado de replay están en [la migración de Context configurado](migrations.md#migración-de-context-configurado-mvp-fc-ctx).
 
 ### PendingComposition autoritativa y seguridad de Confirmación
 

@@ -8,13 +8,42 @@ Este documento conserva las estructuras de Historia, matching durable y contrato
 - `ConfirmationHistory` y el `IncorporationContent` persistido explican conjuntamente la existencia de una instruction confirmada; no existe `InstructionAdded History`.
 - `PreparationWork` representa Estado operacional vigente y no se reconstruye ordinariamente desde Historia.
 - `DeliveryState` representa Estado operacional vigente y `QuantityDelivered` explica cada incremento sin reconstruirlo ordinariamente desde Historia.
-- La query de Preparation usa `Order.Context` vigente; no debe confundirse con `ConfirmationHistory.confirmedContext`.
+- La query de Preparation usa el Context vigente guardado por Order (`CurrentContextId` y `CurrentContextOperationalName`); no debe confundirse con `ConfirmationHistory.confirmedContext`.
 - El progreso humano materializa Historia separada con los eventos `PreparationQuantityStarted` y `PreparationQuantityReady`. Preparation Correction materializa su propia Historia semántica, distinta de progreso, Content Correction, Content Cancellation, Delivery Correction y OperationalIntervention. Cada registro conserva `HistoryId` UUID v7, `WorkId`, `Quantity`, `ActorIdentityId`, `OccurredAt` UTC y el resultado de las cuatro cantidades: `TotalQuantity`, `PendingQuantity`, `InPreparationQuantity` y `ReadyQuantity`. Una Preparation Correction no requiere referencia a un evento Start o Ready anterior.
 - No existen eventos `WorkCreated`, `Progress` genérico ni `WorkCompleted`. La Historia de Preparation no conserva `SessionId`, snapshot de nombre del Product ni duplicación de instruction.
 - No existe todavía query, API ni UI de Historia de Preparation.
 - No existe todavía query ni UI de Historia de Delivery.
-- Tampoco está materializado Change Context.
 - Esta separación no constituye Event Sourcing.
+
+## Context actual, cambio e Historia — MVP-FC-CTX: CLOSED
+
+`OrderOperations` posee el Context actual del Order (`CurrentContextId`, `CurrentContextOperationalName`), el Context Change History y el resultado durable de sus comandos. El nombre actual es un snapshot propiedad del Order. Reads de Order, Preparation y Delivery usan ese Estado de Order; no consultan OperationalConfiguration en vivo y no copian Context a `PreparationWork` o `DeliveryState`. La resolución de IDs configurados ocurre mediante la capacidad estrecha de Context; no hay acceso runtime cross-module a DbContext/schema ni FK cross-module.
+
+La Primera Confirmación selecciona un Context configurado por ID y conserva su snapshot canónico en el Order y en su propia `ConfirmationHistory`. Cada Confirmación posterior conserva su Context de confirmación; un cambio posterior del Context actual no reescribe esa Historia.
+
+### Comando y elegibilidad
+
+```text
+POST /api/order-operations/orders/{orderId}/context-changes
+```
+
+El body contiene `expectedCurrentContextId` y `newContextId`; la mutación requiere antiforgery, `Idempotency-Key` UUID v4 y Session utilizable/Identity activa con `OrderOperationsAndBasicClosure`. El ID destino debe resolver a un Context configurado. El Order debe seguir abierto operacionalmente: no estar congelado por Liquidation, cerrado ni completamente cancelado. Preparation Pending/InProgress/Ready, Delivery y `PendingComposition` no bloquean por sí mismos el cambio.
+
+El cambio exitoso mantiene el mismo Order y `OperationalReference`, actualiza sólo su Context de coordinación actual y agrega una fila semántica a `OrderContextChangeHistory`: secuencia determinista por Order, IDs y snapshots anterior/nuevo, actor y timestamp. No recrea ni reinterpreta Incorporations, Content confirmado, AppliedPrice, Confirmation History, PreparationWork/responsabilidad/progreso, Delivery, Functional Amount ni PendingComposition.
+
+Un cambio A→A devuelve el conflicto funcional `no_change`: no agrega Historia ni publica frescura. Un `expectedCurrentContextId` obsoleto devuelve conflicto explícito; el cliente debe releer Estado autoritativo y no rebasa ni reenvía automáticamente la intención. El cambio se rechaza después de Liquidation/Freeze, Closure o Complete Cancellation.
+
+### Concurrencia e idempotencia
+
+La fila del mismo Order es la frontera de serialización. A→B frente a A→C bloquea esa fila y compara `expectedCurrentContextId`: un comando confirma y el competidor queda obsoleto; no hay last-write-wins. Context Change y Liquidation se serializan por la misma frontera: si el cambio confirma primero, precede a Freeze; si Liquidation confirma primero, el cambio posterior se rechaza como congelado. No existe lock global ni lock por Contexto.
+
+El resultado durable de Context Change hace replay exacto por igualdad de actor, Order, Context esperado, Context destino y key. Con Session válida e Identity activa, el replay devuelve el resultado originalmente confirmado antes de exigir de nuevo la responsabilidad vigente. Si K1 ejecutó A→B y K2 ejecutó B→C, replay de K1 devuelve el resultado A→B, pero el Order permanece en C: no reaplica, no agrega Historia y no publica frescura. Actor, Order, expected Context o target diferentes bajo la misma key producen conflicto.
+
+### Historia y frescura
+
+`OrderContextChangeHistory` conserva `PreviousContextId`/nombre snapshot, `NewContextId`/nombre snapshot, `ActorIdentityId`, `OccurredAtUtc` y una secuencia única por Order. Por ejemplo, First Confirmation en A, A→B y B→C dejan el Context actual C, `ConfirmationHistory` en A y dos cambios semánticos A→B y B→C. Son Estado e Historia diferenciados; esto no es Event Sourcing.
+
+Un Context Change nuevo exitoso publica las invalidaciones existentes, después de commit: `order.active` para ese Order y los scopes distintos de Preparation representados por sus Works vigentes. Preparation vuelve a leer el Estado autoritativo de Order y presenta el Context nuevo sin recrear Work. Replay, rechazo y no-op no publican. No se crea scope SSE de Context, bus global de Context ni SSE de configuración. La semántica compartida de invalidación está en [SSE y frescura](../architecture/sse-and-freshness.md#order-sse-03--criterio-de-publicación-implementado).
 
 ## OperationalIntervention — Historia y Estado aprobados S7-INT-D
 

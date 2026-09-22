@@ -6,7 +6,7 @@
 - Backend autoritativo: C# sobre .NET 10 LTS y ASP.NET Core 10. Frontend: React 19, TypeScript estricto y Vite 8.
 - El backend es un monolito modular y una unidad principal de despliegue. `NexoBar.Host` compone los módulos y es el composition root.
 - Los módulos superiores son `OrderOperations`, `Catalog`, `Inventory`, `IdentitiesAndCapabilities` y `OperationalConfiguration`. Los cinco están materializados; `Inventory` posee su Estado, operaciones físicas, Historia y superficies web de configuración y operación, mientras `IdentitiesAndCapabilities` posee Estado, sesiones, administración y capacidades públicas de autorización.
-- `OperationalConfiguration` ya es un módulo persistente y funcional en el alcance de `PreparationResponsibility`; no tiene todavía un lifecycle completo.
+- `OperationalConfiguration` es un módulo persistente y funcional para `PreparationResponsibility` y Context configurado. PreparationResponsibility conserva su lifecycle incompleto; Context tiene el mínimo MVP de crear y listar, sin lifecycle de rename/retire/delete.
 - `Preparation` y `Delivery` son fronteras internas de `OrderOperations`, no módulos top-level. Son dimensiones distintas: `Ready != Delivered`.
 - Cada módulo conserva la propiedad de su Estado y colabora mediante capacidades explícitas. No hay ciclos ni un `Shared`/`Common` genérico.
 
@@ -30,7 +30,7 @@ IdentitiesAndCapabilities ──→ OperationalConfiguration
 ```
 
 - `Catalog` consume una capacidad pública estrecha de `OperationalConfiguration` para validar la existencia de una `PreparationResponsibility`; no accede a su `DbContext`, schema ni tablas.
-- `OrderOperations` depende de `Catalog` y de capacidades públicas estrechas de `IdentitiesAndCapabilities`; no depende directamente de `OperationalConfiguration` ni lo consulta durante una Confirmación.
+- `OrderOperations` depende de `Catalog` y de capacidades públicas estrechas de `IdentitiesAndCapabilities`; resuelve Context configurado por una capacidad estrecha de `OperationalConfiguration`, sin leer su `DbContext`, schema o tablas ni usar FK cross-module.
 - `IdentitiesAndCapabilities` consume una capacidad pública estrecha de `OperationalConfiguration` para resolver o validar destinos de Preparation.
 - `Inventory` consume capacidades públicas estrechas de `IdentitiesAndCapabilities` para estabilizar autorización y resolver el nombre operacional vigente de los actores de Movimientos; no accede a su `DbContext`, schema ni tablas.
 - No existen las dependencias inversas `OperationalConfiguration → IdentitiesAndCapabilities`, `Catalog → OrderOperations` ni `IdentitiesAndCapabilities → OrderOperations`.

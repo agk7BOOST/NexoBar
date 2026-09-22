@@ -24,7 +24,7 @@ La administración ordinaria debe preservar al menos un camino operacional vigen
 
 El frontend expone la superficie administrativa **Configuración general** sólo cuando la proyección actual de `GET /api/identity-sessions/current` contiene `GeneralConfiguration`. Ese chequeo de capability controla exclusivamente el montaje/navegación de la superficie cliente; la autorización de cada read o comando permanece en el backend.
 
-La superficie implementada permite listar Identities, crear Identity, cambiar su nombre operacional, activar/desactivar, asignar/revocar Functional Responsibilities, otorgar/revocar habilitaciones de Preparation, listar y crear Preparation Responsibilities por nombre operacional, y configurar/reemplazar `LocalCredential`. No implementa Delete Identity, recovery ni administración arbitraria de Sessions.
+La superficie implementada permite listar Identities, crear Identity, cambiar su nombre operacional, activar/desactivar, asignar/revocar Functional Responsibilities, otorgar/revocar habilitaciones de Preparation, listar y crear Preparation Responsibilities por nombre operacional, listar y crear Contextos configurados, y configurar/reemplazar `LocalCredential`. Context administration es sólo create + list y su estado/contrato está en [OperationalConfiguration](../operational-configuration/README.md#context-configurado--mvp-fc-ctx-closed). No implementa Delete Identity, recovery ni administración arbitraria de Sessions.
 
 El listado y cada resultado de mutación son Estado autoritativo del backend. El cliente reconcilia el resultado recibido y no trata una mutación optimista como Estado confirmado. Ante incertidumbre de red conserva la misma intención de comando y `Idempotency-Key` para un reintento explícito.
 
