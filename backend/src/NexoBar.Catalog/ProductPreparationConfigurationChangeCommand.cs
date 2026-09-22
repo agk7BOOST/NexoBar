@@ -44,5 +44,10 @@ internal enum CatalogCommandKind
 {
     CreateProduct,
     ChangeProductPrice,
-    ChangeProductPreparationConfiguration
+    ChangeProductPreparationConfiguration,
+    CreateGroup,
+    ChangeProductGroup,
+    ChangeProductOperationalName,
+    RetireProduct,
+    ReactivateProduct
 }

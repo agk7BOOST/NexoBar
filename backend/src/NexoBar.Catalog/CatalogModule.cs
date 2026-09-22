@@ -29,6 +29,7 @@ public static class CatalogModule
                     "__ef_migrations_history",
                     "catalog")));
         services.AddScoped<CatalogService>();
+        services.AddScoped<CatalogLifecycleService>();
         services.AddScoped<IOrderConfirmationCatalog, OrderConfirmationCatalog>();
         services.AddScoped<IOrderAppliedPriceCatalog, OrderConfirmationCatalog>();
         services.AddScoped<IProductOperationalReferenceLookup,
@@ -53,13 +54,13 @@ public static class CatalogModule
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet(string.Empty, ListActiveProductsAsync)
-            .WithName("ListActiveCatalogProducts")
+            .WithName("ListCatalogProducts")
             .Produces<IReadOnlyList<ProductResponse>>()
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden);
 
         group.MapGet("/{id:guid}", FindActiveProductAsync)
-            .WithName("GetActiveCatalogProduct")
+            .WithName("GetCatalogProduct")
             .Produces<ProductResponse>()
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
@@ -73,6 +74,35 @@ public static class CatalogModule
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapPost("/{productId:guid}/group-changes", ChangeProductGroupAsync)
+            .Accepts<ChangeProductGroupRequest>("application/json")
+            .Produces<ProductGroupResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden).ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+        group.MapPost("/{productId:guid}/operational-name-changes", ChangeProductOperationalNameAsync)
+            .Accepts<ChangeProductOperationalNameRequest>("application/json")
+            .Produces<ProductOperationalNameResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden).ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+        group.MapPost("/{productId:guid}/retire", RetireProductAsync)
+            .Produces<ProductLifecycleResponse>().ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized).ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+        group.MapPost("/{productId:guid}/reactivate", ReactivateProductAsync)
+            .Produces<ProductLifecycleResponse>().ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized).ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+        var groups = endpoints.MapGroup("/api/catalog/groups").RequireAuthorization().WithTags("Catalog");
+        groups.MapGet(string.Empty, ListGroupsAsync).Produces<IReadOnlyList<GroupResponse>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized).ProducesProblem(StatusCodes.Status403Forbidden);
+        groups.MapPost(string.Empty, CreateGroupAsync).Accepts<CreateGroupRequest>("application/json")
+            .Produces<GroupResponse>(StatusCodes.Status201Created).ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized).ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost(
@@ -193,6 +223,131 @@ public static class CatalogModule
         };
     }
 
+    private static async Task<IResult> CreateGroupAsync(
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        CreateGroupRequest request, HttpContext httpContext, IAntiforgery antiforgery,
+        CatalogLifecycleService catalog, CancellationToken cancellationToken)
+    {
+        var command = await ValidateCatalogCommandAsync(idempotencyKey, httpContext, antiforgery, "catalog.group", cancellationToken);
+        if (command.Failure is not null) return command.Failure;
+        var result = await catalog.CreateGroupAsync(command.Key!.Value, request, cancellationToken);
+        return result.Outcome switch
+        {
+            CatalogMutationOutcome.Created => Results.Created($"/api/catalog/groups/{result.Group!.Id}", result.Group),
+            CatalogMutationOutcome.Invalid => Problem(StatusCodes.Status400BadRequest, "Invalid Group", result.Error!, "catalog.group.invalid", field: result.Field),
+            CatalogMutationOutcome.NameConflict => Problem(StatusCodes.Status409Conflict, "Operational name already in use", "A Group already uses that operational name, ignoring case.", "catalog.group.operational_name_conflict"),
+            CatalogMutationOutcome.IdempotencyConflict => IdempotencyConflict("catalog.group.idempotency_key_conflict"),
+            CatalogMutationOutcome.AuthenticationRequired => AuthenticationRequired(),
+            CatalogMutationOutcome.Forbidden => CatalogConfigurationRequired(),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> ListGroupsAsync(CatalogLifecycleService catalog, CancellationToken cancellationToken)
+    {
+        var result = await catalog.ListGroupsAsync(cancellationToken);
+        return result.Outcome switch
+        {
+            CatalogMutationOutcome.Changed => Results.Ok(result.Groups),
+            CatalogMutationOutcome.AuthenticationRequired => AuthenticationRequired(),
+            CatalogMutationOutcome.Forbidden => CatalogConfigurationRequired(),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> ChangeProductGroupAsync(
+        Guid productId, [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        ChangeProductGroupRequest request, HttpContext httpContext, IAntiforgery antiforgery,
+        CatalogLifecycleService catalog, CancellationToken cancellationToken)
+    {
+        var command = await ValidateCatalogCommandAsync(idempotencyKey, httpContext, antiforgery, "catalog.product.group_change", cancellationToken);
+        if (command.Failure is not null) return command.Failure;
+        var result = await catalog.ChangeGroupAsync(command.Key!.Value, productId, request, cancellationToken);
+        return result.Outcome switch
+        {
+            CatalogMutationOutcome.Changed => Results.Ok(result.Result),
+            CatalogMutationOutcome.GroupNotFound => Problem(StatusCodes.Status409Conflict, "Group not found", "The requested Group does not exist.", "catalog.group.not_found", productId, groupId: result.GroupId),
+            CatalogMutationOutcome.NotFound => ProductNotFound(productId),
+            CatalogMutationOutcome.NotCurrent => ProductNotCurrent(productId),
+            CatalogMutationOutcome.Stale => Problem(StatusCodes.Status409Conflict, "Product Group changed concurrently", "The current Product Group does not match expectedCurrentGroupId.", "catalog.product.group_concurrency_conflict", productId, includeCurrentGroupId: true, currentGroupId: result.GroupId),
+            CatalogMutationOutcome.IdempotencyConflict => IdempotencyConflict("catalog.product.group_change.idempotency_key_conflict"),
+            CatalogMutationOutcome.AuthenticationRequired => AuthenticationRequired(),
+            CatalogMutationOutcome.Forbidden => CatalogConfigurationRequired(),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> ChangeProductOperationalNameAsync(
+        Guid productId, [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        ChangeProductOperationalNameRequest request, HttpContext httpContext, IAntiforgery antiforgery,
+        CatalogLifecycleService catalog, CancellationToken cancellationToken)
+    {
+        var command = await ValidateCatalogCommandAsync(idempotencyKey, httpContext, antiforgery, "catalog.product.operational_name_change", cancellationToken);
+        if (command.Failure is not null) return command.Failure;
+        var result = await catalog.ChangeNameAsync(command.Key!.Value, productId, request, cancellationToken);
+        return result.Outcome switch
+        {
+            CatalogMutationOutcome.Changed => Results.Ok(result.Result),
+            CatalogMutationOutcome.Invalid => Problem(StatusCodes.Status400BadRequest, "Invalid Product name", result.Error!, "catalog.product.operational_name_invalid", productId, field: result.Field),
+            CatalogMutationOutcome.NameConflict => Problem(StatusCodes.Status409Conflict, "Operational name already in use", "An active Product already uses that operational name, ignoring case.", "catalog.product.operational_name_conflict", productId),
+            CatalogMutationOutcome.NotFound => ProductNotFound(productId),
+            CatalogMutationOutcome.Stale => Problem(StatusCodes.Status409Conflict, "Product name changed concurrently", "The current Product name does not match expectedCurrentOperationalName.", "catalog.product.operational_name_concurrency_conflict", productId, currentOperationalName: result.CurrentName),
+            CatalogMutationOutcome.IdempotencyConflict => IdempotencyConflict("catalog.product.operational_name_change.idempotency_key_conflict"),
+            CatalogMutationOutcome.AuthenticationRequired => AuthenticationRequired(),
+            CatalogMutationOutcome.Forbidden => CatalogConfigurationRequired(),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> RetireProductAsync(
+        Guid productId, [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        HttpContext httpContext, IAntiforgery antiforgery, CatalogLifecycleService catalog,
+        CancellationToken cancellationToken)
+    {
+        var command = await ValidateCatalogCommandAsync(idempotencyKey, httpContext, antiforgery, "catalog.product.retire", cancellationToken);
+        if (command.Failure is not null) return command.Failure;
+        var result = await catalog.RetireAsync(command.Key!.Value, productId, cancellationToken);
+        return LifecycleResult(result, productId, "retire");
+    }
+
+    private static async Task<IResult> ReactivateProductAsync(
+        Guid productId, [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        HttpContext httpContext, IAntiforgery antiforgery, CatalogLifecycleService catalog,
+        CancellationToken cancellationToken)
+    {
+        var command = await ValidateCatalogCommandAsync(idempotencyKey, httpContext, antiforgery, "catalog.product.reactivate", cancellationToken);
+        if (command.Failure is not null) return command.Failure;
+        var result = await catalog.ReactivateAsync(command.Key!.Value, productId, cancellationToken);
+        return LifecycleResult(result, productId, "reactivate");
+    }
+
+    private static IResult LifecycleResult(ProductLifecycleCommandResult result, Guid productId, string command) => result.Outcome switch
+    {
+        CatalogMutationOutcome.Changed => Results.Ok(result.Result),
+        CatalogMutationOutcome.NotFound => ProductNotFound(productId),
+        CatalogMutationOutcome.AlreadyRetired => Problem(StatusCodes.Status409Conflict, "Product already retired", "The Product is already retired.", "catalog.product.already_retired", productId),
+        CatalogMutationOutcome.AlreadyActive => Problem(StatusCodes.Status409Conflict, "Product already active", "The Product is already active.", "catalog.product.already_active", productId),
+        CatalogMutationOutcome.NameConflict => Problem(StatusCodes.Status409Conflict, "Product name collision", "Another active Product uses this operational name.", "catalog.product.reactivation_name_conflict", productId),
+        CatalogMutationOutcome.IdempotencyConflict => IdempotencyConflict($"catalog.product.{command}.idempotency_key_conflict"),
+        CatalogMutationOutcome.AuthenticationRequired => AuthenticationRequired(),
+        CatalogMutationOutcome.Forbidden => CatalogConfigurationRequired(),
+        _ => throw new UnreachableException()
+    };
+
+    private static async Task<(Guid? Key, IResult? Failure)> ValidateCatalogCommandAsync(
+        string? idempotencyKey, HttpContext context, IAntiforgery antiforgery, string codePrefix,
+        CancellationToken token)
+    {
+        if (idempotencyKey is null) return (null, Problem(StatusCodes.Status400BadRequest, "Idempotency-Key is required", "This command requires an Idempotency-Key containing a UUID v4.", $"{codePrefix}.idempotency_key_required"));
+        if (!Guid.TryParse(idempotencyKey, out var key) || !IsUuidVersion4(key)) return (null, Problem(StatusCodes.Status400BadRequest, "Invalid Idempotency-Key", "Idempotency-Key must contain a UUID v4.", $"{codePrefix}.idempotency_key_invalid"));
+        var antiforgeryFailure = await ValidateAntiforgeryAsync(context, antiforgery);
+        return antiforgeryFailure is null ? (key, null) : (null, antiforgeryFailure);
+    }
+
+    private static IResult ProductNotFound(Guid productId) => Problem(StatusCodes.Status404NotFound, "Product not found", "No Product exists with the supplied identifier.", "catalog.product.not_found", productId);
+    private static IResult ProductNotCurrent(Guid productId) => Problem(StatusCodes.Status409Conflict, "Product is not current", "The Product exists but is not active.", "catalog.product.not_current", productId);
+    private static IResult IdempotencyConflict(string code) => Problem(StatusCodes.Status409Conflict, "Idempotency-Key was already used for another intention", "The supplied Idempotency-Key identifies an incompatible command.", code);
+
     private static async Task<IResult> ChangeProductPriceAsync(
         Guid productId,
         [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
@@ -282,7 +437,11 @@ public static class CatalogModule
         string? currentPrice = null,
         Guid? preparationResponsibilityId = null,
         bool includeCurrentPreparationResponsibilityId = false,
-        Guid? currentPreparationResponsibilityId = null)
+        Guid? currentPreparationResponsibilityId = null,
+        Guid? groupId = null,
+        bool includeCurrentGroupId = false,
+        Guid? currentGroupId = null,
+        string? currentOperationalName = null)
     {
         var extensions = new Dictionary<string, object?>
         {
@@ -314,6 +473,21 @@ public static class CatalogModule
         {
             extensions["currentPreparationResponsibilityId"] =
                 currentPreparationResponsibilityId;
+        }
+
+        if (groupId is not null)
+        {
+            extensions["groupId"] = groupId;
+        }
+
+        if (includeCurrentGroupId)
+        {
+            extensions["currentGroupId"] = currentGroupId;
+        }
+
+        if (currentOperationalName is not null)
+        {
+            extensions["currentOperationalName"] = currentOperationalName;
         }
 
         return Results.Problem(
@@ -439,7 +613,7 @@ public static class CatalogModule
             CatalogProductOutcome.NotFound => Results.Problem(
                 statusCode: StatusCodes.Status404NotFound,
                 title: "Product not found",
-                detail: "No active product exists with the supplied identifier.",
+                detail: "No Product exists with the supplied identifier.",
                 extensions: new Dictionary<string, object?>
                 {
                     ["code"] = "catalog.product.not_found"

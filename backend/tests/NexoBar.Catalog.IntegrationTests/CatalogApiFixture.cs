@@ -56,10 +56,16 @@ public sealed class CatalogApiFixture : IAsyncLifetime
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                catalog.product_reactivate_commands,
+                catalog.product_retire_commands,
+                catalog.product_operational_name_change_commands,
+                catalog.product_group_change_commands,
+                catalog.group_creation_commands,
                 catalog.product_preparation_configuration_change_commands,
                 catalog.product_price_change_commands,
                 catalog.product_creation_commands,
                 catalog.products,
+                catalog.groups,
                 operational_configuration.preparation_responsibility_creation_commands,
                 operational_configuration.preparation_responsibilities
             """,
@@ -482,7 +488,7 @@ internal sealed record TestCatalogActor(
     string LoginIdentifier,
     string Secret);
 
-[CollectionDefinition(Name)]
+[CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class CatalogApiCollection : ICollectionFixture<CatalogApiFixture>
 {
     public const string Name = "Catalog API with PostgreSQL";

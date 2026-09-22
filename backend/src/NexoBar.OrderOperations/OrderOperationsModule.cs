@@ -1205,7 +1205,7 @@ public static partial class OrderOperationsModule
                 StatusCodes.Status409Conflict,
                 "Product is not current",
                 "The Product does not exist or is not active.",
-                "order_operations.first_confirmation.product_not_current",
+                "order_operations.confirmation.product_not_current",
                 result.ProductId),
             SubsequentConfirmationOutcome.ProductUnavailable => Problem(
                 StatusCodes.Status409Conflict,
@@ -1463,7 +1463,7 @@ public static partial class OrderOperationsModule
                 StatusCodes.Status409Conflict,
                 "Product is not current",
                 "The Product does not exist or is not active.",
-                "order_operations.first_confirmation.product_not_current",
+                "order_operations.confirmation.product_not_current",
                 result.ProductId),
             FirstConfirmationOutcome.ProductUnavailable => Problem(
                 StatusCodes.Status409Conflict,

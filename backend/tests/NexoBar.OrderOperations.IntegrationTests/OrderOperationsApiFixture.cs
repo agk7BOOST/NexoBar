@@ -92,10 +92,16 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 order_operations.incorporation_contents,
                 order_operations.incorporations,
                 order_operations.orders,
+                catalog.product_reactivate_commands,
+                catalog.product_retire_commands,
+                catalog.product_operational_name_change_commands,
+                catalog.product_group_change_commands,
+                catalog.group_creation_commands,
                 catalog.product_preparation_configuration_change_commands,
                 catalog.product_price_change_commands,
                 catalog.product_creation_commands,
                 catalog.products,
+                catalog.groups,
                 identities_and_capabilities.administrative_commands,
                 identities_and_capabilities.sessions,
                 identities_and_capabilities.local_credentials,
@@ -452,6 +458,17 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         response.EnsureSuccessStatusCode();
         return Assert.IsType<ProductResponse>(
             await response.Content.ReadFromJsonAsync<ProductResponse>(cancellationToken));
+    }
+
+    internal async Task<ProductResponse> ReadProductAsync(Guid productId, CancellationToken cancellationToken)
+    {
+        await using var scope = application!.Services.CreateAsyncScope();
+        var product = await scope.ServiceProvider.GetRequiredService<CatalogDbContext>()
+            .Products.AsNoTracking().SingleAsync(x => x.Id == productId, cancellationToken);
+        return new ProductResponse(product.Id, product.OperationalName,
+            product.Price.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            product.IsActive, product.IsAvailable, product.RequiresPreparation,
+            product.PreparationResponsibilityId, product.GroupId);
     }
 
     internal async Task<(ProductResponse Product, FirstConfirmationResponse Confirmation)>
@@ -1353,6 +1370,31 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
         }
 
+        return false;
+    }
+
+    internal async Task<bool> WaitForCatalogProductUpdateLockAsync(
+        TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_stat_activity
+                    WHERE datname = current_database()
+                      AND pid <> pg_backend_pid()
+                      AND state = 'active'
+                      AND wait_event_type = 'Lock'
+                      AND query ILIKE '%catalog.products%FOR UPDATE%')
+                """;
+            if (Assert.IsType<bool>(await command.ExecuteScalarAsync(cancellationToken))) return true;
+            await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
+        }
         return false;
     }
 

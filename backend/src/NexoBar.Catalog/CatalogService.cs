@@ -131,7 +131,6 @@ internal sealed class CatalogService(
         }
         var products = await dbContext.Products
             .AsNoTracking()
-            .Where(product => product.IsActive)
             .OrderBy(product => product.OperationalName)
             .ThenBy(product => product.Id)
             .ToListAsync(cancellationToken);
@@ -203,7 +202,6 @@ internal sealed class CatalogService(
             UPDATE catalog.products
             SET price = {intent.NewPrice}
             WHERE id = {productId}
-              AND is_active
               AND price = {intent.ExpectedCurrentPrice}
             """,
             cancellationToken);
@@ -227,11 +225,6 @@ internal sealed class CatalogService(
             if (product is null)
             {
                 return ChangeProductPriceResult.NotFound();
-            }
-
-            if (!product.IsActive)
-            {
-                return ChangeProductPriceResult.NotCurrent();
             }
 
             return ChangeProductPriceResult.PriceConcurrencyConflict(
@@ -276,7 +269,7 @@ internal sealed class CatalogService(
         var product = await dbContext.Products
             .AsNoTracking()
             .SingleOrDefaultAsync(
-                candidate => candidate.Id == id && candidate.IsActive,
+                candidate => candidate.Id == id,
                 cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
@@ -569,7 +562,8 @@ internal sealed class CatalogService(
             product.IsActive,
             product.IsAvailable,
             product.RequiresPreparation,
-            product.PreparationResponsibilityId);
+            product.PreparationResponsibilityId,
+            product.GroupId);
 
     private static ProductResponse Map(ProductCreationCommand command) =>
         new(
@@ -579,7 +573,8 @@ internal sealed class CatalogService(
             command.ResultIsActive,
             command.ResultIsAvailable,
             command.IntentRequiresPreparation,
-            PreparationResponsibilityId: null);
+            PreparationResponsibilityId: null,
+            GroupId: null);
 
     private static ProductPriceResponse Map(ProductPriceChangeCommand command) =>
         new(

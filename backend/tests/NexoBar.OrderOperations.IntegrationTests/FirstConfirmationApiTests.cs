@@ -195,7 +195,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         await AssertProblemWithProductAsync(
             response,
             HttpStatusCode.Conflict,
-            "order_operations.first_confirmation.product_not_current",
+            "order_operations.confirmation.product_not_current",
             productId,
             cancellationToken);
         Assert.Equal(PersistenceCounts.Empty, await fixture.CountEffectsAsync(cancellationToken));
@@ -217,7 +217,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         await AssertProblemWithProductAsync(
             response,
             HttpStatusCode.Conflict,
-            "order_operations.first_confirmation.product_not_current",
+            "order_operations.confirmation.product_not_current",
             product.Id,
             cancellationToken);
         Assert.Equal(PersistenceCounts.Empty, await fixture.CountEffectsAsync(cancellationToken));

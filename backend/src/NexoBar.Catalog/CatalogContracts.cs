@@ -16,7 +16,29 @@ internal sealed record ProductResponse(
     bool IsActive,
     bool IsAvailable,
     bool RequiresPreparation,
-    Guid? PreparationResponsibilityId);
+    Guid? PreparationResponsibilityId,
+    Guid? GroupId);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record CreateGroupRequest(string OperationalName);
+
+internal sealed record GroupResponse(Guid Id, string OperationalName);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record ChangeProductGroupRequest(
+    [property: JsonRequired] Guid? ExpectedCurrentGroupId,
+    [property: JsonRequired] Guid? NewGroupId);
+
+internal sealed record ProductGroupResponse(Guid ProductId, Guid? GroupId);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record ChangeProductOperationalNameRequest(
+    string ExpectedCurrentOperationalName,
+    string NewOperationalName);
+
+internal sealed record ProductOperationalNameResponse(Guid ProductId, string OperationalName);
+
+internal sealed record ProductLifecycleResponse(Guid ProductId, bool IsActive, bool IsAvailable);
 
 public sealed record OperationalProductResponse(
     Guid Id,

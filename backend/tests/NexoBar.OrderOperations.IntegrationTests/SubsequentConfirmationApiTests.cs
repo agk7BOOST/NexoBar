@@ -447,6 +447,30 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
     }
 
     [Fact]
+    public async Task Retired_product_is_rejected_by_subsequent_confirmation_without_effects()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(cancellationToken);
+        var orderProduct = await fixture.CreateProductAsync("Base", "10", cancellationToken);
+        var first = await CreateOrderAsync(orderProduct.Id, 1, "Mesa 7", cancellationToken);
+        var retired = await fixture.CreateProductAsync("Retired", "20", cancellationToken);
+        await fixture.SetProductStateAsync(retired.Id, false, false, cancellationToken);
+
+        using var response = await PostSubsequentAsync(
+            first.OperationalReference,
+            Request((retired.Id, 1)),
+            NewIdempotencyKey(),
+            cancellationToken);
+        await AssertProblemAsync(
+            response,
+            HttpStatusCode.Conflict,
+            "order_operations.confirmation.product_not_current",
+            cancellationToken);
+        Assert.Equal(new SubsequentPersistenceCounts(1, 1, 1, 0, 0),
+            await fixture.CountSubsequentEffectsAsync(cancellationToken));
+    }
+
+    [Fact]
     public async Task Missing_inactive_and_unavailable_products_roll_back()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -457,7 +481,7 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
             var orderProduct = await fixture.CreateProductAsync("Base", "10", cancellationToken);
             var first = await CreateOrderAsync(orderProduct.Id, 1, "Mesa 7", cancellationToken);
             var candidateId = Guid.NewGuid();
-            var expectedCode = "order_operations.first_confirmation.product_not_current";
+            var expectedCode = "order_operations.confirmation.product_not_current";
 
             if (condition != "missing")
             {

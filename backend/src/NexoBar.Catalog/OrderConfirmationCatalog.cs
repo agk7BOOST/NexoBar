@@ -14,17 +14,15 @@ public interface IOrderConfirmationCatalog
 
 public interface IOrderAppliedPriceCatalog
 {
-    Task<OrderAppliedPriceCatalogProduct?> ReadCurrentProductAsync(
+    Task<ConfiguredCatalogProductPrice?> ReadConfiguredPriceAsync(
         Guid productId,
         DbTransaction transaction,
         CancellationToken cancellationToken);
 }
 
-public sealed record OrderAppliedPriceCatalogProduct(
+public sealed record ConfiguredCatalogProductPrice(
     Guid ProductId,
-    decimal Price,
-    bool IsActive,
-    bool IsAvailable);
+    decimal Price);
 
 public sealed record OrderConfirmationCatalogProduct(
     Guid ProductId,
@@ -62,6 +60,7 @@ internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext) :
             .FromSqlInterpolated(
                 $"""
                 SELECT id,
+                       group_id,
                        operational_name,
                        normalized_operational_name,
                        price,
@@ -87,14 +86,33 @@ internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext) :
             .ToArray();
     }
 
-    public async Task<OrderAppliedPriceCatalogProduct?> ReadCurrentProductAsync(
+    public async Task<ConfiguredCatalogProductPrice?> ReadConfiguredPriceAsync(
         Guid productId,
         DbTransaction transaction,
         CancellationToken cancellationToken)
     {
-        var products = await ReadProductsAsync([productId], transaction, cancellationToken);
-        return products.SingleOrDefault() is { } product
-            ? new OrderAppliedPriceCatalogProduct(product.ProductId, product.Price, product.IsActive, product.IsAvailable)
-            : null;
+        var connection = transaction.Connection
+            ?? throw new InvalidOperationException(
+                "The OrderOperations transaction must have an active connection.");
+
+        dbContext.Database.SetDbConnection(connection, contextOwnsConnection: false);
+        await dbContext.Database.UseTransactionAsync(transaction, cancellationToken);
+
+        var product = await dbContext.Products
+            .FromSqlInterpolated(
+                $"""
+                SELECT id, group_id, operational_name, normalized_operational_name, price,
+                       is_active, is_available, requires_preparation,
+                       preparation_responsibility_id
+                FROM catalog.products
+                WHERE id = {productId}
+                FOR SHARE
+                """)
+            .AsNoTracking()
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return product is null
+            ? null
+            : new ConfiguredCatalogProductPrice(product.Id, product.Price);
     }
 }

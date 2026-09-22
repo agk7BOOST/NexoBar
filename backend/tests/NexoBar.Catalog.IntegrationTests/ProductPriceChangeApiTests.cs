@@ -107,7 +107,7 @@ public sealed class ProductPriceChangeApiTests(CatalogApiFixture fixture)
     }
 
     [Fact]
-    public async Task Physically_existing_inactive_product_returns_not_current()
+    public async Task Retired_product_price_can_be_corrected_without_reactivation()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await fixture.ResetCatalogAsync(cancellationToken);
@@ -117,9 +117,13 @@ public sealed class ProductPriceChangeApiTests(CatalogApiFixture fixture)
         using var response = await PostPriceChangeAsync(
             product.Id, "10", "12", NewIdempotencyKey(), cancellationToken);
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        await AssertProblemAsync(response, "catalog.product.not_current", cancellationToken);
-        Assert.Equal((10m, 0), await fixture.ReadPriceChangeStateAsync(product.Id, cancellationToken));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal((12m, 1), await fixture.ReadPriceChangeStateAsync(product.Id, cancellationToken));
+        using var administrativeRead = await fixture.Client.GetAsync(
+            $"/api/catalog/products/{product.Id:D}", cancellationToken);
+        var retired = Assert.IsType<ProductResponse>(
+            await administrativeRead.Content.ReadFromJsonAsync<ProductResponse>(cancellationToken));
+        Assert.False(retired.IsActive);
     }
 
     [Fact]

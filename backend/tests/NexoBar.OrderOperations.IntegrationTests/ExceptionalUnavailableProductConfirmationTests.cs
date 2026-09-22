@@ -252,7 +252,7 @@ public sealed class ExceptionalUnavailableProductConfirmationTests(
         using var response = await PostFirstAsync(client,
             FirstRequest(product.Id, exceptional: true), Guid.NewGuid());
         await AssertProblemAsync(response, HttpStatusCode.Conflict,
-            "order_operations.first_confirmation.product_not_current");
+            "order_operations.confirmation.product_not_current");
         Assert.Equal(PersistenceCounts.Empty, await fixture.CountEffectsAsync(Token));
     }
 

@@ -28,12 +28,12 @@ internal sealed class AppliedPriceCorrectionService(
         var state = await dbContext.ContentAppliedPriceStates.AsNoTracking().SingleOrDefaultAsync(x => x.IncorporationId == incorporationId && x.ContentOrdinal == contentOrdinal, cancellationToken);
         if (content is null) return new(AppliedPriceCorrectionEvaluationOutcome.ContentNotFound);
         if (state is null || content.AppliedPrice < 0 || state.EffectiveAppliedPrice < 0) return new(AppliedPriceCorrectionEvaluationOutcome.StateInconsistent);
-        var product = await catalog.ReadCurrentProductAsync(content.ProductId, transaction.GetDbTransaction(), cancellationToken);
+        var product = await catalog.ReadConfiguredPriceAsync(content.ProductId, transaction.GetDbTransaction(), cancellationToken);
         var blockers = new List<string>();
         if (await dbContext.OrderCancellationStates.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken)) blockers.Add("order_completely_cancelled");
         if (await dbContext.Liquidations.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken)) blockers.Add("order_frozen");
         if (await dbContext.Closures.AsNoTracking().AnyAsync(x => x.OrderId == orderId, cancellationToken)) blockers.Add("order_closed");
-        if (product is null || !product.IsActive || !product.IsAvailable || product.Price < 0) blockers.Add("product_not_current");
+        if (product is null || product.Price < 0) blockers.Add("product_not_current");
         else if (product.Price == state.EffectiveAppliedPrice) blockers.Add("no_correction_to_apply");
         var response = new AppliedPriceCorrectionEvaluationResponse(orderId, incorporationId, contentOrdinal,
             content.AppliedPrice.ToString(System.Globalization.CultureInfo.InvariantCulture), state.EffectiveAppliedPrice.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -84,8 +84,8 @@ internal sealed class AppliedPriceCorrectionService(
         if (state is null || content.AppliedPrice < 0 || state.EffectiveAppliedPrice < 0)
             return new(AppliedPriceCorrectionOutcome.StateInconsistent);
 
-        var product = await catalog.ReadCurrentProductAsync(content.ProductId, transaction.GetDbTransaction(), cancellationToken);
-        if (product is null || !product.IsActive || !product.IsAvailable || product.Price < 0)
+        var product = await catalog.ReadConfiguredPriceAsync(content.ProductId, transaction.GetDbTransaction(), cancellationToken);
+        if (product is null || product.Price < 0)
             return new(AppliedPriceCorrectionOutcome.ProductNotCurrent);
         if (product.Price == state.EffectiveAppliedPrice)
             return new(AppliedPriceCorrectionOutcome.NoCorrectionToApply);

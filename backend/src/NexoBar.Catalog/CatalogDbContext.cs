@@ -7,6 +7,8 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
 {
     internal DbSet<Product> Products => Set<Product>();
 
+    internal DbSet<CatalogGroup> Groups => Set<CatalogGroup>();
+
     internal DbSet<ProductCreationCommand> ProductCreationCommands =>
         Set<ProductCreationCommand>();
 
@@ -15,16 +17,47 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
 
     internal DbSet<ProductPreparationConfigurationChangeCommand>
         ProductPreparationConfigurationChangeCommands =>
-            Set<ProductPreparationConfigurationChangeCommand>();
+        Set<ProductPreparationConfigurationChangeCommand>();
+
+    internal DbSet<GroupCreationCommand> GroupCreationCommands => Set<GroupCreationCommand>();
+    internal DbSet<ProductGroupChangeCommand> ProductGroupChangeCommands => Set<ProductGroupChangeCommand>();
+    internal DbSet<ProductOperationalNameChangeCommand> ProductOperationalNameChangeCommands => Set<ProductOperationalNameChangeCommand>();
+    internal DbSet<ProductRetireCommand> ProductRetireCommands => Set<ProductRetireCommand>();
+    internal DbSet<ProductReactivateCommand> ProductReactivateCommands => Set<ProductReactivateCommand>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("catalog");
         modelBuilder.ApplyConfiguration(new ProductConfiguration());
+        modelBuilder.ApplyConfiguration(new CatalogGroupConfiguration());
         modelBuilder.ApplyConfiguration(new ProductCreationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new ProductPriceChangeCommandConfiguration());
         modelBuilder.ApplyConfiguration(
             new ProductPreparationConfigurationChangeCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new GroupCreationCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new ProductGroupChangeCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new ProductOperationalNameChangeCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new ProductRetireCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new ProductReactivateCommandConfiguration());
+    }
+
+    private sealed class CatalogGroupConfiguration : IEntityTypeConfiguration<CatalogGroup>
+    {
+        public void Configure(EntityTypeBuilder<CatalogGroup> builder)
+        {
+            builder.ToTable("groups", table => table.HasCheckConstraint(
+                "CK_catalog_groups_operational_name_not_blank",
+                "length(btrim(operational_name)) > 0"));
+            builder.HasKey(group => group.Id).HasName("PK_catalog_groups");
+            builder.Property(group => group.Id).HasColumnName("id").ValueGeneratedNever();
+            builder.Property(group => group.OperationalName).HasColumnName("operational_name")
+                .HasColumnType("text").IsRequired();
+            builder.Property(group => group.NormalizedOperationalName)
+                .HasColumnName("normalized_operational_name").HasColumnType("text")
+                .HasComputedColumnSql("lower(operational_name)", stored: true);
+            builder.HasIndex(group => group.NormalizedOperationalName)
+                .HasDatabaseName("UX_catalog_groups_normalized_operational_name").IsUnique();
+        }
     }
 
     private sealed class ProductPriceChangeCommandConfiguration :
@@ -143,11 +176,96 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
                 .HasColumnName("preparation_responsibility_id")
                 .ValueGeneratedNever();
 
+            builder.Property(product => product.GroupId).HasColumnName("group_id")
+                .ValueGeneratedNever();
+            builder.HasOne<CatalogGroup>().WithMany().HasForeignKey(product => product.GroupId)
+                .HasConstraintName("FK_catalog_products_groups").OnDelete(DeleteBehavior.Restrict);
+
             builder.HasIndex(product => product.NormalizedOperationalName)
                 .HasDatabaseName("UX_catalog_products_active_normalized_operational_name")
                 .IsUnique()
                 .HasFilter("is_active");
         }
+    }
+
+    private sealed class GroupCreationCommandConfiguration : IEntityTypeConfiguration<GroupCreationCommand>
+    {
+        public void Configure(EntityTypeBuilder<GroupCreationCommand> builder)
+        {
+            builder.ToTable("group_creation_commands", table => table.HasCheckConstraint(
+                "CK_catalog_group_creation_commands_intent_name_not_blank",
+                "length(btrim(intent_operational_name)) > 0"));
+            builder.HasKey(command => command.IdempotencyKey).HasName("PK_catalog_group_creation_commands");
+            builder.Property(command => command.IdempotencyKey).HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId).HasColumnName("actor_identity_id");
+            builder.Property(command => command.CommandKind).HasColumnName("command_kind").HasConversion<string>().HasColumnType("text").IsRequired();
+            builder.Property(command => command.IntentOperationalName).HasColumnName("intent_operational_name").HasColumnType("text").IsRequired();
+            builder.Property(command => command.ResultGroupId).HasColumnName("result_group_id").ValueGeneratedNever();
+            builder.HasIndex(command => command.ResultGroupId).HasDatabaseName("UX_catalog_group_creation_commands_result_group_id").IsUnique();
+            builder.HasOne<CatalogGroup>().WithMany().HasForeignKey(command => command.ResultGroupId)
+                .HasConstraintName("FK_catalog_group_creation_commands_groups").OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class ProductGroupChangeCommandConfiguration : IEntityTypeConfiguration<ProductGroupChangeCommand>
+    {
+        public void Configure(EntityTypeBuilder<ProductGroupChangeCommand> builder)
+        {
+            ConfigureProductCommand(builder, "product_group_change_commands", "PK_catalog_product_group_change_commands", "FK_catalog_product_group_change_commands_products");
+            builder.Property(command => command.IntentExpectedGroupId).HasColumnName("intent_expected_group_id").ValueGeneratedNever();
+            builder.Property(command => command.IntentNewGroupId).HasColumnName("intent_new_group_id").ValueGeneratedNever();
+            builder.Property(command => command.ResultGroupId).HasColumnName("result_group_id").ValueGeneratedNever();
+            builder.ToTable("product_group_change_commands", table => table.HasCheckConstraint(
+                "CK_catalog_product_group_change_commands_result_matches_intent",
+                "result_group_id IS NOT DISTINCT FROM intent_new_group_id"));
+        }
+    }
+
+    private sealed class ProductOperationalNameChangeCommandConfiguration : IEntityTypeConfiguration<ProductOperationalNameChangeCommand>
+    {
+        public void Configure(EntityTypeBuilder<ProductOperationalNameChangeCommand> builder)
+        {
+            ConfigureProductCommand(builder, "product_operational_name_change_commands", "PK_catalog_product_operational_name_change_commands", "FK_catalog_product_operational_name_change_commands_products");
+            builder.Property(command => command.IntentExpectedOperationalName).HasColumnName("intent_expected_operational_name").HasColumnType("text").IsRequired();
+            builder.Property(command => command.IntentNewOperationalName).HasColumnName("intent_new_operational_name").HasColumnType("text").IsRequired();
+            builder.Property(command => command.ResultOperationalName).HasColumnName("result_operational_name").HasColumnType("text").IsRequired();
+        }
+    }
+
+    private sealed class ProductRetireCommandConfiguration : IEntityTypeConfiguration<ProductRetireCommand>
+    {
+        public void Configure(EntityTypeBuilder<ProductRetireCommand> builder)
+        {
+            ConfigureProductCommand(builder, "product_retire_commands", "PK_catalog_product_retire_commands", "FK_catalog_product_retire_commands_products");
+            builder.Property(command => command.ResultIsActive).HasColumnName("result_is_active").IsRequired();
+            builder.Property(command => command.ResultIsAvailable).HasColumnName("result_is_available").IsRequired();
+            builder.ToTable("product_retire_commands", table => table.HasCheckConstraint(
+                "CK_catalog_product_retire_commands_result", "result_is_active = false"));
+        }
+    }
+
+    private sealed class ProductReactivateCommandConfiguration : IEntityTypeConfiguration<ProductReactivateCommand>
+    {
+        public void Configure(EntityTypeBuilder<ProductReactivateCommand> builder)
+        {
+            ConfigureProductCommand(builder, "product_reactivate_commands", "PK_catalog_product_reactivate_commands", "FK_catalog_product_reactivate_commands_products");
+            builder.Property(command => command.ResultIsActive).HasColumnName("result_is_active").IsRequired();
+            builder.Property(command => command.ResultIsAvailable).HasColumnName("result_is_available").IsRequired();
+            builder.ToTable("product_reactivate_commands", table => table.HasCheckConstraint(
+                "CK_catalog_product_reactivate_commands_result", "result_is_active = true AND result_is_available = true"));
+        }
+    }
+
+    private static void ConfigureProductCommand<T>(EntityTypeBuilder<T> builder, string table, string primaryKey, string foreignKey)
+        where T : class
+    {
+        builder.ToTable(table);
+        builder.HasKey("IdempotencyKey").HasName(primaryKey);
+        builder.Property<Guid>("IdempotencyKey").HasColumnName("idempotency_key").ValueGeneratedNever();
+        builder.Property<Guid?>("ActorIdentityId").HasColumnName("actor_identity_id");
+        builder.Property<CatalogCommandKind>("CommandKind").HasColumnName("command_kind").HasConversion<string>().HasColumnType("text").IsRequired();
+        builder.Property<Guid>("ProductId").HasColumnName("product_id").ValueGeneratedNever();
+        builder.HasOne<Product>().WithMany().HasForeignKey("ProductId").HasConstraintName(foreignKey).OnDelete(DeleteBehavior.Restrict);
     }
 
     private sealed class ProductPreparationConfigurationChangeCommandConfiguration :
