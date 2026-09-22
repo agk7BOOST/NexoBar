@@ -146,7 +146,7 @@ No contiene UUID, `scopeId`, identidad de Item, cantidad, unidad, `MovementRevis
 
 ### INV-SSE-04 — Publicación
 
-Se publicará sólo después de un nuevo commit exitoso que cambie el Estado operacional actual: creación de Item cuando aparece en el listado operacional, Entry, Manual Exit, Waste y Reconciliación que crea Movimiento, incluida la primera fijación de existencia cuando se materializa como ese cambio comprometido. No publican Conteo, Reconciliación `no_discrepancy` sin Movimiento, replay exacto, rechazo, no-op, conflicto ni rollback. La mera incorporación de Historia no es criterio de publicación.
+Se publica después de commits exitosos que cambian el listado operacional: creación visible, Retire, Reactivate, corrección efectiva de Unit, Delete, Entry, Manual Exit, Waste y Reconciliación que crea Movement, incluida la fijación inicial de existencia. No publican Conteo, Reconciliación `no_discrepancy` sin Movement, replay exacto, rechazo, no-op, conflicto ni rollback. La mera incorporación de History no es criterio de publicación.
 
 ### INV-SSE-05 — `MovementRevision` y Conteo
 
@@ -158,7 +158,7 @@ SSE es sólo una pista de frescura. `MovementRevision` conserva la guardia autor
 
 ### INV-SSE-07 — Sin semántica terminal
 
-Inventory no tiene lifecycle operacional implementado que retire Items de esta superficie. El vertical usa sólo invalidaciones ordinarias y no inventa retire, reactivate, delete, invalidación final ni lifecycle de corrección de unidad.
+El lifecycle de Inventory reutiliza esta invalidación list-wide: Retire excluye el Element; Reactivate lo devuelve activo y pendiente de Count/Reconciliation; Unit Correction actualiza el dato visible; y Delete lo elimina del read. No existe un evento terminal separado ni se deriva Estado del payload SSE. Configuration sigue usando sus lecturas autoritativas locales y no tiene scope SSE propio.
 
 ### INV-SSE-08 — Aislamiento funcional
 
@@ -224,4 +224,4 @@ La infraestructura compartida neutral actual es `NotificationSseProvider`, `Noti
 
 No hay contradicción normativa conocida, desajuste de autorización con el read equivalente, State derivado del payload, resolución SSE de intents inciertos ni superficie multiusuario MVP requerida sin cobertura. Las notificaciones actuales siguen siendo best-effort, invalidaciones no autoritativas seguidas de GET, no son streams durables, Event Sourcing, acknowledgements de comando ni garantías de replay; la reconexión reconcilia, no reproduce eventos.
 
-Permanecen diferidos y no bloquean este cierre: SSE de Catalog/product, OperationalConfiguration, feed general de Identity/capabilities, listas o búsqueda global de Orders, frescura de Historia, fan-out multi-instancia, PostgreSQL `LISTEN/NOTIFY` u otro mecanismo futuro, replay/backlog durable, outbox/broker, lifecycle/retirement de Inventory, corrección o unidad de Inventory y la integración automática Order/Preparation → Inventory. La limitación MVP de una única instancia backend activa continúa vigente: el fan-out en memoria no es seguro para múltiples instancias; una evolución futura queda detrás de la abstracción de publisher existente.
+Permanecen diferidos y no bloquean este cierre: SSE de Catalog/product, OperationalConfiguration, feed general de Identity/capabilities, listas o búsqueda global de Orders, frescura de History/configuration, fan-out multi-instancia, PostgreSQL `LISTEN/NOTIFY` u otro mecanismo futuro, replay/backlog durable, outbox/broker, Inventory Movement Correction y la integración automática Order/Preparation → Inventory. Lifecycle de Inventory, Unit Correction y eligible Delete usan el scope operacional existente; no introducen un scope de Configuration. La limitación MVP de una única instancia backend activa continúa vigente: el fan-out en memoria no es seguro para múltiples instancias; una evolución futura queda detrás de la abstracción de publisher existente.

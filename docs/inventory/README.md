@@ -1,17 +1,21 @@
 # Inventory operativo
 
-## Inventory mínimo operativo
+## Estado y autoridad
 
-`Inventory` posee `InventoryDbContext`, el schema `inventory` y migration history propia sobre la PostgreSQL primaria compartida. `InventoryItem` es Estado propio del módulo y contiene `Id` UUID v7, nombre operacional con unicidad case-insensitive, unidad operacional, `CurrentRegisteredQuantity` nullable y `MovementRevision` monotónica. Las cantidades autoritativas se representan como decimal string en HTTP y `numeric(28,12)` en PostgreSQL.
+`Inventory` posee `InventoryDbContext`, el schema `inventory` y migration history propia sobre PostgreSQL. `InventoryItem` es Estado del módulo; su ID es UUID v7, las cantidades autoritativas son decimal string en HTTP y `numeric(28,12)` en PostgreSQL, y `MovementRevision` es monotónica. `CurrentRegisteredQuantity` es nullable: `null` significa existencia no establecida, no cero.
 
-Un Item recién creado tiene cantidad no inicializada: `CurrentRegisteredQuantity = null` y `MovementRevision = 0`. `null` significa que todavía no se estableció una existencia; no equivale a cero. La creación requiere `InventoryConfiguration`, antiforgery e `Idempotency-Key` UUID v4. Las lecturas también separan capacidades honestamente: configuración requiere `InventoryConfiguration`, mientras Estado operacional, Conteo, Reconciliación, Movimientos e Historia requieren `InventoryOperation`. Una Identity con una sola responsabilidad no obtiene implícitamente la otra.
+Inventory separa `InventoryConfiguration` de `InventoryOperation`. Configuration administra Elements; Operation registra hechos físicos, Movements e History. Una Identity puede tener ambas responsabilidades, pero ninguna implica la otra.
 
-Los contratos materializados son:
+Contratos HTTP actuales:
 
 ```text
 POST /api/inventory/items
 GET  /api/inventory/configuration/items
 GET  /api/inventory/operations/items
+POST /api/inventory/items/{itemId}/retire
+POST /api/inventory/items/{itemId}/reactivate
+POST /api/inventory/items/{itemId}/unit-corrections
+POST /api/inventory/items/{itemId}/delete
 POST /api/inventory/items/{itemId}/counts
 POST /api/inventory/items/{itemId}/reconcile
 POST /api/inventory/items/{itemId}/entries
@@ -20,47 +24,79 @@ POST /api/inventory/items/{itemId}/waste
 GET  /api/inventory/items/{itemId}/movements
 ```
 
-### Conteo, Reconciliación y decisiones aplicadas
+## MVP-FC-INV-LU — Lifecycle, Unit Correction y eligible Delete: CLOSED
 
-`CountObservation` registra el hecho observado sin modificar el saldo. Conserva Item, cantidad física no negativa, unidad operacional, `ObservedMovementRevision`, actor y timestamp UTC. La Reconciliación consume una observación del mismo Item y la invalida si la unidad cambió o si `MovementRevision` ya no coincide: cualquier Reconciliation con cambio, Entry, ManualExit o Waste intermedia avanza la revisión y hace obsoleto el Conteo.
+### Modelo de lifecycle y readiness
 
-- `AD-INV-01` está aplicada: la Reconciliación inicial establece la cantidad desde `null`, crea un Movimiento, conserva `PreviousRegisteredQuantity = null` y no inventa una diferencia contra cero.
-- `AD-INV-02` está aplicada: una Reconciliación ordinaria deriva la diferencia contra el saldo registrado; si no hay discrepancia devuelve `no_discrepancy`, no crea Movimiento y no incrementa `MovementRevision`.
+Se persisten `InventoryItem.IsActive` y `CurrentRegisteredQuantity`; no existe un enum persistido de lifecycle/readiness. La readiness ordinaria se deriva:
 
-La Reconciliación que sí cambia Estado incrementa `MovementRevision` y confirma atómicamente Item, `InventoryMovement` y comando durable. El lock `FOR UPDATE` del Item serializa Reconciliaciones y Movimientos del mismo Item; Conteo usa `FOR SHARE` para capturar coherentemente revisión y unidad. Los locks de idempotencia, la autorización estabilizada y la transacción `READ COMMITTED` preservan replay, concurrencia same-Item y rollback total ante una falla de persistencia.
+| `IsActive` | `CurrentRegisteredQuantity` | Estado técnico/operacional |
+| --- | --- | --- |
+| `false` | `null` | Retirado; no hay existencia física actual establecida. |
+| `true` | `null` | Activo, pero requiere Count/Reconciliation; Movement ordinario no permitido. |
+| `true` | no `null` | Activo y listo para la operación ordinaria. |
 
-### Movimientos físicos, Historia e idempotencia
+La persistencia impone cantidad null para un Element retirado. Los Movements Entry, ManualExit y Waste requieren `IsActive = true` y `CurrentRegisteredQuantity != null`. Los errores estables distinguen retirado (`inventory.item.retired`), activo sin existencia establecida (`inventory.item.reconciliation_required`) e inexistente (`inventory.item.not_found`). Count es válido en Elements activos con o sin existencia establecida; no se aceptan nuevos Counts para un Element retirado.
 
-`Entry` suma una cantidad positiva. `ManualExit` y `Waste` restan una cantidad positiva y pueden atravesar cero: el saldo negativo se conserva como inconsistencia operacional visible, no se recorta ni se rechaza. Los tres requieren que la cantidad ya esté establecida, incrementan la revisión exactamente una vez y crean `InventoryMovement` con naturaleza, cantidad, saldo previo y resultante, actor y timestamp. `Correction` figura en la forma persistente reservada, pero no tiene comando, API ni comportamiento implementado.
+### Retire, Reactivate y nombres
 
-Create Item, Count, Reconciliation, Entry, ManualExit y Waste mantienen idempotencia durable local. La misma key UUID v4 con el mismo actor e intención reproduce el resultado original sin duplicar Estado ni Historia; una reutilización incompatible responde conflicto. Un replay confirmado todavía requiere Session utilizable e Identity activa, pero no reinterpreta el efecto por una revocación posterior de la capability.
+Retire requiere `InventoryConfiguration`. Conserva el ID, nombre, Unit, Movement History y `MovementRevision`; establece `IsActive = false`, limpia `CurrentRegisteredQuantity` e invalida observaciones Count pendientes. No crea `InventoryMovement` ni fuerza el saldo a cero. Los saldos anteriores siguen siendo históricamente interpretables desde los Movements, pero dejan de ser conocimiento físico actual.
 
-La Historia autorizada de Movimientos se consulta en orden descendente por `MovementRevision`, con cursor exclusivo `beforeRevision`, página por defecto de 50 y límite entre 1 y 100. Incluye el efecto con signo, saldos previo/resultante y detalle de Reconciliación. Persiste `ActorIdentityId` y resuelve al leer el nombre operacional vigente mediante la capacidad pública de Identities; no guarda `SessionId` ni un snapshot de nombre. El Estado vigente no se reconstruye ordinariamente desde esta Historia.
+Reactivate también requiere `InventoryConfiguration` y conserva ID, Unit e History. Establece `IsActive = true`, deja `CurrentRegisteredQuantity = null` y no habilita inmediatamente Movements ordinarios. `InventoryOperation` debe ejecutar un Count físico nuevo seguido de Reconciliation. La primera Reconciliation usa `PreviousRegisteredQuantity = null`, no inventa cero, establece la cantidad observada y crea el Movement normal de Reconciliation; puede establecer cero. Aunque la observación coincida con el último saldo histórico anterior a Retire, establece existencia desde ausencia de existencia actual.
 
-No existe integración automática con `Catalog`, Product, ventas u `OrderOperations`: `Product != InventoryItem`. Order, Confirmation, Preparation y Delivery no crean Movimientos de Inventory automáticamente.
+El nombre operacional normalizado es único entre Elements activos; los nombres de Elements retirados se pueden reutilizar. Reactivate conserva el nombre si está disponible y puede recibir un nombre operacional de reemplazo si otro Element activo ya lo usa. Si el nombre está ocupado y no se provee un reemplazo disponible, Reactivate entra en conflicto. Esto es una opción de Reactivate; no existe una capacidad general `RenameElement`.
 
-## Frescura operacional implementada para Slice 8
+### CountObservations y Unit Correction
 
-El vertical usa exclusivamente el scope SSE estático `inventory.operation` para el listado autoritativo `GET /api/inventory/operations/items`. Exige Session utilizable, Identity activa e `InventoryOperation`; `InventoryConfiguration` no hereda ese scope. La autoridad conectada se revalida fail-closed y el tráfico SSE no renueva inactividad de Session. La única señal opaca es `inventory.operation.changed`, sin UUID, `scopeId`, ItemId, cantidades, unidad, revisión, Movimiento, actor, Conteo, Reconciliación ni Historia.
+CountObservation registra una observación no negativa, Unit observada, `ObservedMovementRevision`, actor y timestamp UTC, sin alterar el saldo. Las observaciones pendientes se invalidan cuando cambia la Unit o cuando se retira el Element. Una CountObservation invalidada permanece como observación registrada mientras se conserve su fila, no se puede usar en Reconciliation y devuelve `inventory.reconciliation.observation_invalidated`. El replay durable del comando Count es independiente de poder consumir su observación. La invalidación no se revierte: `U1 → Count → U2 → U1` no revive el Count anterior y requiere nueva verificación física.
 
-Es un scope de lista porque la superficie real es el listado operacional actual. No existe un GET exacto de State actual por Item y suscribir filas como `inventory.item:<id>` podría exceder el límite de transporte y dejar cobertura incompleta. Un feed genérico que mezclara Estado operacional, configuración e Historia tampoco representa el read. No hay regla de visibilidad por Item para esta superficie list-wide.
+La corrección explícita de Unit requiere `InventoryConfiguration`, `expectedCurrentUnit` y `newUnit`. Se permite sólo mientras no exista ningún `InventoryMovement` para el Element, tanto activo como retirado. No convierte cantidad, no crea Movement ni incrementa `MovementRevision`; invalida Counts pendientes. Solicitar la Unit vigente puede guardarse como no-op durable. Una Unit esperada obsoleta produce conflicto.
 
-Sólo publican después de commit los cambios nuevos de Estado operacional: creación visible de Item, Entry, Manual Exit, Waste y Reconciliación que crea Movimiento, incluida la fijación inicial de existencia. Conteo, Reconciliación sin discrepancia, observación stale rechazada, replay exacto, rechazo, no-op, conflicto y rollback no publican. El publisher es best-effort: un fallo posterior no revierte el State comprometido. `MovementRevision` y la validación backend de Reconciliación siguen siendo autoritativos; SSE no convierte una observación vieja en válida ni reemplaza concurrencia. Un saldo negativo sigue siendo State válido y sólo el GET autoritativo determina su advertencia visible. No hay semántica terminal mientras lifecycle de Item siga diferido. El detalle completo está en [SSE y frescura multiusuario](../architecture/sse-and-freshness.md#sse-10--vertical-implementado-frescura-operacional-de-inventory).
+Tras el primer `InventoryMovement`, la Unit de ese Element no puede cambiarse. El comando devuelve `inventory.item.unit_correction_requires_replacement`. El camino MVP es retirar el Element anterior, crear uno nuevo con la Unit deseada y establecer su existencia mediante Count/Reconciliation. El reemplazo tiene otro ID, Unit propia y existencia/History independientes; no se copia saldo. Así todos los Movements de un Element mantienen un único significado de Unit: no se migraron cantidades históricas ni se añadieron snapshots, eras o versiones de Unit, conversiones o relaciones automáticas de sucesión.
+
+### Read models
+
+`GET /api/inventory/configuration/items` devuelve todos los Elements no eliminados: activos listos, activos que requieren Reconciliation y retirados. Expone lifecycle, readiness derivada, Unit, elegibilidad para corregir Unit y elegibilidad para Delete. El read incluye retirados; la implementación anterior filtraba `IsActive = true` y los ocultaba tras recarga. La regresión se corrigió: Retire → reload autoritativo → el mismo ID sigue visible como Retirado → Reactivate usa esa identidad estable.
+
+`GET /api/inventory/operations/items` devuelve sólo Elements activos, listos o pendientes de establecimiento. Retirados quedan excluidos; activos pendientes siguen visibles para Count/Reconciliation. Elements eliminados no aparecen en ninguno de los reads.
+
+### Definitive Delete
+
+Un Element puede eliminarse físicamente si y sólo si no existe ningún `InventoryMovement` para él. No bloquean por sí solos Delete: estado activo o retirado, existencia sin establecer, Counts usados o invalidados, comandos/idempotency rows, ni caminos `no_discrepancy` que no crearon Movement. La existencia de cualquier `InventoryMovement` es el blocker funcional autoritativo.
+
+`POST /api/inventory/items/{itemId}/delete` requiere `InventoryConfiguration`; aplica a Elements activos, retirados o pendientes de establecimiento. En éxito elimina físicamente `InventoryItem` y sus `CountObservation` de forma atómica, libera el nombre y retira el Element de los reads de Configuration y Operation. No hay soft delete. Si existe cualquier Movement, responde `inventory.item.delete_movement_history_conflict` y conserva Element e History. Retire puede ser la alternativa para dejar de operar un Element con History, pero Delete no se transforma automáticamente en Retire.
+
+El command ledger durable de Delete sobrevive al Element eliminado. Tras estabilizar Session e Identity, un replay exacto con la misma key, actor e intención se busca antes de reautorizar `InventoryConfiguration` y devuelve el resultado durable, incluso tras revocar esa responsabilidad si Session e Identity siguen válidas. Otro actor o distinto item con la misma key produce conflicto; una key nueva para el ID eliminado devuelve `inventory.item.not_found`. Los command ledgers conservan el ID como dato escalar, sin FK restrictiva a las filas vivas que deben poder borrarse. La relación funcional `InventoryMovement → InventoryItem` sí se preserva. Los ledgers son soporte técnico de replay, no History de dominio.
+
+Delete y Movement se serializan mediante `FOR UPDATE` sobre la fila del Element, sin lock global de Inventory. Si Delete obtiene el lock primero, confirma la eliminación y el Movement posterior ve Element ausente; no se confirma Movement. Si Movement bloquea y confirma primero, Delete encuentra History, entra en conflicto y Element y Movement permanecen.
+
+### Movements, History e idempotencia
+
+`CountObservation` no modifica el saldo. La Reconciliation inicial desde `null` crea un Movement, conserva `PreviousRegisteredQuantity = null` y no inventa diferencia contra cero (**AD-INV-01**). La Reconciliation ordinaria deriva diferencia contra saldo actual; sin discrepancia responde `no_discrepancy`, no crea Movement ni avanza `MovementRevision` (**AD-INV-02**).
+
+Entry suma una cantidad positiva. ManualExit y Waste restan una cantidad positiva y pueden atravesar cero; el saldo negativo se conserva y se muestra como inconsistencia. Cuando cambia Estado, el comando confirma atómicamente Element, Movement y resultado durable. La History paginada va en orden descendente de `MovementRevision` e incluye efecto con signo, saldos, datos de Reconciliation, actor y timestamp. El Estado actual no se reconstruye ordinariamente desde History. `Correction` no cuenta aquí con comando/API/comportamiento implementado.
+
+Los comandos usan `Idempotency-Key` UUID v4 y replay durable. Igual key e intención exacta reproduce el resultado; una intención incompatible entra en conflicto. Los detalles transversales siguen en [HTTP e idempotencia](../architecture/http-and-idempotency.md).
+
+No existe integración automática con Catalog, Product, ventas u OrderOperations: `Product != InventoryItem`; Order, Confirmation, Preparation y Delivery no crean Inventory Movements automáticamente.
+
+## Frescura operacional
+
+Inventory usa sólo `inventory.operation` para invalidar el listado autoritativo `GET /api/inventory/operations/items`. Sus commits invalidan el read cuando cambian Elements visibles o sus datos: creación visible, Retire, Reactivate, corrección efectiva de Unit, Delete, Entry, ManualExit, Waste y Reconciliation que crea Movement. Conteo, Reconciliation sin discrepancia, replay exacto, no-op, rechazo, conflicto y rollback no publican. La invalidación es best-effort y no es Estado de dominio; luego el cliente vuelve a leer desde autoridad.
+
+La misma señal se consume con `FreshnessReadCoordinator` sólo mientras la superficie Inventory Operation autorizada está montada. Configuration no tiene `inventory.configuration` SSE: después de sus mutaciones locales usa reload autoritativo y maneja conflictos por expected-current; no se promete push freshness de Configuration entre operadores. No hay scope de History ni de Element individual. Detalle de transporte en [SSE y frescura multiusuario](../architecture/sse-and-freshness.md#sse-10--vertical-implementado-frescura-operacional-de-inventory).
 
 ## Migraciones
 
-Las migraciones vigentes de Inventory en Slice 5 son:
+- `InitialInventory`: Elements y comandos durables de creación.
+- `AddInventoryCountReconciliation`: CountObservation, Reconciliation, History y ledgers de comando.
+- `AddEverydayInventoryMovements`: Entry, ManualExit y Waste sobre el mismo Estado e History.
+- `20260922150000_AddInventoryLifecycleAndUnitCorrection`: `IsActive`, invariante activo/existencia, unicidad de nombre activo, invalidación de CountObservation y persistencia durable para Retire, Reactivate y Unit Correction.
+- `20260922170000_AddInventoryElementDelete`: ledger durable de Delete, ajustes de FK de ledgers técnicos para permitir Delete físico, limpieza de Counts y cambios de snapshot.
 
-- `InitialInventory`, que crea Items y comandos durables de creación;
-- `AddInventoryCountReconciliation`, que agrega CountObservation, Reconciliation, Historia y comandos durables;
-- `AddEverydayInventoryMovements`, que materializa Entry, ManualExit y Waste sobre el mismo Estado, Historia y namespace durable de Movimientos.
+Las dos migraciones nuevas pasaron Up y Down; `HasPendingModelChanges = false`. No materializan Unit versionada ni relación de sucesor.
 
 ## Pendientes
 
-- Movement Correction de Inventory; la forma final de su relación con Movimientos previos no está decidida aquí;
-- `retire/reactivate/delete` de InventoryItem;
-- Unit Correction de InventoryItem y sus reglas antes/después de existir Historia;
-- persistencia cross-reload de intents inciertos de Inventory;
-- política final de reutilización de nombres antes de materializar lifecycle de InventoryItem;
-
-Tampoco se decide aquí que un Item retirado guarde cantidad `null`, la semántica final de reutilización de nombre ni la forma relacional de Correction.
+- Inventory Movement Correction; su relación con Movements previos sigue sin decisión aplicable.
+- Continuidad cross-reload de intents inciertos; siguen en memoria en el frontend.

@@ -36,7 +36,9 @@ El mínimo de Groups, rename de Product y Retire/Reactivate de Product está imp
 
 **MVP-FC-AVAIL — Product Availability Intervention: CLOSED.** Catalog conserva la propiedad de Product State e `IsAvailable`; `OperationalIntervention` autoriza la mutación temporal mediante el read estrecho y el comando de Availability dedicados. No pertenece a `CatalogConfiguration` ni requiere `OrderOperationsAndBasicClosure`. La evidencia es MVP-FC-AVAIL-I1 (backend), MVP-FC-AVAIL-I2 (frontend) y MVP-FC-AVAIL-I3 (E2E dirigido). El detalle contractual y de autoridad está en [Catalog](catalog/README.md#mvp-fc-avail--product-availability-intervention-closed).
 
-El siguiente frontier planificado es **Inventory Element Lifecycle and Unit Correction**. Permanecen fuera de alcance y no iniciados: Context Configuration / Order Context Change, Terminal Order History, Inventory Movement Correction, eligible Product Delete y eligible Identity Delete.
+**MVP-FC-INV-LU — Inventory Element Lifecycle, Unit Correction and Eligible Definitive Delete: CLOSED.** Se eliminan como gaps completados el lifecycle de Inventory Element, la corrección de Unit y el Delete físico elegible. El detalle técnico está en [Inventory](inventory/README.md#mvp-fc-inv-lu--lifecycle-unit-correction-y-eligible-delete-closed), la UX y autoridad cliente en [Inventory frontend](inventory/frontend.md), y la evidencia por checkpoint en [Testing](testing/verification.md#mvp-fc-inv-lu--inventory-element-lifecycle-unit-correction-y-eligible-delete).
+
+El siguiente frontier planificado es **Context Configuration and Order Context Change**. Permanecen fuera de alcance y no iniciados: Terminal Order History, Inventory Movement Correction, eligible Product Delete y eligible Identity Delete.
 
 ## Estado actual de Slice
 
@@ -62,6 +64,6 @@ El siguiente frontier planificado es **Inventory Element Lifecycle and Unit Corr
 
 **Preparation Configuration Completion: CLOSED.** La UI de `GeneralConfiguration` crea y lista Preparation Responsibilities; la UI de `CatalogConfiguration` configura el destino de Preparation de Products existentes. La evidencia focalizada está en [Testing](testing/verification.md#mvp-fc-prep--preparation-configuration-completion). Este cierre no inicia un Slice ni atribuye una capacidad nueva a OrderOperations.
 
-El trabajo restante preservado fuera de este cierre incluye el lifecycle completo de Preparation Responsibility (rename, retiro/reactivación, delete, ordering y gestión de estaciones); lifecycle/corrección de unidades de Inventory; Contexts si se aprueban; Historia terminal de Order; Delete Identity si una norma posterior lo exige; administración arbitraria de Sessions; y hardening de piloto/RNF. No se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
+El trabajo restante preservado fuera de estos cierres incluye el lifecycle completo de Preparation Responsibility (rename, retiro/reactivación, delete, ordering y gestión de estaciones); Context Configuration and Order Context Change; Terminal Order History; Inventory Movement Correction; eligible Product Delete; eligible Identity Delete; administración arbitraria de Sessions; y hardening de piloto/RNF. Estos frontiers permanecen no iniciados. No se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
 
 Solo para trazabilidad: [checkpoints históricos de slices](history/slice-checkpoints.md) y [auditoría de esta reorganización](context-audit.md). No son fuentes de nuevas decisiones ni lecturas de arranque obligatorias.

@@ -98,4 +98,15 @@ MVP-FC-CAT-I2 frontend evidence:
 - Exact application typecheck: `npx tsc -p tsconfig.app.json --noEmit` — **PASS**.
 - The broader `tsc -b` command is not claimed clean; it retains pre-existing unused `Browser`/`BrowserContext` imports in E2E files.
 
-MVP-FC-CAT-I3 executed one targeted Playwright scenario: **1 discovered, 1 passed, 0 failed, 0 skipped**. It proved Group create, Product Group assignment, rename, active operational browse and Confirmation, Retire, operational exclusion and direct `product_not_current` rejection, administrative persistence, Reactivate with `Available=true`, and operational reappearance.
+
+## MVP-FC-INV-LU — Inventory Element Lifecycle, Unit Correction y eligible Delete
+
+MVP-FC-INV-LU-I1A verificó lifecycle y corrección de Unit en backend: Inventory **201 discovered, 201 passed, 0 failed, 0 skipped**; migración Up/Down **PASS**; `HasPendingModelChanges=false`.
+
+MVP-FC-INV-LU-I1B verificó Delete: API **10/10**, concurrencia real PostgreSQL **2/2**, Inventory **213 discovered, 213 passed, 0 failed, 0 skipped**; migración Up/Down **PASS**; `HasPendingModelChanges=false`.
+
+MVP-FC-INV-LU-I2 verificó frontend focalizado: `inventoryClient` **11/11**, Configuration **26/26**, Operation/Freshness/History **26/26**, `tsconfig.app.json` **PASS**. MVP-FC-INV-LU-I2-FIX verificó la inclusión de Elements retirados en el read autoritativo de Configuration: **8/8**.
+
+MVP-FC-INV-LU-I3 ejecutó dos escenarios Playwright dirigidos: **2 discovered, 2 passed, 0 failed, 0 skipped**. C, con sólo `InventoryConfiguration`, creó E en U1 sin existencia, corrigió U1→U2 antes de History, comprobó la guía de reemplazo después de History, retiró y reactivó el mismo ID con recargas autoritativas de Configuration. O, con sólo `InventoryOperation`, vio E en U2 mientras esperaba Reconciliation, estableció 8 U2, registró Entry y llegó a 10 U2; después de Retire dejó de verlo y, tras Reactivate, estableció existencia de nuevo en 11 U2 con un Count nuevo y llegó a 12 U2 con otra Entry. History se mantuvo entendible bajo U2. El escenario separado creó D sin Movement, mostró Retire y Delete como acciones distintas, completó confirmación explícita, confirmó su desaparición persistente en Configuration y su ausencia en Operation. No se probó reutilización de nombre por E2E; su cobertura es backend y no se atribuye aquí al navegador.
+
+Durante I3 se corrigió una omisión de UI: el card operacional no mostraba la Unit mientras la existencia estaba sin establecer. Después del cambio, `InventoryPanel.test.tsx` quedó **26/26** y la ejecución dirigida Playwright quedó **2/2**. No se afirma un typecheck `tsconfig.app.json` específico de I3; el PASS registrado corresponde al checkpoint I2. La corrida fue focalizada: no se afirma éxito de Playwright completo ni del frontend completo.
