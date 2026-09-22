@@ -579,6 +579,7 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
                     <p aria-label={`Readiness de ${item.operationalName}`}>
                       Existencia física no establecida
                     </p>
+                    <p>Unidad operacional: {item.operationalUnit}</p>
                     <p>Cantidad actual: no establecida</p>
                     <p>Requiere conteo y reconciliación.</p>
                   </div>
