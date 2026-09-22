@@ -56,3 +56,9 @@ El checkpoint final de OrderOperations fue **778 discovered, 778 passed, 0 faile
 S10-I2 tiene evidencia frontend focalizada: `OrderWorkflow 48/48`, `OrderLookup 13/13`, `App 11/11`, `orderOperationsClient 11/11` y `tsconfig.app.json` typecheck passed. No se afirma un typecheck frontend completo fuera de ese proyecto.
 
 S10-I3 tiene un escenario Playwright focalizado: **1 discovered, 1 passed, 0 failed, 0 skipped**. Actor A, con sólo `OrderOperationsAndBasicClosure`, no ve el Product no disponible y recibe `403 order_operations.confirmation.operational_intervention_required` en un intento HTTP directo. Actor B, con `OrderOperationsAndBasicClosure` + `OperationalIntervention`, lo ve como `isAvailable=false`, no puede usar Add ordinario, usa la acción explícita de intervención, confirma una Composition mixta, obtiene `Applied=true` sólo para esa línea, ve el marcador histórico y deja el Product no disponible en Catalog. No fueron necesarios fixes de producción.
+
+## MVP-FC-PREP — Preparation Configuration Completion
+
+MVP-FC-PREP-I1 deja evidencia frontend focalizada: `GeneralConfigurationPanel` **29 passed**; `CatalogPanel` **18 passed**; cliente general **10 passed**; cliente Catalog **10 passed**; capability gate de `App` **12 passed**; y `tsconfig.app.json` **passed**. Estos resultados no afirman una corrida completa del frontend.
+
+MVP-FC-PREP-I2 ejecutó un escenario Playwright dirigido: **1 discovered, 1 passed, 0 failed, 0 skipped**. Usó actores distintos: G con `GeneralConfiguration`, C con `CatalogConfiguration`, O con `OrderOperationsAndBasicClosure` y P con `Preparation`; probó la propagación del destino exacto desde la configuración hasta el Work visible para P. No afirma éxito de la suite Playwright completa.

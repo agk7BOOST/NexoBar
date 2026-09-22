@@ -29,6 +29,8 @@ Un replay exacto ya comprometido requiere Session utilizable, Identity activa, e
 
 Cuando Catalog configura un Product, obtiene el lookup mínimo `{ id, operationalName }` mediante colaboración in-process explícita `Catalog → OperationalConfiguration`. `GeneralConfiguration` es la autoridad del GET administrativo; `CatalogConfiguration` no recibe ese listado. No se accede al `DbContext`, schema o tablas de `OperationalConfiguration` desde Catalog.
 
-No están materializados `IsActive`, retiro, reactivación, delete ni un lifecycle completo de `PreparationResponsibility`.
+## Vertical web de configuración de Preparation
 
-- Todavía no existe `OperationalConfigurationPanel` productivo ni frontend administrativo completo.
+La superficie **Configuración general** lista Preparation Responsibilities y permite crear una nueva por nombre operacional. Ambas acciones siguen la autoridad administrativa de `GeneralConfiguration`; crear un destino no asigna `Preparation` ni concede una Preparation Enablement a ninguna Identity.
+
+El lifecycle completo de `PreparationResponsibility` permanece diferido: no hay rename, retiro/reactivación, delete, ordering ni gestión de estaciones. No se marca ese lifecycle como completo.

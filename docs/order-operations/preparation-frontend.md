@@ -1,5 +1,11 @@
 # Preparation frontend
 
+## Cadena de configuración a operación
+
+La vertical completada conserva fronteras separadas: (1) `GeneralConfiguration` crea el destino; (2) `GeneralConfiguration` concede la Preparation Enablement exacta al operador; (3) `CatalogConfiguration` asigna ese destino al Product; (4) `OrderOperations` confirma el Product; (5) se crea `PreparationWork` para ese destino exacto; y (6) el actor con `Preparation` y la enablement exacta puede verlo y operarlo. Crear un destino no concede `Preparation` ni una enablement, y configurar un Product no requiere autoridad de `Preparation`.
+
+Esta documentación completa la configuración que alimenta la operación; no atribuye una capacidad nueva a `OrderOperations`, cuyo comportamiento de propagación ya existía.
+
 - `PreparationPanel` carga los destinos habilitados por nombre: con cero informa que no hay destinos, con uno lo selecciona automáticamente y con varios presenta selector. Muestra el `ProductOperationalName` vigente, context/reference, instruction y los contadores Total, Pending, En preparación y Ready; no presenta un Status único.
 - Cada Work con cantidad Pending ofrece un input integer de Start, inicialmente igual al Pending actual, y el botón “Iniciar”. Cada Work con cantidad InPreparation ofrece un input integer de Ready, inicialmente igual al InPreparation actual, y el botón “Marcar listo”. Ambas acciones admiten la totalidad o una parte del bucket elegible.
 - Preparation Progress Correction está expuesta mediante las acciones explícitas “Corregir inicio” (`InPreparation -> Pending`) y “Corregir listo” (`Ready -> InPreparation`). Sus inputs y previews usan, respectivamente, `InPreparationQuantity` y `ReadyQuantity - DeliveredQuantity` como máximos. No existe una acción `Ready -> Pending`; dos registros erróneos requieren primero “Corregir listo” y después “Corregir inicio”.

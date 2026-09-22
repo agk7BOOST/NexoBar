@@ -24,7 +24,7 @@ La administración ordinaria debe preservar al menos un camino operacional vigen
 
 El frontend expone la superficie administrativa **Configuración general** sólo cuando la proyección actual de `GET /api/identity-sessions/current` contiene `GeneralConfiguration`. Ese chequeo de capability controla exclusivamente el montaje/navegación de la superficie cliente; la autorización de cada read o comando permanece en el backend.
 
-La superficie implementada permite listar Identities, crear Identity, cambiar su nombre operacional, activar/desactivar, asignar/revocar Functional Responsibilities, otorgar/revocar habilitaciones de Preparation y configurar/reemplazar `LocalCredential`. No implementa Delete Identity, recovery ni administración arbitraria de Sessions.
+La superficie implementada permite listar Identities, crear Identity, cambiar su nombre operacional, activar/desactivar, asignar/revocar Functional Responsibilities, otorgar/revocar habilitaciones de Preparation, listar y crear Preparation Responsibilities por nombre operacional, y configurar/reemplazar `LocalCredential`. No implementa Delete Identity, recovery ni administración arbitraria de Sessions.
 
 El listado y cada resultado de mutación son Estado autoritativo del backend. El cliente reconcilia el resultado recibido y no trata una mutación optimista como Estado confirmado. Ante incertidumbre de red conserva la misma intención de comando y `Idempotency-Key` para un reintento explícito.
 
@@ -32,7 +32,7 @@ Si una mutación afecta las Functional Responsibilities de la Identity actuante,
 
 El backend rechaza la remoción de la última vía ordinaria utilizable con `identities_and_capabilities.last_general_configuration_path`. La UI muestra su rechazo de negocio específico y conserva el Estado autoritativo; no reproduce el algoritmo de salvaguarda como autoridad cliente.
 
-Las habilitaciones de Preparation se administran independientemente de la Functional Responsibility `Preparation`. La lectura de `OperationalConfiguration` autorizada por `GeneralConfiguration` resuelve sus IDs a nombres operacionales de Preparation Responsibility; otorgar o revocar una habilitación no asigna ni revoca implícitamente `Preparation`, y los IDs desconocidos no se descartan silenciosamente. S9-I2 no agrega UI para crear ni administrar el lifecycle de Preparation Responsibility.
+Las habilitaciones de Preparation se administran independientemente de la Functional Responsibility `Preparation`. La lectura de `OperationalConfiguration` autorizada por `GeneralConfiguration` resuelve sus IDs a nombres operacionales de Preparation Responsibility; otorgar o revocar una habilitación no asigna ni revoca implícitamente `Preparation`, y los IDs desconocidos no se descartan silenciosamente. La UI ya permite crear Preparation Responsibilities por nombre operacional, pero el lifecycle completo permanece diferido: no hay rename, retiro/reactivación, delete, ordering ni gestión de estaciones.
 
 Para una Identity sin credencial, la configuración exige identificador de acceso y secret explícitos. Para una credencial existente se soporta reemplazar el secret y el identificador se conserva salvo reemplazo explícito. El secret es Estado transitorio del frontend: no es legible desde backend. Reemplazar una credencial revoca todas las Sessions de la Identity objetivo. En auto-reemplazo, un POST exitoso se reconoce primero como committed y el frontend vuelve después a login; la invalidación posterior de Session no reinterpreta el comando como fallo.
 

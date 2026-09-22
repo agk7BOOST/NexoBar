@@ -23,6 +23,8 @@ RequiresPreparation = true  ↔ PreparationResponsibilityId = UUID
 
 `PreparationResponsibilityId` es una referencia externa y lógica; no existe FK física desde `Catalog` hacia `OperationalConfiguration`.
 
+La UI de Catalog para Products existentes ofrece un editor dedicado de configuración de preparación: habilita Preparation seleccionando exactamente una Preparation Responsibility, reasigna el destino y deshabilita Preparation. La creación de Product continúa iniciando con `requiresPreparation=false`; la configuración ocurre inmediatamente después mediante ese editor, no como parte de Create Product.
+
 La mutación materializada es el comando explícito:
 
 ```text
@@ -43,3 +45,5 @@ Price Change continúa siendo otro comando explícito de `Catalog`, no un `PATCH
 Los endpoints materializados de Catalog ya no son anónimos ni comparten una frontera única. La administración de Catalog requiere `CatalogConfiguration`. La exploración operacional de Products requiere `OrderOperationsAndBasicClosure`; los Products no disponibles sólo se incluyen cuando también está presente `OperationalIntervention`. La decisión de aplicar la excepción pertenece a OrderOperations durante Confirmation: Catalog sigue siendo autoritativo para `IsAvailable`, precio vigente y configuración de preparación, y no muta su Product como consecuencia de una incorporación excepcional.
 
 El lookup de Preparation Responsibility para configurar un Product es un endpoint estrecho propiedad de Catalog y exige `CatalogConfiguration`; Catalog resuelve la referencia mediante su colaboración interna explícita con `OperationalConfiguration`. No se convierte el listado administrativo de `OperationalConfiguration` en una capacidad de Catalog ni se permite acceso directo entre storages.
+
+`CatalogConfiguration` es dueño de la configuración de Preparation del Product. Catalog lee los destinos seleccionables mediante ese lookup estrecho de su propiedad; no llama directamente a APIs administrativas de `OperationalConfiguration`. Configurar un Product no requiere `Preparation` ni una Preparation Enablement.

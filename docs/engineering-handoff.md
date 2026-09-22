@@ -14,7 +14,7 @@ Consulta solo los temas afectados y sus dependencias explícitas. Los pendientes
 | Seguridad global todavía pendiente | [Fronteras de seguridad](architecture/security-boundaries.md) |
 | Product, precio y configuración prospectiva | [Catalog](catalog/README.md) |
 | Snapshot y concurrencia Confirmation/Catalog | [Colaboración Catalog](catalog/confirmation-collaboration.md) |
-| PreparationResponsibility y su lifecycle pendiente | [OperationalConfiguration](operational-configuration/README.md) |
+| PreparationResponsibility, configuración completada y lifecycle diferido | [OperationalConfiguration](operational-configuration/README.md) |
 | Identity, capacidades, sesión, antiforgery y destinos | [Seguridad de Identity](identities-and-capabilities/security.md) |
 | Administración y conservación de GeneralConfiguration | [Administración de Identity](identities-and-capabilities/administration.md) |
 | Inventory, Conteo, Reconciliación, Movimientos, Historia y pendientes | [Inventory](inventory/README.md) · [frontend](inventory/frontend.md) |
@@ -52,6 +52,8 @@ Las rutas de instrucciones locales empiezan en [backend](../backend/AGENTS.md), 
 
 **Slice 10 — Operational Intervention on Unavailable Products: CLOSED.** RF-PED-024/RF-PED-025 ya no son un gap pendiente: la incorporación excepcional exige intención explícita por línea y `OrderOperationsAndBasicClosure + OperationalIntervention`; no habilita por sí sola cambios administrativos de disponibilidad.
 
-El trabajo restante preservado fuera de Slice 10 incluye lifecycle/completitud de Catalog; UI y lifecycle de Preparation Responsibility; lifecycle/corrección de unidades de Inventory; Contexts si se aprueban; Historia terminal de Order; Delete Identity si una norma posterior lo exige; administración arbitraria de Sessions; y hardening de piloto/RNF. No se elige ni implementa el siguiente Slice aquí, ni se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
+**Preparation Configuration Completion: CLOSED.** La UI de `GeneralConfiguration` crea y lista Preparation Responsibilities; la UI de `CatalogConfiguration` configura el destino de Preparation de Products existentes. La evidencia focalizada está en [Testing](testing/verification.md#mvp-fc-prep--preparation-configuration-completion). Este cierre no inicia un Slice ni atribuye una capacidad nueva a OrderOperations.
+
+El trabajo restante preservado fuera de este cierre incluye el lifecycle completo de Preparation Responsibility (rename, retiro/reactivación, delete, ordering y gestión de estaciones); lifecycle/completitud de Catalog; lifecycle/corrección de unidades de Inventory; Contexts si se aprueban; Historia terminal de Order; Delete Identity si una norma posterior lo exige; administración arbitraria de Sessions; y hardening de piloto/RNF. El siguiente candidato funcional planificado puede ser **Catalog Structure and Product Lifecycle**, pero no está iniciado ni se diseña aquí. No se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
 
 Solo para trazabilidad: [checkpoints históricos de slices](history/slice-checkpoints.md) y [auditoría de esta reorganización](context-audit.md). No son fuentes de nuevas decisiones ni lecturas de arranque obligatorias.
