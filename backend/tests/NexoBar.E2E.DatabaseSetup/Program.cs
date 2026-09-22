@@ -73,7 +73,11 @@ try
 
     var kitchen = new PreparationResponsibility(Guid.CreateVersion7(), "Cocina E2E");
     var bar = new PreparationResponsibility(Guid.CreateVersion7(), "Barra E2E");
+    var baselineContextId = Guid.Parse("0195a000-0000-7000-8000-000000000001");
+    const string baselineContextName = "Contexto base E2E";
+    var baselineContext = new OperationalContext(baselineContextId, baselineContextName);
     operationalConfiguration.PreparationResponsibilities.AddRange(kitchen, bar);
+    operationalConfiguration.Contexts.Add(baselineContext);
     await operationalConfiguration.SaveChangesAsync();
 
     var preparer = new Identity("Preparador E2E", true);
@@ -284,7 +288,7 @@ try
     await catalog.Database.ExecuteSqlInterpolatedAsync(
         $"UPDATE catalog.products SET is_available = FALSE WHERE id = {s9UnavailableProduct.Id}");
 
-    var order = new Order(Guid.CreateVersion7(), "Mesa seguridad E2E");
+    var order = new Order(Guid.CreateVersion7(), baselineContextId, baselineContextName);
     var incorporation = new Incorporation(Guid.CreateVersion7(), order.Id, 1);
     orderOperations.Orders.Add(order);
     orderOperations.Incorporations.Add(incorporation);
@@ -337,13 +341,15 @@ try
     orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
         Guid.CreateVersion7(),
         incorporation.Id,
-        order.Context,
+        order.CurrentContextId,
+        order.CurrentContextOperationalName,
         deliverer.Id,
         DateTimeOffset.UtcNow));
     await orderOperations.SaveChangesAsync();
 
     // Dedicated single-content Order for the OperationalIntervention scenario.
-    var interventionOrder = new Order(Guid.CreateVersion7(), "Mesa intervención E2E");
+    var interventionOrder = new Order(
+        Guid.CreateVersion7(), baselineContextId, baselineContextName);
     var interventionIncorporation = new Incorporation(
         Guid.CreateVersion7(), interventionOrder.Id, 1);
     orderOperations.Orders.Add(interventionOrder);
@@ -363,7 +369,8 @@ try
     orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
         Guid.CreateVersion7(),
         interventionIncorporation.Id,
-        interventionOrder.Context,
+        interventionOrder.CurrentContextId,
+        interventionOrder.CurrentContextOperationalName,
         deliverer.Id,
         DateTimeOffset.UtcNow));
     await orderOperations.SaveChangesAsync();
@@ -393,7 +400,7 @@ try
         UPDATE catalog.products SET requires_preparation = TRUE,
             preparation_responsibility_id = {sseDestination.Id} WHERE id = {sseProduct.Id}
         """);
-    var sseOrder = new Order(Guid.CreateVersion7(), "Mesa SSE E2E");
+    var sseOrder = new Order(Guid.CreateVersion7(), baselineContextId, baselineContextName);
     var sseIncorporation = new Incorporation(Guid.CreateVersion7(), sseOrder.Id, 1);
     orderOperations.Orders.Add(sseOrder);
     orderOperations.Incorporations.Add(sseIncorporation);
@@ -404,7 +411,11 @@ try
     orderOperations.DeliveryStates.Add(new DeliveryState(sseIncorporation.Id, 1));
     orderOperations.ContentQuantityStates.Add(new ContentQuantityState(sseIncorporation.Id, 1));
     orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
-        Guid.CreateVersion7(), sseIncorporation.Id, sseOrder.Context, deliverer.Id, DateTimeOffset.UtcNow));
+        Guid.CreateVersion7(), sseIncorporation.Id,
+        sseOrder.CurrentContextId,
+        sseOrder.CurrentContextOperationalName,
+        deliverer.Id,
+        DateTimeOffset.UtcNow));
     await orderOperations.SaveChangesAsync();
     await orderOperations.Database.ExecuteSqlInterpolatedAsync($"""
         UPDATE order_operations.preparation_work
