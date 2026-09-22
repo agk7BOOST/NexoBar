@@ -3,6 +3,7 @@ import {
   activateIdentity,
   assignResponsibility,
   createIdentity,
+  createPreparationResponsibility,
   deactivateIdentity,
   FUNCTIONAL_RESPONSIBILITIES,
   grantPreparationEnablement,
@@ -16,6 +17,7 @@ import {
   setLocalCredential,
   type AdministrativeIdentity,
   type CreateIdentityRequest,
+  type CreatePreparationResponsibilityRequest,
   type FunctionalResponsibility,
   type IdentityAdministrationProblemDetails,
   type PreparationResponsibility,
@@ -34,6 +36,12 @@ type Notice =
 
 interface CreateIdentityIntention {
   request: CreateIdentityRequest;
+  idempotencyKey: string;
+  antiforgeryToken: string;
+}
+
+interface CreatePreparationResponsibilityIntention {
+  request: CreatePreparationResponsibilityRequest;
   idempotencyKey: string;
   antiforgeryToken: string;
 }
@@ -128,6 +136,18 @@ function messageForProblem(
       : "No se pudo actualizar la Identity. Revisá los datos e intentá nuevamente.";
 }
 
+function preparationResponsibilityCreationMessage(
+  problem: IdentityAdministrationProblemDetails,
+): string {
+  if (problem.status === 409) {
+    return "Ya existe una responsabilidad de preparación con ese nombre.";
+  }
+  if (problem.status === 400) {
+    return "Ingresá un nombre operacional válido.";
+  }
+  return "No se pudo crear la responsabilidad de preparación. Revisá los datos e intentá nuevamente.";
+}
+
 function mutationLabel(intention: IdentityMutationIntention): string {
   switch (intention.kind) {
     case "activate":
@@ -191,6 +211,14 @@ export function GeneralConfigurationPanel({
     useState(true);
   const [preparationResponsibilitiesError, setPreparationResponsibilitiesError] =
     useState<string | null>(null);
+  const [preparationResponsibilityName, setPreparationResponsibilityName] =
+    useState("");
+  const [isCreatingPreparationResponsibility, setIsCreatingPreparationResponsibility] =
+    useState(false);
+  const [preparationResponsibilityCreationNotice, setPreparationResponsibilityCreationNotice] =
+    useState<Notice | null>(null);
+  const [uncertainPreparationResponsibilityCreation, setUncertainPreparationResponsibilityCreation] =
+    useState<CreatePreparationResponsibilityIntention | null>(null);
   const [creationName, setCreationName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [creationNotice, setCreationNotice] = useState<Notice | null>(null);
@@ -365,6 +393,81 @@ export function GeneralConfigurationPanel({
     if (antiforgeryToken === null) return;
     await submitCreation({
       request: { operationalName: creationName },
+      idempotencyKey: crypto.randomUUID(),
+      antiforgeryToken,
+    });
+  }
+
+  async function submitPreparationResponsibilityCreation(
+    intention: CreatePreparationResponsibilityIntention,
+  ) {
+    setPreparationResponsibilityCreationNotice(null);
+    setIsCreatingPreparationResponsibility(true);
+    const formMatchesIntention =
+      preparationResponsibilityName === intention.request.operationalName;
+    try {
+      await createPreparationResponsibility(
+        intention.request,
+        intention.idempotencyKey,
+        intention.antiforgeryToken,
+      );
+      setUncertainPreparationResponsibilityCreation(null);
+      if (formMatchesIntention) {
+        setPreparationResponsibilityName("");
+      }
+      setPreparationResponsibilityCreationNotice({
+        kind: "success",
+        message: "Responsabilidad de preparación creada correctamente.",
+      });
+      await reloadPreparationResponsibilities();
+    } catch (error) {
+      if (error instanceof IdentityAdministrationProblemError) {
+        if (error.problem.status === 401) {
+          onUnauthorized();
+          return;
+        }
+        if (error.problem.status === 403) {
+          retireForbiddenState();
+          return;
+        }
+        setUncertainPreparationResponsibilityCreation(null);
+        setPreparationResponsibilityCreationNotice({
+          kind: "functional-error",
+          message: preparationResponsibilityCreationMessage(error.problem),
+        });
+        return;
+      }
+      setUncertainPreparationResponsibilityCreation(intention);
+      setPreparationResponsibilityCreationNotice({
+        kind: "uncertain",
+        message:
+          error instanceof IdentityAdministrationNetworkError
+            ? "Resultado no confirmado: se perdió la comunicación y no sabemos si la responsabilidad de preparación fue creada."
+            : "Resultado no confirmado: no fue posible confirmar la respuesta del servidor.",
+      });
+    } finally {
+      setIsCreatingPreparationResponsibility(false);
+    }
+  }
+
+  async function handlePreparationResponsibilityCreate(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    if (uncertainPreparationResponsibilityCreation !== null) return;
+    if (preparationResponsibilityName.trim() === "") {
+      setPreparationResponsibilityCreationNotice({
+        kind: "functional-error",
+        message: "Ingresá un nombre operacional válido.",
+      });
+      return;
+    }
+    const antiforgeryToken = await prepareMutation(
+      setPreparationResponsibilityCreationNotice,
+    );
+    if (antiforgeryToken === null) return;
+    await submitPreparationResponsibilityCreation({
+      request: { operationalName: preparationResponsibilityName },
       idempotencyKey: crypto.randomUUID(),
       antiforgeryToken,
     });
@@ -739,6 +842,116 @@ export function GeneralConfigurationPanel({
         </div>
       )}
 
+      <section aria-labelledby="preparation-responsibilities-title">
+        <h3 id="preparation-responsibilities-title">
+          Responsabilidades de preparación
+        </h3>
+        <form
+          onSubmit={(event) =>
+            void handlePreparationResponsibilityCreate(event)
+          }
+        >
+          <label htmlFor="preparation-responsibility-operational-name">
+            Nombre operacional de la responsabilidad
+          </label>
+          <input
+            id="preparation-responsibility-operational-name"
+            name="operationalName"
+            value={preparationResponsibilityName}
+            onChange={(event) =>
+              setPreparationResponsibilityName(event.target.value)
+            }
+            disabled={isCreatingPreparationResponsibility}
+            required
+          />
+          <button
+            type="submit"
+            disabled={
+              isCreatingPreparationResponsibility ||
+              uncertainPreparationResponsibilityCreation !== null
+            }
+          >
+            {isCreatingPreparationResponsibility
+              ? "Creando…"
+              : uncertainPreparationResponsibilityCreation
+                ? "Hay una intención pendiente"
+                : "Crear responsabilidad de preparación"}
+          </button>
+        </form>
+
+        {preparationResponsibilityCreationNotice && (
+          <p
+            className={`notice notice--${preparationResponsibilityCreationNotice.kind}`}
+            role="status"
+          >
+            {preparationResponsibilityCreationNotice.message}
+          </p>
+        )}
+        {uncertainPreparationResponsibilityCreation && (
+          <div
+            className="uncertain-intention"
+            role="region"
+            aria-label="Creación de responsabilidad de preparación con resultado no confirmado"
+          >
+            <h4>Creación pendiente de confirmación</h4>
+            <p>
+              {
+                uncertainPreparationResponsibilityCreation.request
+                  .operationalName
+              }
+            </p>
+            <p>
+              El reintento usa exactamente estos datos y la misma intención.
+            </p>
+            <div className="intention-actions">
+              <button
+                type="button"
+                onClick={() =>
+                  void submitPreparationResponsibilityCreation(
+                    uncertainPreparationResponsibilityCreation,
+                  )
+                }
+                disabled={isCreatingPreparationResponsibility}
+              >
+                Reintentar misma intención
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() =>
+                  setUncertainPreparationResponsibilityCreation(null)
+                }
+                disabled={isCreatingPreparationResponsibility}
+              >
+                Descartar e iniciar nueva
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isPreparationResponsibilitiesLoading && (
+          <p>Cargando responsabilidades de preparación…</p>
+        )}
+        {!isPreparationResponsibilitiesLoading &&
+          preparationResponsibilitiesError && (
+            <p role="alert">{preparationResponsibilitiesError}</p>
+          )}
+        {!isPreparationResponsibilitiesLoading &&
+          !preparationResponsibilitiesError &&
+          preparationResponsibilities.length === 0 && (
+            <p>No hay responsabilidades de preparación.</p>
+          )}
+        {!isPreparationResponsibilitiesLoading &&
+          !preparationResponsibilitiesError &&
+          preparationResponsibilities.length > 0 && (
+            <ul aria-label="Listado de responsabilidades de preparación">
+              {preparationResponsibilities.map((responsibility) => (
+                <li key={responsibility.id}>{responsibility.operationalName}</li>
+              ))}
+            </ul>
+          )}
+      </section>
+
       <div className="section-heading">
         <h3>Identities</h3>
         <button
@@ -767,12 +980,6 @@ export function GeneralConfigurationPanel({
       )}
       {isLoading && <p>Cargando Identities…</p>}
       {!isLoading && loadError && <p role="alert">{loadError}</p>}
-      {isPreparationResponsibilitiesLoading && (
-        <p>Cargando responsabilidades de preparación…</p>
-      )}
-      {!isPreparationResponsibilitiesLoading && preparationResponsibilitiesError && (
-        <p role="alert">{preparationResponsibilitiesError}</p>
-      )}
       {!isLoading && !loadError && identities.length === 0 && (
         <p>No hay Identities.</p>
       )}

@@ -11,6 +11,13 @@ export interface Product {
   isActive: boolean;
   isAvailable: boolean;
   requiresPreparation: boolean;
+  preparationResponsibilityId: string | null;
+}
+
+/** Catalog-owned narrow lookup used only by Catalog configuration. */
+export interface PreparationResponsibilityOption {
+  id: string;
+  operationalName: string;
 }
 
 /**
@@ -32,6 +39,11 @@ export interface ChangeProductPriceRequest {
 export interface ChangeProductPriceResponse {
   productId: string;
   price: string;
+}
+
+export interface ChangeProductPreparationConfigurationRequest {
+  expectedCurrentPreparationResponsibilityId: string | null;
+  newPreparationResponsibilityId: string | null;
 }
 
 export interface ProblemDetails {
@@ -108,6 +120,20 @@ export async function listOperationalProducts(): Promise<OperationalProduct[]> {
   return (await response.json()) as OperationalProduct[];
 }
 
+export async function listPreparationResponsibilityOptions(): Promise<
+  PreparationResponsibilityOption[]
+> {
+  const response = await send("/api/catalog/preparation-responsibilities", {
+    credentials: "same-origin",
+  });
+
+  if (!response.ok) {
+    throw new CatalogProblemError(await readProblem(response));
+  }
+
+  return (await response.json()) as PreparationResponsibilityOption[];
+}
+
 export async function createProduct(
   request: CreateProductRequest,
   idempotencyKey: string,
@@ -156,4 +182,29 @@ export async function changeProductPrice(
   }
 
   return (await response.json()) as ChangeProductPriceResponse;
+}
+
+export async function changeProductPreparationConfiguration(
+  productId: string,
+  request: ChangeProductPreparationConfigurationRequest,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<void> {
+  const response = await send(
+    `/api/catalog/products/${encodeURIComponent(productId)}/preparation-configuration-changes`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+        "X-NexoBar-CSRF": antiforgeryToken,
+      },
+      credentials: "same-origin",
+      body: JSON.stringify(request),
+    },
+  );
+
+  if (!response.ok) {
+    throw new CatalogProblemError(await readProblem(response));
+  }
 }

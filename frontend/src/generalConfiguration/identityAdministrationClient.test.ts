@@ -3,6 +3,7 @@ import {
   activateIdentity,
   assignResponsibility,
   createIdentity,
+  createPreparationResponsibility,
   deactivateIdentity,
   grantPreparationEnablement,
   IdentityAdministrationNetworkError,
@@ -90,6 +91,38 @@ describe("identityAdministrationClient", () => {
     expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe("csrf-1");
     expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("key-1");
     expect(JSON.parse(String(init?.body))).toEqual({ operationalName: "Nueva" });
+  });
+
+  it("creates a Preparation Responsibility with the exact durable command", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ id: "preparation-1", operationalName: "Cocina" }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(
+      createPreparationResponsibility(
+        { operationalName: "Cocina" },
+        "preparation-key",
+        "csrf-token",
+      ),
+    ).resolves.toEqual({ id: "preparation-1", operationalName: "Cocina" });
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(
+      "/api/operational-configuration/preparation-responsibilities",
+    );
+    expect(init?.method).toBe("POST");
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe(
+      "preparation-key",
+    );
+    expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe(
+      "csrf-token",
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      operationalName: "Cocina",
+    });
   });
 
   it("renames with the exact encoded route and mutation headers", async () => {

@@ -94,6 +94,7 @@ const water: Product = {
   isActive: true,
   isAvailable: true,
   requiresPreparation: false,
+  preparationResponsibilityId: null,
 };
 
 const soda: Product = {
@@ -142,6 +143,7 @@ const burger: Product = {
   operationalName: "Hamburguesa",
   price: "18.00",
   requiresPreparation: true,
+  preparationResponsibilityId: "preparation-1",
 };
 
 const firstResponse: FirstConfirmationResponse = {

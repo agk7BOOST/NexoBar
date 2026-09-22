@@ -22,6 +22,7 @@ vi.mock("./identity/sessionClient.ts", async (importOriginal) => {
 vi.mock("./catalog/CatalogPanel.tsx", () => ({
   CatalogPanel: ({ onUnauthorized }: { onUnauthorized: () => void }) => (
     <section aria-label="Catalog administrativo">
+      <p>Editor de preparación de producto</p>
       <button type="button" onClick={onUnauthorized}>
         Retirar Catalog
       </button>
@@ -37,6 +38,7 @@ vi.mock("./generalConfiguration/GeneralConfigurationPanel.tsx", () => ({
     onForbidden: () => void;
   }) => (
     <section aria-label="Configuracion general administrativa">
+      <p>Crear responsabilidad de preparación</p>
       <button type="button" onClick={() => void onCurrentIdentityChanged()}>
         Reconciliar mutacion propia
       </button>
@@ -177,6 +179,24 @@ describe("App capability-aware administrative mounting", () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByLabelText("Catalog administrativo"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Crear responsabilidad de preparación"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Editor de preparación de producto"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the General Configuration creation surface absent for a CatalogConfiguration-only Identity", async () => {
+    getCurrentIdentityMock.mockResolvedValueOnce(identity(["CatalogConfiguration"]));
+    render(<App />);
+
+    expect(
+      await screen.findByText("Editor de preparación de producto"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Crear responsabilidad de preparación"),
     ).not.toBeInTheDocument();
   });
 

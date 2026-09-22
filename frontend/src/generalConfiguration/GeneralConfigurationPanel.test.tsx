@@ -12,6 +12,7 @@ const {
   activateIdentityMock,
   assignResponsibilityMock,
   createIdentityMock,
+  createPreparationResponsibilityMock,
   deactivateIdentityMock,
   getAntiforgeryTokenMock,
   grantPreparationEnablementMock,
@@ -25,6 +26,7 @@ const {
   activateIdentityMock: vi.fn(),
   assignResponsibilityMock: vi.fn(),
   createIdentityMock: vi.fn(),
+  createPreparationResponsibilityMock: vi.fn(),
   deactivateIdentityMock: vi.fn(),
   getAntiforgeryTokenMock: vi.fn(),
   grantPreparationEnablementMock: vi.fn(),
@@ -45,6 +47,7 @@ vi.mock("./identityAdministrationClient.ts", async (importOriginal) => {
     activateIdentity: activateIdentityMock,
     assignResponsibility: assignResponsibilityMock,
     createIdentity: createIdentityMock,
+    createPreparationResponsibility: createPreparationResponsibilityMock,
     deactivateIdentity: deactivateIdentityMock,
     grantPreparationEnablement: grantPreparationEnablementMock,
     listAdministrativeIdentities: listAdministrativeIdentitiesMock,
@@ -105,6 +108,7 @@ describe("GeneralConfigurationPanel", () => {
     activateIdentityMock.mockReset();
     assignResponsibilityMock.mockReset();
     createIdentityMock.mockReset();
+    createPreparationResponsibilityMock.mockReset();
     deactivateIdentityMock.mockReset();
     getAntiforgeryTokenMock.mockReset();
     getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
@@ -162,6 +166,117 @@ describe("GeneralConfigurationPanel", () => {
     );
     expect(token).toBe("csrf-token");
     expect(screen.getByText("Nueva")).toBeInTheDocument();
+  });
+
+  it("lists Preparation Responsibilities separately, creates one, and refreshes the enablement choices", async () => {
+    const kitchen = { id: "preparation-1", operationalName: "Cocina" };
+    const bar = { id: "preparation-2", operationalName: "Barra" };
+    listAdministrativeIdentitiesMock.mockResolvedValueOnce([
+      identity({ preparationEnablements: [] }),
+    ]);
+    listPreparationResponsibilitiesMock
+      .mockResolvedValueOnce([kitchen])
+      .mockResolvedValueOnce([kitchen, bar]);
+    createPreparationResponsibilityMock.mockResolvedValueOnce(bar);
+    const { user } = renderPanel();
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Responsabilidades de preparación",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Listado de responsabilidades de preparación"),
+    ).toHaveTextContent("Cocina");
+    await user.type(
+      screen.getByLabelText("Nombre operacional de la responsabilidad"),
+      "Barra",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Crear responsabilidad de preparación",
+      }),
+    );
+
+    expect(
+      await screen.findByText("Responsabilidad de preparación creada correctamente."),
+    ).toBeInTheDocument();
+    expect(createPreparationResponsibilityMock.mock.calls[0]?.[0]).toEqual({
+      operationalName: "Barra",
+    });
+    expect(createPreparationResponsibilityMock.mock.calls[0]?.[1]).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(
+      screen.getByLabelText("Listado de responsabilidades de preparación"),
+    ).toHaveTextContent("Barra");
+    expect(
+      screen.getByRole("button", { name: "Otorgar habilitación Barra a Ana" }),
+    ).toBeInTheDocument();
+  });
+
+  it("rejects a blank name locally and displays a duplicate conflict", async () => {
+    const { user } = renderPanel();
+    await user.type(
+      screen.getByLabelText("Nombre operacional de la responsabilidad"),
+      " ",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Crear responsabilidad de preparación",
+      }),
+    );
+    expect(
+      await screen.findByText("Ingresá un nombre operacional válido."),
+    ).toBeInTheDocument();
+    expect(createPreparationResponsibilityMock).not.toHaveBeenCalled();
+
+    await user.clear(
+      screen.getByLabelText("Nombre operacional de la responsabilidad"),
+    );
+    await user.type(
+      screen.getByLabelText("Nombre operacional de la responsabilidad"),
+      "Cocina",
+    );
+    createPreparationResponsibilityMock.mockRejectedValueOnce(
+      new IdentityAdministrationProblemError({ status: 409 }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Crear responsabilidad de preparación",
+      }),
+    );
+    expect(
+      await screen.findByText(
+        "Ya existe una responsabilidad de preparación con ese nombre.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("retries an uncertain Preparation Responsibility creation with the exact intent", async () => {
+    listPreparationResponsibilitiesMock.mockResolvedValueOnce([]);
+    createPreparationResponsibilityMock
+      .mockRejectedValueOnce(new IdentityAdministrationNetworkError())
+      .mockResolvedValueOnce({ id: "preparation-1", operationalName: "Cocina" });
+    const { user } = renderPanel();
+    await user.type(
+      screen.getByLabelText("Nombre operacional de la responsabilidad"),
+      "Cocina",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Crear responsabilidad de preparación",
+      }),
+    );
+    await screen.findByRole("region", {
+      name: "Creación de responsabilidad de preparación con resultado no confirmado",
+    });
+    const firstCall = createPreparationResponsibilityMock.mock.calls[0];
+    await user.click(
+      screen.getByRole("button", { name: "Reintentar misma intención" }),
+    );
+    await screen.findByText("Responsabilidad de preparación creada correctamente.");
+    expect(createPreparationResponsibilityMock.mock.calls[1]).toEqual(firstCall);
   });
 
   it("retries an uncertain creation with the same key and creates a new key after discard", async () => {

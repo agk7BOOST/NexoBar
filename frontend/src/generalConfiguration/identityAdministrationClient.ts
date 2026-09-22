@@ -13,6 +13,10 @@ export interface PreparationResponsibility {
   operationalName: string;
 }
 
+export interface CreatePreparationResponsibilityRequest {
+  operationalName: string;
+}
+
 export interface CreateIdentityRequest {
   operationalName: string;
 }
@@ -108,6 +112,28 @@ export async function listPreparationResponsibilities(): Promise<
   );
   await requireSuccess(response);
   return (await response.json()) as PreparationResponsibility[];
+}
+
+export async function createPreparationResponsibility(
+  request: CreatePreparationResponsibilityRequest,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<PreparationResponsibility> {
+  const response = await send(
+    "/api/operational-configuration/preparation-responsibilities",
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+        "X-NexoBar-CSRF": antiforgeryToken,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  await requireSuccess(response);
+  return (await response.json()) as PreparationResponsibility;
 }
 
 export async function createIdentity(

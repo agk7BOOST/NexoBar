@@ -9,14 +9,18 @@ import {
 } from "./catalogClient.ts";
 
 const {
+  changeProductPreparationConfigurationMock,
   changeProductPriceMock,
   createProductMock,
   getAntiforgeryTokenMock,
+  listPreparationResponsibilityOptionsMock,
   listProductsMock,
 } = vi.hoisted(() => ({
+  changeProductPreparationConfigurationMock: vi.fn(),
   changeProductPriceMock: vi.fn(),
   createProductMock: vi.fn(),
   getAntiforgeryTokenMock: vi.fn(),
+  listPreparationResponsibilityOptionsMock: vi.fn(),
   listProductsMock: vi.fn(),
 }));
 
@@ -24,8 +28,12 @@ vi.mock("./catalogClient.ts", async (importOriginal) => {
   const original = await importOriginal<typeof import("./catalogClient.ts")>();
   return {
     ...original,
+    changeProductPreparationConfiguration:
+      changeProductPreparationConfigurationMock,
     changeProductPrice: changeProductPriceMock,
     createProduct: createProductMock,
+    listPreparationResponsibilityOptions:
+      listPreparationResponsibilityOptionsMock,
     listProducts: listProductsMock,
   };
 });
@@ -44,6 +52,7 @@ function product(overrides?: Partial<Product>): Product {
     isActive: true,
     isAvailable: true,
     requiresPreparation: false,
+    preparationResponsibilityId: null,
     ...overrides,
   };
 }
@@ -87,10 +96,13 @@ async function openPriceChange(
 describe("CatalogPanel - alta y listado", () => {
   beforeEach(() => {
     createProductMock.mockReset();
+    changeProductPreparationConfigurationMock.mockReset();
     changeProductPriceMock.mockReset();
     getAntiforgeryTokenMock.mockReset();
     getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
     listProductsMock.mockReset();
+    listPreparationResponsibilityOptionsMock.mockReset();
+    listPreparationResponsibilityOptionsMock.mockResolvedValue([]);
   });
 
   it("presenta el listado vigente sin una acción de Composición", () => {
@@ -211,10 +223,13 @@ describe("CatalogPanel - alta y listado", () => {
 describe("CatalogPanel - cambio de Precio", () => {
   beforeEach(() => {
     createProductMock.mockReset();
+    changeProductPreparationConfigurationMock.mockReset();
     changeProductPriceMock.mockReset();
     getAntiforgeryTokenMock.mockReset();
     getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
     listProductsMock.mockReset();
+    listPreparationResponsibilityOptionsMock.mockReset();
+    listPreparationResponsibilityOptionsMock.mockResolvedValue([]);
   });
 
   it("congela expectedCurrentPrice, acepta zero string y recarga tras éxito", async () => {
@@ -339,9 +354,216 @@ describe("CatalogPanel - cambio de Precio", () => {
   });
 });
 
+describe("CatalogPanel - configuración de preparación", () => {
+  const kitchen = { id: "preparation-kitchen", operationalName: "Cocina" };
+  const bar = { id: "preparation-bar", operationalName: "Barra" };
+
+  beforeEach(() => {
+    changeProductPreparationConfigurationMock.mockReset();
+    getAntiforgeryTokenMock.mockReset();
+    getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
+    listPreparationResponsibilityOptionsMock.mockReset();
+    listPreparationResponsibilityOptionsMock.mockResolvedValue([kitchen, bar]);
+  });
+
+  async function openPreparationChange(
+    user: ReturnType<typeof userEvent.setup>,
+    listedProduct: Product,
+  ) {
+    await user.click(
+      screen.getByRole("button", {
+        name: `Configurar preparación de ${listedProduct.operationalName}`,
+      }),
+    );
+  }
+
+  it("loads Catalog-owned options and enables preparation with the observed null destination", async () => {
+    const listedProduct = product();
+    changeProductPreparationConfigurationMock.mockResolvedValueOnce(undefined);
+    const { reloadProducts, user } = renderPanel([listedProduct]);
+    await waitFor(() =>
+      expect(listPreparationResponsibilityOptionsMock).toHaveBeenCalledOnce(),
+    );
+    await openPreparationChange(user, listedProduct);
+    await user.click(screen.getByLabelText("Requiere preparación"));
+    await user.selectOptions(
+      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      kitchen.id,
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Confirmar configuración de preparación",
+      }),
+    );
+
+    const [productId, request, key, token] =
+      changeProductPreparationConfigurationMock.mock.calls[0]!;
+    expect(productId).toBe(listedProduct.id);
+    expect(request).toEqual({
+      expectedCurrentPreparationResponsibilityId: null,
+      newPreparationResponsibilityId: kitchen.id,
+    });
+    expect(key).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(token).toBe("csrf-token");
+    expect(reloadProducts).toHaveBeenCalledOnce();
+  });
+
+  it("changes an existing destination and can disable preparation", async () => {
+    const listedProduct = product({
+      requiresPreparation: true,
+      preparationResponsibilityId: kitchen.id,
+    });
+    changeProductPreparationConfigurationMock
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+    const { user } = renderPanel([listedProduct]);
+    await openPreparationChange(user, listedProduct);
+    await user.selectOptions(
+      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      bar.id,
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Confirmar configuración de preparación",
+      }),
+    );
+    expect(changeProductPreparationConfigurationMock.mock.calls[0]?.[1]).toEqual({
+      expectedCurrentPreparationResponsibilityId: kitchen.id,
+      newPreparationResponsibilityId: bar.id,
+    });
+
+    await openPreparationChange(user, listedProduct);
+    await user.click(screen.getByLabelText("Requiere preparación"));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Confirmar configuración de preparación",
+      }),
+    );
+    expect(changeProductPreparationConfigurationMock.mock.calls[1]?.[1]).toEqual({
+      expectedCurrentPreparationResponsibilityId: kitchen.id,
+      newPreparationResponsibilityId: null,
+    });
+  });
+
+  it("does not permit enabled preparation without a selected destination", async () => {
+    const listedProduct = product();
+    const { user } = renderPanel([listedProduct]);
+    await openPreparationChange(user, listedProduct);
+    await user.click(screen.getByLabelText("Requiere preparación"));
+
+    expect(
+      screen.getByText(
+        "Seleccioná una responsabilidad de preparación antes de confirmar.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Confirmar configuración de preparación",
+      }),
+    ).toBeDisabled();
+    expect(changeProductPreparationConfigurationMock).not.toHaveBeenCalled();
+  });
+
+  it("reloads authoritative Products after success and after a concurrency conflict", async () => {
+    const listedProduct = product();
+    changeProductPreparationConfigurationMock
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(
+        new CatalogProblemError({
+          status: 409,
+          code: "catalog.product.preparation_configuration_concurrency_conflict",
+        }),
+      );
+    const { reloadProducts, user } = renderPanel([listedProduct]);
+    await openPreparationChange(user, listedProduct);
+    await user.click(screen.getByLabelText("Requiere preparación"));
+    await user.selectOptions(
+      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      kitchen.id,
+    );
+    await user.click(screen.getByRole("button", { name: "Confirmar configuración de preparación" }));
+    await openPreparationChange(user, listedProduct);
+    await user.click(screen.getByLabelText("Requiere preparación"));
+    await user.selectOptions(
+      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      kitchen.id,
+    );
+    await user.click(screen.getByRole("button", { name: "Confirmar configuración de preparación" }));
+
+    expect(
+      await screen.findByText(/configuración de preparación cambió/),
+    ).toBeInTheDocument();
+    expect(reloadProducts).toHaveBeenCalledTimes(2);
+    expect(
+      screen.queryByRole("region", {
+        name: "Configuración de preparación con resultado no confirmado",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("refreshes Products and options when the selected destination is missing", async () => {
+    const listedProduct = product();
+    changeProductPreparationConfigurationMock.mockRejectedValueOnce(
+      new CatalogProblemError({
+        status: 409,
+        code: "catalog.product.preparation_responsibility_not_found",
+      }),
+    );
+    const { reloadProducts, user } = renderPanel([listedProduct]);
+    await openPreparationChange(user, listedProduct);
+    await user.click(screen.getByLabelText("Requiere preparación"));
+    await user.selectOptions(
+      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      kitchen.id,
+    );
+    await user.click(screen.getByRole("button", { name: "Confirmar configuración de preparación" }));
+
+    expect(
+      await screen.findByText(/ya no está disponible/),
+    ).toBeInTheDocument();
+    expect(reloadProducts).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(listPreparationResponsibilityOptionsMock).toHaveBeenCalledTimes(2),
+    );
+  });
+
+  it("retries an uncertain configuration with its exact body and key", async () => {
+    const listedProduct = product({
+      requiresPreparation: true,
+      preparationResponsibilityId: kitchen.id,
+    });
+    changeProductPreparationConfigurationMock
+      .mockRejectedValueOnce(new CatalogNetworkError())
+      .mockResolvedValueOnce(undefined);
+    const { user } = renderPanel([listedProduct]);
+    await openPreparationChange(user, listedProduct);
+    await user.selectOptions(
+      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      bar.id,
+    );
+    await user.click(screen.getByRole("button", { name: "Confirmar configuración de preparación" }));
+    await screen.findByRole("region", {
+      name: "Configuración de preparación con resultado no confirmado",
+    });
+    const firstCall = changeProductPreparationConfigurationMock.mock.calls[0];
+    await user.click(
+      screen.getByRole("button", {
+        name: "Reintentar misma configuración de preparación",
+      }),
+    );
+    expect(changeProductPreparationConfigurationMock.mock.calls[1]).toEqual(
+      firstCall,
+    );
+  });
+});
+
 describe("CatalogPanel - lectura administrativa segura", () => {
   beforeEach(() => {
     listProductsMock.mockReset();
+    listPreparationResponsibilityOptionsMock.mockReset();
+    listPreparationResponsibilityOptionsMock.mockResolvedValue([]);
   });
 
   it("owns the administrative Product read when mounted", async () => {

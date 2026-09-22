@@ -3,9 +3,11 @@ import {
   CatalogNetworkError,
   CatalogProblemError,
   changeProductPrice,
+  changeProductPreparationConfiguration,
   createProduct,
   listOperationalProducts,
   listProducts,
+  listPreparationResponsibilityOptions,
   type OperationalProduct,
   type ChangeProductPriceResponse,
   type Product,
@@ -48,6 +50,21 @@ describe("Catalog reads", () => {
       },
     );
   });
+
+  it("uses the Catalog-owned Preparation Responsibility lookup", async () => {
+    const options = [{ id: "preparation-1", operationalName: "Cocina" }];
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(options), { status: 200 }),
+    );
+
+    await expect(listPreparationResponsibilityOptions()).resolves.toEqual(
+      options,
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/catalog/preparation-responsibilities",
+      { credentials: "same-origin" },
+    );
+  });
 });
 
 describe("createProduct", () => {
@@ -64,6 +81,7 @@ describe("createProduct", () => {
       isActive: true,
       isAvailable: true,
       requiresPreparation: false,
+      preparationResponsibilityId: null,
     };
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(response), {
@@ -227,5 +245,44 @@ describe("changeProductPrice", () => {
         "csrf-token",
       ),
     ).rejects.toBeInstanceOf(CatalogNetworkError);
+  });
+});
+
+describe("changeProductPreparationConfiguration", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("sends the exact observed destination and durable mutation headers", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await expect(
+      changeProductPreparationConfiguration(
+        "product/id",
+        {
+          expectedCurrentPreparationResponsibilityId: "preparation-old",
+          newPreparationResponsibilityId: "preparation-new",
+        },
+        "preparation-key",
+        "csrf-token",
+      ),
+    ).resolves.toBeUndefined();
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(
+      "/api/catalog/products/product%2Fid/preparation-configuration-changes",
+    );
+    expect(init?.method).toBe("POST");
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe(
+      "preparation-key",
+    );
+    expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe(
+      "csrf-token",
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      expectedCurrentPreparationResponsibilityId: "preparation-old",
+      newPreparationResponsibilityId: "preparation-new",
+    });
   });
 });

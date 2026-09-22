@@ -27,6 +27,7 @@ const currentProduct: Product = {
   isActive: true,
   isAvailable: true,
   requiresPreparation: false,
+  preparationResponsibilityId: null,
 };
 
 const order: OrderResponse = {

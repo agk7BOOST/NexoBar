@@ -2,12 +2,16 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
   CatalogNetworkError,
   CatalogProblemError,
+  changeProductPreparationConfiguration,
   changeProductPrice,
   createProduct,
   type ChangeProductPriceRequest,
+  type ChangeProductPreparationConfigurationRequest,
   type CreateProductRequest,
   type ProblemDetails,
   type Product,
+  type PreparationResponsibilityOption,
+  listPreparationResponsibilityOptions,
   listProducts,
 } from "./catalogClient.ts";
 import {
@@ -37,6 +41,22 @@ interface ProductPriceChangeIntention {
   productId: string;
   operationalName: string;
   request: ChangeProductPriceRequest;
+  idempotencyKey: string;
+  antiforgeryToken: string;
+}
+
+interface PreparationEditor {
+  productId: string;
+  operationalName: string;
+  observedPreparationResponsibilityId: string | null;
+  requiresPreparation: boolean;
+  selectedPreparationResponsibilityId: string | null;
+}
+
+interface ProductPreparationChangeIntention {
+  productId: string;
+  operationalName: string;
+  request: ChangeProductPreparationConfigurationRequest;
   idempotencyKey: string;
   antiforgeryToken: string;
 }
@@ -87,6 +107,23 @@ function priceChangeErrorMessage(problem: ProblemDetails): string {
   }
 }
 
+function preparationChangeErrorMessage(problem: ProblemDetails): string {
+  switch (problem.code) {
+    case "catalog.product.preparation_configuration_concurrency_conflict":
+      return "La configuración de preparación cambió desde que fue observada. El Catálogo se actualizará.";
+    case "catalog.product.preparation_responsibility_not_found":
+      return "La responsabilidad de preparación seleccionada ya no está disponible. El Catálogo se actualizará.";
+    case "catalog.product.not_found":
+      return "El Producto ya no existe.";
+    case "catalog.product.not_current":
+      return "El Producto ya no está vigente.";
+    case "catalog.product.idempotency_key_conflict":
+      return "La identidad de esta configuración de preparación ya fue usada para otra intención.";
+    default:
+      return "No se pudo actualizar la configuración de preparación. Revisá los datos e intentá nuevamente.";
+  }
+}
+
 export function CatalogPanel({
   onUnauthorized = () => undefined,
   products: providedProducts,
@@ -99,6 +136,13 @@ export function CatalogPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isForbidden, setIsForbidden] = useState(false);
   const readGeneration = useRef(0);
+  const preparationResponsibilityReadGeneration = useRef(0);
+  const [preparationResponsibilityOptions, setPreparationResponsibilityOptions] =
+    useState<PreparationResponsibilityOption[]>([]);
+  const [isPreparationResponsibilityOptionsLoading, setIsPreparationResponsibilityOptionsLoading] =
+    useState(true);
+  const [preparationResponsibilityOptionsError, setPreparationResponsibilityOptionsError] =
+    useState<string | null>(null);
   const [operationalName, setOperationalName] = useState("");
   const [price, setPrice] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -110,6 +154,14 @@ export function CatalogPanel({
   const [priceNotice, setPriceNotice] = useState<Notice | null>(null);
   const [uncertainPriceChange, setUncertainPriceChange] =
     useState<ProductPriceChangeIntention | null>(null);
+  const [preparationEditor, setPreparationEditor] =
+    useState<PreparationEditor | null>(null);
+  const [isChangingPreparation, setIsChangingPreparation] = useState(false);
+  const [preparationNotice, setPreparationNotice] = useState<Notice | null>(
+    null,
+  );
+  const [uncertainPreparationChange, setUncertainPreparationChange] =
+    useState<ProductPreparationChangeIntention | null>(null);
 
   async function reloadCatalog() {
     const generation = ++readGeneration.current;
@@ -142,6 +194,39 @@ export function CatalogPanel({
     }
   }
 
+  async function reloadPreparationResponsibilityOptions() {
+    const generation = ++preparationResponsibilityReadGeneration.current;
+    setIsPreparationResponsibilityOptionsLoading(true);
+    setPreparationResponsibilityOptionsError(null);
+    try {
+      const loaded = await listPreparationResponsibilityOptions();
+      if (generation === preparationResponsibilityReadGeneration.current) {
+        setPreparationResponsibilityOptions(loaded);
+      }
+    } catch (error) {
+      if (generation !== preparationResponsibilityReadGeneration.current) return;
+      if (error instanceof CatalogProblemError) {
+        if (error.problem.status === 401) {
+          onUnauthorized();
+          return;
+        }
+        if (error.problem.status === 403) {
+          setLoadedProducts([]);
+          setPreparationResponsibilityOptions([]);
+          setIsForbidden(true);
+          return;
+        }
+      }
+      setPreparationResponsibilityOptionsError(
+        "No se pudo cargar las responsabilidades de preparación.",
+      );
+    } finally {
+      if (generation === preparationResponsibilityReadGeneration.current) {
+        setIsPreparationResponsibilityOptionsLoading(false);
+      }
+    }
+  }
+
   useEffect(() => {
     if (providedProducts !== undefined) return;
     void reloadCatalog();
@@ -150,19 +235,28 @@ export function CatalogPanel({
     };
   }, [providedProducts]); // The parent key fences this read at each Identity lifecycle.
 
+  useEffect(() => {
+    void reloadPreparationResponsibilityOptions();
+    return () => {
+      preparationResponsibilityReadGeneration.current += 1;
+    };
+  }, []); // The parent key fences this Catalog-owned lookup at each Identity lifecycle.
+
   const products = providedProducts ?? loadedProducts;
   const displayedIsLoading = providedIsLoading ?? isLoading;
   const displayedLoadError = providedLoadError ?? loadError;
   const reloadProducts = providedReloadProducts ?? reloadCatalog;
 
-  async function prepareMutation(): Promise<string | null> {
+  async function prepareMutation(
+    setNotice: (notice: Notice) => void = setCreationNotice,
+  ): Promise<string | null> {
     try {
       return await getAntiforgeryToken();
     } catch (error) {
       if (error instanceof SessionProblemError && error.status === 401) {
         onUnauthorized();
       }
-      setCreationNotice({
+      setNotice({
         kind: "functional-error",
         message: "No se pudo preparar la operación segura del Catálogo.",
       });
@@ -356,6 +450,142 @@ export function CatalogPanel({
     });
   }
 
+  function openPreparationEditor(product: Product) {
+    if (uncertainPreparationChange !== null || isChangingPreparation) {
+      return;
+    }
+    setPreparationEditor({
+      productId: product.id,
+      operationalName: product.operationalName,
+      observedPreparationResponsibilityId: product.preparationResponsibilityId,
+      requiresPreparation: product.requiresPreparation,
+      selectedPreparationResponsibilityId: product.preparationResponsibilityId,
+    });
+    setPreparationNotice(null);
+  }
+
+  async function submitPreparationChange(
+    intention: ProductPreparationChangeIntention,
+  ) {
+    setPreparationNotice(null);
+    setIsChangingPreparation(true);
+    try {
+      await changeProductPreparationConfiguration(
+        intention.productId,
+        intention.request,
+        intention.idempotencyKey,
+        intention.antiforgeryToken,
+      );
+      setUncertainPreparationChange(null);
+      setPreparationEditor(null);
+      setPreparationNotice({
+        kind: "success",
+        message: `Configuración de preparación de ${intention.operationalName} actualizada correctamente.`,
+      });
+      await reloadProducts();
+    } catch (error) {
+      if (error instanceof CatalogProblemError) {
+        if (error.problem.status === 401) {
+          onUnauthorized();
+          return;
+        }
+        if (error.problem.status === 403) {
+          setLoadedProducts([]);
+          setPreparationResponsibilityOptions([]);
+          setIsForbidden(true);
+          return;
+        }
+        setUncertainPreparationChange(null);
+        setPreparationEditor(null);
+        setPreparationNotice({
+          kind: "functional-error",
+          message: preparationChangeErrorMessage(error.problem),
+        });
+        if (
+          error.problem.code ===
+            "catalog.product.preparation_configuration_concurrency_conflict" ||
+          error.problem.code ===
+            "catalog.product.preparation_responsibility_not_found"
+        ) {
+          await reloadProducts();
+        }
+        if (
+          error.problem.code ===
+          "catalog.product.preparation_responsibility_not_found"
+        ) {
+          await reloadPreparationResponsibilityOptions();
+        }
+      } else {
+        setUncertainPreparationChange(intention);
+        setPreparationNotice({
+          kind: "uncertain",
+          message:
+            error instanceof CatalogNetworkError
+              ? "Resultado no confirmado: se perdió la comunicación y no sabemos si la configuración de preparación fue actualizada."
+              : "Resultado no confirmado: no fue posible confirmar la respuesta del servidor.",
+        });
+      }
+    } finally {
+      setIsChangingPreparation(false);
+    }
+  }
+
+  async function handlePreparationChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (preparationEditor === null || uncertainPreparationChange !== null) {
+      return;
+    }
+    if (
+      preparationEditor.requiresPreparation &&
+      preparationEditor.selectedPreparationResponsibilityId === null
+    ) {
+      setPreparationNotice({
+        kind: "functional-error",
+        message: "Seleccioná una responsabilidad de preparación.",
+      });
+      return;
+    }
+    const antiforgeryToken = await prepareMutation(setPreparationNotice);
+    if (antiforgeryToken === null) return;
+    await submitPreparationChange({
+      productId: preparationEditor.productId,
+      operationalName: preparationEditor.operationalName,
+      request: {
+        expectedCurrentPreparationResponsibilityId:
+          preparationEditor.observedPreparationResponsibilityId,
+        newPreparationResponsibilityId: preparationEditor.requiresPreparation
+          ? preparationEditor.selectedPreparationResponsibilityId
+          : null,
+      },
+      idempotencyKey: crypto.randomUUID(),
+      antiforgeryToken,
+    });
+  }
+
+  function discardUncertainPreparationChange() {
+    setUncertainPreparationChange(null);
+    setPreparationEditor(null);
+    setPreparationNotice({
+      kind: "uncertain",
+      message:
+        "La configuración pendiente fue descartada. El resultado previo sigue sin confirmarse; un cambio futuro será una intención nueva.",
+    });
+  }
+
+  function preparationDestinationLabel(
+    preparationResponsibilityId: string | null,
+  ): string {
+    if (preparationResponsibilityId === null) {
+      return "Sin preparación";
+    }
+    const option = preparationResponsibilityOptions.find(
+      (current) => current.id === preparationResponsibilityId,
+    );
+    return option === undefined
+      ? `Responsabilidad no disponible (Id: ${preparationResponsibilityId})`
+      : option.operationalName;
+  }
+
   if (isForbidden) {
     return null;
   }
@@ -475,6 +705,22 @@ export function CatalogPanel({
             {priceNotice.message}
           </p>
         )}
+        {preparationNotice && (
+          <p
+            className={`notice notice--${preparationNotice.kind}`}
+            role="status"
+          >
+            {preparationNotice.message}
+          </p>
+        )}
+
+        {isPreparationResponsibilityOptionsLoading && (
+          <p>Cargando responsabilidades de preparación…</p>
+        )}
+        {!isPreparationResponsibilityOptionsLoading &&
+          preparationResponsibilityOptionsError && (
+            <p role="alert">{preparationResponsibilityOptionsError}</p>
+          )}
 
         {uncertainPriceChange && (
           <div
@@ -521,6 +767,63 @@ export function CatalogPanel({
           </div>
         )}
 
+        {uncertainPreparationChange && (
+          <div
+            className="uncertain-intention"
+            role="region"
+            aria-label="Configuración de preparación con resultado no confirmado"
+          >
+            <h3>Configuración de preparación pendiente de resolución</h3>
+            <dl>
+              <div>
+                <dt>Producto</dt>
+                <dd>{uncertainPreparationChange.operationalName}</dd>
+              </div>
+              <div>
+                <dt>Destino vigente observado</dt>
+                <dd>
+                  {preparationDestinationLabel(
+                    uncertainPreparationChange.request
+                      .expectedCurrentPreparationResponsibilityId,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Nuevo destino</dt>
+                <dd>
+                  {preparationDestinationLabel(
+                    uncertainPreparationChange.request
+                      .newPreparationResponsibilityId,
+                  )}
+                </dd>
+              </div>
+            </dl>
+            <p>
+              El reintento usa exactamente este destino, estado observado y la
+              misma identidad. No se reintentará automáticamente.
+            </p>
+            <div className="intention-actions">
+              <button
+                type="button"
+                onClick={() =>
+                  void submitPreparationChange(uncertainPreparationChange)
+                }
+                disabled={isChangingPreparation}
+              >
+                Reintentar misma configuración de preparación
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={discardUncertainPreparationChange}
+                disabled={isChangingPreparation}
+              >
+                Descartar configuración incierta
+              </button>
+            </div>
+          </div>
+        )}
+
         {displayedIsLoading && <p>Cargando productos…</p>}
         {!displayedIsLoading && displayedLoadError && (
           <p role="alert">{displayedLoadError}</p>
@@ -536,6 +839,7 @@ export function CatalogPanel({
                   <th scope="col">Nombre</th>
                   <th scope="col">Precio</th>
                   <th scope="col">Disponibilidad</th>
+                  <th scope="col">Preparación</th>
                   <th scope="col">Acciones</th>
                 </tr>
               </thead>
@@ -548,6 +852,11 @@ export function CatalogPanel({
                       {product.isAvailable ? "Disponible" : "No disponible"}
                     </td>
                     <td>
+                      {product.requiresPreparation
+                        ? `Requiere preparación: ${preparationDestinationLabel(product.preparationResponsibilityId)}`
+                        : "No requiere preparación"}
+                    </td>
+                    <td>
                       <button
                         className="secondary-button"
                         type="button"
@@ -558,6 +867,18 @@ export function CatalogPanel({
                         aria-label={`Cambiar precio de ${product.operationalName}`}
                       >
                         Cambiar precio
+                      </button>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => openPreparationEditor(product)}
+                        disabled={
+                          isChangingPreparation ||
+                          uncertainPreparationChange !== null
+                        }
+                        aria-label={`Configurar preparación de ${product.operationalName}`}
+                      >
+                        Configurar preparación
                       </button>
                     </td>
                   </tr>
@@ -606,6 +927,111 @@ export function CatalogPanel({
                 type="button"
                 onClick={() => setPriceEditor(null)}
                 disabled={isChangingPrice}
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        )}
+
+        {preparationEditor && uncertainPreparationChange === null && (
+          <form
+            className="price-change-form"
+            onSubmit={(event) => void handlePreparationChange(event)}
+            aria-label={`Configurar preparación de ${preparationEditor.operationalName}`}
+          >
+            <div>
+              <span className="field-label">Producto</span>
+              <strong>{preparationEditor.operationalName}</strong>
+            </div>
+            <label>
+              <input
+                type="checkbox"
+                checked={preparationEditor.requiresPreparation}
+                onChange={(event) =>
+                  setPreparationEditor((current) =>
+                    current === null
+                      ? null
+                      : {
+                          ...current,
+                          requiresPreparation: event.target.checked,
+                        },
+                  )
+                }
+                disabled={isChangingPreparation}
+              />{" "}
+              Requiere preparación
+            </label>
+            <label htmlFor="preparation-responsibility-destination">
+              Responsabilidad de preparación de destino
+            </label>
+            <select
+              id="preparation-responsibility-destination"
+              value={
+                preparationEditor.selectedPreparationResponsibilityId ?? ""
+              }
+              onChange={(event) =>
+                setPreparationEditor((current) =>
+                  current === null
+                    ? null
+                    : {
+                        ...current,
+                        selectedPreparationResponsibilityId:
+                          event.target.value || null,
+                      },
+                )
+              }
+              disabled={
+                isChangingPreparation || !preparationEditor.requiresPreparation
+              }
+            >
+              <option value="">Seleccioná una responsabilidad</option>
+              {preparationEditor.selectedPreparationResponsibilityId !== null &&
+                !preparationResponsibilityOptions.some(
+                  (option) =>
+                    option.id ===
+                    preparationEditor.selectedPreparationResponsibilityId,
+                ) && (
+                  <option
+                    value={
+                      preparationEditor.selectedPreparationResponsibilityId
+                    }
+                  >
+                    Destino actual no disponible
+                  </option>
+                )}
+              {preparationResponsibilityOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.operationalName}
+                </option>
+              ))}
+            </select>
+            {preparationEditor.requiresPreparation &&
+              preparationEditor.selectedPreparationResponsibilityId === null && (
+                <p role="alert">
+                  Seleccioná una responsabilidad de preparación antes de
+                  confirmar.
+                </p>
+              )}
+            <div className="intention-actions">
+              <button
+                type="submit"
+                disabled={
+                  isChangingPreparation ||
+                  (preparationEditor.requiresPreparation &&
+                    preparationEditor.selectedPreparationResponsibilityId ===
+                      null)
+                }
+              >
+                {isChangingPreparation
+                  ? "Actualizando…"
+                  : "Confirmar configuración de preparación"}
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setPreparationEditor(null)}
+                disabled={isChangingPreparation}
               >
                 Cancelar
               </button>
