@@ -302,6 +302,7 @@ function App() {
               : "anonymous"
           }
           requestedLookup={requestedLookup}
+          canChangeOrderContext={canComposeOrders}
           activeOperationalReference={activeOperationalReference}
           activeOrderId={activeOrderId}
           onContinueOrder={requestContinueOrder}

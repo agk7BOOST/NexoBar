@@ -47,7 +47,7 @@ async function confirm(user: ReturnType<typeof userEvent.setup>, ordinal = 3, va
 beforeEach(() => {
   vi.clearAllMocks(); mutation.mockReset(); discardAntiforgeryToken();
   readStatus = 200; failOrderRefresh = false;
-  order = { operationalReference: orderId, context: "Mesa 1", incorporations: [{ id: incorporationId, ordinal: 1, confirmedAt: "2026-09-11T10:00:00Z", items: [
+  order = { operationalReference: orderId, context: "Mesa 1", contextId: "ctx-test", incorporations: [{ id: incorporationId, ordinal: 1, confirmedAt: "2026-09-11T10:00:00Z", items: [
     { productId: "same-product", quantity: 2, appliedPrice: "10", instruction: "sin sal", unavailableProductExceptionApplied: false },
     { productId: "same-product", quantity: 2, appliedPrice: "10", instruction: "con sal", unavailableProductExceptionApplied: false },
   ] }], functionalAmount: "20", isLiquidationEligible: false, liquidationBlockers: ["pending_composition"],

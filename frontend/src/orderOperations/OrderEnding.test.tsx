@@ -82,6 +82,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
     current = {
       operationalReference: reference,
       context: "Mesa 7",
+      contextId: "ctx-test",
       incorporations: [],
       functionalAmount: "9007199254740993.25",
       isLiquidationEligible: true,

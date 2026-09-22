@@ -94,6 +94,7 @@ beforeEach(() => {
   order = {
     operationalReference: reference,
     context: "Mesa",
+      contextId: "ctx-test",
     incorporations: [
       { id: "inc", ordinal: 1, confirmedAt: "2026-09-10T00:00:00Z", items: [] },
     ],

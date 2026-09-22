@@ -19,6 +19,7 @@ const {
   discardPendingCompositionMock,
   getAntiforgeryTokenMock,
   listOperationalProductsMock,
+  listOrderContextsMock,
   pendingAuthorityState,
 } = vi.hoisted(() => ({
   confirmFirstMock: vi.fn(),
@@ -28,6 +29,7 @@ const {
   discardPendingCompositionMock: vi.fn(),
   getAntiforgeryTokenMock: vi.fn(),
   listOperationalProductsMock: vi.fn(),
+  listOrderContextsMock: vi.fn(),
   pendingAuthorityState: {
     marker: null as {
       pendingCompositionId: string;
@@ -47,6 +49,7 @@ vi.mock("./orderOperationsClient.ts", async (importOriginal) => {
     getPendingComposition: getPendingCompositionMock,
     startPendingComposition: startPendingCompositionMock,
     discardPendingComposition: discardPendingCompositionMock,
+    listOrderContexts: listOrderContextsMock,
   };
 });
 
@@ -67,6 +70,8 @@ beforeEach(() => {
   getAntiforgeryTokenMock.mockReset();
   getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
   listOperationalProductsMock.mockReset();
+  listOrderContextsMock.mockReset();
+  listOrderContextsMock.mockResolvedValue([{ id: "ctx-mesa-7", operationalName: "Mesa 7" }, { id: "ctx-mesa-8", operationalName: "Mesa 8" }]);
   getPendingCompositionMock.mockReset();
   getPendingCompositionMock.mockImplementation(async (orderId: string) => ({
     orderId,
@@ -149,6 +154,7 @@ const burger: Product = {
 const firstResponse: FirstConfirmationResponse = {
   operationalReference: "order-created",
   context: "Mesa 7",
+  contextId: "ctx-mesa-7",
   firstIncorporation: {
     id: "incorporation-1",
     confirmedAt: "2026-08-29T14:30:00Z",
@@ -255,6 +261,19 @@ it("refresca el Pedido al iniciar y descartar Composición para actualizar elegi
 });
 
 describe("OrderWorkflow - Composición y Primera Confirmación", () => {
+  it("loads configured operational names in an accessible selector and exposes no free-text Context input", async () => {
+    render(<Harness />);
+    const selector = await screen.findByLabelText("Contexto para Primera Confirmacion");
+    expect(await screen.findByRole("option", { name: "Mesa 7" })).toBeInTheDocument();
+    expect(selector.tagName).toBe("SELECT");
+    expect(screen.queryByRole("textbox", { name: /context/i })).not.toBeInTheDocument();
+  });
+  it("blocks First Confirmation with an understandable message when no Context is configured", async () => {
+    listOrderContextsMock.mockResolvedValueOnce([]);
+    render(<Harness />);
+    expect(await screen.findByText("Se requiere configurar un Contexto antes de confirmar un Pedido.")).toBeVisible();
+    expect(screen.getByRole("button", { name: /Confirmar Primera Composición/ })).toBeDisabled();
+  });
   beforeEach(() => {
     confirmFirstMock.mockReset();
     confirmSubsequentMock.mockReset();
@@ -394,7 +413,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
         canRequestUnavailableProductException
       />,
     );
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     await addProduct(user, water, "Composición inicial");
     await user.click(
       screen.getByRole("button", {
@@ -406,7 +425,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     );
 
     expect(confirmFirstMock.mock.calls[0]?.[0]).toEqual({
-      context: "Mesa 7",
+      contextId: "ctx-mesa-7",
       items: [
         {
           productId: water.id,
@@ -534,7 +553,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
   it("permite colisión durante edición y bloquea localmente duplicados canonical", async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     await addProduct(user, burger, "Composición inicial");
     await user.type(
       screen.getByLabelText("Instrucción para Hamburguesa, línea 1"),
@@ -587,11 +606,11 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     });
 
     expect(confirm).toBeDisabled();
-    await user.type(screen.getByLabelText("Contexto"), "   ");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "");
     await addProduct(user, water, "Composición inicial");
     expect(confirm).toBeDisabled();
-    await user.clear(screen.getByLabelText("Contexto"));
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     expect(confirm).toBeEnabled();
   });
 
@@ -652,7 +671,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
         name: "Agregar Agua a Composición inicial",
       }),
     );
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     expect(
       screen.getByRole("button", { name: "Confirmar Primera Composición" }),
     ).toBeEnabled();
@@ -676,7 +695,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
         name: "Agregar Agua a Composición inicial",
       }),
     );
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     expect(
       screen.getByRole("button", { name: "Confirmar Primera Composición" }),
     ).toBeEnabled();
@@ -698,7 +717,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const onChanged = vi.fn();
     const user = userEvent.setup();
     render(<Harness onActivate={onActivate} onChanged={onChanged} />);
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     await addProduct(user, water, "Composición inicial", 2);
 
     await user.click(
@@ -708,7 +727,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
 
     const [request, key] = confirmFirstMock.mock.calls[0]!;
     expect(request).toEqual({
-      context: "Mesa 7",
+      contextId: "ctx-mesa-7",
       items: [
         {
           productId: water.id,
@@ -731,7 +750,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     confirmFirstMock.mockResolvedValueOnce(firstResponse);
     const user = userEvent.setup();
     render(<Harness />);
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 8");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-8");
     await addProduct(user, burger, "Composición inicial");
     await user.type(
       screen.getByLabelText("Instrucción para Hamburguesa, línea 1"),
@@ -753,7 +772,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
 
     const [request] = confirmFirstMock.mock.calls[0]!;
     expect(request).toEqual({
-      context: "Mesa 8",
+      contextId: "ctx-mesa-8",
       items: [
         {
           productId: burger.id,
@@ -791,7 +810,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
         .mockRejectedValueOnce(problem);
       const user = userEvent.setup();
       render(<Harness />);
-      await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+      await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
       await addProduct(user, burger, "Composición inicial");
       const instruction = screen.getByLabelText(
         "Instrucción para Hamburguesa, línea 1",
@@ -818,7 +837,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
     const user = userEvent.setup();
     render(<Harness />);
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     await addProduct(user, water, "Composición inicial", 2);
     await user.click(
       screen.getByRole("button", { name: "Confirmar Primera Composición" }),
@@ -829,7 +848,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     });
     expect(uncertain).toHaveTextContent("Mesa 7");
     expect(uncertain).toHaveTextContent("Cantidad: 2");
-    expect(screen.getByLabelText("Contexto")).toBeDisabled();
+    expect(screen.getByLabelText("Contexto para Primera Confirmacion")).toBeDisabled();
     expect(
       screen.getByRole("button", {
         name: "Agregar Agua a Composición inicial",
@@ -843,7 +862,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
     const user = userEvent.setup();
     render(<Harness />);
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     await addProduct(user, water, "Composición inicial", 2);
     await user.click(
       screen.getByRole("button", { name: "Confirmar Primera Composición" }),
@@ -878,7 +897,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
         canRequestUnavailableProductException
       />,
     );
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     await user.click(
       screen.getByRole("button", {
         name: "Agregar Jugo agotado mediante intervención a Composición inicial",
@@ -909,7 +928,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
     const user = userEvent.setup();
     render(<Harness />);
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     await addProduct(user, burger, "Composición inicial");
     const instruction = screen.getByLabelText(
       "Instrucción para Hamburguesa, línea 1",
@@ -941,7 +960,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
     const user = userEvent.setup();
     render(<Harness />);
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     await addProduct(user, water, "Composición inicial");
     await user.click(
       screen.getByRole("button", { name: "Confirmar Primera Composición" }),
@@ -954,7 +973,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       screen.queryByRole("button", { name: "Descartar intención incierta" }),
     ).not.toBeInTheDocument();
     expect(screen.getByLabelText("Cantidad de Agua")).toHaveTextContent("1");
-    expect(screen.getByLabelText("Contexto")).toBeDisabled();
+    expect(screen.getByLabelText("Contexto para Primera Confirmacion")).toBeDisabled();
     confirmFirstMock.mockResolvedValueOnce(firstResponse);
     await user.click(
       screen.getByRole("button", {
@@ -969,7 +988,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     confirmFirstMock.mockRejectedValueOnce(new OrderOperationsNetworkError());
     const user = userEvent.setup();
     render(<Harness />);
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     await addProduct(user, burger, "Composición inicial");
     const instruction = screen.getByLabelText(
       "Instrucción para Hamburguesa, línea 1",
@@ -995,7 +1014,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     );
     const user = userEvent.setup();
     render(<Harness />);
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     await addProduct(user, water, "Composición inicial");
     await user.click(
       screen.getByRole("button", { name: "Confirmar Primera Composición" }),
@@ -1086,7 +1105,7 @@ describe("OrderWorkflow - lectura operacional de Products", () => {
         name: "Agregar Agua a Composición inicial",
       }),
     );
-    await user.type(screen.getByLabelText("Contexto"), "Mesa 7");
+    await user.selectOptions(await screen.findByLabelText("Contexto para Primera Confirmacion"), "ctx-mesa-7");
     await user.click(
       screen.getByRole("button", { name: "Confirmar Primera Composición" }),
     );

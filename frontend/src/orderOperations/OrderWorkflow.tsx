@@ -21,6 +21,7 @@ import { ActiveOrderFreshnessSubscription } from "../notifications/ActiveOrderFr
 import { FreshnessReadCoordinator } from "../notifications/FreshnessReadCoordinator.ts";
 import {
   confirmFirst,
+  listOrderContexts,
   confirmSubsequent,
   discardPendingComposition,
   getPendingComposition,
@@ -32,6 +33,7 @@ import {
   type PendingComposition,
   type PendingCompositionCommand,
   type SubsequentConfirmationRequest,
+  type OperationalContextOption,
 } from "./orderOperationsClient.ts";
 
 type Notice =
@@ -162,7 +164,10 @@ export function OrderWorkflow({
   const [operationalReadRetired, setOperationalReadRetired] = useState(false);
   const operationalReadGeneration = useRef(0);
   const [composition, setComposition] = useState<CompositionLine[]>([]);
-  const [context, setContext] = useState("");
+  const [contextId, setContextId] = useState("");
+  const [contexts, setContexts] = useState<OperationalContextOption[]>([]);
+  const [contextsLoaded, setContextsLoaded] = useState(false);
+  const [contextLoadFailed, setContextLoadFailed] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmationNotice, setConfirmationNotice] = useState<Notice | null>(
     null,
@@ -198,6 +203,8 @@ export function OrderWorkflow({
   const pendingReadSequence = useRef(0);
   const [staleComposition, setStaleComposition] = useState(false);
   activeOrderRef.current = activeOperationalReference;
+
+  useEffect(() => { void listOrderContexts().then(loaded => { setContexts(loaded); setContextsLoaded(true); }).catch(() => { setContexts([]); setContextsLoaded(true); setContextLoadFailed(true); }); }, []);
 
   useEffect(() => {
     if (products !== undefined) {
@@ -877,12 +884,12 @@ export function OrderWorkflow({
     }
 
     if (activeOperationalReference === null) {
-      if (context.trim().length === 0) {
+      if (contextId.length === 0) {
         return;
       }
 
       await submitFirst({
-        request: { context, items },
+        request: { contextId, items },
         idempotencyKey: crypto.randomUUID(),
         antiforgeryToken,
       });
@@ -977,6 +984,7 @@ export function OrderWorkflow({
 
   const canConfirm =
     composition.length > 0 &&
+    (activeOperationalReference !== null || (contexts.length > 0 && contextId.length > 0)) &&
     composition.every(
       (line) => {
         const product = operationalProducts.find(
@@ -990,7 +998,7 @@ export function OrderWorkflow({
     ) &&
     !isCompositionLocked &&
     !hasDuplicateCompositionLines(composition) &&
-    (isSubsequent || context.trim().length > 0) &&
+    (isSubsequent || contextId.length > 0) &&
     (!isSubsequent ||
       (localPending !== null && currentPendingAuthority !== null));
   const modeLabel = isSubsequent ? "Nueva Composición" : "Composición inicial";
@@ -1193,14 +1201,14 @@ export function OrderWorkflow({
       >
         {!isSubsequent && (
           <>
-            <label htmlFor="order-context">Contexto</label>
-            <input
-              id="order-context"
-              name="context"
-              value={context}
-              onChange={(event) => setContext(event.target.value)}
-              disabled={isCompositionLocked}
-            />
+            <label htmlFor="order-context">Contexto de coordinación</label>
+            <select id="order-context" aria-label="Contexto para Primera Confirmacion" value={contextId} onChange={(event) => setContextId(event.target.value)} disabled={isCompositionLocked || contexts.length === 0}>
+              <option value="">Seleccionar Contexto</option>
+              {contexts.map(option => <option key={option.id} value={option.id}>{option.operationalName}</option>)}
+            </select>
+            <p>El Contexto organiza la coordinación; no cambia precios, disponibilidad ni destino de preparación.</p>
+            {contextLoadFailed && <p role="alert">No se pudo cargar la selección de Contextos. Actualizá e intentá nuevamente.</p>}
+            {contextsLoaded && contexts.length === 0 && !contextLoadFailed && <p role="status">Se requiere configurar un Contexto antes de confirmar un Pedido.</p>}
           </>
         )}
         <button type="submit" disabled={!canConfirm}>
@@ -1244,7 +1252,7 @@ export function OrderWorkflow({
         >
           <h3>Primera Confirmación pendiente de resolución</h3>
           <ConfirmationSnapshot
-            context={uncertainFirst.request.context}
+            context={contexts.find(option => option.id === uncertainFirst.request.contextId)?.operationalName ?? "Contexto seleccionado (nombre no disponible)"}
             items={uncertainFirst.request.items}
             products={operationalProducts}
           />

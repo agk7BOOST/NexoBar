@@ -7,9 +7,10 @@ import {
   type CurrentIdentity,
 } from "./identity/sessionClient.ts";
 
-const { getCurrentIdentityMock, orderWorkflowPropsMock } = vi.hoisted(() => ({
+const { getCurrentIdentityMock, orderWorkflowPropsMock, orderLookupPropsMock } = vi.hoisted(() => ({
   getCurrentIdentityMock: vi.fn(),
   orderWorkflowPropsMock: vi.fn(),
+  orderLookupPropsMock: vi.fn(),
 }));
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -54,7 +55,7 @@ vi.mock("./orderOperations/OrderWorkflow.tsx", () => ({
     return <section aria-label="Composicion operacional" />;
   },
 }));
-vi.mock("./orderOperations/OrderLookup.tsx", () => ({ OrderLookup: () => null }));
+vi.mock("./orderOperations/OrderLookup.tsx", () => ({ OrderLookup: (props: unknown) => { orderLookupPropsMock(props); return null; } }));
 vi.mock("./orderOperations/OperationalInterventionPanel.tsx", () => ({
   OperationalInterventionPanel: () => null,
 }));
@@ -92,6 +93,23 @@ describe("App capability-aware administrative mounting", () => {
     vi.stubGlobal("fetch", fetchMock);
     getCurrentIdentityMock.mockReset();
     orderWorkflowPropsMock.mockReset();
+    orderLookupPropsMock.mockReset();
+  });
+
+  it.each([
+    [["GeneralConfiguration"], true, false],
+    [["OrderOperationsAndBasicClosure"], false, true],
+    [["GeneralConfiguration", "OrderOperationsAndBasicClosure"], true, true],
+    [[], false, false],
+  ])("keeps Context administration and Order operations separately gated: %j", async (responsibilities, seesAdmin, seesOrder) => {
+    getCurrentIdentityMock.mockResolvedValueOnce(identity(responsibilities as string[]));
+    render(<App />);
+    if (seesAdmin) expect(await screen.findByLabelText("Configuracion general administrativa")).toBeInTheDocument();
+    else await waitFor(() => expect(screen.queryByLabelText("Configuracion general administrativa")).not.toBeInTheDocument());
+    if (seesOrder) expect(await screen.findByLabelText("Composicion operacional")).toBeInTheDocument();
+    else expect(screen.queryByLabelText("Composicion operacional")).not.toBeInTheDocument();
+    expect(orderWorkflowPropsMock).toHaveBeenCalledTimes(seesOrder ? 1 : 0);
+    expect(orderLookupPropsMock).toHaveBeenCalledWith(expect.objectContaining({ canChangeOrderContext: seesOrder }));
   });
 
   it("does not mount General Configuration while unauthenticated", async () => {

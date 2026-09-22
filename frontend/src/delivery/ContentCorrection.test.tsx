@@ -165,6 +165,7 @@ beforeEach(() => {
   order = {
     operationalReference: "ref",
     context: "Mesa",
+      contextId: "ctx-test",
     incorporations: [],
     functionalAmount: "10.00",
     isLiquidationEligible: false,

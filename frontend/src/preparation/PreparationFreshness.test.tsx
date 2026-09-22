@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationSseProvider } from "../notifications/NotificationSseProvider.tsx";
@@ -81,6 +81,24 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("Preparation SSE freshness", () => {
+  it("shows the refreshed current Context without changing Work, content, progress, or destination", async () => {
+    await loaded();
+    expect(screen.getByText("Mesa 1")).toBeVisible();
+    expect(screen.getByText("Cocina")).toBeVisible();
+    const initialRow = screen.getAllByRole("row")[1]!;
+    read.mockResolvedValueOnce([{ ...work, context: "Mesa 2" }]);
+    await act(async () => Stream.sources[0].invalidate());
+    expect(await screen.findByText("Mesa 2")).toBeVisible();
+    expect(screen.queryByText("Mesa 1")).not.toBeInTheDocument();
+    expect(screen.getByText("Papas", { selector: "strong" })).toBeVisible();
+    const refreshedRow = screen.getAllByRole("row")[1]!;
+    expect(refreshedRow).toBe(initialRow);
+    expect(within(refreshedRow).getByText("Mesa 2")).toBeVisible();
+    expect(screen.getByText("Cocina")).toBeVisible();
+    expect(within(refreshedRow).getByText("Pendiente").nextElementSibling).toHaveTextContent("2");
+    expect(within(refreshedRow).getByText("En preparación").nextElementSibling).toHaveTextContent("2");
+    expect(within(refreshedRow).getByText("Listo").nextElementSibling).toHaveTextContent("1");
+  });
   it("subscribes only to the active destination and unsubscribes on unmount", async () => {
     const view = await loaded();
     expect(new URL(Stream.sources[0].url, "http://localhost").searchParams.getAll("scope"))

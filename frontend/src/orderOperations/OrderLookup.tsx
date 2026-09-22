@@ -17,12 +17,16 @@ import {
 import type { OperationalProduct } from "../catalog/catalogClient.ts";
 import {
   getOrder,
+  listOrderContexts,
+  changeOrderContext,
   isOrderCompletelyCancelled,
   OrderLookupNetworkError,
   OrderOperationsProblemError,
   type OrderOperationsProblemDetails,
   type OrderResponse,
+  type OperationalContextOption,
 } from "./orderOperationsClient.ts";
+import { getAntiforgeryToken } from "../identity/sessionClient.ts";
 
 export interface RequestedOrderLookup {
   operationalReference: string;
@@ -42,6 +46,7 @@ interface OrderLookupProps {
   isOrderMutationBusy?: (reference: string) => boolean;
   onEndingBusy?: (reference: string, busy: boolean) => void;
   onActiveOrderRetired?: (reference: string) => void;
+  canChangeOrderContext?: boolean;
 }
 
 function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
@@ -72,6 +77,7 @@ export function OrderLookup({
   onEndingBusy,
   onActiveOrderRetired,
   isOrderMutationBusy,
+  canChangeOrderContext = false,
 }: OrderLookupProps) {
   const [operationalReference, setOperationalReference] = useState("");
   const [order, setOrder] = useState<OrderResponse | null>(null);
@@ -86,6 +92,12 @@ export function OrderLookup({
   const [liquidationTimes, setLiquidationTimes] = useState<
     Record<string, string>
   >({});
+  const [contextOptions, setContextOptions] = useState<OperationalContextOption[]>([]);
+  const [contextTarget, setContextTarget] = useState("");
+  const [contextNotice, setContextNotice] = useState("");
+  const [contextPending, setContextPending] = useState<{ orderId: string; request: { expectedCurrentContextId: string; newContextId: string }; key: string; token: string } | null>(null);
+  const [contextBusy, setContextBusy] = useState(false);
+  useEffect(() => { if (canChangeOrderContext) void listOrderContexts().then(setContextOptions).catch(() => setContextOptions([])); }, [canChangeOrderContext]);
   const endingBusyRef = useRef(false);
   const sequence = useRef(0);
   const activeReadCoordinator = useRef(new FreshnessReadCoordinator());
@@ -219,6 +231,34 @@ export function OrderLookup({
     !isOrderCompletelyCancelled(order) &&
     order.operationalReference === activeOperationalReference;
 
+  async function submitContextChange(intent: NonNullable<typeof contextPending>) {
+    setContextBusy(true); setContextNotice("");
+    try {
+      await changeOrderContext(intent.orderId, intent.request, intent.key, intent.token);
+      setContextPending(null); setContextTarget("");
+      await lookup(order?.operationalReference ?? operationalReference, true);
+      setContextNotice("Contexto actualizado desde el Estado del Pedido.");
+    } catch (error) {
+      if (error instanceof OrderOperationsProblemError) {
+        const code = error.problem.code ?? "";
+        setContextPending(null);
+        if (code === "order.context_change.expected_context_stale") setContextNotice("Otra persona cambió el Contexto. Se actualizó el Pedido; iniciá una nueva intención si necesitás otro cambio.");
+        else if (code === "order.context_change.no_change") setContextNotice("El Pedido ya tiene ese Contexto. No se registró un cambio.");
+        else if (code === "order.context_change.target_context_not_found") { setContextNotice("El Contexto seleccionado ya no está disponible."); void listOrderContexts().then(setContextOptions); }
+        else setContextNotice("No se pudo cambiar el Contexto. Se actualizó el Pedido.");
+        await lookup(order?.operationalReference ?? operationalReference, true);
+      } else { setContextPending(intent); setContextNotice("Resultado no confirmado. Reintentá exactamente el mismo cambio."); }
+    } finally { setContextBusy(false); }
+  }
+
+  async function handleContextChange() {
+    if (!order || !activeOrderId || !contextTarget || contextTarget === order.contextId) return;
+    try {
+      const token = await getAntiforgeryToken();
+      await submitContextChange({ orderId: activeOrderId, request: { expectedCurrentContextId: order.contextId, newContextId: contextTarget }, key: crypto.randomUUID(), token });
+    } catch { setContextNotice("No se pudo preparar el cambio seguro de Contexto."); }
+  }
+
   return (
     <section className="panel" aria-labelledby="order-lookup-title">
       <ActiveOrderFreshnessSubscription
@@ -266,9 +306,23 @@ export function OrderLookup({
             </div>
             <div>
               <dt>Contexto actual</dt>
-              <dd>{order.context}</dd>
+              <dd aria-label="Contexto actual del Pedido">{order.context}</dd>
             </div>
           </dl>
+
+          {canChangeOrderContext && isDisplayedOrderActive && !order.isFrozen && !order.isClosed && !isOrderCompletelyCancelled(order) && (
+            <section aria-label="Cambiar Contexto del Pedido">
+              <p>El mismo Pedido continúa; cambia únicamente su Contexto de coordinación.</p>
+              <label htmlFor="order-context-change-target">Nuevo Contexto</label>
+              <select id="order-context-change-target" aria-label="Contexto destino" value={contextTarget} onChange={event => setContextTarget(event.target.value)} disabled={contextBusy || contextPending !== null}>
+                <option value="">Seleccionar Contexto</option>
+                {contextOptions.filter(option => option.id !== order.contextId).map(option => <option key={option.id} value={option.id}>{option.operationalName}</option>)}
+              </select>
+              <button type="button" aria-label="Cambiar contexto" onClick={() => void handleContextChange()} disabled={contextBusy || contextPending !== null || !contextTarget}>Cambiar contexto</button>
+              {contextNotice && <p role="status" aria-label="Estado del cambio de Contexto">{contextNotice}</p>}
+              {contextPending && <div role="region" aria-label="Cambio de Contexto incierto"><button type="button" disabled={contextBusy} onClick={() => void submitContextChange(contextPending)}>Reintentar mismo cambio</button></div>}
+            </section>
+          )}
 
           {!order.isFrozen &&
             !order.isClosed &&

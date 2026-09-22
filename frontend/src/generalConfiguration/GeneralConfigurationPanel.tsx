@@ -28,6 +28,7 @@ import {
   getAntiforgeryToken,
   SessionProblemError,
 } from "../identity/sessionClient.ts";
+import { ContextConfigurationSection } from "./ContextConfigurationSection.tsx";
 
 type Notice =
   | { kind: "success"; message: string }
@@ -951,6 +952,8 @@ export function GeneralConfigurationPanel({
             </ul>
           )}
       </section>
+
+      <ContextConfigurationSection onUnauthorized={onUnauthorized} onForbidden={onForbidden} />
 
       <div className="section-heading">
         <h3>Identities</h3>

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   confirmFirst,
+  listOrderContexts,
+  changeOrderContext,
   confirmSubsequent,
   discardPendingComposition,
   getPendingComposition,
@@ -15,6 +17,23 @@ import {
 
 const fetchMock = vi.fn<typeof fetch>();
 
+describe("operational Context selector and Context Change client", () => {
+  beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
+  it("uses the narrow operational lookup and maps only id/name", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([{ id: "ctx-a", operationalName: "Mesa A", ignored: true }]), { status: 200 }));
+    await expect(listOrderContexts()).resolves.toEqual([{ id: "ctx-a", operationalName: "Mesa A" }]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/operational-configuration/order-contexts");
+  });
+  it("posts exact A to B intent, idempotency key and antiforgery to the backend route", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await changeOrderContext("order-1", { expectedCurrentContextId: "ctx-a", newContextId: "ctx-b" }, "key-1", "csrf");
+    const [path, init] = fetchMock.mock.calls[0]!;
+    expect(path).toBe("/api/order-operations/orders/order-1/context-changes");
+    expect(init?.headers).toEqual(expect.objectContaining({ "Idempotency-Key": "key-1", "X-NexoBar-CSRF": "csrf" }));
+    expect(JSON.parse(String(init?.body))).toEqual({ expectedCurrentContextId: "ctx-a", newContextId: "ctx-b" });
+  });
+});
+
 describe("confirmFirst", () => {
   beforeEach(() => {
     fetchMock.mockReset();
@@ -25,6 +44,7 @@ describe("confirmFirst", () => {
     const response: FirstConfirmationResponse = {
       operationalReference: "order-reference",
       context: "Mesa 7",
+      contextId: "ctx-mesa-7",
       firstIncorporation: {
         id: "incorporation-1",
         confirmedAt: "2026-08-29T14:30:00Z",
@@ -49,7 +69,7 @@ describe("confirmFirst", () => {
     await expect(
       confirmFirst(
         {
-          context: "Mesa 7",
+          contextId: "ctx-mesa-7",
           items: [
             {
               productId: "product-1",
@@ -78,7 +98,7 @@ describe("confirmFirst", () => {
     expect(headers.get("Idempotency-Key")).toBe("first-confirmation-key");
     expect(headers.get("X-NexoBar-CSRF")).toBe("csrf-token");
     expect(JSON.parse(String(init?.body))).toEqual({
-      context: "Mesa 7",
+      contextId: "ctx-mesa-7",
       items: [
         {
           productId: "product-1",
@@ -104,7 +124,7 @@ describe("confirmFirst", () => {
       new Response(
         JSON.stringify({
           operationalReference: "order-reference",
-          context: "Mesa 7",
+          contextId: "ctx-mesa-7",
           firstIncorporation: {
             id: "incorporation-1",
             confirmedAt: "2026-08-29T14:30:00Z",
@@ -117,7 +137,7 @@ describe("confirmFirst", () => {
 
     await confirmFirst(
       {
-        context: "Mesa 7",
+        contextId: "ctx-mesa-7",
         items: [
           {
             productId: "product-unavailable",
@@ -133,7 +153,7 @@ describe("confirmFirst", () => {
 
     const [, init] = fetchMock.mock.calls[0]!;
     expect(JSON.parse(String(init?.body))).toEqual({
-      context: "Mesa 7",
+      contextId: "ctx-mesa-7",
       items: [
         {
           productId: "product-unavailable",
@@ -162,7 +182,7 @@ describe("confirmFirst", () => {
 
     const error = await confirmFirst(
       {
-        context: "Mesa 7",
+        contextId: "ctx-mesa-7",
         items: [{ productId: "product-1", quantity: 1, instruction: null, unavailableProductExceptionRequested: false }],
       },
       "key",
@@ -183,7 +203,7 @@ describe("confirmFirst", () => {
 
     const error = await confirmFirst(
       {
-        context: "Mesa 7",
+        contextId: "ctx-mesa-7",
         items: [{ productId: "product-1", quantity: 1, instruction: null, unavailableProductExceptionRequested: false }],
       },
       "key",
@@ -315,6 +335,7 @@ describe("getOrder", () => {
 
   it("usa una ruta relativa segura y conserva los valores textuales del response", async () => {
     const response: OrderResponse = {
+      context: "Mesa 7",
       functionalAmount: "21.00",
       isLiquidationEligible: false,
       liquidationBlockers: ["unresolved_fulfillment"],
@@ -327,7 +348,7 @@ describe("getOrder", () => {
       isClosed: false,
       closedAt: null,
       operationalReference: "reference-from-response",
-      context: "Mesa 7",
+      contextId: "ctx-mesa-7",
       incorporations: [
         {
           id: "incorporation-1",

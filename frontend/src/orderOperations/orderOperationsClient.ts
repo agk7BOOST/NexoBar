@@ -6,7 +6,7 @@ export interface FirstConfirmationItemRequest {
 }
 
 export interface FirstConfirmationRequest {
-  context: string;
+  contextId: string;
   items: FirstConfirmationItemRequest[];
 }
 
@@ -26,6 +26,7 @@ export interface FirstIncorporation {
 
 export interface FirstConfirmationResponse {
   operationalReference: string;
+  contextId: string;
   context: string;
   firstIncorporation: FirstIncorporation;
 }
@@ -89,6 +90,7 @@ export interface OrderIncorporation {
 
 export interface OrderResponse {
   operationalReference: string;
+  contextId: string;
   context: string;
   incorporations: OrderIncorporation[];
   functionalAmount: string;
@@ -102,6 +104,24 @@ export interface OrderResponse {
   isClosureEligible: boolean;
   isClosed: boolean;
   closedAt: string | null;
+}
+
+export interface OperationalContextOption { id: string; operationalName: string }
+export interface OrderContextChangeRequest { expectedCurrentContextId: string; newContextId: string }
+
+export async function listOrderContexts(): Promise<OperationalContextOption[]> {
+  const response = await fetch("/api/operational-configuration/order-contexts", { credentials: "same-origin" });
+  await requireOrderOperationsSuccess(response);
+  const options = await response.json() as OperationalContextOption[];
+  return options.map(({ id, operationalName }) => ({ id, operationalName }));
+}
+
+export async function changeOrderContext(orderId: string, request: OrderContextChangeRequest, idempotencyKey: string, antiforgeryToken: string): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(`/api/order-operations/orders/${encodeURIComponent(orderId)}/context-changes`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey, "X-NexoBar-CSRF": antiforgeryToken }, body: JSON.stringify(request) });
+  } catch (error) { throw new OrderOperationsNetworkError({ cause: error }); }
+  await requireOrderOperationsSuccess(response);
 }
 
 export function isOrderCompletelyCancelled(order: OrderResponse): boolean {
