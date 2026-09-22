@@ -27,6 +27,7 @@ import {
 } from "./orderOperations/orderOperationsClient.ts";
 import { OperationalInterventionPanel } from "./orderOperations/OperationalInterventionPanel.tsx";
 import { NotificationSseProvider } from "./notifications/NotificationSseProvider.tsx";
+import { ProductAvailabilityInterventionPanel } from "./availability/ProductAvailabilityInterventionPanel.tsx";
 
 type AuthState =
   | { status: "loading" }
@@ -189,6 +190,8 @@ function App() {
   const canComposeOrders =
     identity !== null &&
     hasResponsibility(identity, "OrderOperationsAndBasicClosure");
+  const canInterveneAvailability =
+    identity !== null && hasResponsibility(identity, "OperationalIntervention");
   const canRequestUnavailableProductException =
     canComposeOrders &&
     identity !== null &&
@@ -240,6 +243,13 @@ function App() {
               }
             />
             <InventoryPanel onUnauthorized={returnToLogin} />
+            {canInterveneAvailability && (
+              <ProductAvailabilityInterventionPanel
+                key={`availability-intervention:${identity.identityId}:${identityLifecycle}`}
+                onUnauthorized={returnToLogin}
+                onForbidden={() => void refreshCurrentIdentity()}
+              />
+            )}
             {canComposeOrders && (
               <OrderWorkflow
                 key={`operational-products:${identity.identityId}:${identityLifecycle}`}

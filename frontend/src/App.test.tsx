@@ -58,6 +58,11 @@ vi.mock("./orderOperations/OrderLookup.tsx", () => ({ OrderLookup: () => null })
 vi.mock("./orderOperations/OperationalInterventionPanel.tsx", () => ({
   OperationalInterventionPanel: () => null,
 }));
+vi.mock("./availability/ProductAvailabilityInterventionPanel.tsx", () => ({
+  ProductAvailabilityInterventionPanel: () => (
+    <section aria-label="Intervencion de disponibilidad de Products" />
+  ),
+}));
 vi.mock("./preparation/PreparationPanel.tsx", () => ({
   PreparationPanel: () => null,
 }));
@@ -126,6 +131,42 @@ describe("App capability-aware administrative mounting", () => {
 
     await screen.findByRole("button", { name: "Salir" });
     expect(screen.queryByLabelText("Composicion operacional")).not.toBeInTheDocument();
+  });
+
+  it("mounts Availability Intervention for OperationalIntervention alone", async () => {
+    getCurrentIdentityMock.mockResolvedValueOnce(identity(["OperationalIntervention"]));
+    render(<App />);
+
+    expect(
+      await screen.findByLabelText("Intervencion de disponibilidad de Products"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Catalog administrativo")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Composicion operacional")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["OrderOperationsAndBasicClosure", "OrderOperations-only"],
+    ["CatalogConfiguration", "CatalogConfiguration-only"],
+  ])("does not mount Availability Intervention for %s", async (responsibility) => {
+    getCurrentIdentityMock.mockResolvedValueOnce(identity([responsibility]));
+    render(<App />);
+
+    await screen.findByRole("button", { name: "Salir" });
+    expect(
+      screen.queryByLabelText("Intervencion de disponibilidad de Products"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("mounts Availability Intervention independently for combined responsibilities", async () => {
+    getCurrentIdentityMock.mockResolvedValueOnce(
+      identity(["OrderOperationsAndBasicClosure", "OperationalIntervention"]),
+    );
+    render(<App />);
+
+    expect(
+      await screen.findByLabelText("Intervencion de disponibilidad de Products"),
+    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Composicion operacional")).toBeInTheDocument();
   });
 
   it("derives the unavailable-Product intervention presentation capability from both current responsibilities", async () => {
