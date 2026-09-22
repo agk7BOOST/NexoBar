@@ -134,7 +134,6 @@ internal sealed class InventoryService(
 
         var items = await dbContext.InventoryItems
             .AsNoTracking()
-            .Where(item => item.IsActive)
             .OrderBy(item => item.OperationalName)
             .ThenBy(item => item.Id)
             .ToArrayAsync(cancellationToken);

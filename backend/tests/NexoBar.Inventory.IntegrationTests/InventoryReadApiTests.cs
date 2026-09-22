@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using NexoBar.IdentitiesAndCapabilities;
 
@@ -35,6 +36,112 @@ public sealed class InventoryReadApiTests(InventoryApiFixture fixture)
         Assert.False(returned.TryGetProperty("quantityEstablished", out _));
         Assert.False(returned.TryGetProperty("movementRevision", out _));
         Assert.False(returned.TryGetProperty("history", out _));
+    }
+
+    [Fact]
+    public async Task Configuration_read_includes_retired_items_and_supports_reload_reactivation()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var activeReady = await fixture.AddItemAsync(
+            "Active ready",
+            "kg",
+            token);
+        await fixture.SetRegisteredStateAsync(activeReady.Id, 4, 0, token);
+        var activeAwaiting = await fixture.AddItemAsync(
+            "Active awaiting",
+            "kg",
+            token);
+        var retired = await fixture.AddItemAsync(
+            "Retired configuration",
+            "kg",
+            token);
+        var actor = await fixture.CreateActorAsync(
+            "configuration-lifecycle-read",
+            token,
+            FunctionalResponsibility.InventoryConfiguration,
+            FunctionalResponsibility.InventoryOperation);
+        await fixture.LoginAsync(actor, token);
+
+        using (var retire = await fixture.PostRetireAsync(
+                   retired.Id,
+                   Guid.NewGuid(),
+                   true,
+                   token))
+        {
+            retire.EnsureSuccessStatusCode();
+        }
+
+        var afterRetire = await fixture.GetConfigurationItemsAsync(token);
+        Assert.Equal(
+            [activeReady.Id, activeAwaiting.Id, retired.Id],
+            afterRetire.Select(item => item.ItemId).OrderBy(id => id));
+        var activeReadyProjection = Assert.Single(
+            afterRetire,
+            item => item.ItemId == activeReady.Id);
+        Assert.True(activeReadyProjection.IsActive);
+        Assert.True(activeReadyProjection.OrdinaryOperationReady);
+        var activeAwaitingProjection = Assert.Single(
+            afterRetire,
+            item => item.ItemId == activeAwaiting.Id);
+        Assert.True(activeAwaitingProjection.IsActive);
+        Assert.False(activeAwaitingProjection.OrdinaryOperationReady);
+        var retiredProjection = Assert.Single(
+            afterRetire,
+            item => item.ItemId == retired.Id);
+        Assert.False(retiredProjection.IsActive);
+        Assert.False(retiredProjection.OrdinaryOperationReady);
+        Assert.True(retiredProjection.DeleteEligible);
+        Assert.Equal("kg", retiredProjection.OperationalUnit);
+        Assert.Equal(
+            [activeReady.Id, activeAwaiting.Id],
+            (await fixture.GetOperationalItemsAsync(token))
+                .Select(item => item.ItemId)
+                .OrderBy(id => id));
+
+        using (var reactivate = await fixture.PostReactivateAsync(
+                   retired.Id,
+                   Guid.NewGuid(),
+                   false,
+                   null,
+                   token))
+        {
+            reactivate.EnsureSuccessStatusCode();
+            var result = (await reactivate.Content.ReadFromJsonAsync<InventoryLifecycleResponse>(
+                token))!;
+            Assert.Equal(retired.Id, result.ItemId);
+            Assert.True(result.IsActive);
+            Assert.False(result.OrdinaryOperationReady);
+            Assert.True(result.RequiresReconciliation);
+        }
+
+        var afterReactivate = Assert.Single(
+            await fixture.GetConfigurationItemsAsync(token),
+            item => item.ItemId == retired.Id);
+        Assert.True(afterReactivate.IsActive);
+        Assert.False(afterReactivate.OrdinaryOperationReady);
+        var operationalAfterReactivate = Assert.Single(
+            await fixture.GetOperationalItemsAsync(token),
+            item => item.ItemId == retired.Id);
+        Assert.Null(operationalAfterReactivate.CurrentRegisteredQuantity);
+        Assert.True(operationalAfterReactivate.RequiresReconciliation);
+
+        using (var delete = await fixture.PostDeleteAsync(
+                   retired.Id,
+                   Guid.NewGuid(),
+                   token))
+        {
+            delete.EnsureSuccessStatusCode();
+        }
+
+        Assert.DoesNotContain(
+            retired.Id,
+            (await fixture.GetConfigurationItemsAsync(token))
+                .Select(item => item.ItemId));
+        Assert.DoesNotContain(
+            retired.Id,
+            (await fixture.GetOperationalItemsAsync(token))
+                .Select(item => item.ItemId));
     }
 
     [Fact]
