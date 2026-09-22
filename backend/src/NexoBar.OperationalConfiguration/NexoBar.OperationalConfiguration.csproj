@@ -11,6 +11,7 @@
     <InternalsVisibleTo Include="NexoBar.IdentitiesAndCapabilities.IntegrationTests" />
     <InternalsVisibleTo Include="NexoBar.OperationalConfiguration.IntegrationTests" />
     <InternalsVisibleTo Include="NexoBar.OrderOperations.IntegrationTests" />
+    <InternalsVisibleTo Include="NexoBar.Migrations" />
   </ItemGroup>
 
   <PropertyGroup>

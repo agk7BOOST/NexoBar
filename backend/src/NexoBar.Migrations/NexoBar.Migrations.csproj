@@ -1,23 +1,23 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <ProjectReference Include="..\NexoBar.Catalog\NexoBar.Catalog.csproj" />
     <ProjectReference Include="..\NexoBar.IdentitiesAndCapabilities\NexoBar.IdentitiesAndCapabilities.csproj" />
+    <ProjectReference Include="..\NexoBar.Inventory\NexoBar.Inventory.csproj" />
     <ProjectReference Include="..\NexoBar.OperationalConfiguration\NexoBar.OperationalConfiguration.csproj" />
+    <ProjectReference Include="..\NexoBar.OrderOperations\NexoBar.OrderOperations.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="NexoBar.E2E.DatabaseSetup" />
-    <InternalsVisibleTo Include="NexoBar.Catalog.IntegrationTests" />
-    <InternalsVisibleTo Include="NexoBar.OrderOperations.IntegrationTests" />
-    <InternalsVisibleTo Include="NexoBar.Migrations" />
+    <Content Include="..\NexoBar.Host\appsettings*.json"
+             Link="%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

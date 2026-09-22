@@ -4,6 +4,7 @@
     <Project Path="src/NexoBar.Host/NexoBar.Host.csproj" />
     <Project Path="src/NexoBar.IdentitiesAndCapabilities/NexoBar.IdentitiesAndCapabilities.csproj" />
     <Project Path="src/NexoBar.Inventory/NexoBar.Inventory.csproj" />
+    <Project Path="src/NexoBar.Migrations/NexoBar.Migrations.csproj" />
     <Project Path="src/NexoBar.OperationalConfiguration/NexoBar.OperationalConfiguration.csproj" />
     <Project Path="src/NexoBar.OrderOperations/NexoBar.OrderOperations.csproj" />
   </Folder>
@@ -13,6 +14,7 @@
     <Project Path="tests/NexoBar.IdentitiesAndCapabilities.IntegrationTests/NexoBar.IdentitiesAndCapabilities.IntegrationTests.csproj" />
     <Project Path="tests/NexoBar.Inventory.IntegrationTests/NexoBar.Inventory.IntegrationTests.csproj" />
     <Project Path="tests/NexoBar.OrderOperations.IntegrationTests/NexoBar.OrderOperations.IntegrationTests.csproj" />
+    <Project Path="tests/NexoBar.Migrations.IntegrationTests/NexoBar.Migrations.IntegrationTests.csproj" />
     <Project Path="tests/NexoBar.OperationalConfiguration.IntegrationTests/NexoBar.OperationalConfiguration.IntegrationTests.csproj" />
   </Folder>
 </Solution>
