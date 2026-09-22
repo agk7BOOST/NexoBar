@@ -32,6 +32,7 @@ public static class InventoryModule
         services.AddScoped<InventoryMovementService>();
         services.AddScoped<InventoryMovementHistoryService>();
         services.AddScoped<InventoryLifecycleService>();
+        services.AddScoped<InventoryDeleteService>();
         services.AddInventoryOperationInvalidationPublisher();
         return services;
     }
@@ -86,6 +87,19 @@ public static class InventoryModule
             .RequireAuthorization()
             .Accepts<CorrectInventoryUnitRequest>("application/json")
             .Produces<InventoryUnitCorrectionResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapPost(
+                "/api/inventory/items/{itemId}/delete",
+                DeleteItemAsync)
+            .WithName("DeleteInventoryItem")
+            .WithTags("Inventory")
+            .RequireAuthorization()
+            .Produces<InventoryItemDeleteResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
@@ -449,6 +463,58 @@ public static class InventoryModule
                 "Idempotency-Key was already used for another intention",
                 "The supplied Idempotency-Key identifies an incompatible Inventory Unit correction.",
                 "inventory.unit_correction.idempotency_key_conflict"),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> DeleteItemAsync(
+        string itemId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        InventoryDeleteService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(itemId, out var inventoryItemId) ||
+            inventoryItemId == Guid.Empty)
+        {
+            return InvalidItemIdProblem();
+        }
+
+        if (!TryParseIdempotencyKey(idempotencyKey, out var commandId))
+        {
+            return IdempotencyKeyProblem(idempotencyKey);
+        }
+
+        var antiforgeryProblem = await ValidateAntiforgeryAsync(
+            httpContext,
+            antiforgery,
+            "inventory.delete.antiforgery_invalid");
+        if (antiforgeryProblem is not null)
+        {
+            return antiforgeryProblem;
+        }
+
+        var result = await service.DeleteAsync(
+            commandId,
+            inventoryItemId,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            InventoryDeleteCommandOutcome.Deleted => Results.Ok(result.Response),
+            InventoryDeleteCommandOutcome.Unauthenticated => InvalidSessionProblem(),
+            InventoryDeleteCommandOutcome.Forbidden => InventoryConfigurationForbiddenProblem(),
+            InventoryDeleteCommandOutcome.NotFound => InventoryItemNotFoundProblem(),
+            InventoryDeleteCommandOutcome.MovementHistoryConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Inventory Item has Movement History",
+                "The Inventory Item must be retained because Movement History exists.",
+                "inventory.item.delete_movement_history_conflict"),
+            InventoryDeleteCommandOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                "The supplied Idempotency-Key identifies an incompatible Inventory Item deletion.",
+                "inventory.item.delete.idempotency_key_conflict"),
             _ => throw new UnreachableException()
         };
     }

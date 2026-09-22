@@ -109,22 +109,52 @@ internal sealed class InventoryService(
         return CreateInventoryItemResult.Created(response);
     }
 
-    internal Task<InventoryReadResult<InventoryConfigurationItemResponse>>
-        ListConfigurationItemsAsync(CancellationToken cancellationToken) =>
-        ListAuthorizedAsync(
-            static (authorization, identityId, transaction, token) =>
-                authorization.StabilizeInventoryConfigurationAsync(
-                    identityId,
-                    transaction,
-                    token),
-            static item => new InventoryConfigurationItemResponse(
-                item.Id,
-                item.OperationalName,
-                item.OperationalUnit.Value,
-                item.IsActive,
-                item.IsActive && item.CurrentRegisteredQuantity is not null,
-                item.MovementRevision == 0),
+    internal async Task<InventoryReadResult<InventoryConfigurationItemResponse>>
+        ListConfigurationItemsAsync(CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
             cancellationToken);
+        var dbTransaction = transaction.GetDbTransaction();
+        var actor = await authorization.StabilizeSessionAndIdentityAsync(
+            dbTransaction,
+            cancellationToken);
+        if (actor is null)
+        {
+            return InventoryReadResult<InventoryConfigurationItemResponse>.Unauthenticated();
+        }
+
+        if (!await authorization.StabilizeInventoryConfigurationAsync(
+                actor.IdentityId,
+                dbTransaction,
+                cancellationToken))
+        {
+            return InventoryReadResult<InventoryConfigurationItemResponse>.Forbidden();
+        }
+
+        var items = await dbContext.InventoryItems
+            .AsNoTracking()
+            .Where(item => item.IsActive)
+            .OrderBy(item => item.OperationalName)
+            .ThenBy(item => item.Id)
+            .ToArrayAsync(cancellationToken);
+        var itemIds = items.Select(item => item.Id).ToArray();
+        var movementItemIds = await dbContext.InventoryMovements
+            .Where(movement => itemIds.Contains(movement.InventoryItemId))
+            .Select(movement => movement.InventoryItemId)
+            .Distinct()
+            .ToHashSetAsync(cancellationToken);
+        var response = items.Select(item => new InventoryConfigurationItemResponse(
+            item.Id,
+            item.OperationalName,
+            item.OperationalUnit.Value,
+            item.IsActive,
+            item.IsActive && item.CurrentRegisteredQuantity is not null,
+            item.MovementRevision == 0,
+            !movementItemIds.Contains(item.Id))).ToArray();
+        await transaction.CommitAsync(cancellationToken);
+        return InventoryReadResult<InventoryConfigurationItemResponse>.Succeeded(response);
+    }
 
     internal Task<InventoryReadResult<InventoryOperationalItemResponse>>
         ListOperationalItemsAsync(CancellationToken cancellationToken) =>

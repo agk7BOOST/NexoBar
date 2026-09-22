@@ -30,6 +30,9 @@ internal sealed class InventoryDbContext(
     internal DbSet<InventoryUnitCorrectionCommand>
         InventoryUnitCorrectionCommands => Set<InventoryUnitCorrectionCommand>();
 
+    internal DbSet<InventoryDeleteCommand> InventoryDeleteCommands =>
+        Set<InventoryDeleteCommand>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("inventory");
@@ -42,6 +45,7 @@ internal sealed class InventoryDbContext(
         modelBuilder.ApplyConfiguration(new InventoryRetireCommandConfiguration());
         modelBuilder.ApplyConfiguration(new InventoryReactivateCommandConfiguration());
         modelBuilder.ApplyConfiguration(new InventoryUnitCorrectionCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new InventoryDeleteCommandConfiguration());
     }
 
     private sealed class InventoryItemConfiguration :
@@ -166,11 +170,6 @@ internal sealed class InventoryDbContext(
             builder.HasIndex(command => command.ResultItemId)
                 .HasDatabaseName("UX_inventory_item_commands_result_item")
                 .IsUnique();
-            builder.HasOne<InventoryItem>()
-                .WithMany()
-                .HasForeignKey(command => command.ResultItemId)
-                .HasConstraintName("FK_inventory_item_commands_item")
-                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 
@@ -349,10 +348,6 @@ internal sealed class InventoryDbContext(
                 .HasColumnType("timestamp with time zone").IsRequired();
             builder.HasIndex(command => command.ResultCountObservationId)
                 .HasDatabaseName("UX_count_commands_result_observation").IsUnique();
-            builder.HasOne<CountObservation>().WithMany()
-                .HasForeignKey(command => command.ResultCountObservationId)
-                .HasConstraintName("FK_count_commands_observation")
-                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 
@@ -424,17 +419,13 @@ internal sealed class InventoryDbContext(
             builder.Property(command => command.ResultMovementRevision)
                 .HasColumnName("result_movement_revision")
                 .HasColumnType("bigint").IsRequired();
+            builder.HasIndex(command => command.CountObservationId)
+                .HasDatabaseName("IX_movement_commands_count_observation_id");
+            builder.HasIndex(command => command.InventoryItemId)
+                .HasDatabaseName("IX_movement_commands_inventory_item_id");
             builder.HasIndex(command => command.ResultMovementId)
                 .HasDatabaseName("UX_movement_commands_result_movement")
                 .HasFilter("result_movement_id IS NOT NULL").IsUnique();
-            builder.HasOne<InventoryItem>().WithMany()
-                .HasForeignKey(command => command.InventoryItemId)
-                .HasConstraintName("FK_movement_commands_item")
-                .OnDelete(DeleteBehavior.Restrict);
-            builder.HasOne<CountObservation>().WithMany()
-                .HasForeignKey(command => command.CountObservationId)
-                .HasConstraintName("FK_movement_commands_observation")
-                .OnDelete(DeleteBehavior.Restrict);
             builder.HasOne<InventoryMovement>().WithMany()
                 .HasForeignKey(command => command.ResultMovementId)
                 .HasConstraintName("FK_movement_commands_movement")
@@ -571,6 +562,52 @@ internal sealed class InventoryDbContext(
             builder.Property(command => command.ResultOutcome)
                 .HasColumnName("result_outcome")
                 .HasMaxLength(16).IsRequired();
+        }
+    }
+
+    private sealed class InventoryDeleteCommandConfiguration :
+        IEntityTypeConfiguration<InventoryDeleteCommand>
+    {
+        public void Configure(EntityTypeBuilder<InventoryDeleteCommand> builder)
+        {
+            builder.ToTable(
+                "delete_commands",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_inventory_delete_commands_kind",
+                        "command_kind = 'DeleteInventoryItem'");
+                    table.HasCheckConstraint(
+                        "CK_inventory_delete_commands_result",
+                        "result_deleted = true");
+                });
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_inventory_delete_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key")
+                .ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id")
+                .ValueGeneratedNever();
+            builder.Property(command => command.InventoryItemId)
+                .HasColumnName("inventory_item_id")
+                .ValueGeneratedNever();
+            builder.Property(command => command.CommandKind)
+                .HasColumnName("command_kind")
+                .HasMaxLength(40)
+                .IsRequired();
+            builder.Property(command => command.ResultItemId)
+                .HasColumnName("result_item_id")
+                .ValueGeneratedNever();
+            builder.Property(command => command.ResultDeleted)
+                .HasColumnName("result_deleted")
+                .IsRequired();
+            builder.Property(command => command.CommittedAtUtc)
+                .HasColumnName("committed_at_utc")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+            builder.HasIndex(command => command.InventoryItemId)
+                .HasDatabaseName("IX_inventory_delete_commands_item");
         }
     }
 }

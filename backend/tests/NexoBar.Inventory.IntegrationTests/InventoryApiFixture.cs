@@ -57,6 +57,7 @@ public sealed class InventoryApiFixture : IAsyncLifetime
             DECLARE table_name text;
             BEGIN
                 FOREACH table_name IN ARRAY ARRAY[
+                    'delete_commands',
                     'unit_correction_commands',
                     'reactivate_commands',
                     'retire_commands',
@@ -260,6 +261,36 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         return await Client.SendAsync(request, cancellationToken);
     }
 
+    internal async Task<HttpResponseMessage> PostDeleteAsync(
+        Guid itemId,
+        Guid key,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null)
+        => await PostDeleteAsync(
+            Client,
+            itemId,
+            key,
+            cancellationToken,
+            antiforgeryToken);
+
+    internal static async Task<HttpResponseMessage> PostDeleteAsync(
+        HttpClient client,
+        Guid itemId,
+        Guid key,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null)
+    {
+        antiforgeryToken ??= await GetAntiforgeryTokenAsync(
+            client,
+            cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/inventory/items/{itemId:D}/delete");
+        request.Headers.Add("Idempotency-Key", key.ToString("D"));
+        request.Headers.Add("X-NexoBar-CSRF", antiforgeryToken);
+        return await client.SendAsync(request, cancellationToken);
+    }
+
     internal async Task<InventoryConfigurationItemResponse[]> GetConfigurationItemsAsync(
         CancellationToken cancellationToken)
     {
@@ -445,6 +476,15 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         return (
             await dbContext.InventoryItems.CountAsync(cancellationToken),
             await dbContext.InventoryItemCreationCommands.CountAsync(cancellationToken));
+    }
+
+    internal async Task<int> CountDeleteCommandsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<InventoryDbContext>()
+            .InventoryDeleteCommands.CountAsync(cancellationToken);
     }
 
     internal async Task<InventoryItem> ReadItemAsync(

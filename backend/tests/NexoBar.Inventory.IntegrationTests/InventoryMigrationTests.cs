@@ -13,6 +13,8 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         "20260904023608_AddEverydayInventoryMovements";
     private const string LifecycleAndUnitMigration =
         "20260922150000_AddInventoryLifecycleAndUnitCorrection";
+    private const string ElementDeleteMigration =
+        "20260922170000_AddInventoryElementDelete";
 
     [Fact]
     public async Task Initial_migration_has_safe_up_and_down()
@@ -32,7 +34,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateInventoryAsync(LifecycleAndUnitMigration, token);
+            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
         }
     }
 
@@ -59,7 +61,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateInventoryAsync(LifecycleAndUnitMigration, token);
+            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
         }
     }
 
@@ -82,7 +84,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
                     "movement_commands",
                     token));
 
-            await fixture.MigrateInventoryAsync(LifecycleAndUnitMigration, token);
+            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
             await using var connection = new NpgsqlConnection(fixture.ConnectionString);
             await connection.OpenAsync(token);
             var intent = await ReadColumnAsync(
@@ -104,7 +106,58 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
+            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
+        }
+    }
+
+    [Fact]
+    public async Task Element_delete_migration_preserves_data_decouples_technical_ledgers_and_round_trips()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+
+        try
+        {
             await fixture.MigrateInventoryAsync(LifecycleAndUnitMigration, token);
+            var item = await fixture.AddItemAsync("Migration preserved item", "kg", token);
+            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
+
+            Assert.True(await TableExistsAsync("delete_commands", token));
+            await using var schemaConnection = await OpenConnectionAsync(token);
+            var deleteColumns = await ReadColumnNamesAsync(
+                schemaConnection,
+                "delete_commands",
+                token);
+            Assert.Contains("inventory_item_id", deleteColumns);
+            Assert.Contains("result_deleted", deleteColumns);
+            Assert.Contains("committed_at_utc", deleteColumns);
+
+            foreach (var constraint in new[]
+                     {
+                         "FK_inventory_item_commands_item",
+                         "FK_count_commands_observation",
+                         "FK_movement_commands_observation",
+                         "FK_movement_commands_item"
+                     })
+            {
+                Assert.False(await ForeignKeyExistsAsync(constraint, token));
+            }
+
+            Assert.True(await ForeignKeyExistsAsync(
+                "FK_inventory_movements_item",
+                token));
+            Assert.True(await ForeignKeyExistsAsync(
+                "FK_count_observations_item",
+                token));
+            Assert.Equal(item.Id, (await fixture.ReadItemAsync(item.Id, token)).Id);
+
+            await fixture.MigrateInventoryAsync(LifecycleAndUnitMigration, token);
+            Assert.False(await TableExistsAsync("delete_commands", token));
+            Assert.Equal(item.Id, (await fixture.ReadItemAsync(item.Id, token)).Id);
+        }
+        finally
+        {
+            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
         }
     }
 
@@ -269,6 +322,33 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
             """;
         command.Parameters.AddWithValue("table_name", tableName);
         return Assert.IsType<bool>(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private async Task<bool> ForeignKeyExistsAsync(
+        string constraintName,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.table_constraints
+                WHERE constraint_schema = 'inventory'
+                  AND constraint_type = 'FOREIGN KEY'
+                  AND constraint_name = @constraint_name)
+            """;
+        command.Parameters.AddWithValue("constraint_name", constraintName);
+        return Assert.IsType<bool>(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private async Task<NpgsqlConnection> OpenConnectionAsync(
+        CancellationToken cancellationToken)
+    {
+        var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        return connection;
     }
 
     private static async Task<ColumnMetadata> ReadColumnAsync(

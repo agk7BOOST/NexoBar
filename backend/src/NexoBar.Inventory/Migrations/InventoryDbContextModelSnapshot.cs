@@ -257,6 +257,52 @@ namespace NexoBar.Inventory.Migrations
                         });
                 });
 
+            modelBuilder.Entity("NexoBar.Inventory.InventoryDeleteCommand", b =>
+                {
+                    b.Property<Guid>("IdempotencyKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<Guid>("ActorIdentityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_identity_id");
+
+                    b.Property<Guid>("InventoryItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inventory_item_id");
+
+                    b.Property<string>("CommandKind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("command_kind");
+
+                    b.Property<Guid>("ResultItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("result_item_id");
+
+                    b.Property<bool>("ResultDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("result_deleted");
+
+                    b.Property<DateTimeOffset>("CommittedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("committed_at_utc");
+
+                    b.HasKey("IdempotencyKey")
+                        .HasName("PK_inventory_delete_commands");
+
+                    b.HasIndex("InventoryItemId")
+                        .HasDatabaseName("IX_inventory_delete_commands_item");
+
+                    b.ToTable("delete_commands", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("CK_inventory_delete_commands_kind", "command_kind = 'DeleteInventoryItem'");
+
+                            t.HasCheckConstraint("CK_inventory_delete_commands_result", "result_deleted = true");
+                        });
+                });
+
             modelBuilder.Entity("NexoBar.Inventory.InventoryRetireCommand", b =>
                 {
                     b.Property<Guid>("IdempotencyKey")
@@ -515,26 +561,6 @@ namespace NexoBar.Inventory.Migrations
                         .HasConstraintName("FK_count_observations_item");
                 });
 
-            modelBuilder.Entity("NexoBar.Inventory.InventoryCountCommand", b =>
-                {
-                    b.HasOne("NexoBar.Inventory.CountObservation", null)
-                        .WithMany()
-                        .HasForeignKey("ResultCountObservationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_count_commands_observation");
-                });
-
-            modelBuilder.Entity("NexoBar.Inventory.InventoryItemCreationCommand", b =>
-                {
-                    b.HasOne("NexoBar.Inventory.InventoryItem", null)
-                        .WithMany()
-                        .HasForeignKey("ResultItemId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_inventory_item_commands_item");
-                });
-
             modelBuilder.Entity("NexoBar.Inventory.InventoryMovement", b =>
                 {
                     b.HasOne("NexoBar.Inventory.CountObservation", null)
@@ -553,19 +579,6 @@ namespace NexoBar.Inventory.Migrations
 
             modelBuilder.Entity("NexoBar.Inventory.InventoryMovementCommand", b =>
                 {
-                    b.HasOne("NexoBar.Inventory.CountObservation", null)
-                        .WithMany()
-                        .HasForeignKey("CountObservationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("FK_movement_commands_observation");
-
-                    b.HasOne("NexoBar.Inventory.InventoryItem", null)
-                        .WithMany()
-                        .HasForeignKey("InventoryItemId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_movement_commands_item");
-
                     b.HasOne("NexoBar.Inventory.InventoryMovement", null)
                         .WithMany()
                         .HasForeignKey("ResultMovementId")

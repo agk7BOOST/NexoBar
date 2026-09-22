@@ -43,7 +43,12 @@ public sealed record InventoryConfigurationItemResponse(
     string OperationalUnit,
     bool IsActive,
     bool OrdinaryOperationReady,
-    bool UnitCorrectionEligible);
+    bool UnitCorrectionEligible,
+    bool DeleteEligible);
+
+public sealed record InventoryItemDeleteResponse(
+    Guid ItemId,
+    bool Deleted);
 
 public sealed record InventoryOperationalItemResponse(
     Guid ItemId,
