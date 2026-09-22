@@ -14,6 +14,7 @@ const {
   createProductMock,
   getAntiforgeryTokenMock,
   listPreparationResponsibilityOptionsMock,
+  listGroupsMock,
   listProductsMock,
 } = vi.hoisted(() => ({
   changeProductPreparationConfigurationMock: vi.fn(),
@@ -21,6 +22,7 @@ const {
   createProductMock: vi.fn(),
   getAntiforgeryTokenMock: vi.fn(),
   listPreparationResponsibilityOptionsMock: vi.fn(),
+  listGroupsMock: vi.fn(),
   listProductsMock: vi.fn(),
 }));
 
@@ -34,6 +36,7 @@ vi.mock("./catalogClient.ts", async (importOriginal) => {
     createProduct: createProductMock,
     listPreparationResponsibilityOptions:
       listPreparationResponsibilityOptionsMock,
+    listGroups: listGroupsMock,
     listProducts: listProductsMock,
   };
 });
@@ -53,6 +56,7 @@ function product(overrides?: Partial<Product>): Product {
     isAvailable: true,
     requiresPreparation: false,
     preparationResponsibilityId: null,
+    groupId: null,
     ...overrides,
   };
 }
@@ -103,6 +107,8 @@ describe("CatalogPanel - alta y listado", () => {
     listProductsMock.mockReset();
     listPreparationResponsibilityOptionsMock.mockReset();
     listPreparationResponsibilityOptionsMock.mockResolvedValue([]);
+    listGroupsMock.mockReset();
+    listGroupsMock.mockResolvedValue([]);
   });
 
   it("presenta el listado vigente sin una acción de Composición", () => {
@@ -230,6 +236,8 @@ describe("CatalogPanel - cambio de Precio", () => {
     listProductsMock.mockReset();
     listPreparationResponsibilityOptionsMock.mockReset();
     listPreparationResponsibilityOptionsMock.mockResolvedValue([]);
+    listGroupsMock.mockReset();
+    listGroupsMock.mockResolvedValue([]);
   });
 
   it("congela expectedCurrentPrice, acepta zero string y recarga tras éxito", async () => {
@@ -364,6 +372,8 @@ describe("CatalogPanel - configuración de preparación", () => {
     getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
     listPreparationResponsibilityOptionsMock.mockReset();
     listPreparationResponsibilityOptionsMock.mockResolvedValue([kitchen, bar]);
+    listGroupsMock.mockReset();
+    listGroupsMock.mockResolvedValue([]);
   });
 
   async function openPreparationChange(
@@ -564,6 +574,8 @@ describe("CatalogPanel - lectura administrativa segura", () => {
     listProductsMock.mockReset();
     listPreparationResponsibilityOptionsMock.mockReset();
     listPreparationResponsibilityOptionsMock.mockResolvedValue([]);
+    listGroupsMock.mockReset();
+    listGroupsMock.mockResolvedValue([]);
   });
 
   it("owns the administrative Product read when mounted", async () => {
