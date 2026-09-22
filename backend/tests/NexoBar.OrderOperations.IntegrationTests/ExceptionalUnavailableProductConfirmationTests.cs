@@ -100,6 +100,57 @@ public sealed class ExceptionalUnavailableProductConfirmationTests(
     }
 
     [Fact]
+    public async Task Exception_marker_remains_historical_after_availability_is_restored()
+    {
+        await fixture.ResetAsync(Token);
+        var unavailable = await fixture.CreateProductAsync("Historical unavailable", "19", Token);
+        var destination = Guid.NewGuid();
+        await fixture.SetProductPreparationAsync(unavailable.Id, destination, Token);
+        await fixture.SetProductStateAsync(unavailable.Id, true, false, Token);
+        var actor = await fixture.CreateConfirmationActorAsync(true, true, Token);
+        using var client = await fixture.LoginAsync(actor, Token);
+
+        using var confirmationResponse = await PostFirstAsync(
+            client,
+            FirstRequest(unavailable.Id, exceptional: true),
+            Guid.NewGuid());
+        var confirmation = await ReadFirstAsync(confirmationResponse);
+        Assert.True(Assert.Single(confirmation.FirstIncorporation.Items)
+            .UnavailableProductExceptionApplied);
+
+        using var availabilityRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/catalog/products/{unavailable.Id:D}/availability-changes")
+        {
+            Content = JsonContent.Create(new
+            {
+                expectedCurrentAvailability = false,
+                newAvailability = true
+            })
+        };
+        availabilityRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
+        using var availabilityResponse = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(
+            client, availabilityRequest, Token);
+        availabilityResponse.EnsureSuccessStatusCode();
+
+        using var orderResponse = await client.GetAsync(
+            $"/api/order-operations/orders/{confirmation.OperationalReference}", Token);
+        orderResponse.EnsureSuccessStatusCode();
+        var order = Assert.IsType<OrderQueryResponse>(
+            await orderResponse.Content.ReadFromJsonAsync<OrderQueryResponse>(Token));
+        var item = order.Incorporations.Single().Items.Single(item =>
+            item.ProductId == unavailable.Id);
+        Assert.True(item.UnavailableProductExceptionApplied);
+        Assert.Equal("19", item.AppliedPrice);
+        await using var scope = fixture.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OrderOperationsDbContext>();
+        var work = Assert.Single(await db.PreparationWork.AsNoTracking()
+            .Where(candidate => candidate.IncorporationId == confirmation.FirstIncorporation.Id)
+            .ToArrayAsync(Token));
+        Assert.Equal(destination, work.PreparationResponsibilityId);
+    }
+
+    [Fact]
     public async Task First_authority_matrix_and_ordinary_unavailable_contract_are_stable()
     {
         await fixture.ResetAsync(Token);

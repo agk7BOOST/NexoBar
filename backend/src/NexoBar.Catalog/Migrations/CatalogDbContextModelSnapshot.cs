@@ -455,6 +455,48 @@ namespace NexoBar.Catalog.Migrations
                         });
                 });
 
+            modelBuilder.Entity("NexoBar.Catalog.ProductAvailabilityChangeCommand", b =>
+                {
+                    b.Property<Guid>("IdempotencyKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<Guid?>("ActorIdentityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_identity_id");
+
+                    b.Property<string>("CommandKind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("command_kind");
+
+                    b.Property<bool>("IntentExpectedCurrentAvailability")
+                        .HasColumnType("boolean")
+                        .HasColumnName("intent_expected_current_availability");
+
+                    b.Property<bool>("IntentNewAvailability")
+                        .HasColumnType("boolean")
+                        .HasColumnName("intent_new_availability");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<bool>("ResultAvailability")
+                        .HasColumnType("boolean")
+                        .HasColumnName("result_availability");
+
+                    b.HasKey("IdempotencyKey")
+                        .HasName("PK_catalog_product_availability_change_commands");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("product_availability_change_commands", "catalog", t =>
+                        {
+                            t.HasCheckConstraint("CK_catalog_product_availability_change_commands_result_matches_intent", "result_availability = intent_new_availability");
+                        });
+                });
+
             modelBuilder.Entity("NexoBar.Catalog.GroupCreationCommand", b =>
                 {
                     b.HasOne("NexoBar.Catalog.CatalogGroup", null)
@@ -542,6 +584,16 @@ namespace NexoBar.Catalog.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_catalog_product_retire_commands_products");
+                });
+
+            modelBuilder.Entity("NexoBar.Catalog.ProductAvailabilityChangeCommand", b =>
+                {
+                    b.HasOne("NexoBar.Catalog.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_catalog_product_availability_change_commands_products");
                 });
 #pragma warning restore 612, 618
         }

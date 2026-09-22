@@ -40,6 +40,18 @@ internal sealed record ProductOperationalNameResponse(Guid ProductId, string Ope
 
 internal sealed record ProductLifecycleResponse(Guid ProductId, bool IsActive, bool IsAvailable);
 
+internal sealed record AvailabilityAdministrationProductResponse(
+    Guid Id,
+    string OperationalName,
+    bool IsAvailable);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record ChangeProductAvailabilityRequest(
+    [property: JsonRequired] bool? ExpectedCurrentAvailability,
+    [property: JsonRequired] bool? NewAvailability);
+
+internal sealed record ProductAvailabilityResponse(Guid ProductId, bool IsAvailable);
+
 public sealed record OperationalProductResponse(
     Guid Id,
     string OperationalName,

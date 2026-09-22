@@ -49,5 +49,6 @@ internal enum CatalogCommandKind
     ChangeProductGroup,
     ChangeProductOperationalName,
     RetireProduct,
-    ReactivateProduct
+    ReactivateProduct,
+    ChangeProductAvailability
 }

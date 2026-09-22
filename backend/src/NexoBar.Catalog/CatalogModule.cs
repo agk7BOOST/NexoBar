@@ -96,6 +96,15 @@ public static class CatalogModule
             .Produces<ProductLifecycleResponse>().ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized).ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+        group.MapPost("/{productId:guid}/availability-changes", ChangeProductAvailabilityAsync)
+            .WithName("ChangeCatalogProductAvailability")
+            .Accepts<ChangeProductAvailabilityRequest>("application/json")
+            .Produces<ProductAvailabilityResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         var groups = endpoints.MapGroup("/api/catalog/groups").RequireAuthorization().WithTags("Catalog");
         groups.MapGet(string.Empty, ListGroupsAsync).Produces<IReadOnlyList<GroupResponse>>()
@@ -123,6 +132,15 @@ public static class CatalogModule
             .MapGet(string.Empty, ListOperationalProductsAsync)
             .WithName("ListOperationalCatalogProducts")
             .Produces<IReadOnlyList<OperationalProductResponse>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
+        endpoints.MapGroup("/api/catalog/availability-administration-products")
+            .RequireAuthorization()
+            .WithTags("Catalog")
+            .MapGet(string.Empty, ListAvailabilityAdministrationProductsAsync)
+            .WithName("ListAvailabilityAdministrationProducts")
+            .Produces<IReadOnlyList<AvailabilityAdministrationProductResponse>>()
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden);
 
@@ -441,7 +459,8 @@ public static class CatalogModule
         Guid? groupId = null,
         bool includeCurrentGroupId = false,
         Guid? currentGroupId = null,
-        string? currentOperationalName = null)
+        string? currentOperationalName = null,
+        bool? currentAvailability = null)
     {
         var extensions = new Dictionary<string, object?>
         {
@@ -488,6 +507,11 @@ public static class CatalogModule
         if (currentOperationalName is not null)
         {
             extensions["currentOperationalName"] = currentOperationalName;
+        }
+
+        if (currentAvailability is not null)
+        {
+            extensions["currentAvailability"] = currentAvailability;
         }
 
         return Results.Problem(
@@ -644,6 +668,72 @@ public static class CatalogModule
         };
     }
 
+    private static async Task<IResult> ListAvailabilityAdministrationProductsAsync(
+        CatalogService catalog,
+        CancellationToken cancellationToken)
+    {
+        var result = await catalog.ListAvailabilityAdministrationProductsAsync(
+            cancellationToken);
+        return result.Outcome switch
+        {
+            CatalogAccessOutcome.Succeeded => Results.Ok(result.Products),
+            CatalogAccessOutcome.AuthenticationRequired => AuthenticationRequired(),
+            CatalogAccessOutcome.OperationalInterventionRequired =>
+                OperationalInterventionRequired(),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> ChangeProductAvailabilityAsync(
+        Guid productId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        ChangeProductAvailabilityRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        CatalogService catalog,
+        CancellationToken cancellationToken)
+    {
+        var command = await ValidateCatalogCommandAsync(
+            idempotencyKey,
+            httpContext,
+            antiforgery,
+            "catalog.product.availability",
+            cancellationToken);
+        if (command.Failure is not null)
+        {
+            return command.Failure;
+        }
+
+        var result = await catalog.ChangeProductAvailabilityAsync(
+            command.Key!.Value,
+            productId,
+            request,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            ProductAvailabilityChangeOutcome.Changed => Results.Ok(result.Product),
+            ProductAvailabilityChangeOutcome.Invalid => Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid Product availability change intention",
+                "Both expectedCurrentAvailability and newAvailability are required.",
+                "catalog.product.availability.invalid"),
+            ProductAvailabilityChangeOutcome.NotFound => ProductNotFound(productId),
+            ProductAvailabilityChangeOutcome.NotCurrent => ProductNotCurrent(productId),
+            ProductAvailabilityChangeOutcome.ConcurrencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Product availability changed concurrently",
+                "The current Product availability does not match expectedCurrentAvailability.",
+                "catalog.product.availability_concurrency_conflict",
+                productId,
+                currentAvailability: result.CurrentAvailability),
+            ProductAvailabilityChangeOutcome.IdempotencyConflict => IdempotencyConflict(
+                "catalog.product.availability.idempotency_key_conflict"),
+            ProductAvailabilityChangeOutcome.AuthenticationRequired => AuthenticationRequired(),
+            ProductAvailabilityChangeOutcome.Forbidden => OperationalInterventionRequired(),
+            _ => throw new UnreachableException()
+        };
+    }
+
     private static async Task<IResult> ListPreparationResponsibilitiesAsync(
         CatalogService catalog,
         CancellationToken cancellationToken)
@@ -689,4 +779,10 @@ public static class CatalogModule
         "Catalog Configuration required",
         "A current Catalog Configuration responsibility is required.",
         "identities_and_capabilities.catalog_configuration_required");
+
+    private static IResult OperationalInterventionRequired() => Problem(
+        StatusCodes.Status403Forbidden,
+        "Operational Intervention required",
+        "A current Operational Intervention responsibility is required.",
+        "identities_and_capabilities.operational_intervention_required");
 }

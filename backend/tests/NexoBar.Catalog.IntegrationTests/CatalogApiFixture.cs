@@ -58,6 +58,7 @@ public sealed class CatalogApiFixture : IAsyncLifetime
             TRUNCATE TABLE
                 catalog.product_reactivate_commands,
                 catalog.product_retire_commands,
+                catalog.product_availability_change_commands,
                 catalog.product_operational_name_change_commands,
                 catalog.product_group_change_commands,
                 catalog.group_creation_commands,

@@ -92,6 +92,7 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 order_operations.incorporation_contents,
                 order_operations.incorporations,
                 order_operations.orders,
+                catalog.product_availability_change_commands,
                 catalog.product_reactivate_commands,
                 catalog.product_retire_commands,
                 catalog.product_operational_name_change_commands,

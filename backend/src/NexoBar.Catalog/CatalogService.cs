@@ -20,6 +20,8 @@ internal sealed class CatalogService(
     private const long ProductPriceChangeLockNamespace = 0x5052494345434800;
     private const long ProductPreparationConfigurationChangeLockNamespace =
         0x5052455043464700;
+    private const long ProductAvailabilityChangeLockNamespace =
+        0x415641494C434847;
 
     internal async Task<CreateProductResult> CreateProductAsync(
         Guid idempotencyKey,
@@ -429,6 +431,135 @@ internal sealed class CatalogService(
         return OperationalProductListResult.Succeeded(products);
     }
 
+    internal async Task<AvailabilityAdministrationProductListResult>
+        ListAvailabilityAdministrationProductsAsync(CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            cancellationToken);
+        var actor = await sessionStabilizer.StabilizeAsync(
+            transaction.GetDbTransaction(), cancellationToken);
+        if (actor is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return AvailabilityAdministrationProductListResult.AuthenticationRequired();
+        }
+
+        if (!await operationalIntervention.StabilizeResponsibilityAsync(
+                actor.IdentityId, transaction.GetDbTransaction(), cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return AvailabilityAdministrationProductListResult.Forbidden();
+        }
+
+        var products = await dbContext.Products.AsNoTracking()
+            .Where(product => product.IsActive)
+            .OrderBy(product => product.OperationalName)
+            .ThenBy(product => product.Id)
+            .Select(product => new AvailabilityAdministrationProductResponse(
+                product.Id,
+                product.OperationalName,
+                product.IsAvailable))
+            .ToArrayAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return AvailabilityAdministrationProductListResult.Succeeded(products);
+    }
+
+    internal async Task<ProductAvailabilityChangeResult> ChangeProductAvailabilityAsync(
+        Guid idempotencyKey,
+        Guid productId,
+        ChangeProductAvailabilityRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.ExpectedCurrentAvailability is not { } expected ||
+            request.NewAvailability is not { } next)
+        {
+            return ProductAvailabilityChangeResult.Invalid();
+        }
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            cancellationToken);
+        var lockKey = CreateTransactionLockKey(
+            idempotencyKey,
+            ProductAvailabilityChangeLockNamespace);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
+
+        var actor = await sessionStabilizer.StabilizeAsync(
+            transaction.GetDbTransaction(), cancellationToken);
+        if (actor is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ProductAvailabilityChangeResult.AuthenticationRequired();
+        }
+
+        var existingCommand = await dbContext.ProductAvailabilityChangeCommands
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                command => command.IdempotencyKey == idempotencyKey,
+                cancellationToken);
+        if (existingCommand is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return existingCommand.Matches(
+                    actor.IdentityId, productId, expected, next)
+                ? ProductAvailabilityChangeResult.Changed(
+                    new(productId, existingCommand.ResultAvailability))
+                : ProductAvailabilityChangeResult.IdempotencyConflict();
+        }
+
+        if (!await operationalIntervention.StabilizeResponsibilityAsync(
+                actor.IdentityId, transaction.GetDbTransaction(), cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ProductAvailabilityChangeResult.Forbidden();
+        }
+
+        var product = await dbContext.Database.SqlQuery<ProductAvailabilityDiagnostic>(
+                $"""
+                SELECT is_active AS "IsActive", is_available AS "IsAvailable"
+                FROM catalog.products
+                WHERE id = {productId}
+                FOR UPDATE
+                """)
+            .AsNoTracking()
+            .SingleOrDefaultAsync(cancellationToken);
+        if (product is null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return ProductAvailabilityChangeResult.NotFound();
+        }
+        if (!product.IsActive)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return ProductAvailabilityChangeResult.NotCurrent();
+        }
+        if (product.IsAvailable != expected)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return ProductAvailabilityChangeResult.ConcurrencyConflict(
+                product.IsAvailable);
+        }
+
+        if (product.IsAvailable != next)
+        {
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE catalog.products SET is_available = {next} WHERE id = {productId}",
+                cancellationToken);
+        }
+
+        dbContext.ProductAvailabilityChangeCommands.Add(
+            new ProductAvailabilityChangeCommand(
+                idempotencyKey,
+                actor.IdentityId,
+                productId,
+                expected,
+                next));
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return ProductAvailabilityChangeResult.Changed(new(productId, next));
+    }
+
     internal async Task<PreparationResponsibilityListResult>
         ListPreparationResponsibilitiesAsync(CancellationToken cancellationToken)
     {
@@ -592,6 +723,67 @@ internal sealed class CatalogService(
 internal sealed record PreparationConfigurationDiagnostic(
     bool IsActive,
     Guid? PreparationResponsibilityId);
+
+internal sealed record ProductAvailabilityDiagnostic(bool IsActive, bool IsAvailable);
+
+internal sealed record AvailabilityAdministrationProductListResult(
+    CatalogAccessOutcome Outcome,
+    IReadOnlyList<AvailabilityAdministrationProductResponse>? Products = null)
+{
+    internal static AvailabilityAdministrationProductListResult Succeeded(
+        IReadOnlyList<AvailabilityAdministrationProductResponse> products) =>
+        new(CatalogAccessOutcome.Succeeded, products);
+
+    internal static AvailabilityAdministrationProductListResult AuthenticationRequired() =>
+        new(CatalogAccessOutcome.AuthenticationRequired);
+
+    internal static AvailabilityAdministrationProductListResult Forbidden() =>
+        new(CatalogAccessOutcome.OperationalInterventionRequired);
+}
+
+internal sealed record ProductAvailabilityChangeResult(
+    ProductAvailabilityChangeOutcome Outcome,
+    ProductAvailabilityResponse? Product = null,
+    bool? CurrentAvailability = null)
+{
+    internal static ProductAvailabilityChangeResult Changed(
+        ProductAvailabilityResponse product) =>
+        new(ProductAvailabilityChangeOutcome.Changed, product);
+
+    internal static ProductAvailabilityChangeResult Invalid() =>
+        new(ProductAvailabilityChangeOutcome.Invalid);
+
+    internal static ProductAvailabilityChangeResult NotFound() =>
+        new(ProductAvailabilityChangeOutcome.NotFound);
+
+    internal static ProductAvailabilityChangeResult NotCurrent() =>
+        new(ProductAvailabilityChangeOutcome.NotCurrent);
+
+    internal static ProductAvailabilityChangeResult ConcurrencyConflict(
+        bool currentAvailability) =>
+        new(ProductAvailabilityChangeOutcome.ConcurrencyConflict, null, currentAvailability);
+
+    internal static ProductAvailabilityChangeResult IdempotencyConflict() =>
+        new(ProductAvailabilityChangeOutcome.IdempotencyConflict);
+
+    internal static ProductAvailabilityChangeResult AuthenticationRequired() =>
+        new(ProductAvailabilityChangeOutcome.AuthenticationRequired);
+
+    internal static ProductAvailabilityChangeResult Forbidden() =>
+        new(ProductAvailabilityChangeOutcome.Forbidden);
+}
+
+internal enum ProductAvailabilityChangeOutcome
+{
+    Changed,
+    Invalid,
+    NotFound,
+    NotCurrent,
+    ConcurrencyConflict,
+    IdempotencyConflict,
+    AuthenticationRequired,
+    Forbidden
+}
 
 internal sealed record ProductPreparationConfigurationChangeResult(
     ProductPreparationConfigurationChangeOutcome Outcome,
@@ -813,7 +1005,8 @@ internal enum CatalogAccessOutcome
     Succeeded,
     AuthenticationRequired,
     CatalogConfigurationRequired,
-    OrderOperationsRequired
+    OrderOperationsRequired,
+    OperationalInterventionRequired
 }
 
 internal enum CatalogProductOutcome

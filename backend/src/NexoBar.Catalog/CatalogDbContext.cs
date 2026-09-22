@@ -24,6 +24,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
     internal DbSet<ProductOperationalNameChangeCommand> ProductOperationalNameChangeCommands => Set<ProductOperationalNameChangeCommand>();
     internal DbSet<ProductRetireCommand> ProductRetireCommands => Set<ProductRetireCommand>();
     internal DbSet<ProductReactivateCommand> ProductReactivateCommands => Set<ProductReactivateCommand>();
+    internal DbSet<ProductAvailabilityChangeCommand> ProductAvailabilityChangeCommands => Set<ProductAvailabilityChangeCommand>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,6 +40,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
         modelBuilder.ApplyConfiguration(new ProductOperationalNameChangeCommandConfiguration());
         modelBuilder.ApplyConfiguration(new ProductRetireCommandConfiguration());
         modelBuilder.ApplyConfiguration(new ProductReactivateCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new ProductAvailabilityChangeCommandConfiguration());
     }
 
     private sealed class CatalogGroupConfiguration : IEntityTypeConfiguration<CatalogGroup>
@@ -253,6 +255,29 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
             builder.Property(command => command.ResultIsAvailable).HasColumnName("result_is_available").IsRequired();
             builder.ToTable("product_reactivate_commands", table => table.HasCheckConstraint(
                 "CK_catalog_product_reactivate_commands_result", "result_is_active = true AND result_is_available = true"));
+        }
+    }
+
+    private sealed class ProductAvailabilityChangeCommandConfiguration :
+        IEntityTypeConfiguration<ProductAvailabilityChangeCommand>
+    {
+        public void Configure(EntityTypeBuilder<ProductAvailabilityChangeCommand> builder)
+        {
+            ConfigureProductCommand(
+                builder,
+                "product_availability_change_commands",
+                "PK_catalog_product_availability_change_commands",
+                "FK_catalog_product_availability_change_commands_products");
+            builder.Property(command => command.IntentExpectedCurrentAvailability)
+                .HasColumnName("intent_expected_current_availability").IsRequired();
+            builder.Property(command => command.IntentNewAvailability)
+                .HasColumnName("intent_new_availability").IsRequired();
+            builder.Property(command => command.ResultAvailability)
+                .HasColumnName("result_availability").IsRequired();
+            builder.ToTable("product_availability_change_commands", table =>
+                table.HasCheckConstraint(
+                    "CK_catalog_product_availability_change_commands_result_matches_intent",
+                    "result_availability = intent_new_availability"));
         }
     }
 
