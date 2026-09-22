@@ -21,6 +21,15 @@ internal sealed class InventoryDbContext(
     internal DbSet<InventoryMovementCommand> InventoryMovementCommands =>
         Set<InventoryMovementCommand>();
 
+    internal DbSet<InventoryRetireCommand> InventoryRetireCommands =>
+        Set<InventoryRetireCommand>();
+
+    internal DbSet<InventoryReactivateCommand> InventoryReactivateCommands =>
+        Set<InventoryReactivateCommand>();
+
+    internal DbSet<InventoryUnitCorrectionCommand>
+        InventoryUnitCorrectionCommands => Set<InventoryUnitCorrectionCommand>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("inventory");
@@ -30,6 +39,9 @@ internal sealed class InventoryDbContext(
         modelBuilder.ApplyConfiguration(new InventoryMovementConfiguration());
         modelBuilder.ApplyConfiguration(new InventoryCountCommandConfiguration());
         modelBuilder.ApplyConfiguration(new InventoryMovementCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new InventoryRetireCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new InventoryReactivateCommandConfiguration());
+        modelBuilder.ApplyConfiguration(new InventoryUnitCorrectionCommandConfiguration());
     }
 
     private sealed class InventoryItemConfiguration :
@@ -56,6 +68,9 @@ internal sealed class InventoryDbContext(
                     table.HasCheckConstraint(
                         "CK_inventory_items_revision_non_negative",
                         "movement_revision >= 0");
+                    table.HasCheckConstraint(
+                        "CK_inventory_items_retired_quantity_null",
+                        "is_active OR current_registered_quantity IS NULL");
                 });
             builder.HasKey(item => item.Id)
                 .HasName("PK_inventory_items");
@@ -77,6 +92,9 @@ internal sealed class InventoryDbContext(
                     unit => unit.Value,
                     value => OperationalUnit.FromPersisted(value))
                 .IsRequired();
+            builder.Property(item => item.IsActive)
+                .HasColumnName("is_active")
+                .IsRequired();
             builder.Property(item => item.CurrentRegisteredQuantity)
                 .HasColumnName("current_registered_quantity")
                 .HasColumnType("numeric(28,12)");
@@ -85,8 +103,9 @@ internal sealed class InventoryDbContext(
                 .HasColumnType("bigint")
                 .IsRequired();
             builder.HasIndex(item => item.NormalizedOperationalName)
-                .HasDatabaseName("UX_inventory_items_normalized_name")
-                .IsUnique();
+                .HasDatabaseName("UX_inventory_items_active_normalized_name")
+                .IsUnique()
+                .HasFilter("is_active");
         }
     }
 
@@ -197,6 +216,9 @@ internal sealed class InventoryDbContext(
                 .HasColumnType("timestamp with time zone").IsRequired();
             builder.Property(observation => observation.ActorIdentityId)
                 .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(observation => observation.InvalidatedAtUtc)
+                .HasColumnName("invalidated_at_utc")
+                .HasColumnType("timestamp with time zone");
             builder.HasIndex(observation => new
             {
                 observation.InventoryItemId,
@@ -417,6 +439,138 @@ internal sealed class InventoryDbContext(
                 .HasForeignKey(command => command.ResultMovementId)
                 .HasConstraintName("FK_movement_commands_movement")
                 .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class InventoryRetireCommandConfiguration :
+        IEntityTypeConfiguration<InventoryRetireCommand>
+    {
+        public void Configure(EntityTypeBuilder<InventoryRetireCommand> builder)
+        {
+            builder.ToTable(
+                "retire_commands",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_inventory_retire_commands_kind",
+                        "command_kind = 'RetireInventoryItem'");
+                    table.HasCheckConstraint(
+                        "CK_inventory_retire_commands_result",
+                        "result_is_active = false");
+                });
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_inventory_retire_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(command => command.InventoryItemId)
+                .HasColumnName("inventory_item_id").ValueGeneratedNever();
+            builder.Property(command => command.CommandKind)
+                .HasColumnName("command_kind").HasMaxLength(40).IsRequired();
+            builder.Property(command => command.IntentExpectedCurrentIsActive)
+                .HasColumnName("intent_expected_current_is_active").IsRequired();
+            builder.Property(command => command.ResultOperationalName)
+                .HasColumnName("result_operational_name")
+                .HasMaxLength(InventoryItem.OperationalNameMaximumLength)
+                .IsRequired();
+            builder.Property(command => command.ResultOperationalUnit)
+                .HasColumnName("result_operational_unit")
+                .HasMaxLength(OperationalUnit.MaximumLength)
+                .IsRequired();
+            builder.Property(command => command.ResultIsActive)
+                .HasColumnName("result_is_active").IsRequired();
+            builder.Property(command => command.ResultMovementRevision)
+                .HasColumnName("result_movement_revision")
+                .HasColumnType("bigint").IsRequired();
+        }
+    }
+
+    private sealed class InventoryReactivateCommandConfiguration :
+        IEntityTypeConfiguration<InventoryReactivateCommand>
+    {
+        public void Configure(EntityTypeBuilder<InventoryReactivateCommand> builder)
+        {
+            builder.ToTable(
+                "reactivate_commands",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_inventory_reactivate_commands_kind",
+                        "command_kind = 'ReactivateInventoryItem'");
+                    table.HasCheckConstraint(
+                        "CK_inventory_reactivate_commands_result",
+                        "result_is_active = true");
+                });
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_inventory_reactivate_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(command => command.InventoryItemId)
+                .HasColumnName("inventory_item_id").ValueGeneratedNever();
+            builder.Property(command => command.CommandKind)
+                .HasColumnName("command_kind").HasMaxLength(40).IsRequired();
+            builder.Property(command => command.IntentExpectedCurrentIsActive)
+                .HasColumnName("intent_expected_current_is_active").IsRequired();
+            builder.Property(command => command.IntentNewOperationalName)
+                .HasColumnName("intent_new_operational_name")
+                .HasMaxLength(InventoryItem.OperationalNameMaximumLength);
+            builder.Property(command => command.ResultOperationalName)
+                .HasColumnName("result_operational_name")
+                .HasMaxLength(InventoryItem.OperationalNameMaximumLength)
+                .IsRequired();
+            builder.Property(command => command.ResultOperationalUnit)
+                .HasColumnName("result_operational_unit")
+                .HasMaxLength(OperationalUnit.MaximumLength)
+                .IsRequired();
+            builder.Property(command => command.ResultIsActive)
+                .HasColumnName("result_is_active").IsRequired();
+            builder.Property(command => command.ResultMovementRevision)
+                .HasColumnName("result_movement_revision")
+                .HasColumnType("bigint").IsRequired();
+        }
+    }
+
+    private sealed class InventoryUnitCorrectionCommandConfiguration :
+        IEntityTypeConfiguration<InventoryUnitCorrectionCommand>
+    {
+        public void Configure(EntityTypeBuilder<InventoryUnitCorrectionCommand> builder)
+        {
+            builder.ToTable(
+                "unit_correction_commands",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_inventory_unit_correction_commands_kind",
+                        "command_kind = 'CorrectInventoryUnit'");
+                    table.HasCheckConstraint(
+                        "CK_inventory_unit_correction_commands_outcome",
+                        "result_outcome IN ('corrected', 'no_change')");
+                });
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_inventory_unit_correction_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(command => command.InventoryItemId)
+                .HasColumnName("inventory_item_id").ValueGeneratedNever();
+            builder.Property(command => command.CommandKind)
+                .HasColumnName("command_kind").HasMaxLength(40).IsRequired();
+            builder.Property(command => command.IntentExpectedCurrentUnit)
+                .HasColumnName("intent_expected_current_unit")
+                .HasMaxLength(OperationalUnit.MaximumLength).IsRequired();
+            builder.Property(command => command.IntentNewUnit)
+                .HasColumnName("intent_new_unit")
+                .HasMaxLength(OperationalUnit.MaximumLength).IsRequired();
+            builder.Property(command => command.ResultOperationalUnit)
+                .HasColumnName("result_operational_unit")
+                .HasMaxLength(OperationalUnit.MaximumLength).IsRequired();
+            builder.Property(command => command.ResultOutcome)
+                .HasColumnName("result_outcome")
+                .HasMaxLength(16).IsRequired();
         }
     }
 }

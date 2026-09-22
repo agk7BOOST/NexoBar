@@ -37,6 +37,10 @@ namespace NexoBar.Inventory.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("inventory_item_id");
 
+                    b.Property<DateTimeOffset?>("InvalidatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("invalidated_at_utc");
+
                     b.Property<DateTimeOffset>("ObservedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("observed_at");
@@ -140,6 +144,10 @@ namespace NexoBar.Inventory.Migrations
                         .HasColumnType("numeric(28,12)")
                         .HasColumnName("current_registered_quantity");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
                     b.Property<long>("MovementRevision")
                         .HasColumnType("bigint")
                         .HasColumnName("movement_revision");
@@ -167,11 +175,14 @@ namespace NexoBar.Inventory.Migrations
 
                     b.HasIndex("NormalizedOperationalName")
                         .IsUnique()
-                        .HasDatabaseName("UX_inventory_items_normalized_name");
+                        .HasDatabaseName("UX_inventory_items_active_normalized_name")
+                        .HasFilter("is_active");
 
                     b.ToTable("inventory_items", "inventory", t =>
                         {
                             t.HasCheckConstraint("CK_inventory_items_name_valid", "length(operational_name) BETWEEN 1 AND 200 AND operational_name = btrim(operational_name) AND position(chr(10) in operational_name) = 0 AND position(chr(13) in operational_name) = 0");
+
+                            t.HasCheckConstraint("CK_inventory_items_retired_quantity_null", "is_active OR current_registered_quantity IS NULL");
 
                             t.HasCheckConstraint("CK_inventory_items_revision_non_negative", "movement_revision >= 0");
 
@@ -243,6 +254,105 @@ namespace NexoBar.Inventory.Migrations
                             t.HasCheckConstraint("CK_inventory_item_commands_kind", "command_kind = 'CreateInventoryItem'");
 
                             t.HasCheckConstraint("CK_inventory_item_commands_revision", "result_movement_revision >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("NexoBar.Inventory.InventoryRetireCommand", b =>
+                {
+                    b.Property<Guid>("IdempotencyKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("idempotency_key");
+                    b.Property<Guid>("ActorIdentityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_identity_id");
+                    b.Property<Guid>("InventoryItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inventory_item_id");
+                    b.Property<string>("CommandKind")
+                        .IsRequired().HasMaxLength(40).HasColumnType("character varying(40)")
+                        .HasColumnName("command_kind");
+                    b.Property<bool>("IntentExpectedCurrentIsActive")
+                        .HasColumnType("boolean").HasColumnName("intent_expected_current_is_active");
+                    b.Property<string>("ResultOperationalName")
+                        .IsRequired().HasMaxLength(200).HasColumnType("character varying(200)")
+                        .HasColumnName("result_operational_name");
+                    b.Property<string>("ResultOperationalUnit")
+                        .IsRequired().HasMaxLength(100).HasColumnType("character varying(100)")
+                        .HasColumnName("result_operational_unit");
+                    b.Property<bool>("ResultIsActive")
+                        .HasColumnType("boolean").HasColumnName("result_is_active");
+                    b.Property<long>("ResultMovementRevision")
+                        .HasColumnType("bigint").HasColumnName("result_movement_revision");
+                    b.HasKey("IdempotencyKey").HasName("PK_inventory_retire_commands");
+                    b.ToTable("retire_commands", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("CK_inventory_retire_commands_kind", "command_kind = 'RetireInventoryItem'");
+                            t.HasCheckConstraint("CK_inventory_retire_commands_result", "result_is_active = false");
+                        });
+                });
+
+            modelBuilder.Entity("NexoBar.Inventory.InventoryReactivateCommand", b =>
+                {
+                    b.Property<Guid>("IdempotencyKey")
+                        .HasColumnType("uuid").HasColumnName("idempotency_key");
+                    b.Property<Guid>("ActorIdentityId")
+                        .HasColumnType("uuid").HasColumnName("actor_identity_id");
+                    b.Property<Guid>("InventoryItemId")
+                        .HasColumnType("uuid").HasColumnName("inventory_item_id");
+                    b.Property<string>("CommandKind")
+                        .IsRequired().HasMaxLength(40).HasColumnType("character varying(40)")
+                        .HasColumnName("command_kind");
+                    b.Property<bool>("IntentExpectedCurrentIsActive")
+                        .HasColumnType("boolean").HasColumnName("intent_expected_current_is_active");
+                    b.Property<string>("IntentNewOperationalName")
+                        .HasMaxLength(200).HasColumnType("character varying(200)")
+                        .HasColumnName("intent_new_operational_name");
+                    b.Property<string>("ResultOperationalName")
+                        .IsRequired().HasMaxLength(200).HasColumnType("character varying(200)")
+                        .HasColumnName("result_operational_name");
+                    b.Property<string>("ResultOperationalUnit")
+                        .IsRequired().HasMaxLength(100).HasColumnType("character varying(100)")
+                        .HasColumnName("result_operational_unit");
+                    b.Property<bool>("ResultIsActive")
+                        .HasColumnType("boolean").HasColumnName("result_is_active");
+                    b.Property<long>("ResultMovementRevision")
+                        .HasColumnType("bigint").HasColumnName("result_movement_revision");
+                    b.HasKey("IdempotencyKey").HasName("PK_inventory_reactivate_commands");
+                    b.ToTable("reactivate_commands", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("CK_inventory_reactivate_commands_kind", "command_kind = 'ReactivateInventoryItem'");
+                            t.HasCheckConstraint("CK_inventory_reactivate_commands_result", "result_is_active = true");
+                        });
+                });
+
+            modelBuilder.Entity("NexoBar.Inventory.InventoryUnitCorrectionCommand", b =>
+                {
+                    b.Property<Guid>("IdempotencyKey")
+                        .HasColumnType("uuid").HasColumnName("idempotency_key");
+                    b.Property<Guid>("ActorIdentityId")
+                        .HasColumnType("uuid").HasColumnName("actor_identity_id");
+                    b.Property<Guid>("InventoryItemId")
+                        .HasColumnType("uuid").HasColumnName("inventory_item_id");
+                    b.Property<string>("CommandKind")
+                        .IsRequired().HasMaxLength(40).HasColumnType("character varying(40)")
+                        .HasColumnName("command_kind");
+                    b.Property<string>("IntentExpectedCurrentUnit")
+                        .IsRequired().HasMaxLength(100).HasColumnType("character varying(100)")
+                        .HasColumnName("intent_expected_current_unit");
+                    b.Property<string>("IntentNewUnit")
+                        .IsRequired().HasMaxLength(100).HasColumnType("character varying(100)")
+                        .HasColumnName("intent_new_unit");
+                    b.Property<string>("ResultOperationalUnit")
+                        .IsRequired().HasMaxLength(100).HasColumnType("character varying(100)")
+                        .HasColumnName("result_operational_unit");
+                    b.Property<string>("ResultOutcome")
+                        .IsRequired().HasMaxLength(16).HasColumnType("character varying(16)")
+                        .HasColumnName("result_outcome");
+                    b.HasKey("IdempotencyKey").HasName("PK_inventory_unit_correction_commands");
+                    b.ToTable("unit_correction_commands", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("CK_inventory_unit_correction_commands_kind", "command_kind = 'CorrectInventoryUnit'");
+                            t.HasCheckConstraint("CK_inventory_unit_correction_commands_outcome", "result_outcome IN ('corrected', 'no_change')");
                         });
                 });
 

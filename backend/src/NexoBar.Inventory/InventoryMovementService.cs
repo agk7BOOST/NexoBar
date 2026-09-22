@@ -112,6 +112,11 @@ internal sealed class InventoryMovementService(
             return RecordInventoryMovementResult.ItemNotFound();
         }
 
+        if (!item.IsActive)
+        {
+            return RecordInventoryMovementResult.Retired();
+        }
+
         InventoryItemMovementResult transition;
         try
         {
@@ -258,6 +263,9 @@ internal sealed record RecordInventoryMovementResult(
     internal static RecordInventoryMovementResult QuantityNotEstablished() =>
         new(RecordInventoryMovementOutcome.QuantityNotEstablished, null);
 
+    internal static RecordInventoryMovementResult Retired() =>
+        new(RecordInventoryMovementOutcome.Retired, null);
+
     internal static RecordInventoryMovementResult ResultOutOfRange() =>
         new(RecordInventoryMovementOutcome.ResultOutOfRange, null);
 
@@ -275,6 +283,7 @@ internal enum RecordInventoryMovementOutcome
     Forbidden,
     ItemNotFound,
     QuantityNotEstablished,
+    Retired,
     ResultOutOfRange,
     IdempotencyConflict,
     RevisionOverflow

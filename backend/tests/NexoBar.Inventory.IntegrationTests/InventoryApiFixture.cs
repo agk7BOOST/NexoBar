@@ -53,13 +53,27 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
+            DO $$
+            DECLARE table_name text;
+            BEGIN
+                FOREACH table_name IN ARRAY ARRAY[
+                    'unit_correction_commands',
+                    'reactivate_commands',
+                    'retire_commands',
+                    'movement_commands',
+                    'inventory_movements',
+                    'count_commands',
+                    'count_observations',
+                    'item_creation_commands',
+                    'inventory_items']
+                LOOP
+                    IF to_regclass('inventory.' || table_name) IS NOT NULL THEN
+                        EXECUTE format('TRUNCATE TABLE inventory.%I CASCADE', table_name);
+                    END IF;
+                END LOOP;
+            END $$;
+
             TRUNCATE TABLE
-                inventory.movement_commands,
-                inventory.inventory_movements,
-                inventory.count_commands,
-                inventory.count_observations,
-                inventory.item_creation_commands,
-                inventory.inventory_items,
                 identities_and_capabilities.sessions,
                 identities_and_capabilities.administrative_commands,
                 identities_and_capabilities.preparation_enablements,
@@ -175,6 +189,97 @@ public sealed class InventoryApiFixture : IAsyncLifetime
         request.Headers.Add("Idempotency-Key", key.ToString("D"));
         request.Headers.Add("X-NexoBar-CSRF", antiforgeryToken);
         return await client.SendAsync(request, cancellationToken);
+    }
+
+    internal async Task<HttpResponseMessage> PostRetireAsync(
+        Guid itemId,
+        Guid key,
+        bool expectedCurrentIsActive,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null)
+    {
+        antiforgeryToken ??= await GetAntiforgeryTokenAsync(
+            Client,
+            cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/inventory/items/{itemId:D}/retire")
+        {
+            Content = JsonContent.Create(new { expectedCurrentIsActive })
+        };
+        request.Headers.Add("Idempotency-Key", key.ToString("D"));
+        request.Headers.Add("X-NexoBar-CSRF", antiforgeryToken);
+        return await Client.SendAsync(request, cancellationToken);
+    }
+
+    internal async Task<HttpResponseMessage> PostReactivateAsync(
+        Guid itemId,
+        Guid key,
+        bool expectedCurrentIsActive,
+        string? newOperationalName,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null)
+    {
+        antiforgeryToken ??= await GetAntiforgeryTokenAsync(
+            Client,
+            cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/inventory/items/{itemId:D}/reactivate")
+        {
+            Content = JsonContent.Create(new
+            {
+                expectedCurrentIsActive,
+                newOperationalName
+            })
+        };
+        request.Headers.Add("Idempotency-Key", key.ToString("D"));
+        request.Headers.Add("X-NexoBar-CSRF", antiforgeryToken);
+        return await Client.SendAsync(request, cancellationToken);
+    }
+
+    internal async Task<HttpResponseMessage> PostUnitCorrectionAsync(
+        Guid itemId,
+        Guid key,
+        string? expectedCurrentUnit,
+        string? newUnit,
+        CancellationToken cancellationToken,
+        string? antiforgeryToken = null)
+    {
+        antiforgeryToken ??= await GetAntiforgeryTokenAsync(
+            Client,
+            cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/inventory/items/{itemId:D}/unit-corrections")
+        {
+            Content = JsonContent.Create(new { expectedCurrentUnit, newUnit })
+        };
+        request.Headers.Add("Idempotency-Key", key.ToString("D"));
+        request.Headers.Add("X-NexoBar-CSRF", antiforgeryToken);
+        return await Client.SendAsync(request, cancellationToken);
+    }
+
+    internal async Task<InventoryConfigurationItemResponse[]> GetConfigurationItemsAsync(
+        CancellationToken cancellationToken)
+    {
+        using var response = await Client.GetAsync(
+            "/api/inventory/configuration/items",
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<InventoryConfigurationItemResponse[]>(
+            cancellationToken))!;
+    }
+
+    internal async Task<InventoryOperationalItemResponse[]> GetOperationalItemsAsync(
+        CancellationToken cancellationToken)
+    {
+        using var response = await Client.GetAsync(
+            "/api/inventory/operations/items",
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<InventoryOperationalItemResponse[]>(
+            cancellationToken))!;
     }
 
     internal async Task<HttpResponseMessage> PostCountAsync(

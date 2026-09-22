@@ -29,4 +29,8 @@ internal sealed class CountObservation
     internal string ObservedOperationalUnit { get; private set; } = string.Empty;
     internal DateTimeOffset ObservedAt { get; private set; }
     internal Guid ActorIdentityId { get; private set; }
+    internal DateTimeOffset? InvalidatedAtUtc { get; private set; }
+
+    internal void Invalidate(DateTimeOffset invalidatedAtUtc) =>
+        InvalidatedAtUtc ??= invalidatedAtUtc;
 }

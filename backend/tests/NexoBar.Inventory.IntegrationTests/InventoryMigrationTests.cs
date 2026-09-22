@@ -11,6 +11,8 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         "20260901090459_AddInventoryCountReconciliation";
     private const string EverydayMovementsMigration =
         "20260904023608_AddEverydayInventoryMovements";
+    private const string LifecycleAndUnitMigration =
+        "20260922150000_AddInventoryLifecycleAndUnitCorrection";
 
     [Fact]
     public async Task Initial_migration_has_safe_up_and_down()
@@ -30,7 +32,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateInventoryAsync(EverydayMovementsMigration, token);
+            await fixture.MigrateInventoryAsync(LifecycleAndUnitMigration, token);
         }
     }
 
@@ -57,7 +59,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateInventoryAsync(EverydayMovementsMigration, token);
+            await fixture.MigrateInventoryAsync(LifecycleAndUnitMigration, token);
         }
     }
 
@@ -80,7 +82,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
                     "movement_commands",
                     token));
 
-            await fixture.MigrateInventoryAsync(EverydayMovementsMigration, token);
+            await fixture.MigrateInventoryAsync(LifecycleAndUnitMigration, token);
             await using var connection = new NpgsqlConnection(fixture.ConnectionString);
             await connection.OpenAsync(token);
             var intent = await ReadColumnAsync(
@@ -102,7 +104,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateInventoryAsync(EverydayMovementsMigration, token);
+            await fixture.MigrateInventoryAsync(LifecycleAndUnitMigration, token);
         }
     }
 
@@ -138,11 +140,12 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
             SELECT indexdef
             FROM pg_indexes
             WHERE schemaname = 'inventory'
-              AND indexname = 'UX_inventory_items_normalized_name'
+              AND indexname = 'UX_inventory_items_active_normalized_name'
             """;
         var indexDefinition = Assert.IsType<string>(
             await command.ExecuteScalarAsync(token));
         Assert.Contains("UNIQUE", indexDefinition, StringComparison.Ordinal);
+        Assert.Contains("is_active", indexDefinition, StringComparison.Ordinal);
 
         var commandColumns = await ReadColumnNamesAsync(
             connection,

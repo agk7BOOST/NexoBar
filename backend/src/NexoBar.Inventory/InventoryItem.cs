@@ -18,6 +18,7 @@ internal sealed class InventoryItem
         OperationalName = operationalName;
         NormalizedOperationalName = normalizedOperationalName;
         OperationalUnit = operationalUnit;
+        IsActive = true;
         CurrentRegisteredQuantity = null;
         MovementRevision = 0;
     }
@@ -30,9 +31,28 @@ internal sealed class InventoryItem
 
     internal OperationalUnit OperationalUnit { get; private set; }
 
+    internal bool IsActive { get; private set; }
+
     internal decimal? CurrentRegisteredQuantity { get; private set; }
 
     internal long MovementRevision { get; private set; }
+
+    internal void Retire()
+    {
+        IsActive = false;
+        CurrentRegisteredQuantity = null;
+    }
+
+    internal void Reactivate(string operationalName)
+    {
+        OperationalName = operationalName;
+        NormalizedOperationalName = NormalizeOperationalName(operationalName);
+        IsActive = true;
+        CurrentRegisteredQuantity = null;
+    }
+
+    internal void CorrectOperationalUnit(OperationalUnit operationalUnit) =>
+        OperationalUnit = operationalUnit;
 
     internal InventoryReconciliationTransition Reconcile(decimal observedQuantity)
     {
@@ -73,10 +93,10 @@ internal sealed class InventoryItem
         string? rawOperationalName,
         string? rawOperationalUnit)
     {
-        var operationalName = Trim(rawOperationalName);
-        var normalizedOperationalName = NormalizeOperationalName(operationalName);
-        if (!IsValidOperationalName(operationalName) ||
-            normalizedOperationalName.Length > OperationalNameMaximumLength)
+        if (!TryNormalizeOperationalName(
+                rawOperationalName,
+                out var operationalName,
+                out var normalizedOperationalName))
         {
             return InventoryItemValidation.InvalidName();
         }
@@ -101,6 +121,17 @@ internal sealed class InventoryItem
     internal static string NormalizeOperationalName(string value) =>
         value.ToUpperInvariant();
 
+    internal static bool TryNormalizeOperationalName(
+        string? rawValue,
+        out string operationalName,
+        out string normalizedOperationalName)
+    {
+        operationalName = Trim(rawValue);
+        normalizedOperationalName = NormalizeOperationalName(operationalName);
+        return IsValidOperationalName(operationalName) &&
+            normalizedOperationalName.Length <= OperationalNameMaximumLength;
+    }
+
     private static string Trim(string? value) => value?.Trim() ?? string.Empty;
 
     private static bool IsValidOperationalName(string value) =>
@@ -117,6 +148,11 @@ internal sealed class InventoryItem
             throw new ArgumentOutOfRangeException(
                 nameof(quantity),
                 "An Inventory Movement quantity must be positive.");
+        }
+
+        if (!IsActive)
+        {
+            return InventoryItemMovementResult.Retired();
         }
 
         if (CurrentRegisteredQuantity is null)
@@ -162,12 +198,16 @@ internal sealed record InventoryItemMovementResult(
     internal static InventoryItemMovementResult QuantityNotEstablished() =>
         new(InventoryItemMovementFailure.QuantityNotEstablished, 0, 0, 0);
 
+    internal static InventoryItemMovementResult Retired() =>
+        new(InventoryItemMovementFailure.Retired, 0, 0, 0);
+
     internal static InventoryItemMovementResult ResultOutOfRange() =>
         new(InventoryItemMovementFailure.ResultOutOfRange, 0, 0, 0);
 }
 
 internal enum InventoryItemMovementFailure
 {
+    Retired,
     QuantityNotEstablished,
     ResultOutOfRange
 }

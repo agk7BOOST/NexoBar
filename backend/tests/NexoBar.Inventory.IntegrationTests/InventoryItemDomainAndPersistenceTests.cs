@@ -71,7 +71,7 @@ public sealed class InventoryItemDomainAndPersistenceTests(InventoryApiFixture f
     }
 
     [Fact]
-    public void Model_has_no_product_relation_or_lifecycle_state()
+    public void Model_has_no_product_relation_and_has_lifecycle_state()
     {
         var properties = typeof(InventoryItem)
             .GetProperties(BindingFlags.Instance | BindingFlags.NonPublic)
@@ -80,7 +80,7 @@ public sealed class InventoryItemDomainAndPersistenceTests(InventoryApiFixture f
             .Select(property => property.Name)
             .ToArray();
         Assert.DoesNotContain("ProductId", propertyNames);
-        Assert.DoesNotContain("IsActive", propertyNames);
+        Assert.Contains("IsActive", propertyNames);
         Assert.Equal(
             typeof(decimal?),
             Assert.Single(

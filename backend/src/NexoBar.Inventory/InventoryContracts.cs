@@ -8,6 +8,20 @@ internal sealed record CreateInventoryItemRequest(
     string? OperationalUnit);
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record InventoryLifecycleRequest(
+    [property: JsonRequired] bool? ExpectedCurrentIsActive);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record ReactivateInventoryItemRequest(
+    [property: JsonRequired] bool? ExpectedCurrentIsActive,
+    string? NewOperationalName);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record CorrectInventoryUnitRequest(
+    string? ExpectedCurrentUnit,
+    string? NewUnit);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record RecordInventoryCountRequest(string? ObservedQuantity);
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -26,7 +40,10 @@ public sealed record InventoryItemResponse(
 public sealed record InventoryConfigurationItemResponse(
     Guid ItemId,
     string OperationalName,
-    string OperationalUnit);
+    string OperationalUnit,
+    bool IsActive,
+    bool OrdinaryOperationReady,
+    bool UnitCorrectionEligible);
 
 public sealed record InventoryOperationalItemResponse(
     Guid ItemId,
@@ -34,8 +51,23 @@ public sealed record InventoryOperationalItemResponse(
     string OperationalUnit,
     string? CurrentRegisteredQuantity,
     bool QuantityEstablished,
+    bool RequiresReconciliation,
     bool HasNegativeBalanceInconsistency,
     long AsOfMovementRevision);
+
+public sealed record InventoryLifecycleResponse(
+    Guid ItemId,
+    string OperationalName,
+    string OperationalUnit,
+    bool IsActive,
+    bool OrdinaryOperationReady,
+    bool RequiresReconciliation,
+    long MovementRevision);
+
+public sealed record InventoryUnitCorrectionResponse(
+    Guid ItemId,
+    string OperationalUnit,
+    string Outcome);
 
 public sealed record CountObservationResponse(
     Guid CountObservationId,

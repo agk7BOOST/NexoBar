@@ -77,6 +77,11 @@ internal sealed class InventoryCountService(
             return RecordInventoryCountResult.ItemNotFound();
         }
 
+        if (!item.IsActive)
+        {
+            return RecordInventoryCountResult.ItemRetired();
+        }
+
         var observedAt = UtcNow();
         var observationId = Guid.CreateVersion7(observedAt);
         var response = new CountObservationResponse(
@@ -166,6 +171,11 @@ internal sealed class InventoryCountService(
             return ReconcileInventoryCountResult.ItemNotFound();
         }
 
+        if (!item.IsActive)
+        {
+            return ReconcileInventoryCountResult.ItemRetired();
+        }
+
         var observation = await dbContext.CountObservations
             .AsNoTracking()
             .SingleOrDefaultAsync(
@@ -175,6 +185,11 @@ internal sealed class InventoryCountService(
         if (observation is null)
         {
             return ReconcileInventoryCountResult.ObservationNotFound();
+        }
+
+        if (observation.InvalidatedAtUtc is not null)
+        {
+            return ReconcileInventoryCountResult.ObservationInvalidated();
         }
 
         if (observation.ObservedMovementRevision != item.MovementRevision)
@@ -292,6 +307,8 @@ internal sealed record RecordInventoryCountResult(
         new(RecordInventoryCountOutcome.Forbidden, null);
     internal static RecordInventoryCountResult ItemNotFound() =>
         new(RecordInventoryCountOutcome.ItemNotFound, null);
+    internal static RecordInventoryCountResult ItemRetired() =>
+        new(RecordInventoryCountOutcome.ItemRetired, null);
     internal static RecordInventoryCountResult IdempotencyConflict() =>
         new(RecordInventoryCountOutcome.IdempotencyConflict, null);
 }
@@ -302,6 +319,7 @@ internal enum RecordInventoryCountOutcome
     Unauthenticated,
     Forbidden,
     ItemNotFound,
+    ItemRetired,
     IdempotencyConflict
 }
 
@@ -318,12 +336,16 @@ internal sealed record ReconcileInventoryCountResult(
         new(ReconcileInventoryCountOutcome.Forbidden, null);
     internal static ReconcileInventoryCountResult ItemNotFound() =>
         new(ReconcileInventoryCountOutcome.ItemNotFound, null);
+    internal static ReconcileInventoryCountResult ItemRetired() =>
+        new(ReconcileInventoryCountOutcome.ItemRetired, null);
     internal static ReconcileInventoryCountResult ObservationNotFound() =>
         new(ReconcileInventoryCountOutcome.ObservationNotFound, null);
     internal static ReconcileInventoryCountResult CountInvalidated() =>
         new(ReconcileInventoryCountOutcome.CountInvalidated, null);
     internal static ReconcileInventoryCountResult ConfigurationChanged() =>
         new(ReconcileInventoryCountOutcome.ConfigurationChanged, null);
+    internal static ReconcileInventoryCountResult ObservationInvalidated() =>
+        new(ReconcileInventoryCountOutcome.ObservationInvalidated, null);
     internal static ReconcileInventoryCountResult IdempotencyConflict() =>
         new(ReconcileInventoryCountOutcome.IdempotencyConflict, null);
     internal static ReconcileInventoryCountResult RevisionOverflow() =>
@@ -336,9 +358,11 @@ internal enum ReconcileInventoryCountOutcome
     Unauthenticated,
     Forbidden,
     ItemNotFound,
+    ItemRetired,
     ObservationNotFound,
     CountInvalidated,
     ConfigurationChanged,
+    ObservationInvalidated,
     IdempotencyConflict,
     RevisionOverflow
 }

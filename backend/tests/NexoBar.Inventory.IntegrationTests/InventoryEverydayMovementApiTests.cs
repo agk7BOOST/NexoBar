@@ -191,7 +191,7 @@ public sealed class InventoryEverydayMovementApiTests(InventoryApiFixture fixtur
         await InventoryTestAssertions.AssertProblemAsync(
             response,
             HttpStatusCode.Conflict,
-            "inventory.quantity_not_established",
+            "inventory.item.reconciliation_required",
             token);
         var persisted = await fixture.ReadItemAsync(item.Id, token);
         Assert.Null(persisted.CurrentRegisteredQuantity);

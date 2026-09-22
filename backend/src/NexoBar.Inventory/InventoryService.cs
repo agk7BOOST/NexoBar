@@ -98,7 +98,7 @@ internal sealed class InventoryService(
             when (exception.InnerException is PostgresException
             {
                 SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: "UX_inventory_items_normalized_name"
+                ConstraintName: "UX_inventory_items_active_normalized_name"
             })
         {
             await transaction.RollbackAsync(cancellationToken);
@@ -120,7 +120,10 @@ internal sealed class InventoryService(
             static item => new InventoryConfigurationItemResponse(
                 item.Id,
                 item.OperationalName,
-                item.OperationalUnit.Value),
+                item.OperationalUnit.Value,
+                item.IsActive,
+                item.IsActive && item.CurrentRegisteredQuantity is not null,
+                item.MovementRevision == 0),
             cancellationToken);
 
     internal Task<InventoryReadResult<InventoryOperationalItemResponse>>
@@ -137,6 +140,7 @@ internal sealed class InventoryService(
                 item.OperationalUnit.Value,
                 FormatQuantity(item.CurrentRegisteredQuantity),
                 item.CurrentRegisteredQuantity is not null,
+                item.IsActive && item.CurrentRegisteredQuantity is null,
                 item.CurrentRegisteredQuantity < 0,
                 item.MovementRevision),
             cancellationToken);
@@ -170,6 +174,7 @@ internal sealed class InventoryService(
 
         var items = await dbContext.InventoryItems
             .AsNoTracking()
+            .Where(item => item.IsActive)
             .OrderBy(item => item.OperationalName)
             .ThenBy(item => item.Id)
             .ToArrayAsync(cancellationToken);

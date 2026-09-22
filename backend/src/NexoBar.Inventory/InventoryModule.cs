@@ -31,6 +31,7 @@ public static class InventoryModule
         services.AddScoped<InventoryCountService>();
         services.AddScoped<InventoryMovementService>();
         services.AddScoped<InventoryMovementHistoryService>();
+        services.AddScoped<InventoryLifecycleService>();
         services.AddInventoryOperationInvalidationPublisher();
         return services;
     }
@@ -47,6 +48,48 @@ public static class InventoryModule
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapPost(
+                "/api/inventory/items/{itemId}/retire",
+                RetireItemAsync)
+            .WithName("RetireInventoryItem")
+            .WithTags("Inventory")
+            .RequireAuthorization()
+            .Accepts<InventoryLifecycleRequest>("application/json")
+            .Produces<InventoryLifecycleResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapPost(
+                "/api/inventory/items/{itemId}/reactivate",
+                ReactivateItemAsync)
+            .WithName("ReactivateInventoryItem")
+            .WithTags("Inventory")
+            .RequireAuthorization()
+            .Accepts<ReactivateInventoryItemRequest>("application/json")
+            .Produces<InventoryLifecycleResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        endpoints.MapPost(
+                "/api/inventory/items/{itemId}/unit-corrections",
+                CorrectUnitAsync)
+            .WithName("CorrectInventoryUnit")
+            .WithTags("Inventory")
+            .RequireAuthorization()
+            .Accepts<CorrectInventoryUnitRequest>("application/json")
+            .Produces<InventoryUnitCorrectionResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         endpoints.MapPost(
@@ -251,6 +294,165 @@ public static class InventoryModule
         };
     }
 
+    private static async Task<IResult> RetireItemAsync(
+        string itemId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        InventoryLifecycleRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        InventoryLifecycleService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(itemId, out var inventoryItemId) ||
+            inventoryItemId == Guid.Empty)
+        {
+            return InvalidItemIdProblem();
+        }
+
+        if (!TryParseIdempotencyKey(idempotencyKey, out var commandId))
+        {
+            return IdempotencyKeyProblem(idempotencyKey);
+        }
+
+        if (request.ExpectedCurrentIsActive is null)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid lifecycle intention",
+                "expectedCurrentIsActive is required.",
+                "inventory.lifecycle.expected_current_is_active_invalid");
+        }
+
+        var antiforgeryProblem = await ValidateAntiforgeryAsync(
+            httpContext,
+            antiforgery,
+            "inventory.lifecycle.antiforgery_invalid");
+        if (antiforgeryProblem is not null)
+        {
+            return antiforgeryProblem;
+        }
+
+        var result = await service.RetireAsync(
+            commandId,
+            inventoryItemId,
+            request.ExpectedCurrentIsActive.Value,
+            cancellationToken);
+        return MapLifecycleResult(result, "retire");
+    }
+
+    private static async Task<IResult> ReactivateItemAsync(
+        string itemId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        ReactivateInventoryItemRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        InventoryLifecycleService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(itemId, out var inventoryItemId) ||
+            inventoryItemId == Guid.Empty)
+        {
+            return InvalidItemIdProblem();
+        }
+
+        if (!TryParseIdempotencyKey(idempotencyKey, out var commandId))
+        {
+            return IdempotencyKeyProblem(idempotencyKey);
+        }
+
+        if (request.ExpectedCurrentIsActive is null)
+        {
+            return Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid lifecycle intention",
+                "expectedCurrentIsActive is required.",
+                "inventory.lifecycle.expected_current_is_active_invalid");
+        }
+
+        var antiforgeryProblem = await ValidateAntiforgeryAsync(
+            httpContext,
+            antiforgery,
+            "inventory.lifecycle.antiforgery_invalid");
+        if (antiforgeryProblem is not null)
+        {
+            return antiforgeryProblem;
+        }
+
+        var result = await service.ReactivateAsync(
+            commandId,
+            inventoryItemId,
+            request.ExpectedCurrentIsActive.Value,
+            request.NewOperationalName,
+            cancellationToken);
+        return MapLifecycleResult(result, "reactivate");
+    }
+
+    private static async Task<IResult> CorrectUnitAsync(
+        string itemId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        CorrectInventoryUnitRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        InventoryLifecycleService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(itemId, out var inventoryItemId) ||
+            inventoryItemId == Guid.Empty)
+        {
+            return InvalidItemIdProblem();
+        }
+
+        if (!TryParseIdempotencyKey(idempotencyKey, out var commandId))
+        {
+            return IdempotencyKeyProblem(idempotencyKey);
+        }
+
+        var antiforgeryProblem = await ValidateAntiforgeryAsync(
+            httpContext,
+            antiforgery,
+            "inventory.unit_correction.antiforgery_invalid");
+        if (antiforgeryProblem is not null)
+        {
+            return antiforgeryProblem;
+        }
+
+        var result = await service.CorrectUnitAsync(
+            commandId,
+            inventoryItemId,
+            request.ExpectedCurrentUnit,
+            request.NewUnit,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            InventoryUnitCorrectionOutcome.Succeeded => Results.Ok(result.Response),
+            InventoryUnitCorrectionOutcome.Unauthenticated => InvalidSessionProblem(),
+            InventoryUnitCorrectionOutcome.Forbidden => InventoryConfigurationForbiddenProblem(),
+            InventoryUnitCorrectionOutcome.NotFound => InventoryItemNotFoundProblem(),
+            InventoryUnitCorrectionOutcome.InvalidUnit => Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid operational unit",
+                "expectedCurrentUnit and newUnit must be non-empty, one-line values of at most 100 characters.",
+                "inventory.item.operational_unit_invalid"),
+            InventoryUnitCorrectionOutcome.UnitConcurrencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Inventory Unit changed concurrently",
+                "The current operational Unit does not match expectedCurrentUnit.",
+                "inventory.unit_correction.concurrency_conflict",
+                currentUnit: result.CurrentUnit),
+            InventoryUnitCorrectionOutcome.HistoryExists => Problem(
+                StatusCodes.Status409Conflict,
+                "Inventory Unit correction requires replacement",
+                "The Element has Movement History. Retire it and create a new Element with the corrected Unit.",
+                "inventory.item.unit_correction_requires_replacement"),
+            InventoryUnitCorrectionOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                "The supplied Idempotency-Key identifies an incompatible Inventory Unit correction.",
+                "inventory.unit_correction.idempotency_key_conflict"),
+            _ => throw new UnreachableException()
+        };
+    }
+
     private static async Task<IResult> ListConfigurationItemsAsync(
         InventoryService service,
         CancellationToken cancellationToken)
@@ -321,6 +523,11 @@ public static class InventoryModule
                 "Inventory Item not found",
                 "The requested Inventory Item does not exist.",
                 "inventory.item.not_found"),
+            RecordInventoryCountOutcome.ItemRetired => Problem(
+                StatusCodes.Status409Conflict,
+                "Inventory Item is retired",
+                "Retired Inventory Items cannot receive Counts.",
+                "inventory.item.retired"),
             RecordInventoryCountOutcome.IdempotencyConflict => Problem(
                 StatusCodes.Status409Conflict,
                 "Idempotency-Key was already used for another intention",
@@ -383,6 +590,11 @@ public static class InventoryModule
                 "Inventory Item not found",
                 "The requested Inventory Item does not exist.",
                 "inventory.item.not_found"),
+            ReconcileInventoryCountOutcome.ItemRetired => Problem(
+                StatusCodes.Status409Conflict,
+                "Inventory Item is retired",
+                "Retired Inventory Items cannot be reconciled.",
+                "inventory.item.retired"),
             ReconcileInventoryCountOutcome.ObservationNotFound => Problem(
                 StatusCodes.Status404NotFound,
                 "Count Observation not found",
@@ -397,6 +609,11 @@ public static class InventoryModule
                 StatusCodes.Status409Conflict,
                 "Observation invalidated by configuration change",
                 "The Inventory Item unit changed after the Count. Record a new physical Count.",
+                "inventory.reconciliation.observation_invalidated"),
+            ReconcileInventoryCountOutcome.ObservationInvalidated => Problem(
+                StatusCodes.Status409Conflict,
+                "Count invalidated",
+                "The Count Observation is no longer usable after an Inventory configuration change.",
                 "inventory.reconciliation.observation_invalidated"),
             ReconcileInventoryCountOutcome.IdempotencyConflict => Problem(
                 StatusCodes.Status409Conflict,
@@ -488,11 +705,16 @@ public static class InventoryModule
                 "Inventory Item not found",
                 "The requested Inventory Item does not exist.",
                 "inventory.item.not_found"),
+            RecordInventoryMovementOutcome.Retired => Problem(
+                StatusCodes.Status409Conflict,
+                "Inventory Item is retired",
+                "Retired Inventory Items cannot receive ordinary Movements.",
+                "inventory.item.retired"),
             RecordInventoryMovementOutcome.QuantityNotEstablished => Problem(
                 StatusCodes.Status409Conflict,
                 "Inventory quantity not established",
-                "La existencia todav\u00eda debe establecerse mediante conteo y reconciliaci\u00f3n.",
-                "inventory.quantity_not_established"),
+                "Current physical existence must be established through Count and Reconciliation before an ordinary Movement.",
+                "inventory.item.reconciliation_required"),
             RecordInventoryMovementOutcome.ResultOutOfRange => Problem(
                 StatusCodes.Status409Conflict,
                 "Inventory quantity is outside the supported range",
@@ -626,16 +848,66 @@ public static class InventoryModule
             _ => throw new UnreachableException()
         };
 
+    private static IResult MapLifecycleResult(
+        InventoryLifecycleCommandResult result,
+        string operation) =>
+        result.Outcome switch
+        {
+            InventoryLifecycleCommandOutcome.Changed => Results.Ok(result.Response),
+            InventoryLifecycleCommandOutcome.Unauthenticated => InvalidSessionProblem(),
+            InventoryLifecycleCommandOutcome.Forbidden => InventoryConfigurationForbiddenProblem(),
+            InventoryLifecycleCommandOutcome.NotFound => InventoryItemNotFoundProblem(),
+            InventoryLifecycleCommandOutcome.AlreadyRetired => Problem(
+                StatusCodes.Status409Conflict,
+                "Inventory Item is already retired",
+                "The requested Inventory Item is already retired.",
+                "inventory.item.already_retired"),
+            InventoryLifecycleCommandOutcome.AlreadyActive => Problem(
+                StatusCodes.Status409Conflict,
+                "Inventory Item is already active",
+                "The requested Inventory Item is already active.",
+                "inventory.item.already_active"),
+            InventoryLifecycleCommandOutcome.LifecycleConcurrencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Inventory lifecycle changed concurrently",
+                "The current lifecycle state does not match expectedCurrentIsActive.",
+                "inventory.lifecycle.concurrency_conflict",
+                currentIsActive: result.CurrentIsActive),
+            InventoryLifecycleCommandOutcome.InvalidName => Problem(
+                StatusCodes.Status400BadRequest,
+                "Invalid operational name",
+                "newOperationalName must be non-empty, one line, and at most 200 characters.",
+                "inventory.item.operational_name_invalid"),
+            InventoryLifecycleCommandOutcome.NameConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Operational name already in use",
+                "An active Inventory Item already uses that operational name, ignoring case.",
+                "inventory.item.reactivation_name_conflict"),
+            InventoryLifecycleCommandOutcome.IdempotencyConflict => Problem(
+                StatusCodes.Status409Conflict,
+                "Idempotency-Key was already used for another intention",
+                $"The supplied Idempotency-Key identifies an incompatible Inventory {operation} command.",
+                $"inventory.{operation}.idempotency_key_conflict"),
+            _ => throw new UnreachableException()
+        };
+
     private static IResult Problem(
         int statusCode,
         string title,
         string detail,
-        string code) =>
+        string code,
+        string? currentUnit = null,
+        bool? currentIsActive = null) =>
         Results.Problem(
             statusCode: statusCode,
             title: title,
             detail: detail,
-            extensions: new Dictionary<string, object?> { ["code"] = code });
+            extensions: new Dictionary<string, object?>
+            {
+                ["code"] = code,
+                ["currentUnit"] = currentUnit,
+                ["currentIsActive"] = currentIsActive
+            });
 
     private static bool TryParseIdempotencyKey(string? value, out Guid key) =>
         Guid.TryParse(value, out key) && IsUuidVersion4(key);
@@ -680,6 +952,18 @@ public static class InventoryModule
         "Inventory operation forbidden",
         "The current Identity is not authorized to operate Inventory.",
         "inventory.operation.forbidden");
+
+    private static IResult InventoryConfigurationForbiddenProblem() => Problem(
+        StatusCodes.Status403Forbidden,
+        "Inventory configuration forbidden",
+        "The current Identity is not authorized to configure Inventory.",
+        "inventory.configuration.forbidden");
+
+    private static IResult InventoryItemNotFoundProblem() => Problem(
+        StatusCodes.Status404NotFound,
+        "Inventory Item not found",
+        "The requested Inventory Item does not exist.",
+        "inventory.item.not_found");
 
     private static IResult InvalidItemIdProblem() => Problem(
         StatusCodes.Status400BadRequest,
