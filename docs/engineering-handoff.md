@@ -34,7 +34,9 @@ Las rutas de instrucciones locales empiezan en [backend](../backend/AGENTS.md), 
 
 El mínimo de Groups, rename de Product y Retire/Reactivate de Product está implementado y verificado. Se eliminan como gaps completados: Group minimum capability, Product rename y Product retire/reactivate. El detalle funcional vive en [Catalog](catalog/README.md#mvp-fc-cat--catalog-structure-and-product-lifecycle-closed) y la evidencia en [Testing](testing/verification.md#mvp-fc-cat--catalog-structure-and-product-lifecycle).
 
-El siguiente frontier es **Product Availability Intervention**, bajo autoridad de `OperationalIntervention`; no forma parte de CatalogConfiguration ni de este cierre. Permanecen además fuera de este bloque: eligible Product Delete, Context Configuration / Order Context Change, Terminal Order History, Inventory lifecycle / Unit Correction, Inventory Movement Correction y eligible Identity Delete. Ninguno se marca como iniciado por este cierre.
+**MVP-FC-AVAIL — Product Availability Intervention: CLOSED.** Catalog conserva la propiedad de Product State e `IsAvailable`; `OperationalIntervention` autoriza la mutación temporal mediante el read estrecho y el comando de Availability dedicados. No pertenece a `CatalogConfiguration` ni requiere `OrderOperationsAndBasicClosure`. La evidencia es MVP-FC-AVAIL-I1 (backend), MVP-FC-AVAIL-I2 (frontend) y MVP-FC-AVAIL-I3 (E2E dirigido). El detalle contractual y de autoridad está en [Catalog](catalog/README.md#mvp-fc-avail--product-availability-intervention-closed).
+
+El siguiente frontier planificado es **Inventory Element Lifecycle and Unit Correction**. Permanecen fuera de alcance y no iniciados: Context Configuration / Order Context Change, Terminal Order History, Inventory Movement Correction, eligible Product Delete y eligible Identity Delete.
 
 ## Estado actual de Slice
 

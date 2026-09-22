@@ -30,9 +30,86 @@ Reactivate establece `IsActive=true` y `IsAvailable=true` por regla de lifecycle
 
 `IsActive` representa lifecycle/currentness del Product. `IsAvailable` representa disponibilidad operacional temporal. `CatalogConfiguration` es dueno del lifecycle, pero la mutacion general de Availability no forma parte de este bloque y no existe un control general de Availability en CatalogConfiguration.
 
-La disponibilidad `true` producida por Reactivate es una consecuencia especifica del comando de lifecycle; no otorga a CatalogConfiguration autoridad general sobre Availability. Product Availability Intervention continua fuera de alcance y bajo autoridad de `OperationalIntervention`.
+La disponibilidad `true` producida por Reactivate es una consecuencia especifica del comando de lifecycle; no otorga a CatalogConfiguration autoridad general sobre Availability. Product Availability Intervention queda documentado como bloque separado y cerrado bajo autoridad de `OperationalIntervention` en [MVP-FC-AVAIL](#mvp-fc-avail--product-availability-intervention-closed).
 
 Los reads administrativos de CatalogConfiguration incluyen Products activos y retirados. Los reads operacionales de Product continuan excluyendo retirados; `OperationalIntervention` no obtiene por ello visibilidad de Products retirados.
+
+## MVP-FC-AVAIL — Product Availability Intervention: CLOSED
+
+Product Availability Intervention queda cerrado con la evidencia MVP-FC-AVAIL-I1 (backend), MVP-FC-AVAIL-I2 (frontend) y MVP-FC-AVAIL-I3 (E2E dirigido).
+
+### Propiedad, autoridad y estado
+
+Catalog es dueño del Estado de Product, incluidos `IsActive` e `IsAvailable`. `OperationalIntervention` posee la autorización operacional para mutar temporalmente `IsAvailable`; esta autorización no transfiere la propiedad del Estado a OrderOperations ni convierte a `CatalogConfiguration` en autoridad general de Availability. `OrderOperationsAndBasicClosure` no es requisito para cambiar Availability.
+
+La separación es:
+
+- `IsActive`: lifecycle/currentness del Product;
+- `IsAvailable`: disponibilidad operacional temporal.
+
+Un Product retirado permanece inutilizable aunque conserve `IsAvailable=true`. Reactivate estableciendo `IsAvailable=true` sigue siendo comportamiento propio del comando de lifecycle del bloque MVP-FC-CAT. Availability Intervention no retira, reactiva, renombra, cambia Group, cambia precio ni configura Preparation.
+
+### Read estrecho de intervención
+
+`GET /api/catalog/availability-administration-products` es el read estrecho que permite a `OperationalIntervention` ejercer esta capacidad. Devuelve únicamente Products activos/currentes con:
+
+```text
+id
+operationalName
+isAvailable
+```
+
+No expone Products retirados, precio, Group, configuración de Preparation ni controles de lifecycle de Catalog. Es independiente de `GET /api/catalog/operational-products`, que continúa siendo el read de composición de OrderOperations.
+
+### Comando de Availability
+
+La mutación explícita es:
+
+```text
+POST /api/catalog/products/{productId}/availability-changes
+```
+
+con la intención:
+
+```json
+{
+  "expectedCurrentAvailability": true,
+  "newAvailability": false
+}
+```
+
+El comando sólo modifica `IsAvailable` y sólo admite Products activos. Un Product inexistente produce `catalog.product.not_found`; uno retirado produce `catalog.product.not_current`; una expectativa stale produce `catalog.product.availability_concurrency_conflict` con el valor vigente. Una observación exacta cuyo nuevo valor coincide con el actual es un no-op durable exitoso. No hay last-write-wins.
+
+### Idempotencia y seguridad
+
+La intención nueva exige Session utilizable, Identity activa, antiforgery, `Idempotency-Key` UUID v4 y `OperationalIntervention`. La idempotencia es durable y actor-aware, siguiendo las convenciones locales de Catalog.
+
+Un replay exacto conserva el mismo actor, Product e intención completa (`expectedCurrentAvailability` y `newAvailability`). Se resuelve antes de reautorizar la responsabilidad vigente; por eso el replay puede seguir siendo válido después de revocar `OperationalIntervention`, mientras Session e Identity continúen satisfechas. Otro actor o una intención cambiada producen conflicto. Esta semántica no se generaliza fuera de los comandos Catalog establecidos.
+
+### Efectos sobre Orders y separación de S10
+
+Un Product disponible participa de la operación ordinaria. Cuando pasa a no disponible, desaparece del browse ordinario y una Confirmation ordinaria rechaza con `product_unavailable` sin comprometer Content. Una Identity con `OrderOperationsAndBasicClosure + OperationalIntervention` puede usar además la intención explícita de excepción de Product no disponible ya definida por S10. La mutación de Availability por sí sola nunca otorga autoridad de Order.
+
+Availability Intervention cambia el Estado actual de Catalog. La excepción S10 es una intención excepcional para una incorporación concreta de un Order. Cambiar Availability después no reescribe `UnavailableProductExceptionApplied` en Content ya confirmado.
+
+Availability changes no mutan Content confirmado, Incorporations, `appliedPrice`, PreparationWork, el destino de Preparation capturado, Delivery ni Order History. Volver a poner un Product disponible tampoco reinterpreta History.
+
+La concurrencia probada conserva dos órdenes relevantes: si Confirmation toma primero el snapshot de Product, Availability espera, Confirmation puede committear y el cambio de Availability queda efectivo después; si Availability=false committea primero, una Confirmation ordinaria posterior observa el Product no disponible y rechaza sin Content.
+
+### Persistencia y evidencia de migración
+
+El schema de Product no cambió: `IsAvailable` ya existía. La nueva migración agrega únicamente la persistencia durable de comandos de Availability y actualiza el snapshot de EF. La verificación de migración Up y Down pasó, preservó Product/`IsAvailable`, y `HasPendingModelChanges=false` para los cinco DbContext.
+
+### Superficie frontend y combinaciones
+
+La UI dedicada de Availability Intervention se monta sólo con `OperationalIntervention`. Lista Products activos, muestra explícitamente `Disponible`/`No disponible`, ofrece `Marcar no disponible` y `Marcar disponible`, refresca ante estado stale y permite reintentar explícitamente la intención durable original ante resultado incierto. No pertenece a `CatalogPanel`.
+
+Las combinaciones efectivas son:
+
+- `OperationalIntervention` solamente: read estrecho y cambio de Availability; sin administración de Catalog lifecycle/configuración;
+- `OrderOperationsAndBasicClosure` solamente: browse ordinario, sin mutación de Availability y con Products no disponibles ocultos;
+- ambas: Products no disponibles visibles en Order workflow, mutación de Availability disponible y excepción S10 disponible;
+- `CatalogConfiguration` solamente: administración de Catalog, sin mutación temporal de Availability.
 
 ### Price correction on retired Products
 

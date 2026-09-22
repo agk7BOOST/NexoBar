@@ -57,6 +57,24 @@ S10-I2 tiene evidencia frontend focalizada: `OrderWorkflow 48/48`, `OrderLookup 
 
 S10-I3 tiene un escenario Playwright focalizado: **1 discovered, 1 passed, 0 failed, 0 skipped**. Actor A, con sólo `OrderOperationsAndBasicClosure`, no ve el Product no disponible y recibe `403 order_operations.confirmation.operational_intervention_required` en un intento HTTP directo. Actor B, con `OrderOperationsAndBasicClosure` + `OperationalIntervention`, lo ve como `isAvailable=false`, no puede usar Add ordinario, usa la acción explícita de intervención, confirma una Composition mixta, obtiene `Applied=true` sólo para esa línea, ve el marcador histórico y deja el Product no disponible en Catalog. No fueron necesarios fixes de producción.
 
+## MVP-FC-AVAIL — Product Availability Intervention
+
+MVP-FC-AVAIL-I1 backend quedó verificado con la cobertura focalizada de Availability:
+
+- `ProductAvailabilityApiTests`: **5 discovered, 5 passed, 0 failed, 0 skipped**;
+- Availability-vs-Availability: **5/5**;
+- S10 / Confirmation focalizado: **13/13**;
+- Confirmation↔Availability focalizado: **4/4**;
+- Catalog module: **84 discovered, 84 passed, 0 failed, 0 skipped**.
+
+La evidencia incluye el read estrecho autorizado sólo por `OperationalIntervention`, el comando actor-aware, replay exacto y conflicto de intención, no-op durable, conflicto de concurrencia, Product no actual/inexistente, antiforgery, migración Up/Down, preservación de `IsAvailable` y `HasPendingModelChanges=false`.
+
+MVP-FC-AVAIL-I2 frontend quedó verificado con **28/28** pruebas enfocadas y `npx tsc -p tsconfig.app.json --noEmit` **PASS**. La cobertura incluye cliente estrecho, cambios true→false y false→true, gating independiente en App, reload autoritativo, stale refresh, Products no actuales/inexistentes, retry incierto con intención exacta y separación de lifecycle/S10.
+
+MVP-FC-AVAIL-I3 ejecutó un único escenario Playwright dirigido: **1 discovered, 1 passed, 0 failed, 0 skipped**. Probó el flujo completo sobre PostgreSQL aislado: `OperationalIntervention` marca P no disponible; el actor ordinario deja de verlo y recibe `product_unavailable` sin referencia de Order; el actor dual usa la acción S10 explícita y confirma; el estado comprometido contiene `UnavailableProductExceptionApplied=true`; I vuelve a marcar P disponible; el browse ordinario lo muestra nuevamente; y la lectura posterior del Order conserva el marcador histórico en `true`.
+
+No se afirma éxito de la suite completa de Playwright ni de la suite completa del frontend.
+
 ## MVP-FC-PREP — Preparation Configuration Completion
 
 MVP-FC-PREP-I1 deja evidencia frontend focalizada: `GeneralConfigurationPanel` **29 passed**; `CatalogPanel` **18 passed**; cliente general **10 passed**; cliente Catalog **10 passed**; capability gate de `App` **12 passed**; y `tsconfig.app.json` **passed**. Estos resultados no afirman una corrida completa del frontend.
