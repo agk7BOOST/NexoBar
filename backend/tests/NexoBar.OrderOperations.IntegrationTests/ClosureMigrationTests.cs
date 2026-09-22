@@ -7,7 +7,7 @@ namespace NexoBar.OrderOperations.IntegrationTests;
 [Collection(OrderOperationsApiCollection.Name)]
 public sealed class ClosureMigrationTests(OrderOperationsApiFixture fixture)
 {
-    private const string LatestMigration = "20260922140000_AddConfiguredOrderContexts";
+    private const string LatestMigration = "20260922150000_AddOrderContextChanges";
 
     [Fact]
     public async Task Migration_preserves_liquidated_orders_without_automatically_closing_and_is_reversible()

@@ -37,6 +37,7 @@ public static partial class OrderOperationsModule
         services.AddScoped<IActiveOrderSubscriptionAuthorization, ActiveOrderSubscriptionAuthorization>();
         services.AddScoped<OrderEconomicStateReader>();
         services.AddScoped<LiquidationService>();
+        services.AddScoped<OrderContextChangeService>();
         services.AddScoped<ClosureService>();
         services.AddScoped<CompleteCancellationService>();
         services.AddScoped<ClosureStateReader>();
@@ -243,6 +244,17 @@ public static partial class OrderOperationsModule
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         endpoints.MapPost(
+                "/api/order-operations/orders/{orderId:guid}/context-changes",
+                ChangeOrderContextAsync)
+            .WithName("ChangeOrderContext")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Accepts<OrderContextChangeRequest>("application/json")
+            .Produces<OrderContextChangeResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
+            .ProducesProblem(404).ProducesProblem(409);
+
+        endpoints.MapPost(
                 "/api/orders/{orderId}/pending-composition",
                 StartPendingCompositionAsync)
             .WithName("StartPendingComposition")
@@ -334,6 +346,64 @@ public static partial class OrderOperationsModule
             validation.OrderId,
             medium,
             cancellationToken));
+    }
+
+    private static async Task<IResult> ChangeOrderContextAsync(
+        Guid orderId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        OrderContextChangeRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        OrderContextChangeService service,
+        CancellationToken cancellationToken)
+    {
+        if (request.ExpectedCurrentContextId == Guid.Empty || request.NewContextId == Guid.Empty)
+            return Problem(400, "Invalid Context identity", "Both Context IDs must be non-empty UUIDs.",
+                "order.context_change.context_id_invalid");
+        if (idempotencyKey is null)
+            return Problem(400, "Idempotency-Key is required", "Context Change requires a UUID v4 Idempotency-Key.",
+                "order.context_change.idempotency_key_required");
+        if (!Guid.TryParse(idempotencyKey, out var key) || !IsUuidVersion4(key))
+            return Problem(400, "Invalid Idempotency-Key", "Idempotency-Key must contain a UUID v4.",
+                "order.context_change.idempotency_key_invalid");
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Problem(400, "Antiforgery validation failed", "A valid antiforgery cookie and request token are required.",
+                "order.context_change.antiforgery_invalid");
+        }
+
+        var result = await service.ChangeAsync(key, orderId, request, cancellationToken);
+        return result.Outcome switch
+        {
+            OrderContextChangeOutcome.Succeeded => Results.Ok(result.Response),
+            OrderContextChangeOutcome.Unauthenticated => InvalidSession(),
+            OrderContextChangeOutcome.Forbidden => Problem(403, "Order Context Change forbidden",
+                "The current Identity is not authorized for Order Operations and basic Closure.",
+                "order.context_change.forbidden"),
+            OrderContextChangeOutcome.OrderNotFound => Problem(404, "Order not found",
+                "No active Order exists with the supplied identity.", "order.context_change.order_not_found"),
+            OrderContextChangeOutcome.TargetContextNotFound => Problem(409, "Target Context not found",
+                "The selected Context is not configured.", "order.context_change.target_context_not_found"),
+            OrderContextChangeOutcome.NoChange => Problem(409, "Context is unchanged",
+                "The Order already has the requested Context.", "order.context_change.no_change"),
+            OrderContextChangeOutcome.ExpectedContextStale => Problem(409, "Current Context is stale",
+                "Reload the active Order to obtain its authoritative current Context.",
+                "order.context_change.expected_context_stale"),
+            OrderContextChangeOutcome.OrderFrozen => Problem(409, "Order is frozen",
+                "A liquidated Order cannot change Context.", "order.context_change.order_frozen"),
+            OrderContextChangeOutcome.OrderClosed => Problem(409, "Order is closed",
+                "A closed Order cannot change Context.", "order.context_change.order_closed"),
+            OrderContextChangeOutcome.OrderCancelled => Problem(409, "Order is cancelled",
+                "A cancelled Order cannot change Context.", "order.context_change.order_cancelled"),
+            OrderContextChangeOutcome.IdempotencyConflict => Problem(409, "Idempotency-Key conflict",
+                "The supplied Idempotency-Key identifies an incompatible Context Change.",
+                "order.context_change.idempotency_key_conflict"),
+            _ => throw new UnreachableException()
+        };
     }
 
     private static async Task<IResult> RecordExternalCollectionAsync(

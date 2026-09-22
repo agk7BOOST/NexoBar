@@ -14,6 +14,12 @@ internal sealed class Order
     internal Guid Id { get; private set; }
     internal Guid CurrentContextId { get; private set; }
     internal string CurrentContextOperationalName { get; private set; } = string.Empty;
+
+    internal void ChangeContext(Guid contextId, string operationalName)
+    {
+        CurrentContextId = contextId;
+        CurrentContextOperationalName = operationalName;
+    }
 }
 
 internal sealed class Liquidation

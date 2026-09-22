@@ -11,6 +11,8 @@ internal sealed class OrderOperationsDbContext(
     internal DbSet<CompleteCancellationDetail> CompleteCancellationDetails => Set<CompleteCancellationDetail>();
     internal DbSet<CompleteCancellationCommand> CompleteCancellationCommands => Set<CompleteCancellationCommand>();
     internal DbSet<Order> Orders => Set<Order>();
+    internal DbSet<OrderContextChangeHistory> OrderContextChangeHistory => Set<OrderContextChangeHistory>();
+    internal DbSet<OrderContextChangeCommand> OrderContextChangeCommands => Set<OrderContextChangeCommand>();
     internal DbSet<Closure> Closures => Set<Closure>();
     internal DbSet<ClosureHistory> ClosureHistory => Set<ClosureHistory>();
     internal DbSet<ClosureCommand> ClosureCommands => Set<ClosureCommand>();
@@ -53,6 +55,8 @@ internal sealed class OrderOperationsDbContext(
         CompleteCancellationConfiguration.Configure(modelBuilder);
         modelBuilder.HasDefaultSchema("order_operations");
         modelBuilder.ApplyConfiguration(new OrderConfiguration());
+        modelBuilder.ApplyConfiguration(new OrderContextChangeHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new OrderContextChangeCommandConfiguration());
         modelBuilder.ApplyConfiguration(new ClosureConfiguration());
         modelBuilder.ApplyConfiguration(new ClosureHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new ClosureCommandConfiguration());
@@ -497,6 +501,55 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("current_context_id").ValueGeneratedNever();
             builder.Property(order => order.CurrentContextOperationalName)
                 .HasColumnName("context").HasColumnType("text").IsRequired();
+        }
+    }
+
+    private sealed class OrderContextChangeHistoryConfiguration :
+        IEntityTypeConfiguration<OrderContextChangeHistory>
+    {
+        public void Configure(EntityTypeBuilder<OrderContextChangeHistory> builder)
+        {
+            builder.ToTable("order_context_change_history", table =>
+            {
+                table.HasCheckConstraint("CK_order_context_change_history_sequence_positive", "sequence > 0");
+                table.HasCheckConstraint("CK_order_context_change_history_names_not_empty",
+                    "length(btrim(previous_context_operational_name)) > 0 AND length(btrim(new_context_operational_name)) > 0");
+            });
+            builder.HasKey(x => x.Id).HasName("PK_order_context_change_history");
+            builder.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            builder.Property(x => x.OrderId).HasColumnName("order_id").ValueGeneratedNever();
+            builder.Property(x => x.Sequence).HasColumnName("sequence").IsRequired();
+            builder.Property(x => x.PreviousContextId).HasColumnName("previous_context_id").ValueGeneratedNever();
+            builder.Property(x => x.PreviousContextOperationalName).HasColumnName("previous_context_operational_name").HasColumnType("text").IsRequired();
+            builder.Property(x => x.NewContextId).HasColumnName("new_context_id").ValueGeneratedNever();
+            builder.Property(x => x.NewContextOperationalName).HasColumnName("new_context_operational_name").HasColumnType("text").IsRequired();
+            builder.Property(x => x.ActorIdentityId).HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(x => x.OccurredAtUtc).HasColumnName("occurred_at_utc").HasColumnType("timestamp with time zone").IsRequired();
+            builder.HasIndex(x => new { x.OrderId, x.Sequence }).IsUnique().HasDatabaseName("UX_order_context_change_history_order_sequence");
+            builder.HasOne<Order>().WithMany().HasForeignKey(x => x.OrderId)
+                .HasConstraintName("FK_order_context_change_history_order").OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class OrderContextChangeCommandConfiguration :
+        IEntityTypeConfiguration<OrderContextChangeCommand>
+    {
+        public void Configure(EntityTypeBuilder<OrderContextChangeCommand> builder)
+        {
+            builder.ToTable("order_context_change_commands", table =>
+                table.HasCheckConstraint("CK_order_context_change_commands_result_names_not_empty",
+                    "length(btrim(result_previous_context_operational_name)) > 0 AND length(btrim(result_current_context_operational_name)) > 0"));
+            builder.HasKey(x => x.IdempotencyKey).HasName("PK_order_context_change_commands");
+            builder.Property(x => x.IdempotencyKey).HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(x => x.ActorIdentityId).HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(x => x.OrderId).HasColumnName("order_id").ValueGeneratedNever();
+            builder.Property(x => x.ExpectedCurrentContextId).HasColumnName("expected_current_context_id").ValueGeneratedNever();
+            builder.Property(x => x.NewContextId).HasColumnName("new_context_id").ValueGeneratedNever();
+            builder.Property(x => x.ResultPreviousContextId).HasColumnName("result_previous_context_id").ValueGeneratedNever();
+            builder.Property(x => x.ResultPreviousContextOperationalName).HasColumnName("result_previous_context_operational_name").HasColumnType("text").IsRequired();
+            builder.Property(x => x.ResultCurrentContextId).HasColumnName("result_current_context_id").ValueGeneratedNever();
+            builder.Property(x => x.ResultCurrentContextOperationalName).HasColumnName("result_current_context_operational_name").HasColumnType("text").IsRequired();
+            builder.Property(x => x.ResultOccurredAtUtc).HasColumnName("result_occurred_at_utc").HasColumnType("timestamp with time zone").IsRequired();
         }
     }
 

@@ -26,6 +26,43 @@ namespace NexoBar.OrderOperations.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("NexoBar.OrderOperations.OrderContextChangeHistory", b =>
+                {
+                    b.Property<Guid>("Id").HasColumnType("uuid").HasColumnName("id");
+                    b.Property<Guid>("OrderId").HasColumnType("uuid").HasColumnName("order_id");
+                    b.Property<int>("Sequence").HasColumnType("integer").HasColumnName("sequence");
+                    b.Property<Guid>("PreviousContextId").HasColumnType("uuid").HasColumnName("previous_context_id");
+                    b.Property<string>("PreviousContextOperationalName").IsRequired().HasColumnType("text").HasColumnName("previous_context_operational_name");
+                    b.Property<Guid>("NewContextId").HasColumnType("uuid").HasColumnName("new_context_id");
+                    b.Property<string>("NewContextOperationalName").IsRequired().HasColumnType("text").HasColumnName("new_context_operational_name");
+                    b.Property<Guid>("ActorIdentityId").HasColumnType("uuid").HasColumnName("actor_identity_id");
+                    b.Property<DateTimeOffset>("OccurredAtUtc").HasColumnType("timestamp with time zone").HasColumnName("occurred_at_utc");
+                    b.HasKey("Id").HasName("PK_order_context_change_history");
+                    b.HasIndex("OrderId", "Sequence").IsUnique().HasDatabaseName("UX_order_context_change_history_order_sequence");
+                    b.ToTable("order_context_change_history", "order_operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_order_context_change_history_sequence_positive", "sequence > 0");
+                            t.HasCheckConstraint("CK_order_context_change_history_names_not_empty", "length(btrim(previous_context_operational_name)) > 0 AND length(btrim(new_context_operational_name)) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("NexoBar.OrderOperations.OrderContextChangeCommand", b =>
+                {
+                    b.Property<Guid>("IdempotencyKey").HasColumnType("uuid").HasColumnName("idempotency_key");
+                    b.Property<Guid>("ActorIdentityId").HasColumnType("uuid").HasColumnName("actor_identity_id");
+                    b.Property<Guid>("OrderId").HasColumnType("uuid").HasColumnName("order_id");
+                    b.Property<Guid>("ExpectedCurrentContextId").HasColumnType("uuid").HasColumnName("expected_current_context_id");
+                    b.Property<Guid>("NewContextId").HasColumnType("uuid").HasColumnName("new_context_id");
+                    b.Property<Guid>("ResultPreviousContextId").HasColumnType("uuid").HasColumnName("result_previous_context_id");
+                    b.Property<string>("ResultPreviousContextOperationalName").IsRequired().HasColumnType("text").HasColumnName("result_previous_context_operational_name");
+                    b.Property<Guid>("ResultCurrentContextId").HasColumnType("uuid").HasColumnName("result_current_context_id");
+                    b.Property<string>("ResultCurrentContextOperationalName").IsRequired().HasColumnType("text").HasColumnName("result_current_context_operational_name");
+                    b.Property<DateTimeOffset>("ResultOccurredAtUtc").HasColumnType("timestamp with time zone").HasColumnName("result_occurred_at_utc");
+                    b.HasKey("IdempotencyKey").HasName("PK_order_context_change_commands");
+                    b.ToTable("order_context_change_commands", "order_operations", t =>
+                        t.HasCheckConstraint("CK_order_context_change_commands_result_names_not_empty", "length(btrim(result_previous_context_operational_name)) > 0 AND length(btrim(result_current_context_operational_name)) > 0"));
+                });
+
             modelBuilder.Entity("NexoBar.OrderOperations.AppliedPriceCorrectionCommand", b =>
                 {
                     b.Property<Guid>("IdempotencyKey")
@@ -2135,6 +2172,16 @@ namespace NexoBar.OrderOperations.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_order_operations_subsequent_confirmation_command_contents_commands");
+                });
+
+            modelBuilder.Entity("NexoBar.OrderOperations.OrderContextChangeHistory", b =>
+                {
+                    b.HasOne("NexoBar.OrderOperations.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_order_context_change_history_order");
                 });
 #pragma warning restore 612, 618
         }

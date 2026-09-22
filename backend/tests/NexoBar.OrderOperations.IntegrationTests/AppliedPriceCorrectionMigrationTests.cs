@@ -10,7 +10,7 @@ public sealed class AppliedPriceCorrectionMigrationTests(OrderOperationsApiFixtu
 {
     private const string Previous = "20260910222430_AddCompleteOrderCancellation";
     private const string Current = "20260911160042_AddAppliedPriceCorrection";
-    private const string Latest = "20260922140000_AddConfiguredOrderContexts";
+    private const string Latest = "20260922150000_AddOrderContextChanges";
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
