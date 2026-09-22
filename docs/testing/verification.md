@@ -62,3 +62,22 @@ S10-I3 tiene un escenario Playwright focalizado: **1 discovered, 1 passed, 0 fai
 MVP-FC-PREP-I1 deja evidencia frontend focalizada: `GeneralConfigurationPanel` **29 passed**; `CatalogPanel` **18 passed**; cliente general **10 passed**; cliente Catalog **10 passed**; capability gate de `App` **12 passed**; y `tsconfig.app.json` **passed**. Estos resultados no afirman una corrida completa del frontend.
 
 MVP-FC-PREP-I2 ejecutó un escenario Playwright dirigido: **1 discovered, 1 passed, 0 failed, 0 skipped**. Usó actores distintos: G con `GeneralConfiguration`, C con `CatalogConfiguration`, O con `OrderOperationsAndBasicClosure` y P con `Preparation`; probó la propagación del destino exacto desde la configuración hasta el Work visible para P. No afirma éxito de la suite Playwright completa.
+
+## MVP-FC-CAT — Catalog Structure and Product Lifecycle
+
+MVP-FC-CAT-I1 backend evidence:
+
+- Catalog module: **63 discovered, 63 passed, 0 failed, 0 skipped**.
+- OrderOperations after lifecycle integration: **783 discovered, 783 passed, 0 failed, 0 skipped**.
+- Both deterministic Retire-versus-Confirmation orderings passed.
+- PostgreSQL migration Up/Down passed.
+- `HasPendingModelChanges` passed.
+
+MVP-FC-CAT-I2 frontend evidence:
+
+- `CatalogPanel`: **32/32 passed**.
+- `catalogClient`: **14/14 passed**.
+- Exact application typecheck: `npx tsc -p tsconfig.app.json --noEmit` — **PASS**.
+- The broader `tsc -b` command is not claimed clean; it retains pre-existing unused `Browser`/`BrowserContext` imports in E2E files.
+
+MVP-FC-CAT-I3 executed one targeted Playwright scenario: **1 discovered, 1 passed, 0 failed, 0 skipped**. It proved Group create, Product Group assignment, rename, active operational browse and Confirmation, Retire, operational exclusion and direct `product_not_current` rejection, administrative persistence, Reactivate with `Available=true`, and operational reappearance.

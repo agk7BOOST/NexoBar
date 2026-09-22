@@ -29,3 +29,12 @@ La excepción sólo aplica a un Product actual/activo. Product inexistente, inac
 La intención es por línea: `unavailableProductExceptionRequested` omitido o `false` significa incorporación ordinaria; `true` solicita explícitamente la excepción. No existe override global de Confirmation. Las líneas mixtas se validan y confirman atómicamente: una línea no disponible ordinaria rechaza toda la Confirmation, aunque otra línea solicite la excepción.
 
 La incorporación excepcional usa exactamente el precio actual autoritativo y la configuración normal de Preparation del snapshot. No introduce precio arbitrario, Applied Price Correction, reglas especiales de cantidad, Delivery o Preparation, ni efectos automáticos de Inventory.
+
+### Retire versus Confirmation
+
+La misma serializacion de Product prueba el ordenamiento de lifecycle:
+
+- Si Confirmation adquiere primero el snapshot valido del Product, Retire espera; Confirmation puede committear y Retire queda efectivo despues.
+- Si Retire committea primero, una nueva Confirmation observa el Product como no actual y rechaza con `order_operations.confirmation.product_not_current`.
+
+No se reconstruyen timelines alternativos: cada resultado depende del orden efectivo de locks/transaccion.

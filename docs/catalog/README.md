@@ -1,5 +1,65 @@
 # Catalog
 
+## MVP-FC-CAT — Catalog Structure and Product Lifecycle: CLOSED
+
+El bloque de estructura de Catalog y lifecycle de Product esta cerrado. La evidencia de implementacion es MVP-FC-CAT-I1 (backend), MVP-FC-CAT-I2 (frontend) y MVP-FC-CAT-I3 (E2E real sobre PostgreSQL).
+
+### Groups
+
+Catalog es dueno de `Group`. Un Group tiene identidad estable y nombre operacional, y soporta create/list. Un Product puede pertenecer a cero o un Group; Catalog permite asignar, cambiar y desasignar esa relacion. Un Group sin Products es valido.
+
+Group es funcionalmente neutral: no cambia precio, disponibilidad, configuracion de Preparation, comportamiento de Order ni requiere reescribir snapshots historicos de Order.
+
+Quedan fuera de este bloque: rename de Group, retire/reactivate de Group, delete de Group, jerarquia, ordenamiento, metadata visual y semantica de categoria/regla de negocio.
+
+### Product rename
+
+`CatalogConfiguration` puede renombrar Products activos y retirados mediante la intencion de cambio de nombre. La identidad del Product continua siendo la misma. La unicidad del nombre operacional se aplica entre Products activos; un nombre de Product retirado no reserva esa unicidad activa, aunque la reactivacion puede fallar si existe un Product activo con ese nombre.
+
+Rename cambia la presentacion vigente de Catalog. No reescribe nombres ni contenido historico de Orders.
+
+### Product lifecycle
+
+Retire establece `IsActive=false`. El Product permanece persistido y sigue expuesto en el read administrativo. El browse operacional lo excluye y una nueva Confirmation lo rechaza como Product no actual (`product_not_current`). Precio, Group, configuracion de Preparation y disponibilidad almacenada permanecen preservados. Content confirmado y PreparationWork existentes no se alteran.
+
+Reactivate establece `IsActive=true` y `IsAvailable=true` por regla de lifecycle. Preserva Group, precio, configuracion de Preparation y nombre actual. Una colision con el nombre de un Product activo impide la reactivacion.
+
+`Retired` no significa `Deleted`: Product Delete no pertenece a este bloque.
+
+### Active versus Available
+
+`IsActive` representa lifecycle/currentness del Product. `IsAvailable` representa disponibilidad operacional temporal. `CatalogConfiguration` es dueno del lifecycle, pero la mutacion general de Availability no forma parte de este bloque y no existe un control general de Availability en CatalogConfiguration.
+
+La disponibilidad `true` producida por Reactivate es una consecuencia especifica del comando de lifecycle; no otorga a CatalogConfiguration autoridad general sobre Availability. Product Availability Intervention continua fuera de alcance y bajo autoridad de `OperationalIntervention`.
+
+Los reads administrativos de CatalogConfiguration incluyen Products activos y retirados. Los reads operacionales de Product continuan excluyendo retirados; `OperationalIntervention` no obtiene por ello visibilidad de Products retirados.
+
+### Price correction on retired Products
+
+Un Product retirado puede recibir una correccion de precio configurado porque un Order ya confirmado y aun no liquidado puede requerir el flujo explicito de Applied Price Correction:
+
+```text
+precio configurado en Catalog -> Applied Price Correction explicita
+```
+
+Cambiar el precio de un Product retirado no lo reactiva, no cambia `IsAvailable`, no lo vuelve seleccionable operacionalmente y no muta automaticamente precios ya aplicados en Orders. Applied Price Correction resuelve el precio configurado por identidad estable de Product; Confirmation continua usando su snapshot separado de Product actual/activo. Estos conceptos no se fusionan.
+
+### Commands, actor and durable idempotency
+
+CreateGroup, ChangeProductGroup, RenameProduct, RetireProduct y ReactivateProduct son comandos durables actor-aware de Catalog. Cada uno conserva replay exacto de la misma key e intencion, y conflicto ante intencion cambiada. La evidencia de acceptance cubre para las cinco familias: replay exacto despues de revocacion de `CatalogConfiguration` para el mismo actor activo, aislamiento frente a otro actor y conflicto de intencion cambiada. Esto no introduce un rediseno generico de seguridad/idempotencia.
+
+### Persistence boundary
+
+La persistencia de Groups agrega el schema de Groups, la relacion nullable Product -> Group y sus restricciones de identidad/nombre. Los comandos tienen persistencia durable dedicada; el lifecycle reutiliza `IsActive` existente y conserva la unicidad de nombre entre Products activos.
+
+La prueba de frontera real de migracion PostgreSQL comprobo Up/Down, preservacion de Products legacy, Group null para Products existentes, schema/FK/uniqueness de Groups, estructuras de comandos, unicidad de nombre activo y Down con el estado legacy preservado.
+
+### Catalog UI
+
+La UI de Catalog ofrece listado/creacion de Groups; asignacion, cambio y desasignacion de Group mientras el Product esta activo; rename mientras esta activo o retirado; retire/reactivate; estados de lifecycle y Availability separados; y correccion del precio configurado mientras el Product esta retirado.
+
+La creacion de Product no cambio: no selecciona Group inicial ni lifecycle, y comienza activo, sin Group y con la configuracion existente de creacion. No hay controles generales de Availability en CatalogConfiguration.
+
 Producto no significa Elemento de Inventario. Para cambiar la capacidad consumida por Confirmation, leer [colaboración transaccional](confirmation-collaboration.md).
 
 ## Reads y fronteras de S9

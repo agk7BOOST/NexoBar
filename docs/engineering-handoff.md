@@ -30,6 +30,12 @@ Consulta solo los temas afectados y sus dependencias explícitas. Los pendientes
 
 Las rutas de instrucciones locales empiezan en [backend](../backend/AGENTS.md), [frontend](../frontend/AGENTS.md), [tests backend](../backend/tests/AGENTS.md), [scripts](../scripts/AGENTS.md) y [docs](AGENTS.md).
 
+## MVP-FC-CAT — Catalog Structure and Product Lifecycle: CLOSED
+
+El mínimo de Groups, rename de Product y Retire/Reactivate de Product está implementado y verificado. Se eliminan como gaps completados: Group minimum capability, Product rename y Product retire/reactivate. El detalle funcional vive en [Catalog](catalog/README.md#mvp-fc-cat--catalog-structure-and-product-lifecycle-closed) y la evidencia en [Testing](testing/verification.md#mvp-fc-cat--catalog-structure-and-product-lifecycle).
+
+El siguiente frontier es **Product Availability Intervention**, bajo autoridad de `OperationalIntervention`; no forma parte de CatalogConfiguration ni de este cierre. Permanecen además fuera de este bloque: eligible Product Delete, Context Configuration / Order Context Change, Terminal Order History, Inventory lifecycle / Unit Correction, Inventory Movement Correction y eligible Identity Delete. Ninguno se marca como iniciado por este cierre.
+
 ## Estado actual de Slice
 
 **Slice 8 — SSE / Multi-user Freshness: CLOSED.** Preparation por destino, Order activo e Inventory operacional son las superficies MVP de frescura implementadas y verificadas verticalmente. La decisión, evidencia y límites —incluida la única instancia backend activa— pertenecen a [SSE y frescura](architecture/sse-and-freshness.md). Los feeds de otros módulos y mecanismos futuros multi-instancia permanecen diferidos; este cierre no inicia ni diseña el siguiente Slice.
@@ -54,6 +60,6 @@ Las rutas de instrucciones locales empiezan en [backend](../backend/AGENTS.md), 
 
 **Preparation Configuration Completion: CLOSED.** La UI de `GeneralConfiguration` crea y lista Preparation Responsibilities; la UI de `CatalogConfiguration` configura el destino de Preparation de Products existentes. La evidencia focalizada está en [Testing](testing/verification.md#mvp-fc-prep--preparation-configuration-completion). Este cierre no inicia un Slice ni atribuye una capacidad nueva a OrderOperations.
 
-El trabajo restante preservado fuera de este cierre incluye el lifecycle completo de Preparation Responsibility (rename, retiro/reactivación, delete, ordering y gestión de estaciones); lifecycle/completitud de Catalog; lifecycle/corrección de unidades de Inventory; Contexts si se aprueban; Historia terminal de Order; Delete Identity si una norma posterior lo exige; administración arbitraria de Sessions; y hardening de piloto/RNF. El siguiente candidato funcional planificado puede ser **Catalog Structure and Product Lifecycle**, pero no está iniciado ni se diseña aquí. No se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
+El trabajo restante preservado fuera de este cierre incluye el lifecycle completo de Preparation Responsibility (rename, retiro/reactivación, delete, ordering y gestión de estaciones); lifecycle/corrección de unidades de Inventory; Contexts si se aprueban; Historia terminal de Order; Delete Identity si una norma posterior lo exige; administración arbitraria de Sessions; y hardening de piloto/RNF. No se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
 
 Solo para trazabilidad: [checkpoints históricos de slices](history/slice-checkpoints.md) y [auditoría de esta reorganización](context-audit.md). No son fuentes de nuevas decisiones ni lecturas de arranque obligatorias.
