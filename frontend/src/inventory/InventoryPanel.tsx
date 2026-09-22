@@ -12,6 +12,7 @@ import {
   SessionProblemError,
 } from "../identity/sessionClient.ts";
 import { InventoryHistory } from "./InventoryHistory.tsx";
+import { InventoryConfigurationItemControls } from "./InventoryConfigurationItemControls.tsx";
 import { InventoryItemOperations } from "./InventoryItemOperations.tsx";
 import { InventoryOperationFreshnessSubscription } from "./InventoryOperationFreshnessSubscription.tsx";
 import {
@@ -81,6 +82,9 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
     null,
   );
   const [createNotice, setCreateNotice] = useState<Notice | null>(null);
+  const [configurationNotice, setConfigurationNotice] = useState<Notice | null>(
+    null,
+  );
   const [historyItem, setHistoryItem] =
     useState<InventoryOperationalItem | null>(null);
   const [historyRefreshRevision, setHistoryRefreshRevision] = useState(0);
@@ -113,7 +117,12 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
     setCreateIntent(null);
     setHistoryItem(null);
     onUnauthorized();
-  }, [cancelOperationRequests, cancelReadRequests, onUnauthorized, setCreateIntent]);
+  }, [
+    cancelOperationRequests,
+    cancelReadRequests,
+    onUnauthorized,
+    setCreateIntent,
+  ]);
 
   const refreshConfiguration = useCallback(async () => {
     const sequence = ++configurationSequence.current;
@@ -328,6 +337,11 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
     [historyItem?.itemId, refreshOperation],
   );
 
+  const handleAuthoritativeConfiguration = useCallback(async () => {
+    await refreshConfiguration();
+    if (operationAuthorizedRef.current) await refreshOperation(false);
+  }, [refreshConfiguration, refreshOperation]);
+
   return (
     <section className="inventory-family" aria-labelledby="inventory-heading">
       <div className="inventory-family-heading">
@@ -436,6 +450,15 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
               </div>
             )}
 
+            {configurationNotice && (
+              <div
+                className={`notice notice--${configurationNotice.kind}`}
+                role="alert"
+              >
+                <p>{configurationNotice.message}</p>
+              </div>
+            )}
+
             {configuration.items.length === 0 ? (
               <p>No hay elementos de Inventario configurados.</p>
             ) : (
@@ -444,14 +467,46 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
                   <thead>
                     <tr>
                       <th scope="col">Nombre operacional</th>
+                      <th scope="col">Lifecycle</th>
+                      <th scope="col">Readiness</th>
                       <th scope="col">Unidad operacional</th>
+                      <th scope="col">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {configuration.items.map((item) => (
                       <tr key={item.itemId}>
                         <td>{item.operationalName}</td>
+                        <td>
+                          <span
+                            aria-label={`Lifecycle de ${item.operationalName}`}
+                          >
+                            {item.isActive ? "Activo" : "Retirado"}
+                          </span>
+                        </td>
+                        <td>
+                          {item.isActive
+                            ? item.ordinaryOperationReady
+                              ? "Listo para movimientos"
+                              : "Requiere conteo/reconciliación"
+                            : "No aplica: Retirado"}
+                        </td>
                         <td>{item.operationalUnit}</td>
+                        <td>
+                          <InventoryConfigurationItemControls
+                            item={item}
+                            onUnauthorized={handleUnauthorized}
+                            onAuthoritativeMutation={
+                              handleAuthoritativeConfiguration
+                            }
+                            onStaleState={(message) =>
+                              setConfigurationNotice({
+                                kind: "functional-error",
+                                message,
+                              })
+                            }
+                          />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -519,9 +574,12 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
                 aria-label={item.operationalName}
               >
                 <h4>{item.operationalName}</h4>
-                {!item.quantityEstablished ? (
+                {!item.quantityEstablished || item.requiresReconciliation ? (
                   <div className="inventory-unestablished">
-                    <p>Existencia no establecida</p>
+                    <p aria-label={`Readiness de ${item.operationalName}`}>
+                      Existencia física no establecida
+                    </p>
+                    <p>Cantidad actual: no establecida</p>
                     <p>Requiere conteo y reconciliación.</p>
                   </div>
                 ) : (

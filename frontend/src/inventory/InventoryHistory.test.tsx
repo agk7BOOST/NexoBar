@@ -30,6 +30,7 @@ const item: InventoryOperationalItem = {
   operationalUnit: "kg",
   currentRegisteredQuantity: "7",
   quantityEstablished: true,
+  requiresReconciliation: false,
   hasNegativeBalanceInconsistency: false,
   asOfMovementRevision: 6,
 };

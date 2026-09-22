@@ -1,12 +1,20 @@
-export interface InventoryConfigurationItem {
+interface InventoryItemIdentity {
   itemId: string;
   operationalName: string;
   operationalUnit: string;
 }
 
-export interface InventoryOperationalItem extends InventoryConfigurationItem {
+export interface InventoryConfigurationItem extends InventoryItemIdentity {
+  isActive: boolean;
+  ordinaryOperationReady: boolean;
+  unitCorrectionEligible: boolean;
+  deleteEligible: boolean;
+}
+
+export interface InventoryOperationalItem extends InventoryItemIdentity {
   currentRegisteredQuantity: string | null;
   quantityEstablished: boolean;
+  requiresReconciliation: boolean;
   hasNegativeBalanceInconsistency: boolean;
   asOfMovementRevision: number;
 }
@@ -16,7 +24,7 @@ export interface CreateInventoryItemRequest {
   operationalUnit: string;
 }
 
-export interface CreatedInventoryItem extends InventoryConfigurationItem {
+export interface CreatedInventoryItem extends InventoryItemIdentity {
   currentRegisteredQuantity: string | null;
   movementRevision: number;
 }
@@ -94,6 +102,24 @@ export interface InventoryProblemDetails {
   code?: string;
 }
 
+export interface InventoryLifecycleResult extends InventoryItemIdentity {
+  isActive: boolean;
+  ordinaryOperationReady: boolean;
+  requiresReconciliation: boolean;
+  movementRevision: number;
+}
+
+export interface InventoryUnitCorrectionResult {
+  itemId: string;
+  operationalUnit: string;
+  outcome: string;
+}
+
+export interface InventoryItemDeleteResult {
+  itemId: string;
+  deleted: true;
+}
+
 export class InventoryProblemError extends Error {
   readonly status: number;
   readonly problem: InventoryProblemDetails;
@@ -163,14 +189,14 @@ async function requireSuccess(response: Response): Promise<void> {
   }
 }
 
-function parseConfigurationItem(value: unknown): InventoryConfigurationItem {
+function parseItemIdentity(value: unknown): InventoryItemIdentity {
   if (
     !isRecord(value) ||
     typeof value.itemId !== "string" ||
     typeof value.operationalName !== "string" ||
     typeof value.operationalUnit !== "string"
   ) {
-    throw new Error("The Inventory configuration item was not interpretable.");
+    throw new Error("The Inventory Item identity was not interpretable.");
   }
 
   return {
@@ -180,12 +206,34 @@ function parseConfigurationItem(value: unknown): InventoryConfigurationItem {
   };
 }
 
+function parseConfigurationItem(value: unknown): InventoryConfigurationItem {
+  const base = parseItemIdentity(value);
+  if (
+    !isRecord(value) ||
+    typeof value.isActive !== "boolean" ||
+    typeof value.ordinaryOperationReady !== "boolean" ||
+    typeof value.unitCorrectionEligible !== "boolean" ||
+    typeof value.deleteEligible !== "boolean"
+  ) {
+    throw new Error("The Inventory configuration item was not interpretable.");
+  }
+
+  return {
+    ...base,
+    isActive: value.isActive,
+    ordinaryOperationReady: value.ordinaryOperationReady,
+    unitCorrectionEligible: value.unitCorrectionEligible,
+    deleteEligible: value.deleteEligible,
+  };
+}
+
 function parseOperationalItem(value: unknown): InventoryOperationalItem {
-  const base = parseConfigurationItem(value);
+  const base = parseItemIdentity(value);
   if (
     !isRecord(value) ||
     !isNullableString(value.currentRegisteredQuantity) ||
     typeof value.quantityEstablished !== "boolean" ||
+    typeof value.requiresReconciliation !== "boolean" ||
     typeof value.hasNegativeBalanceInconsistency !== "boolean" ||
     !isNonNegativeInteger(value.asOfMovementRevision) ||
     (value.quantityEstablished
@@ -199,13 +247,14 @@ function parseOperationalItem(value: unknown): InventoryOperationalItem {
     ...base,
     currentRegisteredQuantity: value.currentRegisteredQuantity,
     quantityEstablished: value.quantityEstablished,
+    requiresReconciliation: value.requiresReconciliation,
     hasNegativeBalanceInconsistency: value.hasNegativeBalanceInconsistency,
     asOfMovementRevision: value.asOfMovementRevision,
   };
 }
 
 function parseCreatedItem(value: unknown): CreatedInventoryItem {
-  const base = parseConfigurationItem(value);
+  const base = parseItemIdentity(value);
   if (
     !isRecord(value) ||
     !isNullableString(value.currentRegisteredQuantity) ||
@@ -463,6 +512,61 @@ export async function listInventoryOperationalItems(): Promise<
   );
 }
 
+function parseLifecycleResult(value: unknown): InventoryLifecycleResult {
+  if (
+    !isRecord(value) ||
+    typeof value.itemId !== "string" ||
+    typeof value.operationalName !== "string" ||
+    typeof value.operationalUnit !== "string" ||
+    typeof value.isActive !== "boolean" ||
+    typeof value.ordinaryOperationReady !== "boolean" ||
+    typeof value.requiresReconciliation !== "boolean" ||
+    !isNonNegativeInteger(value.movementRevision)
+  ) {
+    throw new Error("The Inventory lifecycle result was not interpretable.");
+  }
+  return {
+    itemId: value.itemId,
+    operationalName: value.operationalName,
+    operationalUnit: value.operationalUnit,
+    isActive: value.isActive,
+    ordinaryOperationReady: value.ordinaryOperationReady,
+    requiresReconciliation: value.requiresReconciliation,
+    movementRevision: value.movementRevision,
+  };
+}
+
+function parseUnitCorrectionResult(
+  value: unknown,
+): InventoryUnitCorrectionResult {
+  if (
+    !isRecord(value) ||
+    typeof value.itemId !== "string" ||
+    typeof value.operationalUnit !== "string" ||
+    typeof value.outcome !== "string"
+  ) {
+    throw new Error(
+      "The Inventory unit correction result was not interpretable.",
+    );
+  }
+  return {
+    itemId: value.itemId,
+    operationalUnit: value.operationalUnit,
+    outcome: value.outcome,
+  };
+}
+
+function parseDeleteResult(value: unknown): InventoryItemDeleteResult {
+  if (
+    !isRecord(value) ||
+    typeof value.itemId !== "string" ||
+    value.deleted !== true
+  ) {
+    throw new Error("The Inventory delete result was not interpretable.");
+  }
+  return { itemId: value.itemId, deleted: true };
+}
+
 function mutationHeaders(
   idempotencyKey: string,
   antiforgeryToken: string,
@@ -472,6 +576,82 @@ function mutationHeaders(
     "Idempotency-Key": idempotencyKey,
     "X-NexoBar-CSRF": antiforgeryToken,
   };
+}
+
+export async function retireInventoryItem(
+  itemId: string,
+  expectedCurrentIsActive: boolean,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<InventoryLifecycleResult> {
+  const response = await send(
+    `/api/inventory/items/${encodeURIComponent(itemId)}/retire`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: mutationHeaders(idempotencyKey, antiforgeryToken),
+      body: JSON.stringify({ expectedCurrentIsActive }),
+    },
+  );
+  await requireSuccess(response);
+  return parseLifecycleResult((await response.json()) as unknown);
+}
+
+export async function reactivateInventoryItem(
+  itemId: string,
+  expectedCurrentIsActive: boolean,
+  newOperationalName: string | null,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<InventoryLifecycleResult> {
+  const response = await send(
+    `/api/inventory/items/${encodeURIComponent(itemId)}/reactivate`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: mutationHeaders(idempotencyKey, antiforgeryToken),
+      body: JSON.stringify({ expectedCurrentIsActive, newOperationalName }),
+    },
+  );
+  await requireSuccess(response);
+  return parseLifecycleResult((await response.json()) as unknown);
+}
+
+export async function correctInventoryUnit(
+  itemId: string,
+  expectedCurrentUnit: string,
+  newUnit: string,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<InventoryUnitCorrectionResult> {
+  const response = await send(
+    `/api/inventory/items/${encodeURIComponent(itemId)}/unit-corrections`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: mutationHeaders(idempotencyKey, antiforgeryToken),
+      body: JSON.stringify({ expectedCurrentUnit, newUnit }),
+    },
+  );
+  await requireSuccess(response);
+  return parseUnitCorrectionResult((await response.json()) as unknown);
+}
+
+export async function deleteInventoryItem(
+  itemId: string,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<InventoryItemDeleteResult> {
+  const response = await send(
+    `/api/inventory/items/${encodeURIComponent(itemId)}/delete`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: mutationHeaders(idempotencyKey, antiforgeryToken),
+    },
+  );
+  await requireSuccess(response);
+  return parseDeleteResult((await response.json()) as unknown);
 }
 
 export async function recordInventoryCount(

@@ -267,7 +267,7 @@ export function InventoryItemOperations({
             setNotice({
               kind: "functional-error",
               message:
-                "El conteo quedó invalidado porque la existencia cambió. Se requiere un nuevo conteo físico antes de reconciliar.",
+                "La observación física anterior quedó invalidada por un cambio de Unidad o el retiro del elemento. Se requiere un nuevo conteo físico antes de reconciliar.",
             });
             await onAuthoritativeMutation(current.itemId);
             return;
@@ -367,34 +367,35 @@ export function InventoryItemOperations({
   const countObservationStale =
     countObservation !== null &&
     countObservation.observedMovementRevision !== item.asOfMovementRevision;
-  const quantityForms = item.quantityEstablished
-    ? ([
-        {
-          kind: "entry" as const,
-          title: "Entrada",
-          label: `Cantidad de entrada para ${item.operationalName}`,
-          value: entryQuantity,
-          setValue: setEntryQuantity,
-          button: "Registrar entrada",
-        },
-        {
-          kind: "manual-exit" as const,
-          title: "Salida manual",
-          label: `Cantidad de salida manual para ${item.operationalName}`,
-          value: exitQuantity,
-          setValue: setExitQuantity,
-          button: "Registrar salida manual",
-        },
-        {
-          kind: "waste" as const,
-          title: "Merma",
-          label: `Cantidad de merma para ${item.operationalName}`,
-          value: wasteQuantity,
-          setValue: setWasteQuantity,
-          button: "Registrar merma",
-        },
-      ] as const)
-    : [];
+  const quantityForms =
+    item.quantityEstablished && !item.requiresReconciliation
+      ? ([
+          {
+            kind: "entry" as const,
+            title: "Entrada",
+            label: `Cantidad de entrada para ${item.operationalName}`,
+            value: entryQuantity,
+            setValue: setEntryQuantity,
+            button: "Registrar entrada",
+          },
+          {
+            kind: "manual-exit" as const,
+            title: "Salida manual",
+            label: `Cantidad de salida manual para ${item.operationalName}`,
+            value: exitQuantity,
+            setValue: setExitQuantity,
+            button: "Registrar salida manual",
+          },
+          {
+            kind: "waste" as const,
+            title: "Merma",
+            label: `Cantidad de merma para ${item.operationalName}`,
+            value: wasteQuantity,
+            setValue: setWasteQuantity,
+            button: "Registrar merma",
+          },
+        ] as const)
+      : [];
 
   return (
     <div className="inventory-item-operations">

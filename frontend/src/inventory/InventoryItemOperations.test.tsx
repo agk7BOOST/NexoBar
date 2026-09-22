@@ -48,6 +48,7 @@ const item: InventoryOperationalItem = {
   operationalUnit: "kg",
   currentRegisteredQuantity: "10",
   quantityEstablished: true,
+  requiresReconciliation: false,
   hasNegativeBalanceInconsistency: false,
   asOfMovementRevision: 1,
 };
@@ -256,7 +257,7 @@ describe("InventoryItemOperations", () => {
 
     expect(
       await screen.findByText(
-        "El conteo quedó invalidado porque la existencia cambió. Se requiere un nuevo conteo físico antes de reconciliar.",
+        "La observación física anterior quedó invalidada por un cambio de Unidad o el retiro del elemento. Se requiere un nuevo conteo físico antes de reconciliar.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -280,11 +281,17 @@ describe("InventoryItemOperations", () => {
     const { view } = renderOperations();
 
     await recordCount(user);
-    expect(screen.getByRole("button", { name: "Reconciliar conteo" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Reconciliar conteo" }),
+    ).toBeEnabled();
 
     view.rerender(
       <InventoryItemOperations
-        item={{ ...item, asOfMovementRevision: 2, currentRegisteredQuantity: "15" }}
+        item={{
+          ...item,
+          asOfMovementRevision: 2,
+          currentRegisteredQuantity: "15",
+        }}
         onUnauthorized={vi.fn()}
         onStateRefresh={vi.fn().mockResolvedValue(undefined)}
         onAuthoritativeMutation={vi.fn().mockResolvedValue(undefined)}
@@ -293,13 +300,24 @@ describe("InventoryItemOperations", () => {
     );
 
     expect(screen.getByText(/ya no refleja el estado actual/i)).toBeVisible();
-    expect(screen.getByRole("button", { name: "Reconciliar conteo" })).toBeDisabled();
-    expect(screen.getByText(/Cantidad observada:/)).toHaveTextContent("7.500 kg");
+    expect(
+      screen.getByRole("button", { name: "Reconciliar conteo" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/Cantidad observada:/)).toHaveTextContent(
+      "7.500 kg",
+    );
 
-    await user.type(screen.getByLabelText("Cantidad observada para Harina"), "8");
+    await user.type(
+      screen.getByLabelText("Cantidad observada para Harina"),
+      "8",
+    );
     await user.click(screen.getByRole("button", { name: "Registrar conteo" }));
-    await screen.findByText("Conteo registrado: 8 kg. El saldo no fue modificado.");
-    expect(screen.getByRole("button", { name: "Reconciliar conteo" })).toBeEnabled();
+    await screen.findByText(
+      "Conteo registrado: 8 kg. El saldo no fue modificado.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Reconciliar conteo" }),
+    ).toBeEnabled();
   });
 
   it.each([

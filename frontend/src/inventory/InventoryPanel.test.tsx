@@ -14,6 +14,8 @@ import {
 import { InventoryPanel } from "./InventoryPanel.tsx";
 import {
   createInventoryItem,
+  correctInventoryUnit,
+  deleteInventoryItem,
   getInventoryMovementHistory,
   InventoryNetworkError,
   InventoryProblemError,
@@ -21,6 +23,8 @@ import {
   listInventoryOperationalItems,
   recordInventoryEntry,
   recordManualInventoryExit,
+  reactivateInventoryItem,
+  retireInventoryItem,
   type InventoryConfigurationItem,
   type InventoryOperationalItem,
 } from "./inventoryClient.ts";
@@ -41,11 +45,15 @@ vi.mock("./inventoryClient.ts", async (importOriginal) => {
   return {
     ...original,
     createInventoryItem: vi.fn(),
+    correctInventoryUnit: vi.fn(),
+    deleteInventoryItem: vi.fn(),
     getInventoryMovementHistory: vi.fn(),
     listInventoryConfigurationItems: vi.fn(),
     listInventoryOperationalItems: vi.fn(),
     recordInventoryEntry: vi.fn(),
     recordManualInventoryExit: vi.fn(),
+    reactivateInventoryItem: vi.fn(),
+    retireInventoryItem: vi.fn(),
   };
 });
 
@@ -53,12 +61,26 @@ const configurationItem: InventoryConfigurationItem = {
   itemId: "item-1",
   operationalName: "Harina",
   operationalUnit: "kg",
+  isActive: true,
+  ordinaryOperationReady: false,
+  unitCorrectionEligible: true,
+  deleteEligible: true,
+};
+
+const retiredConfigurationItem: InventoryConfigurationItem = {
+  ...configurationItem,
+  itemId: "item-retired",
+  operationalName: "Retirado",
+  isActive: false,
+  ordinaryOperationReady: false,
+  unitCorrectionEligible: true,
 };
 
 const uninitialized: InventoryOperationalItem = {
   ...configurationItem,
   currentRegisteredQuantity: null,
   quantityEstablished: false,
+  requiresReconciliation: true,
   hasNegativeBalanceInconsistency: false,
   asOfMovementRevision: 0,
 };
@@ -93,11 +115,15 @@ describe("InventoryPanel", () => {
     vi.mocked(discardAntiforgeryToken).mockReset();
     vi.mocked(getAntiforgeryToken).mockReset().mockResolvedValue("csrf-1");
     vi.mocked(createInventoryItem).mockReset();
+    vi.mocked(correctInventoryUnit).mockReset();
+    vi.mocked(deleteInventoryItem).mockReset();
     vi.mocked(getInventoryMovementHistory).mockReset();
     vi.mocked(listInventoryConfigurationItems).mockReset();
     vi.mocked(listInventoryOperationalItems).mockReset();
     vi.mocked(recordInventoryEntry).mockReset();
     vi.mocked(recordManualInventoryExit).mockReset();
+    vi.mocked(reactivateInventoryItem).mockReset();
+    vi.mocked(retireInventoryItem).mockReset();
   });
 
   it.each([
@@ -178,7 +204,7 @@ describe("InventoryPanel", () => {
     await renderConfigurationOnly();
 
     expect(screen.getByText("Harina")).toBeInTheDocument();
-    expect(screen.getByText("kg")).toBeInTheDocument();
+    expect(screen.getAllByText("kg").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("Nombre operacional")).toBeInTheDocument();
     expect(screen.getByLabelText("Unidad operacional")).toHaveProperty(
       "type",
@@ -195,6 +221,270 @@ describe("InventoryPanel", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
+  it("renders active readiness and retired lifecycle distinctly", async () => {
+    vi.mocked(listInventoryConfigurationItems).mockResolvedValueOnce([
+      { ...configurationItem, ordinaryOperationReady: true },
+      retiredConfigurationItem,
+    ]);
+    vi.mocked(listInventoryOperationalItems).mockRejectedValueOnce(forbidden);
+
+    render(<InventoryPanel onUnauthorized={vi.fn()} />);
+
+    expect((await screen.findAllByText("Retirado")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Activo").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Listo para movimientos").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("button", { name: "Retirar Harina" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Reactivar Retirado" }),
+    ).toBeInTheDocument();
+  });
+
+  it("retires with the expected lifecycle state and refreshes Configuration", async () => {
+    vi.mocked(listInventoryConfigurationItems)
+      .mockResolvedValueOnce([configurationItem])
+      .mockResolvedValueOnce([{ ...configurationItem, isActive: false }]);
+    vi.mocked(listInventoryOperationalItems).mockRejectedValueOnce(forbidden);
+    vi.mocked(retireInventoryItem).mockResolvedValueOnce({
+      itemId: configurationItem.itemId,
+      operationalName: configurationItem.operationalName,
+      operationalUnit: configurationItem.operationalUnit,
+      isActive: false,
+      ordinaryOperationReady: false,
+      requiresReconciliation: false,
+      movementRevision: 0,
+    });
+
+    render(<InventoryPanel onUnauthorized={vi.fn()} />);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Retirar Harina" }));
+
+    await waitFor(() => expect(retireInventoryItem).toHaveBeenCalledTimes(1));
+    expect(retireInventoryItem).toHaveBeenCalledWith(
+      "item-1",
+      true,
+      expect.any(String),
+      "csrf-1",
+    );
+    expect((await screen.findAllByText("Retirado")).length).toBeGreaterThan(0);
+    expect(listInventoryConfigurationItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers a Reactivate name collision with a new lifecycle-specific name", async () => {
+    vi.mocked(listInventoryConfigurationItems)
+      .mockResolvedValueOnce([retiredConfigurationItem])
+      .mockResolvedValue([retiredConfigurationItem]);
+    vi.mocked(listInventoryOperationalItems).mockRejectedValueOnce(forbidden);
+    vi.mocked(reactivateInventoryItem)
+      .mockRejectedValueOnce(
+        new InventoryProblemError(409, {
+          code: "inventory.item.reactivation_name_conflict",
+        }),
+      )
+      .mockResolvedValueOnce({
+        itemId: retiredConfigurationItem.itemId,
+        operationalName: "Otro nombre",
+        operationalUnit: "kg",
+        isActive: true,
+        ordinaryOperationReady: false,
+        requiresReconciliation: true,
+        movementRevision: 0,
+      });
+    const user = userEvent.setup();
+    render(<InventoryPanel onUnauthorized={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Reactivar Retirado" }),
+    );
+    expect(
+      await screen.findByRole("textbox", {
+        name: "Nombre operacional de reemplazo para Reactivar",
+      }),
+    ).toBeInTheDocument();
+    await user.type(
+      screen.getByRole("textbox", {
+        name: "Nombre operacional de reemplazo para Reactivar",
+      }),
+      "Otro nombre",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Reactivar Retirado" }),
+    );
+
+    await waitFor(() =>
+      expect(reactivateInventoryItem).toHaveBeenCalledTimes(2),
+    );
+    expect(vi.mocked(reactivateInventoryItem).mock.calls[0]).toEqual([
+      "item-retired",
+      false,
+      null,
+      expect.any(String),
+      "csrf-1",
+    ]);
+    expect(vi.mocked(reactivateInventoryItem).mock.calls[1]).toEqual([
+      "item-retired",
+      false,
+      "Otro nombre",
+      expect.any(String),
+      "csrf-1",
+    ]);
+  });
+
+  it("corrects Unit with the exact observed and new Unit intent", async () => {
+    vi.mocked(listInventoryConfigurationItems)
+      .mockResolvedValueOnce([configurationItem])
+      .mockResolvedValueOnce([{ ...configurationItem, operationalUnit: "l" }]);
+    vi.mocked(listInventoryOperationalItems).mockRejectedValueOnce(forbidden);
+    vi.mocked(correctInventoryUnit).mockResolvedValueOnce({
+      itemId: "item-1",
+      operationalUnit: "l",
+      outcome: "corrected",
+    });
+    const user = userEvent.setup();
+    render(<InventoryPanel onUnauthorized={vi.fn()} />);
+
+    await user.type(
+      await screen.findByRole("textbox", { name: "Nueva Unidad de Harina" }),
+      "l",
+    );
+    await user.click(screen.getByRole("button", { name: "Corregir Unidad" }));
+
+    await waitFor(() => expect(correctInventoryUnit).toHaveBeenCalledTimes(1));
+    expect(correctInventoryUnit).toHaveBeenCalledWith(
+      "item-1",
+      "kg",
+      "l",
+      expect.any(String),
+      "csrf-1",
+    );
+    expect(
+      await screen.findByText(/Cambio aplicado correctamente/),
+    ).toBeInTheDocument();
+    expect(listInventoryConfigurationItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows replacement guidance instead of editable Unit controls after History", async () => {
+    const withHistory = {
+      ...configurationItem,
+      unitCorrectionEligible: false,
+      deleteEligible: false,
+    };
+    vi.mocked(listInventoryConfigurationItems).mockResolvedValueOnce([
+      withHistory,
+    ]);
+    vi.mocked(listInventoryOperationalItems).mockRejectedValueOnce(forbidden);
+
+    render(<InventoryPanel onUnauthorized={vi.fn()} />);
+
+    expect(
+      await screen.findByText(
+        /La Unidad ya no puede cambiarse porque este elemento tiene History/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Corregir Unidad" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Eliminar definitivamente/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("requires explicit confirmation and refreshes after definitive Delete", async () => {
+    vi.mocked(listInventoryConfigurationItems)
+      .mockResolvedValueOnce([configurationItem])
+      .mockResolvedValueOnce([]);
+    vi.mocked(listInventoryOperationalItems).mockRejectedValueOnce(forbidden);
+    vi.mocked(deleteInventoryItem).mockResolvedValueOnce({
+      itemId: "item-1",
+      deleted: true,
+    });
+    const user = userEvent.setup();
+    render(<InventoryPanel onUnauthorized={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Eliminar definitivamente Harina",
+      }),
+    );
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+    );
+
+    await waitFor(() => expect(deleteInventoryItem).toHaveBeenCalledTimes(1));
+    expect(deleteInventoryItem).toHaveBeenCalledWith(
+      "item-1",
+      expect.any(String),
+      "csrf-1",
+    );
+    expect(
+      await screen.findByText("No hay elementos de Inventario configurados."),
+    ).toBeInTheDocument();
+  });
+
+  it("refreshes stale Configuration after Delete reports not_found", async () => {
+    vi.mocked(listInventoryConfigurationItems)
+      .mockResolvedValueOnce([configurationItem])
+      .mockResolvedValueOnce([]);
+    vi.mocked(listInventoryOperationalItems).mockRejectedValueOnce(forbidden);
+    vi.mocked(deleteInventoryItem).mockRejectedValueOnce(
+      new InventoryProblemError(404, { code: "inventory.item.not_found" }),
+    );
+    const user = userEvent.setup();
+    render(<InventoryPanel onUnauthorized={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Eliminar definitivamente Harina",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "El elemento ya no está disponible. La configuración se actualizó.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("No hay elementos de Inventario configurados."),
+    ).toBeInTheDocument();
+  });
+
+  it("retries an uncertain Delete with the same target and durable key", async () => {
+    vi.mocked(listInventoryConfigurationItems)
+      .mockResolvedValueOnce([configurationItem])
+      .mockResolvedValueOnce([]);
+    vi.mocked(listInventoryOperationalItems).mockRejectedValueOnce(forbidden);
+    vi.mocked(deleteInventoryItem)
+      .mockRejectedValueOnce(new InventoryNetworkError())
+      .mockResolvedValueOnce({ itemId: "item-1", deleted: true });
+    const user = userEvent.setup();
+    render(<InventoryPanel onUnauthorized={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Eliminar definitivamente Harina",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Reintentar misma operación" }),
+    );
+
+    await waitFor(() => expect(deleteInventoryItem).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(deleteInventoryItem).mock.calls[1]).toEqual(
+      vi.mocked(deleteInventoryItem).mock.calls[0],
+    );
+  });
+
   it("freezes trimmed creation data and key, prevents duplicate submit, then refreshes", async () => {
     vi.spyOn(crypto, "randomUUID").mockReturnValue(firstKey);
     vi.mocked(listInventoryConfigurationItems)
@@ -205,6 +495,10 @@ describe("InventoryPanel", () => {
           itemId: "item-2",
           operationalName: "Azúcar",
           operationalUnit: "kg",
+          isActive: true,
+          ordinaryOperationReady: false,
+          unitCorrectionEligible: true,
+          deleteEligible: true,
         },
       ]);
     vi.mocked(listInventoryOperationalItems).mockRejectedValueOnce(forbidden);
@@ -428,6 +722,7 @@ describe("InventoryPanel", () => {
         operationalName: "Cero",
         currentRegisteredQuantity: "0",
         quantityEstablished: true,
+        requiresReconciliation: false,
         asOfMovementRevision: 1,
       },
       {
@@ -436,6 +731,7 @@ describe("InventoryPanel", () => {
         operationalName: "Positivo",
         currentRegisteredQuantity: "10.500",
         quantityEstablished: true,
+        requiresReconciliation: false,
         asOfMovementRevision: 2,
       },
       {
@@ -444,6 +740,7 @@ describe("InventoryPanel", () => {
         operationalName: "Negativo",
         currentRegisteredQuantity: "-2.250",
         quantityEstablished: true,
+        requiresReconciliation: false,
         hasNegativeBalanceInconsistency: true,
         asOfMovementRevision: 3,
       },
@@ -451,8 +748,12 @@ describe("InventoryPanel", () => {
     render(<InventoryPanel onUnauthorized={vi.fn()} />);
 
     const noCount = await screen.findByRole("article", { name: "Harina" });
-    expect(noCount).toHaveTextContent("Existencia no establecida");
+    expect(noCount).toHaveTextContent("Existencia física no establecida");
     expect(noCount).not.toHaveTextContent("0 kg");
+    expect(noCount).toHaveTextContent("Cantidad actual: no establecida");
+    expect(
+      within(noCount).queryByRole("button", { name: "Registrar entrada" }),
+    ).not.toBeInTheDocument();
     expect(noCount).toHaveTextContent("Requiere conteo y reconciliación.");
     expect(screen.getByRole("article", { name: "Cero" })).toHaveTextContent(
       "0 kg",
@@ -475,6 +776,7 @@ describe("InventoryPanel", () => {
       ...uninitialized,
       currentRegisteredQuantity: "2",
       quantityEstablished: true,
+      requiresReconciliation: false,
       asOfMovementRevision: 1,
     };
     const negative = {
@@ -521,6 +823,7 @@ describe("InventoryPanel", () => {
       ...uninitialized,
       currentRegisteredQuantity: "2",
       quantityEstablished: true,
+      requiresReconciliation: false,
       asOfMovementRevision: 1,
     };
     const refreshed = {

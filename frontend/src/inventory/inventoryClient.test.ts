@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createInventoryItem,
+  correctInventoryUnit,
+  deleteInventoryItem,
   getInventoryMovementHistory,
   InventoryNetworkError,
   InventoryProblemError,
@@ -11,6 +13,8 @@ import {
   recordInventoryWaste,
   reconcileInventoryCount,
   recordManualInventoryExit,
+  reactivateInventoryItem,
+  retireInventoryItem,
 } from "./inventoryClient.ts";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -31,6 +35,93 @@ describe("inventoryClient", () => {
     vi.stubGlobal("fetch", fetchMock);
   });
 
+  it("sends narrow lifecycle, Unit and definitive Delete commands with durable intent", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          itemId: "item-1",
+          operationalName: "Harina",
+          operationalUnit: "kg",
+          isActive: false,
+          ordinaryOperationReady: false,
+          requiresReconciliation: false,
+          movementRevision: 0,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          itemId: "item-1",
+          operationalName: "Harina nueva",
+          operationalUnit: "kg",
+          isActive: true,
+          ordinaryOperationReady: false,
+          requiresReconciliation: true,
+          movementRevision: 0,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          itemId: "item-1",
+          operationalUnit: "l",
+          outcome: "corrected",
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ itemId: "item-1", deleted: true }));
+
+    await retireInventoryItem(
+      "item-1",
+      true,
+      "11111111-1111-4111-8111-111111111111",
+      "csrf-1",
+    );
+    await reactivateInventoryItem(
+      "item-1",
+      false,
+      "Harina nueva",
+      "22222222-2222-4222-8222-222222222222",
+      "csrf-1",
+    );
+    await correctInventoryUnit(
+      "item-1",
+      "kg",
+      "l",
+      "33333333-3333-4333-8333-333333333333",
+      "csrf-1",
+    );
+    await deleteInventoryItem(
+      "item-1",
+      "44444444-4444-4444-8444-444444444444",
+      "csrf-1",
+    );
+
+    expect(
+      fetchMock.mock.calls.map(([url, init]) => [url, init?.body]),
+    ).toEqual([
+      [
+        "/api/inventory/items/item-1/retire",
+        JSON.stringify({ expectedCurrentIsActive: true }),
+      ],
+      [
+        "/api/inventory/items/item-1/reactivate",
+        JSON.stringify({
+          expectedCurrentIsActive: false,
+          newOperationalName: "Harina nueva",
+        }),
+      ],
+      [
+        "/api/inventory/items/item-1/unit-corrections",
+        JSON.stringify({ expectedCurrentUnit: "kg", newUnit: "l" }),
+      ],
+      ["/api/inventory/items/item-1/delete", undefined],
+    ]);
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
+      headers: {
+        "Idempotency-Key": "44444444-4444-4444-8444-444444444444",
+        "X-NexoBar-CSRF": "csrf-1",
+      },
+    });
+  });
+
   it("reads the exact Configuration route with the implicit auth cookie", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse([
@@ -38,6 +129,10 @@ describe("inventoryClient", () => {
           itemId: "item-1",
           operationalName: "Harina",
           operationalUnit: "kg",
+          isActive: true,
+          ordinaryOperationReady: false,
+          unitCorrectionEligible: true,
+          deleteEligible: true,
         },
       ]),
     );
@@ -47,6 +142,10 @@ describe("inventoryClient", () => {
         itemId: "item-1",
         operationalName: "Harina",
         operationalUnit: "kg",
+        isActive: true,
+        ordinaryOperationReady: false,
+        unitCorrectionEligible: true,
+        deleteEligible: true,
       },
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
@@ -107,6 +206,7 @@ describe("inventoryClient", () => {
           operationalUnit: "u",
           currentRegisteredQuantity: null,
           quantityEstablished: false,
+          requiresReconciliation: true,
           hasNegativeBalanceInconsistency: false,
           asOfMovementRevision: 0,
         },
@@ -116,6 +216,7 @@ describe("inventoryClient", () => {
           operationalUnit: "u",
           currentRegisteredQuantity: "0",
           quantityEstablished: true,
+          requiresReconciliation: false,
           hasNegativeBalanceInconsistency: false,
           asOfMovementRevision: 1,
         },
@@ -125,6 +226,7 @@ describe("inventoryClient", () => {
           operationalUnit: "kg",
           currentRegisteredQuantity: "10.500",
           quantityEstablished: true,
+          requiresReconciliation: false,
           hasNegativeBalanceInconsistency: false,
           asOfMovementRevision: 2,
         },
@@ -134,6 +236,7 @@ describe("inventoryClient", () => {
           operationalUnit: "l",
           currentRegisteredQuantity: "-2.250",
           quantityEstablished: true,
+          requiresReconciliation: false,
           hasNegativeBalanceInconsistency: true,
           asOfMovementRevision: 3,
         },
