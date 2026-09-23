@@ -133,7 +133,7 @@ async function renderWithWork(items: PreparationWork[] = [work]) {
   vi.mocked(listPreparationWork).mockResolvedValueOnce(items);
   render(<PreparationPanel onUnauthorized={vi.fn()} />);
   if (items.length > 0) {
-    await screen.findAllByText(items[0].productOperationalName, {
+    await screen.findAllByText(items[0].productOperationalName ?? "Nombre histórico no disponible", {
       selector: "strong",
     });
   }
@@ -206,6 +206,16 @@ describe("PreparationPanel", () => {
     expect(row).toHaveTextContent("Listo2");
     expect(startInput(mixedWork)).toHaveValue(1);
     expect(readyInput(mixedWork)).toHaveValue(2);
+  });
+
+  it("shows the legacy Product-name fallback in Work and accessible actions", async () => {
+    const legacyWork = { ...work, productOperationalName: null };
+    await renderWithWork([legacyWork]);
+
+    expect(screen.getByText("Nombre histórico no disponible", { selector: "strong" })).toBeVisible();
+    expect(screen.getByLabelText(/Cantidad a iniciar de Nombre histórico no disponible/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Iniciar Nombre histórico no disponible/ })).toBeInTheDocument();
+    expect(screen.queryByText(legacyWork.productId)).not.toBeInTheDocument();
   });
 
   it("offers multiple destinations by operational name and preserves the selected destination", async () => {

@@ -23,12 +23,12 @@ function deferred<T>() {
   const promise = new Promise<T>(done => { resolve = done; });
   return { promise, resolve };
 }
-async function open() {
+async function open(productName = "Hamburguesa") {
   render(<OperationalInterventionPanel onUnauthorized={onUnauthorized} />);
   fireEvent.change(screen.getByLabelText("Identificador de Incorporación"), { target: { value: incorporationId } });
   fireEvent.change(screen.getByLabelText("Ordinal de Content"), { target: { value: "2" } });
   fireEvent.click(screen.getByRole("button", { name: "Consultar para intervenir" }));
-  await screen.findByText("Hamburguesa");
+  await screen.findByText(productName);
 }
 function setQuantity(isReady: boolean, value: string) {
   fireEvent.change(screen.getByLabelText(`Cantidad ya ${isReady ? "lista" : "iniciada"} a cancelar`), { target: { value } });
@@ -60,6 +60,13 @@ beforeEach(() => {
 });
 
 describe("OperationalIntervention target and actions", () => {
+  it("shows the legacy Product-name fallback without exposing ProductId as its label", async () => {
+    current = { ...current, productOperationalName: null };
+    await open("Nombre histórico no disponible");
+    expect(screen.getByRole("heading", { name: "Nombre histórico no disponible" })).toBeVisible();
+    expect(screen.queryByText(current.productId)).not.toBeInTheDocument();
+  });
+
   it("uses just the narrow read without Preparation queues or enablements", async () => {
     await open();
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(readPath, { credentials: "same-origin" });

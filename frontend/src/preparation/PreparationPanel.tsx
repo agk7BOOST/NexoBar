@@ -105,7 +105,7 @@ function inputLabel(
         : kind === "correct-start"
           ? "corregir inicio"
           : "corregir listo";
-  return `Cantidad a ${action} de ${item.productOperationalName}, incorporación ${item.incorporationOrdinal}, ${item.context}, ${item.instruction ?? "sin instrucción"}`;
+  return `Cantidad a ${action} de ${item.productOperationalName ?? "Nombre histórico no disponible"}, incorporación ${item.incorporationOrdinal}, ${item.context}, ${item.instruction ?? "sin instrucción"}`;
 }
 
 function buttonLabel(
@@ -120,7 +120,7 @@ function buttonLabel(
         : kind === "correct-start"
           ? "Corregir inicio"
           : "Corregir listo";
-  return `${action} ${item.productOperationalName}, incorporación ${item.incorporationOrdinal}, ${item.context}, ${item.instruction ?? "sin instrucción"}`;
+  return `${action} ${item.productOperationalName ?? "Nombre histórico no disponible"}, incorporación ${item.incorporationOrdinal}, ${item.context}, ${item.instruction ?? "sin instrucción"}`;
 }
 
 function updatedWork(
@@ -592,7 +592,7 @@ export function PreparationPanel({
     return (
       <form
         className="preparation-action"
-        aria-label={`${actionLabel} ${item.productOperationalName}, incorporación ${item.incorporationOrdinal}, ${item.instruction ?? "sin instrucción"}`}
+        aria-label={`${actionLabel} ${item.productOperationalName ?? "Nombre histórico no disponible"}, incorporación ${item.incorporationOrdinal}, ${item.instruction ?? "sin instrucción"}`}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
@@ -766,7 +766,7 @@ export function PreparationPanel({
                     aria-busy={intent?.phase === "submitting"}
                   >
                     <td>
-                      <strong>{item.productOperationalName}</strong>
+                      <strong>{item.productOperationalName ?? "Nombre histórico no disponible"}</strong>
                       <br />
                       Incorporación {item.incorporationOrdinal}
                     </td>

@@ -122,7 +122,7 @@ export function AppliedPriceCorrection({ orderId, canAct, isTerminal, onRefresh,
     <button type="button" disabled={disabled} onClick={() => void read()}>Consultar precios aplicados</button>
     {phase === "reading" && <p role="status">Consultando precios…</p>}
     {rows.map(({ content, evaluation }) => <article key={`${content.incorporationId}:${content.contentOrdinal}`} aria-label={`Incorporación ${content.incorporationOrdinal}, contenido ${content.contentOrdinal}`}>
-      <h4>{content.productOperationalName} — Incorporación {content.incorporationOrdinal}, contenido {content.contentOrdinal}</h4>
+      <h4>{content.productOperationalName ?? "Nombre histórico no disponible"} — Incorporación {content.incorporationOrdinal}, contenido {content.contentOrdinal}</h4>
       <p>{content.instruction ?? "Sin instrucción"}</p>
       <p>Entregado: {content.deliveredQuantity}</p>
       <dl>

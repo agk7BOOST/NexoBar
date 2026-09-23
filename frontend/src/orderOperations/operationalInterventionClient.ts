@@ -14,7 +14,7 @@ export interface InterventionTarget extends InterventionLookup {
   orderId: string;
   workId: string;
   productId: string;
-  productOperationalName: string;
+  productOperationalName: string | null;
   instruction: string | null;
   confirmedQuantity: number;
   removedByCorrectionQuantity: number;
@@ -82,7 +82,7 @@ function isTarget(value: unknown, lookup: InterventionLookup): value is Interven
     target.deliveredQuantity, target.intervenableInPreparationQuantity, target.intervenableReadyQuantity];
   return target.incorporationId === lookup.incorporationId && target.contentOrdinal === lookup.contentOrdinal &&
     typeof target.orderId === "string" && typeof target.workId === "string" &&
-    typeof target.productId === "string" && typeof target.productOperationalName === "string" &&
+    typeof target.productId === "string" && (target.productOperationalName === null || typeof target.productOperationalName === "string") &&
     (target.instruction === null || typeof target.instruction === "string") && typeof target.isFrozen === "boolean" &&
     quantities.every(q => Number.isInteger(q) && q >= 0 && q <= 2147483647) &&
     target.confirmedQuantity - target.removedByCorrectionQuantity - target.cancelledQuantity === target.fulfillmentQuantity &&

@@ -48,8 +48,8 @@ beforeEach(() => {
   vi.clearAllMocks(); mutation.mockReset(); discardAntiforgeryToken();
   readStatus = 200; failOrderRefresh = false;
   order = { operationalReference: orderId, context: "Mesa 1", contextId: "ctx-test", incorporations: [{ id: incorporationId, ordinal: 1, confirmedAt: "2026-09-11T10:00:00Z", items: [
-    { productId: "same-product", quantity: 2, appliedPrice: "10", instruction: "sin sal", unavailableProductExceptionApplied: false },
-    { productId: "same-product", quantity: 2, appliedPrice: "10", instruction: "con sal", unavailableProductExceptionApplied: false },
+    { productId: "same-product", productOperationalNameSnapshot: null, quantity: 2, appliedPrice: "10", instruction: "sin sal", unavailableProductExceptionApplied: false },
+    { productId: "same-product", productOperationalNameSnapshot: null, quantity: 2, appliedPrice: "10", instruction: "con sal", unavailableProductExceptionApplied: false },
   ] }], functionalAmount: "20", isLiquidationEligible: false, liquidationBlockers: ["pending_composition"],
     isLiquidated: false, isFrozen: false, liquidatedAmount: null, liquidationMode: null, declaredPaymentMedium: null, isClosed: false, closedAt: null, isClosureEligible: false };
   delivery = { orderId, operationalReference: orderId, currentContext: "Mesa 1", contents: [3, 7].map(contentOrdinal => ({ incorporationId, incorporationOrdinal: 1, contentOrdinal, productId: "same-product", productOperationalName: "Producto", instruction: contentOrdinal === 3 ? "sin sal" : "con sal", totalQuantity: 2, confirmedQuantity: 2, currentFulfillmentQuantity: 2, requiresPreparationAtConfirmation: false, readyQuantity: null, deliveredQuantity: contentOrdinal === 3 ? 2 : 0, deliverableQuantity: 0, remainingQuantity: 0 })) };
@@ -86,6 +86,14 @@ it("distinguishes original, effective and Catalog prices and uses exact targets 
   expect(mutation.mock.calls[0][0]).toBe(`${targetPath(7)}/apply-current-catalog-price`);
   expect(mutation.mock.calls[0][1]?.body).toBe("{}");
   await waitFor(() => expect(screen.getByRole("button", { name: "Consultar precios aplicados" })).toBeEnabled());
+});
+
+it("uses the legacy Product-name fallback in applied-price correction", async () => {
+  delivery.contents[0] = { ...delivery.contents[0]!, productOperationalName: null };
+  const user = await open();
+  await read(user);
+  expect(row().getByRole("heading", { name: "Nombre histórico no disponible — Incorporación 1, contenido 3" })).toBeVisible();
+  expect(row().queryByText("same-product")).not.toBeInTheDocument();
 });
 
 it.each(["8", "10"])("uses authoritative no-op availability with effective price %s without sending a command or comparing locally", async effectiveAppliedPrice => {

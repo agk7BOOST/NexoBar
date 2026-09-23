@@ -71,7 +71,7 @@ function contentKey(
 }
 
 function contentDescription(item: OrderDeliveryContent): string {
-  return `${item.productOperationalName}, ${item.instruction ?? "sin instrucción"}, incorporación ${item.incorporationOrdinal}`;
+  return `${item.productOperationalName ?? "Nombre histórico no disponible"}, ${item.instruction ?? "sin instrucción"}, incorporación ${item.incorporationOrdinal}`;
 }
 
 export function DeliveryPanel({
@@ -739,7 +739,7 @@ export function DeliveryPanel({
                   >
                     <div className="delivery-content-heading">
                       <div>
-                        <h3>{item.productOperationalName}</h3>
+                        <h3>{item.productOperationalName ?? "Nombre histórico no disponible"}</h3>
                         <p>Incorporación {item.incorporationOrdinal}</p>
                       </div>
                       {isFullyDelivered && (
@@ -791,7 +791,7 @@ export function DeliveryPanel({
                         }}
                       >
                         <label htmlFor={fieldId}>
-                          Cantidad a entregar — {item.productOperationalName} —{" "}
+                          Cantidad a entregar — {item.productOperationalName ?? "Nombre histórico no disponible"} —{" "}
                           {item.instruction ?? "sin instrucción"} —
                           incorporación {item.incorporationOrdinal}
                         </label>

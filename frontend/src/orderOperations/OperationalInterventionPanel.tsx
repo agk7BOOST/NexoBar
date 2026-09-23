@@ -182,7 +182,7 @@ export function OperationalInterventionPanel({ onUnauthorized, isOrderBlocked }:
       {message && <p role="status">{message}</p>}
       {phase === "reading" && <p role="status">Consultando Estado autoritativo…</p>}
       {target && <>
-        <h3>{target.productOperationalName}</h3>
+        <h3>{target.productOperationalName ?? "Nombre histórico no disponible"}</h3>
         <p>{target.instruction ?? "Sin instrucción"}</p>
         <dl className="confirmation-summary" aria-label="Identidad del contenido">
           <div><dt>Pedido</dt><dd>{target.orderId}</dd></div>

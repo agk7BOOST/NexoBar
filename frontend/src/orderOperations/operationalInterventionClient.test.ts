@@ -27,6 +27,15 @@ describe("OperationalIntervention HTTP", () => {
       `/api/order-operations/intervention/incorporations/${target.incorporationId}/contents/2`, { credentials: "same-origin" });
   });
 
+  it("accepts null legacy Product names and rejects missing or invalid values", async () => {
+    fetchMock.mockResolvedValueOnce(json({ ...target, productOperationalName: null }));
+    await expect(getInterventionTarget(target)).resolves.toMatchObject({ productOperationalName: null });
+    for (const productOperationalName of [undefined, 42, {}]) {
+      fetchMock.mockResolvedValueOnce(json({ ...target, productOperationalName }));
+      await expect(getInterventionTarget(target)).rejects.toBeInstanceOf(OrderOperationsNetworkError);
+    }
+  });
+
   it.each(["in-preparation", "ready"] as const)("freezes and resends the exact %s endpoint, target, body, key and token", async stage => {
     const intent = createInterventionIntent(target, stage, 3, "original-csrf");
     expect(Object.isFrozen(intent)).toBe(true);

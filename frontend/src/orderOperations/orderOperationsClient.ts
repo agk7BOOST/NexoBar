@@ -12,6 +12,7 @@ export interface FirstConfirmationRequest {
 
 export interface ConfirmedItem {
   productId: string;
+  productOperationalNameSnapshot: string | null;
   quantity: number;
   appliedPrice: string;
   instruction: string | null;
@@ -75,6 +76,7 @@ export interface SubsequentConfirmationResponse {
 
 export interface OrderItem {
   productId: string;
+  productOperationalNameSnapshot: string | null;
   quantity: number;
   appliedPrice: string;
   instruction: string | null;
@@ -108,6 +110,29 @@ export interface OrderResponse {
 
 export interface OperationalContextOption { id: string; operationalName: string }
 export interface OrderContextChangeRequest { expectedCurrentContextId: string; newContextId: string }
+
+function validateProductNameSnapshots(items: unknown): void {
+  if (!Array.isArray(items)) return;
+  for (const item of items) {
+    const snapshot = typeof item === "object" && item !== null
+      ? (item as Record<string, unknown>).productOperationalNameSnapshot
+      : undefined;
+    if (!(typeof snapshot === "string" || snapshot === null)) {
+      throw new Error("The Order Operations response had an uninterpretable Product name snapshot.");
+    }
+  }
+}
+
+function validateOrderProductNameSnapshots(payload: unknown): void {
+  if (typeof payload !== "object" || payload === null) return;
+  const incorporations = (payload as Record<string, unknown>).incorporations;
+  if (!Array.isArray(incorporations)) return;
+  for (const incorporation of incorporations) {
+    if (typeof incorporation === "object" && incorporation !== null) {
+      validateProductNameSnapshots(incorporation.items);
+    }
+  }
+}
 
 export async function listOrderContexts(): Promise<OperationalContextOption[]> {
   const response = await fetch("/api/operational-configuration/order-contexts", { credentials: "same-origin" });
@@ -266,7 +291,9 @@ export async function getOrder(
     throw new OrderOperationsProblemError(await readProblem(response));
   }
 
-  return (await response.json()) as OrderResponse;
+  const payload: unknown = await response.json();
+  validateOrderProductNameSnapshots(payload);
+  return payload as OrderResponse;
 }
 
 export async function getPendingComposition(

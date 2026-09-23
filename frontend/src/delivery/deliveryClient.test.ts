@@ -74,6 +74,26 @@ describe("deliveryClient", () => {
     expect(result.contents[0].productOperationalName).toBe("Hamburguesa");
   });
 
+  it("accepts a null legacy Product name and rejects missing or invalid names", async () => {
+    const legacyPayload = {
+      ...deliveryPayload,
+      contents: [{ ...deliveryPayload.contents[0], productOperationalName: null }],
+    };
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(legacyPayload), { status: 200 }));
+    await expect(getOrderDelivery("order-1")).resolves.toMatchObject({
+      contents: [{ productOperationalName: null }],
+    });
+
+    for (const productOperationalName of [undefined, 42, {}]) {
+      const invalid = {
+        ...deliveryPayload,
+        contents: [{ ...deliveryPayload.contents[0], productOperationalName }],
+      };
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(invalid), { status: 200 }));
+      await expect(getOrderDelivery("order-1")).rejects.toThrow("Delivery read model was not interpretable");
+    }
+  });
+
   it("sends only the exact target and quantity with idempotency and antiforgery", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(

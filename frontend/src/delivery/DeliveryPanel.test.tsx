@@ -149,7 +149,7 @@ async function renderPanel(
     />,
   );
   if (contents.length > 0)
-    await screen.findAllByText(contents[0].productOperationalName);
+    await screen.findAllByText(contents[0].productOperationalName ?? "Nombre histórico no disponible");
   return onUnauthorized;
 }
 
@@ -205,6 +205,18 @@ describe("DeliveryPanel", () => {
       idempotencyKey: firstKey,
       antiforgeryToken: "csrf-1",
     });
+  });
+
+  it("shows the legacy Product-name fallback in Delivery and its accessible description", async () => {
+    const legacyContent = { ...direct, productOperationalName: null };
+    await renderPanel([legacyContent]);
+
+    expect(screen.getByRole("heading", { name: "Nombre histórico no disponible" })).toBeVisible();
+    expect(screen.getByRole("article", {
+      name: "Nombre histórico no disponible, sin instrucción, incorporación 1",
+    })).toBeVisible();
+    expect(screen.getByLabelText(/Cantidad a entregar — Nombre histórico no disponible/)).toBeInTheDocument();
+    expect(screen.queryByText(legacyContent.productId)).not.toBeInTheDocument();
   });
 
   it("shows a fully delivered direct Content without an action", async () => {

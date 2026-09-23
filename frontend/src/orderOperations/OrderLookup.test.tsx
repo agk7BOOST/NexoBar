@@ -57,13 +57,15 @@ const order: OrderResponse = {
           quantity: 2,
           appliedPrice: "10.50",
           instruction: "sin hielo",
+          productOperationalNameSnapshot: "Agua tónica al confirmar",
           unavailableProductExceptionApplied: false,
         },
         {
-          productId: "product-not-in-current-catalog",
+          productId: currentProduct.id,
           quantity: 1,
           appliedPrice: "7.25",
           instruction: null,
+          productOperationalNameSnapshot: null,
           unavailableProductExceptionApplied: false,
         },
       ],
@@ -157,7 +159,7 @@ describe("OrderLookup", () => {
     expect(incorporation).toHaveTextContent("Sin instrucción");
   });
 
-  it("usa el nombre actual solo como etiqueta, conserva appliedPrice histórico y cae a productId", async () => {
+  it("usa el nombre capturado en Confirmation y no interpreta el pasado con el nombre actual", async () => {
     getOrderMock.mockResolvedValueOnce(order);
     const user = userEvent.setup();
     renderLookup([currentProduct]);
@@ -167,14 +169,32 @@ describe("OrderLookup", () => {
     const result = await screen.findByRole("region", {
       name: "Pedido consultado",
     });
-    expect(result).toHaveTextContent(currentProduct.operationalName);
-    expect(result).toHaveTextContent("product-not-in-current-catalog");
+    expect(result).toHaveTextContent("Agua tónica al confirmar");
+    expect(result).not.toHaveTextContent(currentProduct.operationalName);
+    expect(result).toHaveTextContent("Nombre histórico no disponible");
+    expect(result).not.toHaveTextContent(currentProduct.id);
     expect(result).toHaveTextContent("10.50");
     expect(result).not.toHaveTextContent(currentProduct.price);
-    expect(result).toHaveTextContent(
-      /Catálogo actual y no constituye Historia/,
-    );
-    expect(result).toHaveTextContent(/condición histórica confirmada/);
+  });
+
+  it("uses the explicit legacy fallback for a null snapshot without using Catalog or ProductId", async () => {
+    getOrderMock.mockResolvedValueOnce({
+      ...order,
+      incorporations: [{
+        ...order.incorporations[0]!,
+        items: [{ ...order.incorporations[0]!.items[0]!, productOperationalNameSnapshot: null }],
+      }],
+    });
+    const user = userEvent.setup();
+    renderLookup([currentProduct]);
+    await search(user, order.operationalReference);
+
+    const result = await screen.findByRole("region", { name: "Pedido consultado" });
+    expect(within(result).getByRole("row", {
+      name: "Nombre histórico no disponible, cantidad 2, sin hielo",
+    })).toBeVisible();
+    expect(result).not.toHaveTextContent(currentProduct.operationalName);
+    expect(result).not.toHaveTextContent(currentProduct.id);
   });
 
   it("distingue líneas del mismo Product por cantidad e instruction", async () => {
@@ -189,6 +209,7 @@ describe("OrderLookup", () => {
               quantity: 1,
               appliedPrice: "10.50",
               instruction: null,
+              productOperationalNameSnapshot: "Agua tónica al confirmar",
               unavailableProductExceptionApplied: false,
             },
             {
@@ -196,6 +217,7 @@ describe("OrderLookup", () => {
               quantity: 2,
               appliedPrice: "10.50",
               instruction: "sin hielo",
+              productOperationalNameSnapshot: "Agua tónica al confirmar",
               unavailableProductExceptionApplied: false,
             },
           ],
@@ -209,12 +231,12 @@ describe("OrderLookup", () => {
 
     expect(
       await screen.findByRole("row", {
-        name: "Agua tónica actual, cantidad 1, sin instrucción",
+        name: "Agua tónica al confirmar, cantidad 1, sin instrucción",
       }),
     ).toHaveTextContent("Sin instrucción");
     expect(
       screen.getByRole("row", {
-        name: "Agua tónica actual, cantidad 2, sin hielo",
+        name: "Agua tónica al confirmar, cantidad 2, sin hielo",
       }),
     ).toHaveTextContent("sin hielo");
   });
@@ -458,10 +480,12 @@ describe("OrderLookup", () => {
           items: [
             {
               ...order.incorporations[0]!.items[0]!,
+              productOperationalNameSnapshot: null,
               unavailableProductExceptionApplied: true,
             },
             {
               ...order.incorporations[0]!.items[1]!,
+              productOperationalNameSnapshot: null,
               unavailableProductExceptionApplied: false,
             },
           ],

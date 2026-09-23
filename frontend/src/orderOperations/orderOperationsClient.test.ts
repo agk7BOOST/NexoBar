@@ -54,6 +54,7 @@ describe("confirmFirst", () => {
             quantity: 2,
             appliedPrice: "10.50",
             instruction: "sin hielo",
+            productOperationalNameSnapshot: null,
             unavailableProductExceptionApplied: false,
           },
         ],
@@ -360,6 +361,7 @@ describe("getOrder", () => {
               quantity: 2,
               appliedPrice: "10.50",
               instruction: null,
+              productOperationalNameSnapshot: null,
               unavailableProductExceptionApplied: false,
             },
           ],
@@ -380,6 +382,13 @@ describe("getOrder", () => {
     );
     expect(result).toEqual(response);
     expect(result.incorporations[0]?.items[0]?.appliedPrice).toBe("10.50");
+
+    for (const productOperationalNameSnapshot of [undefined, 42, {}]) {
+      const invalid = structuredClone(response);
+      (invalid.incorporations[0]!.items[0] as unknown as Record<string, unknown>).productOperationalNameSnapshot = productOperationalNameSnapshot;
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(invalid), { status: 200 }));
+      await expect(getOrder("order-1")).rejects.toThrow("uninterpretable Product name snapshot");
+    }
   });
 });
 
@@ -402,6 +411,7 @@ describe("confirmSubsequent", () => {
             quantity: 2,
             appliedPrice: "12.00",
             instruction: "sin hielo",
+            productOperationalNameSnapshot: null,
             unavailableProductExceptionApplied: false,
           },
         ],

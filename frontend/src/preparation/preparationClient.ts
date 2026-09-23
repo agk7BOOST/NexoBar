@@ -7,7 +7,7 @@ export interface PreparationWork {
   contentOrdinal?: number;
   incorporationOrdinal: number;
   productId: string;
-  productOperationalName: string;
+  productOperationalName: string | null;
   instruction: string | null;
   totalQuantity: number;
   pendingQuantity: number;
@@ -142,7 +142,16 @@ export async function listPreparationWork(
     );
   }
 
-  return (await response.json()) as PreparationWork[];
+  const payload: unknown = await response.json();
+  if (Array.isArray(payload) && payload.some((item) => {
+    const name = typeof item === "object" && item !== null
+      ? (item as Record<string, unknown>).productOperationalName
+      : undefined;
+    return !(typeof name === "string" || name === null);
+  })) {
+    throw new Error("The Preparation read model had an uninterpretable Product name.");
+  }
+  return payload as PreparationWork[];
 }
 
 export function startPreparationQuantity(

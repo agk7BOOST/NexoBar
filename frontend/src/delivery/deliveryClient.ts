@@ -7,7 +7,7 @@ export interface OrderDeliveryContent {
   incorporationOrdinal: number;
   contentOrdinal: number;
   productId: string;
-  productOperationalName: string;
+  productOperationalName: string | null;
   instruction: string | null;
   totalQuantity: number;
   requiresPreparationAtConfirmation: boolean;
@@ -174,7 +174,7 @@ function parseContent(value: unknown): OrderDeliveryContent {
     !isNonNegativeInteger(value.incorporationOrdinal) ||
     !isNonNegativeInteger(value.contentOrdinal) ||
     typeof value.productId !== "string" ||
-    typeof value.productOperationalName !== "string" ||
+    (value.productOperationalName !== null && typeof value.productOperationalName !== "string") ||
     !(typeof value.instruction === "string" || value.instruction === null) ||
     !isNonNegativeInteger(value.totalQuantity) ||
     typeof value.requiresPreparationAtConfirmation !== "boolean" ||

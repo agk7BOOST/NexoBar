@@ -65,7 +65,6 @@ function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
 }
 
 export function OrderLookup({
-  products = [],
   requestedLookup,
   activeOperationalReference,
   activeOrderId = null,
@@ -470,7 +469,7 @@ export function OrderLookup({
                 <table>
                   <thead>
                     <tr>
-                      <th scope="col">Producto (nombre actual)</th>
+                      <th scope="col">Producto (nombre confirmado)</th>
                       <th scope="col">Cantidad</th>
                       <th scope="col">Precio aplicado histórico</th>
                       <th scope="col">Instrucción confirmada</th>
@@ -478,17 +477,13 @@ export function OrderLookup({
                   </thead>
                   <tbody>
                     {incorporation.items.map((item) => {
-                      const product = products.find(
-                        (candidate) => candidate.id === item.productId,
-                      );
-
                       return (
                         <tr
                           key={`${item.productId}:${item.instruction ?? ""}`}
-                          aria-label={`${product?.operationalName ?? item.productId}, cantidad ${item.quantity}, ${item.instruction ?? "sin instrucción"}`}
+                          aria-label={`${item.productOperationalNameSnapshot ?? "Nombre histórico no disponible"}, cantidad ${item.quantity}, ${item.instruction ?? "sin instrucción"}`}
                         >
                           <td>
-                            {product?.operationalName ?? item.productId}
+                            {item.productOperationalNameSnapshot ?? "Nombre histórico no disponible"}
                             {item.unavailableProductExceptionApplied && (
                               <span> Incorporado mediante intervención</span>
                             )}
