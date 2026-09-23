@@ -35,6 +35,7 @@ IdentitiesAndCapabilities ──→ OperationalConfiguration
 - `Inventory` consume capacidades públicas estrechas de `IdentitiesAndCapabilities` para estabilizar autorización y resolver el nombre operacional vigente de los actores de Movimientos; no accede a su `DbContext`, schema ni tablas.
 - No existen las dependencias inversas `OperationalConfiguration → IdentitiesAndCapabilities`, `Catalog → OrderOperations` ni `IdentitiesAndCapabilities → OrderOperations`.
 - Product Delete consume una capacidad pública estrecha `IConfirmedProductParticipation` definida en Catalog e implementada por OrderOperations, conectada mediante DI en el Host. No introduce dependencia de proyecto `Catalog → OrderOperations` ni acceso de Catalog a tablas de OrderOperations.
+- Identity Delete consume `IOrderFunctionalIdentityAttribution` y `IInventoryFunctionalIdentityAttribution`, definidas en IdentitiesAndCapabilities e implementadas por los módulos propietarios de Historia. La composición DI conecta las capacidades sin dependencias inversas de proyecto ni consultas cross-schema desde Identity.
 - No existen foreign keys ni accesos a `DbContext`, schema o tablas ajenos cross-module. El Host compone las capacidades y sus implementaciones.
 
 ## Límites transversales del producto

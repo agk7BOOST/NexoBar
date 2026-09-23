@@ -49,6 +49,7 @@ internal enum AdministrativeCommandKind
     ChangeOperationalName,
     ActivateIdentity,
     DeactivateIdentity,
+    DeleteIdentity,
     SetLocalCredential,
     AssignResponsibility,
     RevokeResponsibility,

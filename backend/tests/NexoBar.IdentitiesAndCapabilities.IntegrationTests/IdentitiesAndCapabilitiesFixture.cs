@@ -8,6 +8,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NexoBar.IdentitiesAndCapabilities;
 using NexoBar.OperationalConfiguration;
+using NexoBar.Inventory;
+using NexoBar.OrderOperations;
+using NexoBar.Catalog;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
@@ -45,12 +48,31 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
         await scope.ServiceProvider
             .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
             .Database.MigrateAsync();
+        await scope.ServiceProvider
+            .GetRequiredService<CatalogDbContext>()
+            .Database.MigrateAsync();
+        await scope.ServiceProvider
+            .GetRequiredService<InventoryDbContext>()
+            .Database.MigrateAsync();
+        await scope.ServiceProvider
+            .GetRequiredService<OrderOperationsDbContext>()
+            .Database.MigrateAsync();
     }
 
     internal async Task ResetAsync(CancellationToken cancellationToken)
     {
         Clock.Reset();
         await using var scope = application!.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<InventoryDbContext>()
+            .Database.ExecuteSqlRawAsync("""
+                DO $$ DECLARE tables text; BEGIN
+                  SELECT string_agg(format('%I.%I', schemaname, tablename), ', ')
+                    INTO tables FROM pg_tables
+                    WHERE schemaname IN ('catalog', 'inventory', 'order_operations')
+                      AND tablename <> '__ef_migrations_history';
+                  IF tables IS NOT NULL THEN EXECUTE 'TRUNCATE TABLE ' || tables || ' CASCADE'; END IF;
+                END $$;
+                """, cancellationToken);
         var dbContext = scope.ServiceProvider
             .GetRequiredService<IdentitiesAndCapabilitiesDbContext>();
         await dbContext.Database.ExecuteSqlRawAsync(
@@ -256,19 +278,14 @@ public sealed class IdentitiesAndCapabilitiesFixture : IAsyncLifetime
         string operationalName,
         CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            "/api/operational-configuration/preparation-responsibilities")
-        {
-            Content = JsonContent.Create(new { operationalName })
-        };
-        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
-        using var response = await Client.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var document = await JsonDocument.ParseAsync(
-            await response.Content.ReadAsStreamAsync(cancellationToken),
-            cancellationToken: cancellationToken);
-        return document.RootElement.GetProperty("id").GetGuid();
+        await using var scope = application!.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider
+            .GetRequiredService<OperationalConfigurationDbContext>();
+        var responsibility = new PreparationResponsibility(
+            Guid.CreateVersion7(), operationalName);
+        db.PreparationResponsibilities.Add(responsibility);
+        await db.SaveChangesAsync(cancellationToken);
+        return responsibility.Id;
     }
 
     internal async Task<IdentitySnapshot[]> ReadIdentitiesAsync(

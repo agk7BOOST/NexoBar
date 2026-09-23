@@ -227,6 +227,7 @@ internal sealed class IdentitiesAndCapabilitiesDbContext(
                         "'ChangeOperationalName', " +
                         "'ActivateIdentity', " +
                         "'DeactivateIdentity', " +
+                        "'DeleteIdentity', " +
                         "'SetLocalCredential', " +
                         "'AssignResponsibility', " +
                         "'RevokeResponsibility', " +
@@ -266,11 +267,8 @@ internal sealed class IdentitiesAndCapabilitiesDbContext(
                 .HasColumnName("result_payload")
                 .HasColumnType("jsonb")
                 .IsRequired();
-            builder.HasOne<Identity>()
-                .WithMany()
-                .HasForeignKey(command => command.ActorIdentityId)
-                .HasConstraintName("FK_administrative_command_actor")
-                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasIndex(command => command.ActorIdentityId)
+                .HasDatabaseName("IX_administrative_commands_actor_identity_id");
         }
     }
 

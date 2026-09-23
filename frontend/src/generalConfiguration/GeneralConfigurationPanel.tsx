@@ -5,6 +5,7 @@ import {
   createIdentity,
   createPreparationResponsibility,
   deactivateIdentity,
+  deleteIdentity,
   FUNCTIONAL_RESPONSIBILITIES,
   grantPreparationEnablement,
   IdentityAdministrationNetworkError,
@@ -63,6 +64,7 @@ interface RenameEditor {
 type IdentityMutationKind =
   | "activate"
   | "deactivate"
+  | "delete"
   | "assign"
   | "revoke";
 
@@ -121,11 +123,16 @@ function messageForProblem(
   if (problem.code === "identities_and_capabilities.identity_not_found") {
     return "La Identity ya no existe. Actualizá el listado.";
   }
+  if (problem.code === "identities_and_capabilities.functional_history_exists") {
+    return "Esta Identity debe conservarse porque tiene Historia funcional atribuible. Podés desactivarla si ya no debe operar; no se desactivó automáticamente.";
+  }
   if (
     problem.code ===
     "identities_and_capabilities.last_general_configuration_path"
   ) {
-    return "Debe permanecer al menos una vía administrativa utilizable.";
+    return action === "delete"
+      ? "Debe permanecer otra vía ordinaria utilizable de Configuración general antes de eliminar esta Identity."
+      : "Debe permanecer al menos una vía administrativa utilizable.";
   }
   if (problem.code === "identities_and_capabilities.responsibility_code_invalid") {
     return "La responsabilidad indicada no es válida.";
@@ -155,6 +162,8 @@ function mutationLabel(intention: IdentityMutationIntention): string {
       return `Activación de ${intention.operationalName}`;
     case "deactivate":
       return `Desactivación de ${intention.operationalName}`;
+    case "delete":
+      return `Eliminación definitiva de ${intention.operationalName}`;
     case "assign":
       return `Asignación de ${intention.responsibility} a ${intention.operationalName}`;
     case "revoke":
@@ -234,6 +243,7 @@ export function GeneralConfigurationPanel({
   const [mutationNotice, setMutationNotice] = useState<Notice | null>(null);
   const [uncertainMutation, setUncertainMutation] =
     useState<IdentityMutationIntention | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdministrativeIdentity | null>(null);
   const [isMutatingEnablement, setIsMutatingEnablement] = useState(false);
   const [enablementNotice, setEnablementNotice] = useState<Notice | null>(null);
   const [uncertainEnablementMutation, setUncertainEnablementMutation] =
@@ -543,6 +553,12 @@ export function GeneralConfigurationPanel({
                 intention.idempotencyKey,
                 intention.antiforgeryToken,
               )
+            : intention.kind === "delete"
+              ? await deleteIdentity(
+                  intention.identityId,
+                  intention.idempotencyKey,
+                  intention.antiforgeryToken,
+                )
             : intention.kind === "assign"
               ? await assignResponsibility(
                   intention.identityId,
@@ -556,7 +572,14 @@ export function GeneralConfigurationPanel({
                   intention.idempotencyKey,
                   intention.antiforgeryToken,
                 );
-      setIdentities((current) => reconcileIdentity(current, response));
+      if (intention.kind === "delete") {
+        setDeleteTarget(null);
+        setIdentities((current) => current.filter(
+          (identity) => identity.identityId !== intention.identityId,
+        ));
+      } else {
+        setIdentities((current) => reconcileIdentity(current, response));
+      }
       setUncertainMutation(null);
       setMutationNotice({
         kind: "success",
@@ -564,6 +587,8 @@ export function GeneralConfigurationPanel({
       });
       if (intention.identityId === currentIdentityId) {
         await onCurrentIdentityChanged();
+      } else if (intention.kind === "delete") {
+        await reloadIdentities();
       }
     } catch (error) {
       if (error instanceof IdentityAdministrationProblemError) {
@@ -1149,6 +1174,14 @@ export function GeneralConfigurationPanel({
                     >
                       Cambiar nombre
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(identity)}
+                      disabled={isMutatingIdentity || uncertainMutation !== null}
+                      aria-label={`Eliminar definitivamente ${identity.operationalName}`}
+                    >
+                      Eliminar definitivamente
+                    </button>
                   </td>
                   </tr>
                 );
@@ -1156,6 +1189,23 @@ export function GeneralConfigurationPanel({
             </tbody>
           </table>
         </div>
+      )}
+
+      {deleteTarget && (
+        <section role="region" aria-label={`Confirmar eliminación de ${deleteTarget.operationalName}`}>
+          <h3>Eliminar definitivamente {deleteTarget.operationalName}</h3>
+          <p>Se quitará la Identity de la configuración actual. Sólo puede eliminarse si ninguna Historia funcional relevante necesita conservar su atribución. El servidor comprobará la elegibilidad.</p>
+          <button
+            type="button"
+            disabled={isMutatingIdentity || uncertainMutation !== null}
+            onClick={() => void startIdentityMutation("delete", deleteTarget)}
+          >
+            Confirmar eliminación definitiva
+          </button>
+          <button type="button" className="secondary-button" onClick={() => setDeleteTarget(null)}>
+            Cancelar
+          </button>
+        </section>
       )}
 
       {renameEditor && uncertainRename === null && (

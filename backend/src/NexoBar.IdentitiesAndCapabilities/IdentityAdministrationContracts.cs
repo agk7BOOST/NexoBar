@@ -63,6 +63,9 @@ internal sealed record IdentityAdministrationResult(
             null,
             null);
 
+    internal static IdentityAdministrationResult FunctionalHistoryExists() =>
+        new(IdentityAdministrationOutcome.FunctionalHistoryExists, null, null);
+
     internal static IdentityAdministrationResult DuplicateLoginIdentifier() =>
         new(
             IdentityAdministrationOutcome.DuplicateLoginIdentifier,
@@ -82,6 +85,7 @@ internal enum IdentityAdministrationOutcome
     NotFound,
     PreparationResponsibilityNotFound,
     LastGeneralConfigurationPath,
+    FunctionalHistoryExists,
     DuplicateLoginIdentifier,
     IdempotencyConflict
 }

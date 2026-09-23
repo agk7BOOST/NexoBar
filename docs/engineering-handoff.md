@@ -46,7 +46,9 @@ MVP-FC-INV-MC — Inventory Movement Correction: **CLOSED**. AD-INV-04 permite l
 
 **Eligible Product Delete — CLOSED.** RF-CAT-018, autoridad, colaboración, concurrencia, replay y UX están en [Catalog](catalog/README.md#mvp-fc-cat-pdel--eligible-product-delete-closed); evidencia dirigida en [Testing](testing/verification.md#mvp-fc-cat-pdel--eligible-product-delete).
 
-El frontier restante de MVP Functional Completion es **eligible Identity Delete**. El siguiente frontier es **eligible Identity Delete**.
+**Eligible Identity Delete — CLOSED.** AD-IDN-01, endpoint, colaboración de Historia semántica, serialización PostgreSQL, replay y UX están en [Administración de Identity](identities-and-capabilities/administration.md#mvp-fc-idn-idel--eligible-identity-delete-closed); evidencia dirigida en [Testing](testing/verification.md#mvp-fc-idn-idel--eligible-identity-delete).
+
+**MVP Functional Completion Phase — ALL FRONTIERS CLOSED.** Resta **GLOBAL MVP CLOSURE / FINAL VERIFICATION**; todavía no se declara cerrado el MVP global.
 
 ## Estado actual de Slice
 
@@ -72,6 +74,6 @@ El frontier restante de MVP Functional Completion es **eligible Identity Delete*
 
 **Preparation Configuration Completion: CLOSED.** La UI de `GeneralConfiguration` crea y lista Preparation Responsibilities; la UI de `CatalogConfiguration` configura el destino de Preparation de Products existentes. La evidencia focalizada está en [Testing](testing/verification.md#mvp-fc-prep--preparation-configuration-completion). Este cierre no inicia un Slice ni atribuye una capacidad nueva a OrderOperations.
 
-El trabajo restante preservado fuera de estos cierres incluye el lifecycle completo de Preparation Responsibility (rename, retiro/reactivación, delete, ordering y gestión de estaciones); eligible Identity Delete; administración arbitraria de Sessions; y hardening de piloto/RNF. Estos frontiers permanecen no iniciados. No se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
+El trabajo restante fuera de estos cierres incluye el lifecycle completo de Preparation Responsibility (rename, retiro/reactivación, delete, ordering y gestión de estaciones), administración arbitraria de Sessions, hardening de piloto/RNF y el checkpoint global de cierre MVP. No se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
 
 Solo para trazabilidad: [checkpoints históricos de slices](history/slice-checkpoints.md) y [auditoría de esta reorganización](context-audit.md). No son fuentes de nuevas decisiones ni lecturas de arranque obligatorias.

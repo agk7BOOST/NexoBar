@@ -183,6 +183,8 @@ public sealed class ExtraordinaryRecoveryConcurrencyAndAtomicityTests(
             new FixedSessionStabilizer(administrator.Id),
             new PasswordSecretVerifier(),
             null!,
+            null!,
+            null!,
             fixture.Clock);
 
         var recoveryTask = recovery.RecoverAsync(

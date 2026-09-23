@@ -110,3 +110,9 @@ Las dos migraciones nuevas pasaron Up y Down; `HasPendingModelChanges = false`. 
 ## Pendientes
 
 - Continuidad cross-reload de intents inciertos; siguen en memoria en el frontend.
+
+## Identity Delete y Counts (AD-IDN-01)
+
+La colaboración `IInventoryFunctionalIdentityAttribution` responde desde el schema Inventory si una Identity figura como actor de un Movement o Movement Correction, o si su Count fue consumido por una Reconciliation. Los commands durables de Count y Reconciliation conservan el vínculo y el actor aun si el Count Observation fue retirado por el Delete elegible de su Inventory Item; el vínculo también existe en `no_discrepancy`, cuando no se crea Movement. Por eso esos usos bloquean Delete del contador. Un Count que no fue consumido no equivale a Historia funcional relevante para AD-IDN-01.
+
+Identity Delete y la consulta Inventory comparten una transacción PostgreSQL. La consulta bloquea las filas Count del objetivo y, si Delete es elegible, invalida las aún pendientes antes del commit. Reconciliation bloquea `FOR SHARE` el Count que va a usar antes de validarlo. Así, un actor distinto no puede consumir un Count pendiente del objetivo después de su Delete; la carrera se resuelve en rechazo de Delete por Historia ya confirmada o rechazo de Reconciliation por Count invalidado. El Count y su command técnico quedan retenidos para el replay local; no se eliminan History ni se consulta Identity State desde Inventory.

@@ -222,6 +222,7 @@ partial class IdentitiesAndCapabilitiesDbContextModelSnapshot : ModelSnapshot
                             "'ChangeOperationalName', " +
                             "'ActivateIdentity', " +
                             "'DeactivateIdentity', " +
+                            "'DeleteIdentity', " +
                             "'SetLocalCredential', " +
                             "'AssignResponsibility', " +
                             "'RevokeResponsibility', " +
@@ -368,18 +369,6 @@ partial class IdentitiesAndCapabilitiesDbContextModelSnapshot : ModelSnapshot
                 b.ToTable(
                     "preparation_enablements",
                     "identities_and_capabilities");
-            });
-
-        modelBuilder.Entity(
-            "NexoBar.IdentitiesAndCapabilities.IdentityAdministrativeCommand",
-            b =>
-            {
-                b.HasOne("NexoBar.IdentitiesAndCapabilities.Identity", null)
-                    .WithMany()
-                    .HasForeignKey("ActorIdentityId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired()
-                    .HasConstraintName("FK_administrative_command_actor");
             });
 
         modelBuilder.Entity(

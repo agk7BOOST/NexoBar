@@ -13,6 +13,8 @@ internal sealed class IdentityAdministrationService(
     IAuthenticatedSessionStabilizer sessionStabilizer,
     ISecretVerifier secretVerifier,
     IPreparationResponsibilityLookup preparationResponsibilities,
+    IOrderFunctionalIdentityAttribution orderAttribution,
+    IInventoryFunctionalIdentityAttribution inventoryAttribution,
     TimeProvider timeProvider)
 {
     private const long AdministrationLockKey = 0x494341444D494E00;
@@ -132,6 +134,45 @@ internal sealed class IdentityAdministrationService(
                 await dbContext.SaveChangesAsync(token);
                 return IdentityAdministrationResult.Succeeded(
                     await MapAsync(identityId, token));
+            },
+            cancellationToken);
+
+    internal Task<IdentityAdministrationResult> DeleteAsync(
+        Guid idempotencyKey,
+        Guid identityId,
+        CancellationToken cancellationToken) =>
+        ExecuteAsync(
+            idempotencyKey,
+            AdministrativeCommandKind.DeleteIdentity,
+            Fingerprint(identityId.ToString("D")),
+            async (_, token) =>
+            {
+                // The actor's stabilized FOR SHARE lock and this FOR UPDATE lock
+                // serialize Delete with every functional command on this Identity.
+                var identity = await FindForUpdateAsync(identityId, token);
+                if (identity is null)
+                    return IdentityAdministrationResult.NotFound();
+
+                if (await IsOperationalGeneralConfigurationPathAsync(identityId, token) &&
+                    await CountOperationalGeneralConfigurationPathsAsync(token) <= 1)
+                    return IdentityAdministrationResult.LastGeneralConfigurationPath();
+
+                var transaction = dbContext.Database.CurrentTransaction?.GetDbTransaction()
+                    ?? throw new InvalidOperationException("Identity Delete requires a transaction.");
+                if (await orderAttribution.HasFunctionalAttributionAsync(identityId, transaction, token) ||
+                    await inventoryAttribution.HasFunctionalAttributionAsync(identityId, transaction, token))
+                    return IdentityAdministrationResult.FunctionalHistoryExists();
+
+                await inventoryAttribution.InvalidateUnusedCountsAsync(identityId, transaction, token);
+
+                var deletedSnapshot = await MapAsync(identityId, token);
+                await dbContext.Sessions.Where(x => x.IdentityId == identityId).ExecuteDeleteAsync(token);
+                await dbContext.LocalCredentials.Where(x => x.IdentityId == identityId).ExecuteDeleteAsync(token);
+                await dbContext.PreparationEnablements.Where(x => x.IdentityId == identityId).ExecuteDeleteAsync(token);
+                await dbContext.ResponsibilityAssignments.Where(x => x.IdentityId == identityId).ExecuteDeleteAsync(token);
+                // Durable command records retain actor, intent and committed result for replay.
+                await dbContext.Identities.Where(x => x.Id == identityId).ExecuteDeleteAsync(token);
+                return IdentityAdministrationResult.Succeeded(deletedSnapshot);
             },
             cancellationToken);
 

@@ -64,7 +64,6 @@ Este inventario no define políticas nuevas ni afirma seguridad global completa.
 - UX adicional de administración ordinaria del factor de recovery, si se prioriza; el establecimiento/rotación API y el recovery extraordinario `AD-SEC-07` ya están materializados;
 - decisión normativa de parámetros de timeout (`PAR-SEC-02`) y política cuantitativa de brute-force/lockout;
 - frontend administrativo restante más allá del vertical actual de GeneralConfiguration;
-- elegibilidad de Delete Identity y coordinación con Historia;
 - auditoría global de seguridad y consumo de autenticación en SSE;
 
 - profundidad de Historia administrativa según los OPEN-TRA aplicables;

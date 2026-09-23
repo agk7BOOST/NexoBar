@@ -40,6 +40,9 @@ public static class IdentityAdministrationModule
         group.MapPost("/{identityId:guid}/deactivate", DeactivateAsync)
             .WithName("DeactivateIdentity")
             .ProducesAdministrationResults();
+        group.MapDelete("/{identityId:guid}", DeleteAsync)
+            .WithName("DeleteIdentity")
+            .ProducesAdministrationResults();
         group.MapPost("/{identityId:guid}/credential", SetCredentialAsync)
             .WithName("SetIdentityLocalCredential")
             .Accepts<SetLocalCredentialRequest>("application/json")
@@ -166,6 +169,19 @@ public static class IdentityAdministrationModule
             validation.Key,
             identityId,
             cancellationToken));
+    }
+
+    private static async Task<IResult> DeleteAsync(
+        Guid identityId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        IdentityAdministrationService service,
+        CancellationToken cancellationToken)
+    {
+        var validation = await ValidateCommandAsync(idempotencyKey, httpContext, antiforgery);
+        return validation.Error ?? MapResult(await service.DeleteAsync(
+            validation.Key, identityId, cancellationToken));
     }
 
     private static async Task<IResult> SetCredentialAsync(
@@ -396,6 +412,11 @@ public static class IdentityAdministrationModule
                 "Last General Configuration path",
                 "The command would remove the last current ordinary General Configuration path.",
                 "identities_and_capabilities.last_general_configuration_path"),
+            IdentityAdministrationOutcome.FunctionalHistoryExists => Problem(
+                StatusCodes.Status409Conflict,
+                "Functional History requires attribution",
+                "This Identity must be preserved because relevant functional History refers to it.",
+                "identities_and_capabilities.functional_history_exists"),
             IdentityAdministrationOutcome.DuplicateLoginIdentifier => Problem(
                 StatusCodes.Status409Conflict,
                 "Login identifier already in use",

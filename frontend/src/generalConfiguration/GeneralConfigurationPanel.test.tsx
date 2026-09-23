@@ -14,6 +14,7 @@ const {
   createIdentityMock,
   createPreparationResponsibilityMock,
   deactivateIdentityMock,
+  deleteIdentityMock,
   getAntiforgeryTokenMock,
   grantPreparationEnablementMock,
   listAdministrativeIdentitiesMock,
@@ -28,6 +29,7 @@ const {
   createIdentityMock: vi.fn(),
   createPreparationResponsibilityMock: vi.fn(),
   deactivateIdentityMock: vi.fn(),
+  deleteIdentityMock: vi.fn(),
   getAntiforgeryTokenMock: vi.fn(),
   grantPreparationEnablementMock: vi.fn(),
   listAdministrativeIdentitiesMock: vi.fn(),
@@ -49,6 +51,7 @@ vi.mock("./identityAdministrationClient.ts", async (importOriginal) => {
     createIdentity: createIdentityMock,
     createPreparationResponsibility: createPreparationResponsibilityMock,
     deactivateIdentity: deactivateIdentityMock,
+    deleteIdentity: deleteIdentityMock,
     grantPreparationEnablement: grantPreparationEnablementMock,
     listAdministrativeIdentities: listAdministrativeIdentitiesMock,
     listPreparationResponsibilities: listPreparationResponsibilitiesMock,
@@ -110,6 +113,7 @@ describe("GeneralConfigurationPanel", () => {
     createIdentityMock.mockReset();
     createPreparationResponsibilityMock.mockReset();
     deactivateIdentityMock.mockReset();
+    deleteIdentityMock.mockReset();
     getAntiforgeryTokenMock.mockReset();
     getAntiforgeryTokenMock.mockResolvedValue("csrf-token");
     grantPreparationEnablementMock.mockReset();
@@ -148,6 +152,50 @@ describe("GeneralConfigurationPanel", () => {
     expect(screen.queryByText(/secret|verifier|hash/i)).not.toBeInTheDocument();
     expect(listAdministrativeIdentitiesMock).toHaveBeenCalledOnce();
     expect(listPreparationResponsibilitiesMock).toHaveBeenCalledOnce();
+  });
+
+  it.each([true, false])("deletes an eligible %s Identity through a distinct confirmed action and refreshes", async (isActive) => {
+    const target = identity({ identityId: "identity-2", operationalName: "Beto", isActive });
+    listAdministrativeIdentitiesMock.mockResolvedValue([identity(), target]);
+    deleteIdentityMock.mockResolvedValue(target);
+    const { user } = renderPanel();
+    const row = (await screen.findByRole("button", { name: "Eliminar definitivamente Beto" })).closest("tr")!;
+    expect(row).toHaveTextContent(isActive ? "Desactivar" : "Activar");
+    await user.click(screen.getByRole("button", { name: "Eliminar definitivamente Beto" }));
+    expect(screen.getByText(/ninguna Historia funcional relevante/)).toBeInTheDocument();
+    expect(deleteIdentityMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Confirmar eliminación definitiva" }));
+    await waitFor(() => expect(deleteIdentityMock).toHaveBeenCalledOnce());
+    expect(deleteIdentityMock.mock.calls[0]?.[0]).toBe("identity-2");
+    await waitFor(() => expect(listAdministrativeIdentitiesMock).toHaveBeenCalledTimes(2));
+    expect(deactivateIdentityMock).not.toHaveBeenCalled();
+  });
+
+  it("explains functional History and last GC path without deactivating", async () => {
+    listAdministrativeIdentitiesMock.mockResolvedValue([identity()]);
+    deleteIdentityMock
+      .mockRejectedValueOnce(new IdentityAdministrationProblemError({
+        status: 409, code: "identities_and_capabilities.functional_history_exists",
+      }))
+      .mockRejectedValueOnce(new IdentityAdministrationProblemError({
+        status: 409, code: "identities_and_capabilities.last_general_configuration_path",
+      }));
+    const { user } = renderPanel();
+    for (const expected of [/Historia funcional atribuible/, /otra vía ordinaria utilizable/]) {
+      await user.click(await screen.findByRole("button", { name: "Eliminar definitivamente Ana" }));
+      await user.click(screen.getByRole("button", { name: "Confirmar eliminación definitiva" }));
+      expect(await screen.findByText(expected)).toBeInTheDocument();
+    }
+    expect(deactivateIdentityMock).not.toHaveBeenCalled();
+  });
+
+  it("transitions through the ordinary session refresh after self-delete", async () => {
+    listAdministrativeIdentitiesMock.mockResolvedValue([identity()]);
+    deleteIdentityMock.mockResolvedValue(identity());
+    const { user, onCurrentIdentityChanged } = renderPanel();
+    await user.click(await screen.findByRole("button", { name: "Eliminar definitivamente Ana" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar eliminación definitiva" }));
+    await waitFor(() => expect(onCurrentIdentityChanged).toHaveBeenCalledOnce());
   });
 
   it("creates with a UUID-v4 key and reconciles the authoritative response", async () => {

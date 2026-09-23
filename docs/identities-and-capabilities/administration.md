@@ -2,13 +2,14 @@
 
 ## Administración de Identity
 
-El backend implementa intenciones específicas para Create Identity, Change Operational Name, Activate, Deactivate, Set/Replace Local Credential, Assign/Revoke Functional Responsibility y Grant/Revoke Preparation Enablement. No expone CRUD genérico ni Delete Identity.
+El backend implementa intenciones específicas para Create Identity, Change Operational Name, Activate, Deactivate, Delete elegible, Set/Replace Local Credential, Assign/Revoke Functional Responsibility y Grant/Revoke Preparation Enablement. No expone CRUD genérico.
 
 ```text
 POST /api/identities
 POST /api/identities/{identityId}/change-operational-name
 POST /api/identities/{identityId}/activate
 POST /api/identities/{identityId}/deactivate
+DELETE /api/identities/{identityId}
 POST /api/identities/{identityId}/credential
 POST /api/identities/{identityId}/responsibilities/{code}/assign
 POST /api/identities/{identityId}/responsibilities/{code}/revoke
@@ -24,7 +25,7 @@ La administración ordinaria debe preservar al menos un camino operacional vigen
 
 El frontend expone la superficie administrativa **Configuración general** sólo cuando la proyección actual de `GET /api/identity-sessions/current` contiene `GeneralConfiguration`. Ese chequeo de capability controla exclusivamente el montaje/navegación de la superficie cliente; la autorización de cada read o comando permanece en el backend.
 
-La superficie implementada permite listar Identities, crear Identity, cambiar su nombre operacional, activar/desactivar, asignar/revocar Functional Responsibilities, otorgar/revocar habilitaciones de Preparation, listar y crear Preparation Responsibilities por nombre operacional, listar y crear Contextos configurados, y configurar/reemplazar `LocalCredential`. Context administration es sólo create + list y su estado/contrato está en [OperationalConfiguration](../operational-configuration/README.md#context-configurado--mvp-fc-ctx-closed). No implementa Delete Identity, recovery ni administración arbitraria de Sessions.
+La superficie implementada permite listar Identities, crear Identity, cambiar su nombre operacional, activar/desactivar, eliminar definitivamente una Identity elegible, asignar/revocar Functional Responsibilities, otorgar/revocar habilitaciones de Preparation, listar y crear Preparation Responsibilities por nombre operacional, listar y crear Contextos configurados, y configurar/reemplazar `LocalCredential`. Context administration es sólo create + list y su estado/contrato está en [OperationalConfiguration](../operational-configuration/README.md#context-configurado--mvp-fc-ctx-closed). No implementa recovery ni administración arbitraria de Sessions.
 
 El listado y cada resultado de mutación son Estado autoritativo del backend. El cliente reconcilia el resultado recibido y no trata una mutación optimista como Estado confirmado. Ante incertidumbre de red conserva la misma intención de comando y `Idempotency-Key` para un reintento explícito.
 
@@ -86,4 +87,16 @@ Los comandos administrativos durables usan `Idempotency-Key` UUID v4 y persisten
 
 El replay exige todavía una sesión actual válida y una Identity activa. Si el resultado ya fue confirmado, se reproduce antes de revalidar `GeneralConfiguration`: revocar una capability después del éxito no reinterpreta el efecto histórico de ese comando. Para una intención de credencial, la comparación durable guarda un verifier lento de la intención y usa el mismo verificador de secretos; no guarda el secret crudo ni un digest rápido sin salt. Estos registros técnicos de comandos no equivalen a Historia funcional.
 
-Recovery, Delete Identity y profundidad de Historia administrativa: [pendientes de seguridad](../architecture/security-boundaries.md).
+La profundidad de Historia administrativa permanece en [pendientes de seguridad](../architecture/security-boundaries.md).
+
+## MVP-FC-IDN-IDEL — eligible Identity Delete: CLOSED
+
+**AD-IDN-01.** `DELETE /api/identities/{identityId}` es una corrección de configuración bajo `GeneralConfiguration`. Exige Session utilizable, Identity actuante activa, responsabilidad vigente, antiforgery e `Idempotency-Key` UUID v4; el actor procede del servidor. El objetivo puede estar activo o inactivo: no se exige Desactivar antes de Eliminar. Si existe Historia funcional cuya atribución debe conservarse, el backend rechaza Delete con `identities_and_capabilities.functional_history_exists` y conserva todo su State. Desactivar sigue siendo la acción de lifecycle cuando corresponde; el rechazo no la ejecuta automáticamente.
+
+`OrderOperations` decide semánticamente si Confirmation/Incorporation, cambios de Context, correcciones/cancelaciones de Content, precio aplicado, Preparation, Delivery, Liquidation, Closure o cancelación completa atribuyen Historia al objetivo. `Inventory` decide lo mismo para Movements, Movement Correction y Counts consumidos por Reconciliation, incluida la que establece/restablece RegisteredExistence y la que confirma `no_discrepancy`. Ambas capacidades usan la transacción PostgreSQL del comando de Identity. Un Count sin uso funcional no bloquea; Delete lo invalida dentro de la transacción para impedir una Reconciliation futura con atribución a una Identity ya eliminada. Véase [Inventory](../inventory/README.md#identity-delete-y-counts-ad-idn-01).
+
+Creación de Identity, responsabilidades, habilitaciones, activación/desactivación, credencial, Sessions, comandos durables y hechos administrativos ordinarios no bloquean por sí solos. En éxito se eliminan Identity State, asignaciones, habilitaciones, credencial y todas sus Sessions actuales. Los registros administrativos de comando permanecen para replay; la migración `20260923120000_AddEligibleIdentityDelete` permite conservar `ActorIdentityId` de comandos aunque se elimine ese State y admite `DeleteIdentity` en el repertorio cerrado de command kinds. Misma key/actor/target devuelve el resultado comprometido aun sin Identity objetivo; key con intención cambiada produce conflicto. Como en los demás comandos, replay exige una Session e Identity actuante aún utilizables: después de auto-delete la antigua Session no puede reproducir ni autorizar otro comando.
+
+Delete toma el advisory lock administrativo y el `FOR UPDATE` de la fila Identity objetivo. Los comandos funcionales mantienen `FOR SHARE` sobre la Identity actuante hasta commit; por ello, o el evento funcional confirma antes y Delete ve Historia, o Delete confirma antes y esa Session deja de autorizar. Para Counts del objetivo consumidos por otro actor, Inventory bloquea la fila Count antes de comprobar uso e invalidarla; Reconciliation comparte ese lock al consumirla. La comprobación de última vía ordinaria `GeneralConfiguration` reutiliza exactamente `IsOperationalGeneralConfigurationPathAsync` y `CountOperationalGeneralConfigurationPathsAsync`, bajo el mismo advisory lock que Desactivar/Revoke. Un auto-delete elegible es válido si otra vía ordinaria queda; el cliente vuelve por su flujo de Session inválida al login.
+
+La UI ofrece «Desactivar» y «Eliminar definitivamente» como acciones separadas; Delete solicita confirmación y explica la elegibilidad sin pedir al operador datos de Historia. Un conflicto funcional explica preservación y sugiere Desactivar; la última vía administrativa exige otra vía utilizable. La lista se recarga desde backend tras éxito ajeno. Las verificaciones dirigidas están en [Testing](../testing/verification.md#mvp-fc-idn-idel--eligible-identity-delete).

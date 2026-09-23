@@ -34,6 +34,7 @@ public static class InventoryModule
         services.AddScoped<InventoryMovementHistoryService>();
         services.AddScoped<InventoryLifecycleService>();
         services.AddScoped<InventoryDeleteService>();
+        services.AddScoped<NexoBar.IdentitiesAndCapabilities.IInventoryFunctionalIdentityAttribution, InventoryFunctionalIdentityAttribution>();
         services.AddInventoryOperationInvalidationPublisher();
         return services;
     }

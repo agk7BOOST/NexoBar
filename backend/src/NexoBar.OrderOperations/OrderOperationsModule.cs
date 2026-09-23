@@ -28,6 +28,7 @@ public static partial class OrderOperationsModule
                     "__ef_migrations_history",
                     "order_operations")));
         services.AddScoped<NexoBar.Catalog.IConfirmedProductParticipation, ConfirmedProductParticipation>();
+        services.AddScoped<NexoBar.IdentitiesAndCapabilities.IOrderFunctionalIdentityAttribution, OrderFunctionalIdentityAttribution>();
         services.AddPreparationDestinationInvalidationPublisher();
         services.AddOrderInvalidationPublisher();
         services.AddScoped<FirstConfirmationService>();

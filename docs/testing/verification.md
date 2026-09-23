@@ -1,5 +1,9 @@
 # Testing y verificación
 
+## MVP-FC-IDN-IDEL — eligible Identity Delete
+
+Pruebas focalizadas finales de Identity Delete y migración en PostgreSQL real: **9/9**. Cubren objetivos activos/inactivos y sus comandos de lifecycle, limpieza de State y Session, replay/conflicto, auto-delete con otra vía GC, rechazo de última vía, Historia de Confirmation y terminación por actores distintos, Movement/Correction/Count usado de Inventory, Count no usado invalidado, vínculo durable Count→Reconciliation aun sin Observation, autoridad ajena e Identity actuante inactiva. Dos carreras PostgreSQL verifican Delete frente a Historia funcional nueva del actor y Delete frente a Reconciliation por otro actor de un Count del objetivo: nunca confirman ambos. La migración hizo Down/Up y `HasPendingModelChanges=false`. La suite IdentitiesAndCapabilities se ejecutó una vez: **208/208** sobre la revisión anterior a las dos últimas ampliaciones focalizadas; la corrida final **9/9** verifica el código definitivo. Inventory Reconciliation/Count concurrency focalizado: **18/18**; OrderOperations First Confirmation focalizado: **33/33**. Frontend focalizado: **44/44**; `npx tsc -p tsconfig.app.json --noEmit` **PASS**. E2E dirigido `identity-delete.spec.ts`: **1 discovered, 1 passed, 0 failed, 0 skipped**, con migraciones canónicas y `HasPendingModelChanges=false` para los cinco modelos. No se ejecutaron la verificación de solución completa ni Playwright amplio.
+
 ## Testing y verificación
 
 ## MVP-FC-TOH — Terminal Order History

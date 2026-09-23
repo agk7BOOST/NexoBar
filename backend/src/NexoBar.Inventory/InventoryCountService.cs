@@ -177,6 +177,8 @@ internal sealed class InventoryCountService(
         }
 
         var observation = await dbContext.CountObservations
+            .FromSqlInterpolated(
+                $"SELECT * FROM inventory.count_observations WHERE id = {countObservationId} FOR SHARE")
             .AsNoTracking()
             .SingleOrDefaultAsync(
                 candidate => candidate.Id == countObservationId &&

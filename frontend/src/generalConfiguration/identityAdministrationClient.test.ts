@@ -5,6 +5,7 @@ import {
   createIdentity,
   createPreparationResponsibility,
   deactivateIdentity,
+  deleteIdentity,
   grantPreparationEnablement,
   IdentityAdministrationNetworkError,
   IdentityAdministrationProblemError,
@@ -50,6 +51,20 @@ describe("identityAdministrationClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/identities", {
       credentials: "same-origin",
     });
+  });
+
+  it("sends definitive Delete with antiforgery and durable intent", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(identity()), {
+      headers: { "Content-Type": "application/json" },
+    }));
+    await expect(deleteIdentity("identity-1", "key-1", "csrf-1")).resolves.toMatchObject({ identityId: "identity-1" });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("/api/identities/identity-1");
+    expect(init?.method).toBe("DELETE");
+    expect(init?.credentials).toBe("same-origin");
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("key-1");
+    expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe("csrf-1");
+    expect(init?.body).toBeUndefined();
   });
 
   it("uses the secured OperationalConfiguration administrative lookup", async () => {

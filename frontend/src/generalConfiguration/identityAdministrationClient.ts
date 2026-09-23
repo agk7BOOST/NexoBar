@@ -219,6 +219,23 @@ export function deactivateIdentity(
   );
 }
 
+export async function deleteIdentity(
+  identityId: string,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<AdministrativeIdentity> {
+  const response = await send(`/api/identities/${encodeURIComponent(identityId)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+    headers: {
+      "Idempotency-Key": idempotencyKey,
+      "X-NexoBar-CSRF": antiforgeryToken,
+    },
+  });
+  await requireSuccess(response);
+  return (await response.json()) as AdministrativeIdentity;
+}
+
 export function assignResponsibility(
   identityId: string,
   responsibility: FunctionalResponsibility,
