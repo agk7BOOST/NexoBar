@@ -1,4 +1,4 @@
-using Npgsql;
+﻿using Npgsql;
 
 namespace NexoBar.OrderOperations.IntegrationTests;
 
@@ -10,7 +10,7 @@ public sealed class PreparationRequirementSnapshotMigrationTests(
     private const string CurrentMigration =
         "20260831202815_CapturePreparationRequirementAtConfirmation";
     private const string LatestMigration =
-        "20260922150000_AddOrderContextChanges";
+        "20260922160000_AddProductOperationalNameSnapshot";
 
     [Fact]
     public async Task Migration_backfills_by_exact_content_identity_and_has_no_default()
@@ -18,12 +18,13 @@ public sealed class PreparationRequirementSnapshotMigrationTests(
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
         await fixture.EnsureConfiguredTestContextAsync("Mesa snapshot migration", token);
+        var product = await fixture.CreateProductAsync("Preparation snapshot legacy", "3", token);
         await fixture.MigrateOrderOperationsAsync(PreviousMigration, token);
 
         try
         {
             var incorporationId = Guid.CreateVersion7();
-            await SeedPreviousSchemaAsync(incorporationId, token);
+            await SeedPreviousSchemaAsync(incorporationId, product.Id, token);
 
             await fixture.MigrateOrderOperationsAsync(CurrentMigration, token);
             await AssertBackfillAsync(incorporationId, token);
@@ -45,6 +46,7 @@ public sealed class PreparationRequirementSnapshotMigrationTests(
 
     private async Task SeedPreviousSchemaAsync(
         Guid incorporationId,
+        Guid productId,
         CancellationToken token)
     {
         await using var connection = new NpgsqlConnection(fixture.ConnectionString);
@@ -75,7 +77,7 @@ public sealed class PreparationRequirementSnapshotMigrationTests(
             """;
         command.Parameters.AddWithValue("order_id", Guid.CreateVersion7());
         command.Parameters.AddWithValue("incorporation_id", incorporationId);
-        command.Parameters.AddWithValue("same_product", Guid.CreateVersion7());
+        command.Parameters.AddWithValue("same_product", productId);
         command.Parameters.AddWithValue("work_id", Guid.CreateVersion7());
         command.Parameters.AddWithValue("responsibility_id", Guid.CreateVersion7());
         await command.ExecuteNonQueryAsync(token);

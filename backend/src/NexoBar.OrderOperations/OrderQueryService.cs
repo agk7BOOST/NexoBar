@@ -67,6 +67,7 @@ internal sealed class OrderQueryService(
             .ToDictionary(group => group.Key, group => group
                 .Select(content => new ConfirmedItemResponse(
                     content.ProductId,
+                    content.ProductOperationalNameSnapshot,
                     content.Quantity,
                     content.AppliedPrice.ToString(CultureInfo.InvariantCulture),
                     content.Instruction,

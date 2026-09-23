@@ -76,7 +76,7 @@ public sealed class ConfirmationInstructionApiTests(OrderOperationsApiFixture fi
         }
         var catalog = new RecordingCatalogCapability(
             new OrderConfirmationCatalogProduct(
-                productId, 10m, true, true, true, responsibilityId));
+                productId, "Papas", 10m, true, true, true, responsibilityId));
         await using var application = fixture.CreateApplicationWithCatalog(catalog);
         using var client = await fixture.LoginAsync(
             fixture.DefaultOrderOperationsActor,

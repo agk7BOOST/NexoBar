@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Npgsql;
 
 namespace NexoBar.OrderOperations.IntegrationTests;
@@ -9,7 +9,7 @@ public sealed class PendingCompositionMigrationTests(OrderOperationsApiFixture f
     private const string PreviousMigration = "20260831214404_AddDeliveryProgress";
     private const string CurrentMigration =
         "20260904152524_AddAuthoritativePendingComposition";
-    private const string LatestMigration = "20260922150000_AddOrderContextChanges";
+    private const string LatestMigration = "20260922160000_AddProductOperationalNameSnapshot";
 
     [Fact]
     public async Task Migration_is_incremental_reversible_and_uses_safe_identifiers()

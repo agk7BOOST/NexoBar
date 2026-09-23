@@ -8,15 +8,22 @@ internal static class ConfirmedContentFactory
         Guid incorporationId,
         int contentOrdinal,
         int quantity,
+        string productOperationalName,
         string? instruction,
         bool unavailableProductExceptionApplied,
         OrderConfirmationCatalogProduct product)
     {
         var requiresPreparationAtConfirmation = product.RequiresPreparation;
+        if (string.IsNullOrWhiteSpace(productOperationalName))
+        {
+            throw new InvalidOperationException(
+                "Catalog returned a blank Product operational name for Confirmation.");
+        }
         var content = new IncorporationContent(
             incorporationId,
             contentOrdinal,
             product.ProductId,
+            productOperationalName,
             quantity,
             requiresPreparationAtConfirmation,
             product.Price,

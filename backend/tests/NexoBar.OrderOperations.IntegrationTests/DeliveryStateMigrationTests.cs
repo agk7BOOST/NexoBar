@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Npgsql;
 
 namespace NexoBar.OrderOperations.IntegrationTests;
@@ -9,7 +9,7 @@ public sealed class DeliveryStateMigrationTests(OrderOperationsApiFixture fixtur
     private const string PreviousMigration = "20260831063910_AddPreparationStart";
     private const string CurrentMigration = "20260831171256_AddDeliveryState";
     private const string LatestMigration =
-        "20260922150000_AddOrderContextChanges";
+        "20260922160000_AddProductOperationalNameSnapshot";
 
     [Fact]
     public async Task Migration_backfills_every_existing_content_and_has_safe_down()
@@ -17,12 +17,14 @@ public sealed class DeliveryStateMigrationTests(OrderOperationsApiFixture fixtur
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
         await fixture.EnsureConfiguredTestContextAsync("Mesa migration", token);
+        var direct = await fixture.CreateProductAsync("Delivery legacy direct", "3", token);
+        var prepared = await fixture.CreateProductAsync("Delivery legacy prepared", "5", token);
         await fixture.MigrateOrderOperationsAsync(PreviousMigration, token);
 
         try
         {
             var incorporationId = Guid.CreateVersion7();
-            await SeedPreviousSchemaAsync(incorporationId, token);
+            await SeedPreviousSchemaAsync(incorporationId, direct.Id, prepared.Id, token);
 
             await fixture.MigrateOrderOperationsAsync(CurrentMigration, token);
             await AssertBackfillAsync(incorporationId, token);
@@ -43,6 +45,8 @@ public sealed class DeliveryStateMigrationTests(OrderOperationsApiFixture fixtur
 
     private async Task SeedPreviousSchemaAsync(
         Guid incorporationId,
+        Guid directProductId,
+        Guid preparedProductId,
         CancellationToken token)
     {
         await using var connection = new NpgsqlConnection(fixture.ConnectionString);
@@ -73,8 +77,8 @@ public sealed class DeliveryStateMigrationTests(OrderOperationsApiFixture fixtur
             """;
         command.Parameters.AddWithValue("order_id", Guid.CreateVersion7());
         command.Parameters.AddWithValue("incorporation_id", incorporationId);
-        command.Parameters.AddWithValue("direct_product", Guid.CreateVersion7());
-        command.Parameters.AddWithValue("prepared_product", Guid.CreateVersion7());
+        command.Parameters.AddWithValue("direct_product", directProductId);
+        command.Parameters.AddWithValue("prepared_product", preparedProductId);
         command.Parameters.AddWithValue("work_id", Guid.CreateVersion7());
         command.Parameters.AddWithValue("responsibility_id", Guid.CreateVersion7());
         await command.ExecuteNonQueryAsync(token);

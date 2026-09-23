@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
@@ -115,7 +115,7 @@ public sealed class OrderContextChangeTests(OrderOperationsApiFixture fixture)
         await fixture.MigrateOrderOperationsAsync("20260922140000_AddConfiguredOrderContexts", token);
         Assert.Equal(1, await db.Orders.CountAsync(x => x.Id == orderId, token));
         Assert.Equal("Context A", (await db.ConfirmationHistory.SingleAsync(x => x.IncorporationId == confirmation.FirstIncorporation.Id, token)).ConfirmedContext);
-        await fixture.MigrateOrderOperationsAsync("20260922150000_AddOrderContextChanges", token);
+        await fixture.MigrateOrderOperationsAsync("20260922160000_AddProductOperationalNameSnapshot", token);
         Assert.False(await fixture.HasPendingModelChangesAsync());
     }
 

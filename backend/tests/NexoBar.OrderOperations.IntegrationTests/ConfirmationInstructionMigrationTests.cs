@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,7 +15,7 @@ public sealed class ConfirmationInstructionMigrationTests(OrderOperationsApiFixt
     private const string CurrentMigration =
         "20260830230000_AddConfirmationInstructions";
     private const string LatestMigration =
-        "20260922150000_AddOrderContextChanges";
+        "20260922160000_AddProductOperationalNameSnapshot";
 
     [Fact]
     public async Task Migration_preserves_I3A_data_replay_queries_and_has_safe_down()

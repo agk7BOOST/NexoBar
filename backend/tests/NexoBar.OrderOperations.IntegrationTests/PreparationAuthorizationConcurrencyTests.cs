@@ -20,20 +20,12 @@ public sealed class PreparationAuthorizationConcurrencyTests(
             hasPreparation: true,
             responsibility,
             token);
-        var lookupReached = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseLookup = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var application = fixture.CreateApplicationWithProductLookupDecorator(
-            services => new BlockingProductOperationalReferenceLookup(
-                new ProductOperationalReferenceLookup(
-                    services.GetRequiredService<CatalogDbContext>()),
-                lookupReached,
-                releaseLookup));
+        var barrier = new OrderOperationsReadBarrier();
+        await using var application = fixture.CreateApplicationWithOrderOperationsReadBarrier(barrier);
         using var client = await fixture.LoginAsync(actor, token, application);
 
         var readTask = client.GetAsync(WorkUrl(responsibility), token);
-        await lookupReached.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+        await barrier.Reached.WaitAsync(TimeSpan.FromSeconds(10), token);
         var revokeTask = fixture.RevokePreparationEnablementAsync(
             actor.IdentityId,
             responsibility,
@@ -46,14 +38,14 @@ public sealed class PreparationAuthorizationConcurrencyTests(
                 token));
             Assert.False(revokeTask.IsCompleted);
 
-            releaseLookup.TrySetResult();
+            barrier.Release();
             using var response = await readTask;
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             await revokeTask;
         }
         finally
         {
-            releaseLookup.TrySetResult();
+            barrier.Release();
             await ObserveAsync(readTask);
             await ObserveAsync(revokeTask);
         }

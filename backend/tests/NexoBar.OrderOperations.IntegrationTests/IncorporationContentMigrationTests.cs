@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -15,7 +15,7 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
     private const string CurrentMigration =
         "20260830210000_ReidentifyIncorporationContent";
     private const string LatestMigration =
-        "20260922150000_AddOrderContextChanges";
+        "20260922160000_AddProductOperationalNameSnapshot";
 
     private static readonly Guid OrderId =
         Guid.Parse("01910000-0000-7000-8000-000000000001");
@@ -86,6 +86,18 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
                 (@product_b, 'Producto B', 20, TRUE, TRUE, TRUE,
                  @responsibility_id),
                 (@product_c, 'Producto C', 30, TRUE, TRUE, FALSE, NULL);
+
+            INSERT INTO catalog.product_creation_commands
+                (idempotency_key, command_kind, intent_operational_name, intent_price,
+                 intent_requires_preparation, result_product_id, result_is_active,
+                 result_is_available)
+            VALUES
+                (@product_a_creation_key, 'CreateProduct', 'Producto A', 10, FALSE,
+                 @product_a, TRUE, TRUE),
+                (@product_b_creation_key, 'CreateProduct', 'Producto B', 20, FALSE,
+                 @product_b, TRUE, TRUE),
+                (@product_c_creation_key, 'CreateProduct', 'Producto C', 30, FALSE,
+                 @product_c, TRUE, TRUE);
 
             INSERT INTO order_operations.orders (id, context)
             VALUES (@order_id, 'Mesa 7');
@@ -158,6 +170,15 @@ public sealed class IncorporationContentMigrationTests(OrderOperationsApiFixture
         command.Parameters.AddWithValue("product_a", ProductA);
         command.Parameters.AddWithValue("product_b", ProductB);
         command.Parameters.AddWithValue("product_c", ProductC);
+        command.Parameters.AddWithValue(
+            "product_a_creation_key",
+            Guid.Parse("33333333-3333-4333-8333-333333333333"));
+        command.Parameters.AddWithValue(
+            "product_b_creation_key",
+            Guid.Parse("44444444-4444-4444-8444-444444444444"));
+        command.Parameters.AddWithValue(
+            "product_c_creation_key",
+            Guid.Parse("55555555-5555-4555-8555-555555555555"));
         command.Parameters.AddWithValue("work_id", WorkId);
         command.Parameters.AddWithValue("responsibility_id", PreparationResponsibilityId);
         command.Parameters.AddWithValue("first_key", FirstCommandKey);

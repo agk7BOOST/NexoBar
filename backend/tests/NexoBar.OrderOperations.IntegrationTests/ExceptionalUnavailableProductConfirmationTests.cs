@@ -46,6 +46,7 @@ public sealed class ExceptionalUnavailableProductConfirmationTests(
         var applied = confirmation.FirstIncorporation.Items.Single(item =>
             item.ProductId == unavailable.Id);
         Assert.True(applied.UnavailableProductExceptionApplied);
+        Assert.Equal("Unavailable", applied.ProductOperationalNameSnapshot);
         Assert.Equal("23.50", applied.AppliedPrice);
         Assert.True(confirmation.FirstIncorporation.Items.Single(item =>
             item.ProductId == secondUnavailable.Id).UnavailableProductExceptionApplied);
@@ -61,6 +62,8 @@ public sealed class ExceptionalUnavailableProductConfirmationTests(
                 .ToArrayAsync(Token);
             Assert.True(contents.Single(content => content.ProductId == unavailable.Id)
                 .UnavailableProductExceptionApplied);
+            Assert.Equal("Unavailable", contents.Single(content => content.ProductId == unavailable.Id)
+                .ProductOperationalNameSnapshot);
             Assert.False(contents.Single(content => content.ProductId == available.Id)
                 .UnavailableProductExceptionApplied);
             Assert.False(contents.Single(content => content.ProductId == availableExceptional.Id)
@@ -117,6 +120,8 @@ public sealed class ExceptionalUnavailableProductConfirmationTests(
         var confirmation = await ReadFirstAsync(confirmationResponse);
         Assert.True(Assert.Single(confirmation.FirstIncorporation.Items)
             .UnavailableProductExceptionApplied);
+        Assert.Equal("Historical unavailable", Assert.Single(
+            confirmation.FirstIncorporation.Items).ProductOperationalNameSnapshot);
 
         using var availabilityRequest = new HttpRequestMessage(
             HttpMethod.Post,

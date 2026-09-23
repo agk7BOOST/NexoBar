@@ -2,7 +2,6 @@ using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
-using NexoBar.Catalog;
 using NexoBar.IdentitiesAndCapabilities;
 
 namespace NexoBar.OrderOperations;
@@ -11,7 +10,6 @@ internal sealed class OrderDeliveryQueryService(
     OrderOperationsDbContext dbContext,
     IOrderOperationsAuthorization authorization,
     ActiveOrderReadState activeOrder,
-    IProductOperationalReferenceLookup productReferences,
     ILogger<OrderDeliveryQueryService> logger)
 {
     internal async Task<OrderDeliveryQueryResult> FindAsync(
@@ -91,6 +89,7 @@ internal sealed class OrderDeliveryQueryService(
                 (int?)incorporation.Ordinal,
                 (int?)content.ContentOrdinal,
                 (Guid?)content.ProductId,
+                content.ProductOperationalNameSnapshot,
                 (int?)content.Quantity,
                 quantityState == null ? null : quantityState.RemovedByCorrectionQuantity,
                 quantityState == null ? null : quantityState.CancelledQuantity,
@@ -121,26 +120,6 @@ internal sealed class OrderDeliveryQueryService(
             return OrderDeliveryQueryResult.StateInconsistent();
         }
 
-        var productIds = contentRows
-            .Select(row => row.ProductId!.Value)
-            .Distinct()
-            .ToArray();
-        var productNames = productIds.Length == 0
-            ? []
-            : await productReferences.ReadByIdsAsync(
-                productIds,
-                dbTransaction,
-                cancellationToken);
-        var namesById = productNames.ToDictionary(product => product.ProductId);
-        if (namesById.Count != productIds.Length ||
-            productIds.Any(productId => !namesById.ContainsKey(productId)))
-        {
-            logger.LogError(
-                "Delivery for Order {OrderId} references Products missing from Catalog.",
-                orderId);
-            return OrderDeliveryQueryResult.ProductReferenceInconsistent();
-        }
-
         var contentsResponse = contentRows.Select(row =>
         {
             var total = row.ConfirmedQuantity!.Value - row.RemovedByCorrectionQuantity!.Value - row.CancelledQuantity!.Value;
@@ -152,7 +131,7 @@ internal sealed class OrderDeliveryQueryService(
                 row.IncorporationOrdinal!.Value,
                 row.ContentOrdinal!.Value,
                 row.ProductId!.Value,
-                namesById[row.ProductId.Value].OperationalName,
+                row.ProductOperationalNameSnapshot,
                 row.Instruction,
                 total,
                 requiresPreparation,
@@ -229,6 +208,7 @@ internal sealed class OrderDeliveryQueryService(
         int? IncorporationOrdinal,
         int? ContentOrdinal,
         Guid? ProductId,
+        string? ProductOperationalNameSnapshot,
         int? ConfirmedQuantity,
         int? RemovedByCorrectionQuantity,
         int? CancelledQuantity,

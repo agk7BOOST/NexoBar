@@ -38,6 +38,7 @@ internal sealed record FirstIncorporationResponse(
 
 internal sealed record ConfirmedItemResponse(
     Guid ProductId,
+    string? ProductOperationalNameSnapshot,
     int Quantity,
     string AppliedPrice,
     string? Instruction,

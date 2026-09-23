@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using NexoBar.Catalog;
 using NexoBar.IdentitiesAndCapabilities;
 
 namespace NexoBar.OrderOperations.IntegrationTests;
@@ -171,20 +170,18 @@ public sealed class ActiveOrderReadAuthorizationTests(OrderOperationsApiFixture 
             using var liquidation = await LiquidationTestSupport.PostExternalAsync(fixture.OrderOperationsClient, target.OperationalReference, Guid.NewGuid(), Token);
             liquidation.EnsureSuccessStatusCode();
         }
-        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var application = fixture.CreateApplicationWithProductLookupDecorator(services =>
-            new BlockingProductOperationalReferenceLookup(new ProductOperationalReferenceLookup(services.GetRequiredService<CatalogDbContext>()), reached, release));
+        var barrier = new OrderOperationsReadBarrier();
+        await using var application = fixture.CreateApplicationWithOrderOperationsReadBarrier(barrier);
         using var reader = await fixture.LoginAsync(fixture.DefaultOrderOperationsActor, Token, application);
         var read = reader.GetAsync(Paths(target)[1], Token);
         Task<HttpResponseMessage>? terminal = null;
         try
         {
-            await reached.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+            await barrier.Reached.WaitAsync(TimeSpan.FromSeconds(10), Token);
             terminal = EndAsync();
             Assert.True(await fixture.WaitForOrderRowLockWaitersAsync(1, TimeSpan.FromSeconds(10), Token));
             Assert.False(terminal.IsCompleted);
-            release.TrySetResult();
+            barrier.Release();
             using var snapshot = await read.WaitAsync(TimeSpan.FromSeconds(10), Token);
             Assert.Equal(HttpStatusCode.OK, snapshot.StatusCode);
             using var ended = await terminal.WaitAsync(TimeSpan.FromSeconds(10), Token);
@@ -194,7 +191,7 @@ public sealed class ActiveOrderReadAuthorizationTests(OrderOperationsApiFixture 
         }
         finally
         {
-            release.TrySetResult();
+            barrier.Release();
             try { (await read).Dispose(); } catch { /* Preserve the original failure. */ }
             if (terminal is not null)
                 try { (await terminal).Dispose(); } catch { /* Preserve the original failure. */ }

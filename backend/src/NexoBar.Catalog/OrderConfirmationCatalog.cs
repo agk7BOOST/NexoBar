@@ -26,6 +26,7 @@ public sealed record ConfiguredCatalogProductPrice(
 
 public sealed record OrderConfirmationCatalogProduct(
     Guid ProductId,
+    string OperationalName,
     decimal Price,
     bool IsActive,
     bool IsAvailable,
@@ -78,6 +79,7 @@ internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext) :
         return products
             .Select(product => new OrderConfirmationCatalogProduct(
                 product.Id,
+                product.OperationalName,
                 product.Price,
                 product.IsActive,
                 product.IsAvailable,

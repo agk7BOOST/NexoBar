@@ -24,6 +24,12 @@ public sealed class ConfiguredContextUpgradeMigrationTests(
     {
         await fixture.ResetAsync(Token);
         var product = await fixture.CreateProductAsync("Legacy replay product", "12.50", Token);
+        await using (var catalogScope = fixture.Services.CreateAsyncScope())
+        {
+            var catalog = catalogScope.ServiceProvider.GetRequiredService<NexoBar.Catalog.CatalogDbContext>();
+            Assert.True(await catalog.ProductCreationCommands.AsNoTracking()
+                .AnyAsync(command => command.ResultProductId == product.Id, Token));
+        }
         var actor = fixture.DefaultOrderOperationsActor;
         var orders = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
         var incorporations = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };

@@ -9,7 +9,7 @@ internal sealed record PreparationWorkResponse(
     int IncorporationOrdinal,
     int ContentOrdinal,
     Guid ProductId,
-    string ProductOperationalName,
+    string? ProductOperationalName,
     string? Instruction,
     int TotalQuantity,
     int PendingQuantity,

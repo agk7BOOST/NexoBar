@@ -183,15 +183,18 @@ internal sealed class IncorporationContent
         Guid incorporationId,
         int contentOrdinal,
         Guid productId,
+        string productOperationalNameSnapshot,
         int quantity,
         bool requiresPreparationAtConfirmation,
         decimal appliedPrice,
         string? instruction,
         bool unavailableProductExceptionApplied = false)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(productOperationalNameSnapshot);
         IncorporationId = incorporationId;
         ContentOrdinal = contentOrdinal;
         ProductId = productId;
+        ProductOperationalNameSnapshot = productOperationalNameSnapshot;
         Quantity = quantity;
         RequiresPreparationAtConfirmation = requiresPreparationAtConfirmation;
         AppliedPrice = appliedPrice;
@@ -202,6 +205,7 @@ internal sealed class IncorporationContent
     internal Guid IncorporationId { get; private set; }
     internal int ContentOrdinal { get; private set; }
     internal Guid ProductId { get; private set; }
+    internal string? ProductOperationalNameSnapshot { get; private set; }
     internal int Quantity { get; private set; }
     internal bool RequiresPreparationAtConfirmation { get; private set; }
     internal decimal AppliedPrice { get; private set; }

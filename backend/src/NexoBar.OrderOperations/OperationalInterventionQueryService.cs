@@ -1,7 +1,6 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using NexoBar.Catalog;
 using NexoBar.IdentitiesAndCapabilities;
 
 namespace NexoBar.OrderOperations;
@@ -9,8 +8,7 @@ namespace NexoBar.OrderOperations;
 internal sealed class OperationalInterventionQueryService(
     OrderOperationsDbContext dbContext,
     IAuthenticatedSessionStabilizer sessionStabilizer,
-    IOperationalInterventionCapabilityStabilizer capabilityStabilizer,
-    IProductOperationalReferenceLookup productReferences)
+    IOperationalInterventionCapabilityStabilizer capabilityStabilizer)
 {
     internal async Task<OperationalInterventionQueryResult> FindAsync(Guid incorporationId, int ordinal, CancellationToken token)
     {
@@ -38,11 +36,8 @@ internal sealed class OperationalInterventionQueryService(
         if (!OperationalInterventionState.IsCoherent(target.Content, target.Work, target.Delivery, target.Quantities))
             return new(PreparationProgressOutcome.StateInconsistent);
         if (target.Work is null) return new(PreparationProgressOutcome.WorkNotFound);
-        var products = await productReferences.ReadByIdsAsync([target.Content.ProductId], transaction.GetDbTransaction(), token);
-        var product = products.SingleOrDefault(x => x.ProductId == target.Content.ProductId);
-        if (product is null) return new(PreparationProgressOutcome.StateInconsistent);
         var response = new OperationalInterventionTargetResponse(target.OrderId, target.Work.Id, incorporationId, ordinal,
-            target.Content.ProductId, product.OperationalName, target.Content.Instruction,
+            target.Content.ProductId, target.Content.ProductOperationalNameSnapshot, target.Content.Instruction,
             target.Content.Quantity, target.Quantities.RemovedByCorrectionQuantity, target.Quantities.CancelledQuantity, target.Work.TotalQuantity,
             target.Work.PendingQuantity, target.Work.InPreparationQuantity, target.Work.ReadyQuantity, target.Work.TotalQuantity,
             target.Delivery.DeliveredQuantity, target.Frozen,

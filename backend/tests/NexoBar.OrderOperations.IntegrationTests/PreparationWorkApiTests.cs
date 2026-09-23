@@ -410,7 +410,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         var renamedWork = Assert.Single(Assert.IsType<PreparationWorkResponse[]>(
             await renamed.Content.ReadFromJsonAsync<PreparationWorkResponse[]>(token)));
         Assert.Equal(product.Id, renamedWork.ProductId);
-        Assert.Equal("Papas especiales", renamedWork.ProductOperationalName);
+        Assert.Equal("Papas", renamedWork.ProductOperationalName);
         Assert.Equal(confirmed.FirstIncorporation.Id, renamedWork.IncorporationId);
         var after = await fixture.ReadSnapshotAsync(token);
         Assert.Equal(before.Contents.Single().ProductId, after.Contents.Single().ProductId);
@@ -458,7 +458,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
     }
 
     [Fact]
-    public async Task Product_name_lookup_is_batched_and_deduplicated_for_repeated_Product_Work()
+    public async Task Preparation_reads_confirmed_names_without_a_live_Catalog_lookup()
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
@@ -508,12 +508,12 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
             Assert.Equal(persisted.IncorporationId, work.IncorporationId);
             Assert.Equal(persisted.ContentOrdinal, work.ContentOrdinal);
         });
-        Assert.Equal(1, observation.CallCount);
-        Assert.Equal([product.Id], observation.RequestedProductIds);
+        Assert.Equal(0, observation.CallCount);
+        Assert.All(queriedWork, work => Assert.Equal("Papas", work.ProductOperationalName));
     }
 
     [Fact]
-    public async Task Missing_referenced_Product_is_an_explicit_technical_inconsistency()
+    public async Task Preparation_name_remains_readable_without_a_live_Catalog_product()
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
@@ -540,11 +540,10 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
 
         using var response = await client.GetAsync(WorkUrl(responsibility), token);
 
-        await AssertProblemAsync(
-            response,
-            HttpStatusCode.InternalServerError,
-            "order_operations.preparation_work.product_reference_inconsistent",
-            token);
+        response.EnsureSuccessStatusCode();
+        var work = Assert.Single(Assert.IsType<PreparationWorkResponse[]>(
+            await response.Content.ReadFromJsonAsync<PreparationWorkResponse[]>(token)));
+        Assert.Equal("Papas", work.ProductOperationalName);
     }
 
     [Fact]

@@ -1161,6 +1161,10 @@ namespace NexoBar.OrderOperations.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("product_id");
 
+                    b.Property<string>("ProductOperationalNameSnapshot")
+                        .HasColumnType("text")
+                        .HasColumnName("product_operational_name_snapshot");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("integer")
                         .HasColumnName("quantity");
@@ -1179,6 +1183,8 @@ namespace NexoBar.OrderOperations.Migrations
                     b.ToTable("incorporation_contents", "order_operations", t =>
                         {
                             t.HasCheckConstraint("CK_order_operations_incorporation_contents_ordinal_positive", "content_ordinal > 0");
+
+                            t.HasCheckConstraint("CK_incorporation_contents_product_name_snapshot_not_blank", "product_operational_name_snapshot IS NULL OR length(btrim(product_operational_name_snapshot)) > 0");
 
                             t.HasCheckConstraint("CK_order_operations_incorporation_contents_price_non_negative", "applied_price >= 0");
 

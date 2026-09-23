@@ -206,6 +206,7 @@ internal sealed class SubsequentConfirmationService(
                     incorporationId,
                     contentOrdinal,
                     item.Quantity,
+                    product.OperationalName,
                     item.Instruction,
                     unavailableProductExceptionApplied,
                     product);
@@ -228,6 +229,7 @@ internal sealed class SubsequentConfirmationService(
                     item.UnavailableProductExceptionRequested));
             responseItems.Add(new ConfirmedItemResponse(
                 item.ProductId,
+                product.OperationalName,
                 item.Quantity,
                 product.Price.ToString(CultureInfo.InvariantCulture),
                 item.Instruction,
@@ -276,6 +278,7 @@ internal sealed class SubsequentConfirmationService(
         var items = persistedItems
             .Select(content => new ConfirmedItemResponse(
                 content.ProductId,
+                content.ProductOperationalNameSnapshot,
                 content.Quantity,
                 content.AppliedPrice.ToString(CultureInfo.InvariantCulture),
                 content.Instruction,

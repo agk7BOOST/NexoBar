@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
@@ -441,6 +442,30 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             .Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE catalog.products SET operational_name = {operationalName} WHERE id = {productId}",
                 cancellationToken);
+    }
+
+    internal async Task RenameProductDurablyAsync(
+        Guid productId,
+        string expectedOperationalName,
+        string newOperationalName,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/catalog/products/{productId:D}/operational-name-changes")
+        {
+            Content = JsonContent.Create(new
+            {
+                expectedCurrentOperationalName = expectedOperationalName,
+                newOperationalName
+            })
+        };
+        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("D"));
+        using var response = await SendWithAntiforgeryAsync(
+            OrderOperationsClient,
+            request,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
     }
 
     internal async Task ReplaceContentProductReferenceAsync(
@@ -1349,6 +1374,13 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 services.RemoveAll<IProductOperationalReferenceLookup>();
                 services.AddScoped(factory);
             }));
+
+    internal WebApplicationFactory<Program> CreateApplicationWithOrderOperationsReadBarrier(
+        IInterceptor interceptor) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+                services.ConfigureDbContext<OrderOperationsDbContext>(
+                    options => options.AddInterceptors(interceptor))));
 
     internal WebApplicationFactory<Program> CreateApplicationWithCapabilityDecorator(
         Func<IServiceProvider, IPreparationCapabilityStabilizer> factory) =>

@@ -177,6 +177,7 @@ internal sealed class FirstConfirmationService(
                     incorporationId,
                     contentOrdinal,
                     item.Quantity,
+                    product.OperationalName,
                     item.Instruction,
                     unavailableProductExceptionApplied,
                     product);
@@ -199,6 +200,7 @@ internal sealed class FirstConfirmationService(
                     item.UnavailableProductExceptionRequested));
             responseItems.Add(new ConfirmedItemResponse(
                 item.ProductId,
+                product.OperationalName,
                 item.Quantity,
                 product.Price.ToString(CultureInfo.InvariantCulture),
                 item.Instruction,
@@ -248,6 +250,7 @@ internal sealed class FirstConfirmationService(
         var items = persistedItems
             .Select(content => new ConfirmedItemResponse(
                 content.ProductId,
+                content.ProductOperationalNameSnapshot,
                 content.Quantity,
                 content.AppliedPrice.ToString(CultureInfo.InvariantCulture),
                 content.Instruction,

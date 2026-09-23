@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -13,7 +13,7 @@ public sealed partial class OperationalInterventionTests
     {
         const string previous = "20260907054805_AddContentCancellation";
         const string current = "20260910120000_AllowZeroInterventionResults";
-        const string latest = "20260922150000_AddOrderContextChanges";
+        const string latest = "20260922160000_AddProductOperationalNameSnapshot";
         var s = await Setup(3, ready ? 3 : 0, 0, 3); using var client = s.Client;
         var original = HistorySnapshot(await fixture.ReadPreparationHistoryAsync(Token));
         await fixture.MigrateOrderOperationsAsync(previous, Token);

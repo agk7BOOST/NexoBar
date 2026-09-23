@@ -79,11 +79,13 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
         Assert.Equal(product.Id, item.ProductId);
         Assert.Equal(2, item.Quantity);
         Assert.Equal(product.Price, item.AppliedPrice);
+        Assert.Equal(product.OperationalName, item.ProductOperationalNameSnapshot);
 
         var snapshot = await fixture.ReadSnapshotAsync(cancellationToken);
         Assert.Equal(orderId, snapshot.Order.Id);
         Assert.Equal("Mesa 7", snapshot.Order.CurrentContextOperationalName);
         Assert.Equal(confirmed.FirstIncorporation.Id, snapshot.Incorporation.Id);
+        Assert.Equal(product.OperationalName, Assert.Single(snapshot.Contents).ProductOperationalNameSnapshot);
         Assert.Equal(1, snapshot.Incorporation.Ordinal);
         Assert.Equal(snapshot.Order.Id, snapshot.Incorporation.OrderId);
         AssertUuidVersion(snapshot.History.Id, 7);
@@ -412,6 +414,11 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
 
         using var first = await PostFirstConfirmationAsync(request, key, cancellationToken);
         var firstBody = await first.Content.ReadAsStringAsync(cancellationToken);
+        await fixture.RenameProductDurablyAsync(
+            product.Id,
+            "Agua",
+            "Agua mineral",
+            cancellationToken);
         await fixture.RestartApplicationAsync(cancellationToken);
         using var replay = await PostFirstConfirmationAsync(request, key, cancellationToken);
 
@@ -983,6 +990,7 @@ internal sealed class FixedCatalogCapability(
 
         return productIds.Select(productId => new OrderConfirmationCatalogProduct(
             productId,
+            productId.ToString("D"),
             price,
             isActive,
             isAvailable,

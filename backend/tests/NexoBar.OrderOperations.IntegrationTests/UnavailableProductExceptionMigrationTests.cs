@@ -11,6 +11,7 @@ public sealed class UnavailableProductExceptionMigrationTests(
 {
     private const string Previous = "20260911160042_AddAppliedPriceCorrection";
     private const string Current = "20260921120000_AddUnavailableProductException";
+    private const string Latest = "20260922160000_AddProductOperationalNameSnapshot";
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -41,6 +42,7 @@ public sealed class UnavailableProductExceptionMigrationTests(
             await fixture.MigrateOrderOperationsAsync(Previous, Token);
             await AssertColumnsAsync(exist: false);
             await fixture.MigrateOrderOperationsAsync(Current, Token);
+            await fixture.MigrateOrderOperationsAsync(Latest, Token);
             await AssertColumnsAsync(exist: true);
 
             await using var scope = fixture.Services.CreateAsyncScope();
@@ -60,7 +62,7 @@ public sealed class UnavailableProductExceptionMigrationTests(
         }
         finally
         {
-            await fixture.MigrateOrderOperationsAsync(Current, Token);
+            await fixture.MigrateOrderOperationsAsync(Latest, Token);
             await fixture.ResetAsync(Token);
         }
     }

@@ -285,7 +285,7 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
     }
 
     [Fact]
-    public async Task Delivery_uses_one_distinct_batch_and_current_name_for_inactive_Product()
+    public async Task Delivery_uses_confirmed_Product_name_without_a_live_Catalog_lookup()
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
@@ -310,6 +310,7 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
 
         await fixture.RenameProductAsync(product.Id, "Pizza vigente", token);
         await fixture.SetProductStateAsync(product.Id, false, false, token);
+        await fixture.SetProductStateAsync(product.Id, true, true, token);
         var observation = new ProductLookupObservation();
         await using var application = fixture.CreateApplicationWithProductLookupDecorator(
             services => new ObservingProductOperationalReferenceLookup(
@@ -322,13 +323,13 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
 
         Assert.Equal(2, response.Contents.Count);
         Assert.All(response.Contents,
-            content => Assert.Equal("Pizza vigente", content.ProductOperationalName));
-        Assert.Equal(1, observation.CallCount);
-        Assert.Equal([product.Id], observation.RequestedProductIds);
+            content => Assert.Equal("Pizza", content.ProductOperationalName));
+        Assert.Equal(0, observation.CallCount);
+        Assert.Empty(observation.RequestedProductIds);
     }
 
     [Fact]
-    public async Task Missing_Product_has_no_UUID_fallback_and_returns_technical_error()
+    public async Task Delivery_uses_confirmed_name_even_when_live_Catalog_reference_is_missing()
     {
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
@@ -349,11 +350,11 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
         using var response = await client.GetAsync(
             DeliveryUrl(confirmation.OperationalReference),
             token);
-        var body = await response.Content.ReadAsStringAsync(token);
-
-        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.Contains("order_operations.delivery.product_reference_inconsistent", body);
-        Assert.DoesNotContain(missingId.ToString("D"), body, StringComparison.OrdinalIgnoreCase);
+        response.EnsureSuccessStatusCode();
+        var content = Assert.Single((await response.Content.ReadFromJsonAsync<OrderDeliveryResponse>(token))!
+            .Contents);
+        Assert.Equal(missingId, content.ProductId);
+        Assert.Equal("Agua", content.ProductOperationalName);
     }
 
     [Fact]

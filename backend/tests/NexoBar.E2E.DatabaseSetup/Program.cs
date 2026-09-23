@@ -297,6 +297,7 @@ try
             incorporation.Id,
             1,
             authorizedProduct.Id,
+            authorizedProduct.OperationalName,
             2,
             true,
             7m,
@@ -305,6 +306,7 @@ try
             incorporation.Id,
             2,
             otherProduct.Id,
+            otherProduct.OperationalName,
             1,
             true,
             9m,
@@ -313,6 +315,7 @@ try
             incorporation.Id,
             3,
             directProduct.Id,
+            directProduct.OperationalName,
             2,
             false,
             5m,
@@ -358,6 +361,7 @@ try
         interventionIncorporation.Id,
         1,
         interventionProduct.Id,
+        interventionProduct.OperationalName,
         2,
         true,
         7m,
@@ -405,7 +409,8 @@ try
     orderOperations.Orders.Add(sseOrder);
     orderOperations.Incorporations.Add(sseIncorporation);
     orderOperations.IncorporationContents.Add(new IncorporationContent(
-        sseIncorporation.Id, 1, sseProduct.Id, 1, true, 7m, null));
+        sseIncorporation.Id, 1, sseProduct.Id, sseProduct.OperationalName,
+        1, true, 7m, null));
     orderOperations.PreparationWork.Add(new PreparationWork(
         Guid.CreateVersion7(), sseIncorporation.Id, 1, sseDestination.Id, 1));
     orderOperations.DeliveryStates.Add(new DeliveryState(sseIncorporation.Id, 1));

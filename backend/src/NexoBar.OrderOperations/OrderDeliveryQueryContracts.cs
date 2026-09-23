@@ -11,7 +11,7 @@ internal sealed record OrderDeliveryContentResponse(
     int IncorporationOrdinal,
     int ContentOrdinal,
     Guid ProductId,
-    string ProductOperationalName,
+    string? ProductOperationalName,
     string? Instruction,
     int TotalQuantity,
     bool RequiresPreparationAtConfirmation,

@@ -17,11 +17,13 @@ public sealed class ContentQuantityStateMigrationTests(OrderOperationsApiFixture
         var token = TestContext.Current.CancellationToken;
         await fixture.ResetAsync(token);
         await fixture.EnsureConfiguredTestContextAsync("legacy", token);
+        var productOne = await fixture.CreateProductAsync("Quantity legacy one", "10", token);
+        var productTwo = await fixture.CreateProductAsync("Quantity legacy two", "4", token);
         await fixture.MigrateOrderOperationsAsync(PreviousMigration, token);
         try
         {
             var incorporationId = Guid.CreateVersion7();
-            await SeedContentsAsync(incorporationId, token);
+            await SeedContentsAsync(incorporationId, productOne.Id, productTwo.Id, token);
             await fixture.MigrateOrderOperationsAsync(CurrentMigration, token);
 
             // Read only columns present at this historical migration.
@@ -55,7 +57,11 @@ public sealed class ContentQuantityStateMigrationTests(OrderOperationsApiFixture
         }
     }
 
-    private async Task SeedContentsAsync(Guid incorporationId, CancellationToken token)
+    private async Task SeedContentsAsync(
+        Guid incorporationId,
+        Guid productOne,
+        Guid productTwo,
+        CancellationToken token)
     {
         await using var connection = new NpgsqlConnection(fixture.ConnectionString);
         await connection.OpenAsync(token);
@@ -77,8 +83,8 @@ public sealed class ContentQuantityStateMigrationTests(OrderOperationsApiFixture
             """;
         command.Parameters.AddWithValue("order_id", Guid.CreateVersion7());
         command.Parameters.AddWithValue("incorporation_id", incorporationId);
-        command.Parameters.AddWithValue("product_one", Guid.CreateVersion7());
-        command.Parameters.AddWithValue("product_two", Guid.CreateVersion7());
+        command.Parameters.AddWithValue("product_one", productOne);
+        command.Parameters.AddWithValue("product_two", productTwo);
         await command.ExecuteNonQueryAsync(token);
     }
 

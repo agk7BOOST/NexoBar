@@ -1,15 +1,13 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using NexoBar.Catalog;
 using NexoBar.IdentitiesAndCapabilities;
 
 namespace NexoBar.OrderOperations;
 
 internal sealed class PreparationWorkQueryService(
     OrderOperationsDbContext dbContext,
-    IPreparationAuthorization preparationAuthorization,
-    IProductOperationalReferenceLookup productReferences)
+    IPreparationAuthorization preparationAuthorization)
 {
     internal async Task<PreparationWorkQueryResult> ListAsync(
         Guid preparationResponsibilityId,
@@ -69,6 +67,7 @@ internal sealed class PreparationWorkQueryService(
                 IncorporationOrdinal = incorporation.Ordinal,
                 work.ContentOrdinal,
                 content.ProductId,
+                content.ProductOperationalNameSnapshot,
                 content.Instruction,
                 work.TotalQuantity,
                 work.PendingQuantity,
@@ -99,20 +98,6 @@ internal sealed class PreparationWorkQueryService(
             return PreparationWorkQueryResult.StateInconsistent();
         }
 
-        var productIds = persisted.Select(work => work.ProductId).Distinct().ToArray();
-        var productNames = productIds.Length == 0
-            ? []
-            : await productReferences.ReadByIdsAsync(
-                productIds,
-                dbTransaction,
-                cancellationToken);
-        var namesById = productNames.ToDictionary(product => product.ProductId);
-        if (namesById.Count != productIds.Length ||
-            productIds.Any(productId => !namesById.ContainsKey(productId)))
-        {
-            return PreparationWorkQueryResult.ProductReferenceInconsistent();
-        }
-
         var response = persisted.Select(work => new PreparationWorkResponse(
             work.WorkId,
             work.PreparationResponsibilityId,
@@ -122,7 +107,7 @@ internal sealed class PreparationWorkQueryService(
             work.IncorporationOrdinal,
             work.ContentOrdinal,
             work.ProductId,
-            namesById[work.ProductId].OperationalName,
+            work.ProductOperationalNameSnapshot,
             work.Instruction,
             work.TotalQuantity,
             work.PendingQuantity,

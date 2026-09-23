@@ -207,6 +207,7 @@ public sealed class CatalogSecurityApiTests(CatalogApiFixture fixture)
         var reference = Assert.Single(await references.ReadByIdsAsync(
             [product.Id], transaction, token));
         Assert.Equal(7m, snapshot.Price);
+        Assert.Equal("Snapshot", snapshot.OperationalName);
         Assert.Equal(product.Id, reference.ProductId);
         Assert.Equal("Snapshot", reference.OperationalName);
     }

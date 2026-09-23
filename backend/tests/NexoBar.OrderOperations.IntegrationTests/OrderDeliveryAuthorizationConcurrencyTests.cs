@@ -1,7 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.Extensions.DependencyInjection;
-using NexoBar.Catalog;
 
 namespace NexoBar.OrderOperations.IntegrationTests;
 
@@ -33,23 +31,15 @@ public sealed class OrderDeliveryAuthorizationConcurrencyTests(
         confirmationResponse.EnsureSuccessStatusCode();
         var confirmation = Assert.IsType<FirstConfirmationResponse>(
             await confirmationResponse.Content.ReadFromJsonAsync<FirstConfirmationResponse>(token));
-        var lookupReached = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseLookup = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var application = fixture.CreateApplicationWithProductLookupDecorator(
-            services => new BlockingProductOperationalReferenceLookup(
-                new ProductOperationalReferenceLookup(
-                    services.GetRequiredService<CatalogDbContext>()),
-                lookupReached,
-                releaseLookup));
+        var barrier = new OrderOperationsReadBarrier();
+        await using var application = fixture.CreateApplicationWithOrderOperationsReadBarrier(barrier);
         var actor = await fixture.CreateDeliveryActorAsync(true, false, null, token);
         using var client = await fixture.LoginAsync(actor, token, application);
 
         var readTask = client.GetAsync(
             $"/api/order-operations/orders/{confirmation.OperationalReference}/delivery",
             token);
-        await lookupReached.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+        await barrier.Reached.WaitAsync(TimeSpan.FromSeconds(10), token);
         var revokeTask = fixture.RevokeOrderOperationsAssignmentAsync(actor.IdentityId, token);
         try
         {
@@ -59,7 +49,7 @@ public sealed class OrderDeliveryAuthorizationConcurrencyTests(
                 token));
             Assert.False(revokeTask.IsCompleted);
 
-            releaseLookup.TrySetResult();
+            barrier.Release();
             using var response = await readTask;
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             await revokeTask;
@@ -71,7 +61,7 @@ public sealed class OrderDeliveryAuthorizationConcurrencyTests(
         }
         finally
         {
-            releaseLookup.TrySetResult();
+            barrier.Release();
             await ObserveAsync(readTask);
             await ObserveAsync(revokeTask);
         }

@@ -855,6 +855,10 @@ internal sealed class OrderOperationsDbContext(
                     table.HasCheckConstraint(
                         "CK_order_operations_incorporation_contents_ordinal_positive",
                         "content_ordinal > 0");
+                    table.HasCheckConstraint(
+                        "CK_incorporation_contents_product_name_snapshot_not_blank",
+                        "product_operational_name_snapshot IS NULL OR " +
+                        "length(btrim(product_operational_name_snapshot)) > 0");
                 });
             builder.HasKey(content => new
             {
@@ -868,6 +872,9 @@ internal sealed class OrderOperationsDbContext(
                 .HasColumnName("content_ordinal").ValueGeneratedNever();
             builder.Property(content => content.ProductId)
                 .HasColumnName("product_id").ValueGeneratedNever();
+            builder.Property(content => content.ProductOperationalNameSnapshot)
+                .HasColumnName("product_operational_name_snapshot")
+                .HasColumnType("text");
             builder.Property(content => content.Quantity)
                 .HasColumnName("quantity").IsRequired();
             builder.Property(content => content.RequiresPreparationAtConfirmation)

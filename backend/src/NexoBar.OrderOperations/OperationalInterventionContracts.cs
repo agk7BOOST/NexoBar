@@ -11,7 +11,7 @@ public sealed record OperationalInterventionResponse(
 
 public sealed record OperationalInterventionTargetResponse(
     Guid OrderId, Guid WorkId, Guid IncorporationId, int ContentOrdinal,
-    Guid ProductId, string ProductOperationalName, string? Instruction,
+    Guid ProductId, string? ProductOperationalName, string? Instruction,
     int ConfirmedQuantity, int RemovedByCorrectionQuantity, int CancelledQuantity, int FulfillmentQuantity,
     int PendingQuantity, int InPreparationQuantity, int ReadyQuantity, int TotalQuantity,
     int DeliveredQuantity, bool IsFrozen, int IntervenableInPreparationQuantity, int IntervenableReadyQuantity);

@@ -50,6 +50,10 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
             item.ProductId == firstProduct.Id && item.Quantity == 2 && item.AppliedPrice == "10");
         Assert.Contains(confirmed.Incorporation.Items, item =>
             item.ProductId == secondProduct.Id && item.Quantity == 3 && item.AppliedPrice == "20");
+        Assert.Equal("Agua", Assert.Single(confirmed.Incorporation.Items,
+            item => item.ProductId == firstProduct.Id).ProductOperationalNameSnapshot);
+        Assert.Equal("Soda", Assert.Single(confirmed.Incorporation.Items,
+            item => item.ProductId == secondProduct.Id).ProductOperationalNameSnapshot);
 
         await using var verificationScope = fixture.Services.CreateAsyncScope();
         var dbContext = verificationScope.ServiceProvider
@@ -114,6 +118,37 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
                 Assert.Equal(2, incorporation.Ordinal);
                 Assert.Equal("12", Assert.Single(incorporation.Items).AppliedPrice);
             });
+    }
+
+    [Fact]
+    public async Task Product_rename_preserves_confirmed_names_and_new_confirmation_uses_new_name()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        var product = await fixture.CreateProductAsync("Agua", "10", token);
+        var first = await CreateOrderAsync(product.Id, 1, "Mesa 7", token);
+
+        await fixture.RenameProductDurablyAsync(product.Id, "Agua", "Agua mineral", token);
+        using var subsequentResponse = await PostSubsequentAsync(
+            first.OperationalReference,
+            Request((product.Id, 2)),
+            NewIdempotencyKey(),
+            token);
+        subsequentResponse.EnsureSuccessStatusCode();
+        var subsequent = await ReadSubsequentAsync(subsequentResponse, token);
+        Assert.Equal("Agua mineral", Assert.Single(subsequent.Incorporation.Items)
+            .ProductOperationalNameSnapshot);
+
+        using var activeResponse = await fixture.OrderOperationsClient.GetAsync(
+            $"/api/order-operations/orders/{first.OperationalReference}", token);
+        activeResponse.EnsureSuccessStatusCode();
+        var active = Assert.IsType<OrderQueryResponse>(
+            await activeResponse.Content.ReadFromJsonAsync<OrderQueryResponse>(token));
+        Assert.Collection(active.Incorporations,
+            incorporation => Assert.Equal("Agua", Assert.Single(incorporation.Items)
+                .ProductOperationalNameSnapshot),
+            incorporation => Assert.Equal("Agua mineral", Assert.Single(incorporation.Items)
+                .ProductOperationalNameSnapshot));
     }
 
     [Fact]
@@ -307,6 +342,8 @@ public sealed class SubsequentConfirmationApiTests(OrderOperationsApiFixture fix
         using var confirmation = await PostSubsequentAsync(
             first.OperationalReference, request, key, cancellationToken);
         var originalBody = await confirmation.Content.ReadAsStringAsync(cancellationToken);
+        await fixture.RenameProductDurablyAsync(
+            product.Id, "Agua", "Agua mineral", cancellationToken);
         using var priceChange = await PostPriceChangeAsync(
             product.Id, "10", "12", cancellationToken);
         priceChange.EnsureSuccessStatusCode();
