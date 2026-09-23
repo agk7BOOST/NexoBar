@@ -455,6 +455,31 @@ namespace NexoBar.Catalog.Migrations
                         });
                 });
 
+            modelBuilder.Entity("NexoBar.Catalog.ProductDeleteCommand", b =>
+                {
+                    b.Property<Guid>("IdempotencyKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<Guid>("ActorIdentityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_identity_id");
+
+                    b.Property<string>("CommandKind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("command_kind");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.HasKey("IdempotencyKey")
+                        .HasName("PK_catalog_product_delete_commands");
+
+                    b.ToTable("product_delete_commands", "catalog");
+                });
+
             modelBuilder.Entity("NexoBar.Catalog.ProductAvailabilityChangeCommand", b =>
                 {
                     b.Property<Guid>("IdempotencyKey")
@@ -516,85 +541,6 @@ namespace NexoBar.Catalog.Migrations
                         .HasConstraintName("FK_catalog_products_groups");
                 });
 
-            modelBuilder.Entity("NexoBar.Catalog.ProductCreationCommand", b =>
-                {
-                    b.HasOne("NexoBar.Catalog.Product", null)
-                        .WithMany()
-                        .HasForeignKey("ResultProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_catalog_product_creation_commands_products");
-                });
-
-            modelBuilder.Entity("NexoBar.Catalog.ProductGroupChangeCommand", b =>
-                {
-                    b.HasOne("NexoBar.Catalog.Product", null)
-                        .WithMany()
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_catalog_product_group_change_commands_products");
-                });
-
-            modelBuilder.Entity("NexoBar.Catalog.ProductOperationalNameChangeCommand", b =>
-                {
-                    b.HasOne("NexoBar.Catalog.Product", null)
-                        .WithMany()
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_catalog_product_operational_name_change_commands_products");
-                });
-
-            modelBuilder.Entity("NexoBar.Catalog.ProductPreparationConfigurationChangeCommand", b =>
-                {
-                    b.HasOne("NexoBar.Catalog.Product", null)
-                        .WithMany()
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_catalog_product_prep_config_cmd_products");
-                });
-
-            modelBuilder.Entity("NexoBar.Catalog.ProductPriceChangeCommand", b =>
-                {
-                    b.HasOne("NexoBar.Catalog.Product", null)
-                        .WithMany()
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_catalog_product_price_change_commands_products");
-                });
-
-            modelBuilder.Entity("NexoBar.Catalog.ProductReactivateCommand", b =>
-                {
-                    b.HasOne("NexoBar.Catalog.Product", null)
-                        .WithMany()
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_catalog_product_reactivate_commands_products");
-                });
-
-            modelBuilder.Entity("NexoBar.Catalog.ProductRetireCommand", b =>
-                {
-                    b.HasOne("NexoBar.Catalog.Product", null)
-                        .WithMany()
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_catalog_product_retire_commands_products");
-                });
-
-            modelBuilder.Entity("NexoBar.Catalog.ProductAvailabilityChangeCommand", b =>
-                {
-                    b.HasOne("NexoBar.Catalog.Product", null)
-                        .WithMany()
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_catalog_product_availability_change_commands_products");
-                });
 #pragma warning restore 612, 618
         }
     }

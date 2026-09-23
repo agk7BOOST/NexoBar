@@ -2,6 +2,8 @@
 
 ## Colaboración `OrderOperations -> Catalog` y concurrencia
 
+La operación inversa estrecha de Product Delete usa `IConfirmedProductParticipation`, implementada por OrderOperations y consumida por Catalog sin dependencia de storage. Catalog bloquea la fila Product `FOR UPDATE`, consulta participación confirmada en `IncorporationContent` sobre su misma conexión/transacción y borra sólo si no existe. El `FOR SHARE` de Confirmation y ese `FOR UPDATE` serializan ambos resultados: Confirmación primero implica rechazo de Delete; Delete primero implica rechazo de la revalidación de Confirmation. La consulta no usa PendingComposition ni Estado activo del Order.
+
 - `IOrderConfirmationCatalog` es la capacidad pública mínima de Confirmación. `Catalog` conserva la propiedad de su Estado; `OrderOperations` no accede a `CatalogDbContext` ni a tablas `catalog.*`.
 - Su snapshot de `Product` incluye `ProductId`, `Price`, `IsActive`, `IsAvailable`, `RequiresPreparation` y `PreparationResponsibilityId`.
 - Todos esos campos se leen bajo el mismo `FOR SHARE`, dentro de la transacción modular existente. `Catalog` reutiliza la conexión y transacción PostgreSQL de `OrderOperations`.

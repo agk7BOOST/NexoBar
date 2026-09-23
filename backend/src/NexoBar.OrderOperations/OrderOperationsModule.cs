@@ -27,6 +27,7 @@ public static partial class OrderOperationsModule
                 npgsqlOptions => npgsqlOptions.MigrationsHistoryTable(
                     "__ef_migrations_history",
                     "order_operations")));
+        services.AddScoped<NexoBar.Catalog.IConfirmedProductParticipation, ConfirmedProductParticipation>();
         services.AddPreparationDestinationInvalidationPublisher();
         services.AddOrderInvalidationPublisher();
         services.AddScoped<FirstConfirmationService>();

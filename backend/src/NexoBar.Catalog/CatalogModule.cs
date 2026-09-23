@@ -30,6 +30,7 @@ public static class CatalogModule
                     "catalog")));
         services.AddScoped<CatalogService>();
         services.AddScoped<CatalogLifecycleService>();
+        services.AddScoped<ProductDeleteService>();
         services.AddScoped<IOrderConfirmationCatalog, OrderConfirmationCatalog>();
         services.AddScoped<IOrderAppliedPriceCatalog, OrderConfirmationCatalog>();
         services.AddScoped<IProductOperationalReferenceLookup,
@@ -96,6 +97,14 @@ public static class CatalogModule
             .Produces<ProductLifecycleResponse>().ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized).ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+        group.MapDelete("/{productId:guid}", DeleteProductAsync)
+            .WithName("DeleteCatalogProduct")
+            .Produces<ProductDeleteResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         group.MapPost("/{productId:guid}/availability-changes", ChangeProductAvailabilityAsync)
             .WithName("ChangeCatalogProductAvailability")
             .Accepts<ChangeProductAvailabilityRequest>("application/json")
@@ -337,6 +346,31 @@ public static class CatalogModule
         if (command.Failure is not null) return command.Failure;
         var result = await catalog.ReactivateAsync(command.Key!.Value, productId, cancellationToken);
         return LifecycleResult(result, productId, "reactivate");
+    }
+
+    private static async Task<IResult> DeleteProductAsync(
+        Guid productId, [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        HttpContext httpContext, IAntiforgery antiforgery, ProductDeleteService catalog,
+        CancellationToken cancellationToken)
+    {
+        var command = await ValidateCatalogCommandAsync(
+            idempotencyKey, httpContext, antiforgery, "catalog.product.delete", cancellationToken);
+        if (command.Failure is not null) return command.Failure;
+        var result = await catalog.DeleteAsync(command.Key!.Value, productId, cancellationToken);
+        return result.Outcome switch
+        {
+            ProductDeleteOutcome.Deleted => Results.Ok(new ProductDeleteResponse(productId)),
+            ProductDeleteOutcome.NotFound => ProductNotFound(productId),
+            ProductDeleteOutcome.ConfirmedParticipation => Problem(
+                StatusCodes.Status409Conflict, "Product has confirmed Order history",
+                "This Product participated in a confirmed Order and cannot be deleted. Retire it instead.",
+                "catalog.product.delete.confirmed_participation", productId),
+            ProductDeleteOutcome.IdempotencyConflict =>
+                IdempotencyConflict("catalog.product.delete.idempotency_key_conflict"),
+            ProductDeleteOutcome.AuthenticationRequired => AuthenticationRequired(),
+            ProductDeleteOutcome.Forbidden => CatalogConfigurationRequired(),
+            _ => throw new UnreachableException()
+        };
     }
 
     private static IResult LifecycleResult(ProductLifecycleCommandResult result, Guid productId, string command) => result.Outcome switch

@@ -50,6 +50,10 @@ export interface ProductLifecycleResponse {
   isAvailable: boolean;
 }
 
+export interface ProductDeleteResponse {
+  productId: string;
+}
+
 /** Catalog-owned narrow lookup used only by Catalog configuration. */
 export interface PreparationResponsibilityOption {
   id: string;
@@ -245,6 +249,26 @@ export function reactivateProduct(
     idempotencyKey,
     antiforgeryToken,
   );
+}
+
+export async function deleteProduct(
+  productId: string,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<ProductDeleteResponse> {
+  const response = await send(
+    `/api/catalog/products/${encodeURIComponent(productId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        "Idempotency-Key": idempotencyKey,
+        "X-NexoBar-CSRF": antiforgeryToken,
+      },
+      credentials: "same-origin",
+    },
+  );
+  if (!response.ok) throw new CatalogProblemError(await readProblem(response));
+  return (await response.json()) as ProductDeleteResponse;
 }
 
 export async function listOperationalProducts(): Promise<OperationalProduct[]> {

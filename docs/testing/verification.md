@@ -104,6 +104,12 @@ MVP-FC-CAT-I2 frontend evidence:
 - Exact application typecheck: `npx tsc -p tsconfig.app.json --noEmit` — **PASS**.
 - The broader `tsc -b` command is not claimed clean; it retains pre-existing unused `Browser`/`BrowserContext` imports in E2E files.
 
+## MVP-FC-CAT-PDEL — eligible Product Delete
+
+RF-CAT-018 queda verificado sobre PostgreSQL real: `ProductDeleteApiTests` **9/9** cubre Delete activo/retirado, nombre reutilizable, participación confirmada, Content cancelado, Closure, Complete Cancellation, autoridad e Identity inactiva, replay exacto tras ausencia de State, conflicto de intención, Product desconocido, PendingComposition no confirmada y Confirmation posterior rechazada. `ProductDeleteConcurrencyTests` **2/2** fuerza ambos órdenes reales entre Delete y First Confirmation y comprueba que no pueden confirmar ambos. `ProductDeleteMigrationTests` **1/1** comprueba Up/Down PostgreSQL, ocho FK técnicas retiradas/restauradas y `HasPendingModelChanges=false`.
+
+La suite Catalog se ejecutó una vez: **85/85 passed**. El foco existente de First/Subsequent Confirmation de OrderOperations pasó **55/55**. Frontend enfocado (`CatalogPanel`, `catalogClient`, gate `App`) pasó **62/62**; `npx tsc -p tsconfig.app.json --noEmit` **PASS**. El único spec Playwright dirigido `product-delete.spec.ts` pasó **2/2** tras corregir la selección de Contexto configurado del escenario; incluye nombre reutilizable y conflicto por confirmación real. El harness aplicó migraciones canónicas con `HasPendingModelChanges=false` en los cinco modelos. `git diff --check` **PASS**.
+
 
 ## MVP-FC-INV-MC — Inventory Movement Correction
 

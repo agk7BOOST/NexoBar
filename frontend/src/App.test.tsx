@@ -23,6 +23,7 @@ vi.mock("./identity/sessionClient.ts", async (importOriginal) => {
 vi.mock("./catalog/CatalogPanel.tsx", () => ({
   CatalogPanel: ({ onUnauthorized }: { onUnauthorized: () => void }) => (
     <section aria-label="Catalog administrativo">
+      <button type="button">Eliminar definitivamente Producto</button>
       <p>Editor de preparación de producto</p>
       <button type="button" onClick={onUnauthorized}>
         Retirar Catalog
@@ -210,6 +211,17 @@ describe("App capability-aware administrative mounting", () => {
     render(<App />);
 
     expect(await screen.findByLabelText("Catalog administrativo")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Eliminar definitivamente Producto" })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["GeneralConfiguration"], ["OrderOperationsAndBasicClosure"],
+    ["OperationalIntervention"], ["Preparation"], ["InventoryConfiguration"],
+  ])("does not expose Product Delete to %s alone", async (responsibility) => {
+    getCurrentIdentityMock.mockResolvedValueOnce(identity([responsibility]));
+    render(<App />);
+    await screen.findByRole("button", { name: "Salir" });
+    expect(screen.queryByRole("button", { name: "Eliminar definitivamente Producto" })).not.toBeInTheDocument();
   });
 
   it("does not mount or preload General Configuration without GeneralConfiguration", async () => {

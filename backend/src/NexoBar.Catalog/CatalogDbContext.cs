@@ -7,6 +7,8 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
 {
     internal DbSet<Product> Products => Set<Product>();
 
+    internal DbSet<ProductDeleteCommand> ProductDeleteCommands => Set<ProductDeleteCommand>();
+
     internal DbSet<CatalogGroup> Groups => Set<CatalogGroup>();
 
     internal DbSet<ProductCreationCommand> ProductCreationCommands =>
@@ -30,6 +32,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
     {
         modelBuilder.HasDefaultSchema("catalog");
         modelBuilder.ApplyConfiguration(new ProductConfiguration());
+        modelBuilder.ApplyConfiguration(new ProductDeleteCommandConfiguration());
         modelBuilder.ApplyConfiguration(new CatalogGroupConfiguration());
         modelBuilder.ApplyConfiguration(new ProductCreationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new ProductPriceChangeCommandConfiguration());
@@ -97,6 +100,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
             builder.Property(command => command.ProductId)
                 .HasColumnName("product_id")
                 .ValueGeneratedNever();
+            builder.HasIndex(command => command.ProductId);
 
             builder.Property(command => command.IntentExpectedCurrentPrice)
                 .HasColumnName("intent_expected_current_price")
@@ -113,11 +117,6 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
                 .HasColumnType("numeric")
                 .IsRequired();
 
-            builder.HasOne<Product>()
-                .WithMany()
-                .HasForeignKey(command => command.ProductId)
-                .HasConstraintName("FK_catalog_product_price_change_commands_products")
-                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 
@@ -213,7 +212,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
     {
         public void Configure(EntityTypeBuilder<ProductGroupChangeCommand> builder)
         {
-            ConfigureProductCommand(builder, "product_group_change_commands", "PK_catalog_product_group_change_commands", "FK_catalog_product_group_change_commands_products");
+            ConfigureProductCommand(builder, "product_group_change_commands", "PK_catalog_product_group_change_commands");
             builder.Property(command => command.IntentExpectedGroupId).HasColumnName("intent_expected_group_id").ValueGeneratedNever();
             builder.Property(command => command.IntentNewGroupId).HasColumnName("intent_new_group_id").ValueGeneratedNever();
             builder.Property(command => command.ResultGroupId).HasColumnName("result_group_id").ValueGeneratedNever();
@@ -227,7 +226,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
     {
         public void Configure(EntityTypeBuilder<ProductOperationalNameChangeCommand> builder)
         {
-            ConfigureProductCommand(builder, "product_operational_name_change_commands", "PK_catalog_product_operational_name_change_commands", "FK_catalog_product_operational_name_change_commands_products");
+            ConfigureProductCommand(builder, "product_operational_name_change_commands", "PK_catalog_product_operational_name_change_commands");
             builder.Property(command => command.IntentExpectedOperationalName).HasColumnName("intent_expected_operational_name").HasColumnType("text").IsRequired();
             builder.Property(command => command.IntentNewOperationalName).HasColumnName("intent_new_operational_name").HasColumnType("text").IsRequired();
             builder.Property(command => command.ResultOperationalName).HasColumnName("result_operational_name").HasColumnType("text").IsRequired();
@@ -238,7 +237,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
     {
         public void Configure(EntityTypeBuilder<ProductRetireCommand> builder)
         {
-            ConfigureProductCommand(builder, "product_retire_commands", "PK_catalog_product_retire_commands", "FK_catalog_product_retire_commands_products");
+            ConfigureProductCommand(builder, "product_retire_commands", "PK_catalog_product_retire_commands");
             builder.Property(command => command.ResultIsActive).HasColumnName("result_is_active").IsRequired();
             builder.Property(command => command.ResultIsAvailable).HasColumnName("result_is_available").IsRequired();
             builder.ToTable("product_retire_commands", table => table.HasCheckConstraint(
@@ -250,7 +249,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
     {
         public void Configure(EntityTypeBuilder<ProductReactivateCommand> builder)
         {
-            ConfigureProductCommand(builder, "product_reactivate_commands", "PK_catalog_product_reactivate_commands", "FK_catalog_product_reactivate_commands_products");
+            ConfigureProductCommand(builder, "product_reactivate_commands", "PK_catalog_product_reactivate_commands");
             builder.Property(command => command.ResultIsActive).HasColumnName("result_is_active").IsRequired();
             builder.Property(command => command.ResultIsAvailable).HasColumnName("result_is_available").IsRequired();
             builder.ToTable("product_reactivate_commands", table => table.HasCheckConstraint(
@@ -266,8 +265,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
             ConfigureProductCommand(
                 builder,
                 "product_availability_change_commands",
-                "PK_catalog_product_availability_change_commands",
-                "FK_catalog_product_availability_change_commands_products");
+                "PK_catalog_product_availability_change_commands");
             builder.Property(command => command.IntentExpectedCurrentAvailability)
                 .HasColumnName("intent_expected_current_availability").IsRequired();
             builder.Property(command => command.IntentNewAvailability)
@@ -281,7 +279,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
         }
     }
 
-    private static void ConfigureProductCommand<T>(EntityTypeBuilder<T> builder, string table, string primaryKey, string foreignKey)
+    private static void ConfigureProductCommand<T>(EntityTypeBuilder<T> builder, string table, string primaryKey)
         where T : class
     {
         builder.ToTable(table);
@@ -290,7 +288,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
         builder.Property<Guid?>("ActorIdentityId").HasColumnName("actor_identity_id");
         builder.Property<CatalogCommandKind>("CommandKind").HasColumnName("command_kind").HasConversion<string>().HasColumnType("text").IsRequired();
         builder.Property<Guid>("ProductId").HasColumnName("product_id").ValueGeneratedNever();
-        builder.HasOne<Product>().WithMany().HasForeignKey("ProductId").HasConstraintName(foreignKey).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex("ProductId");
     }
 
     private sealed class ProductPreparationConfigurationChangeCommandConfiguration :
@@ -329,11 +327,6 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
             builder.HasIndex(command => command.ProductId)
                 .HasDatabaseName(
                     "IX_catalog_product_prep_config_cmd_product");
-            builder.HasOne<Product>().WithMany()
-                .HasForeignKey(command => command.ProductId)
-                .HasConstraintName(
-                    "FK_catalog_product_prep_config_cmd_products")
-                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 
@@ -397,11 +390,25 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
                 .HasDatabaseName("UX_catalog_product_creation_commands_result_product_id")
                 .IsUnique();
 
-            builder.HasOne<Product>()
-                .WithMany()
-                .HasForeignKey(command => command.ResultProductId)
-                .HasConstraintName("FK_catalog_product_creation_commands_products")
-                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+
+    private sealed class ProductDeleteCommandConfiguration : IEntityTypeConfiguration<ProductDeleteCommand>
+    {
+        public void Configure(EntityTypeBuilder<ProductDeleteCommand> builder)
+        {
+            builder.ToTable("product_delete_commands");
+            builder.HasKey(command => command.IdempotencyKey)
+                .HasName("PK_catalog_product_delete_commands");
+            builder.Property(command => command.IdempotencyKey)
+                .HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(command => command.ActorIdentityId)
+                .HasColumnName("actor_identity_id").IsRequired();
+            builder.Property(command => command.ProductId)
+                .HasColumnName("product_id").ValueGeneratedNever();
+            builder.Property(command => command.CommandKind)
+                .HasColumnName("command_kind").HasConversion<string>()
+                .HasColumnType("text").IsRequired();
         }
     }
 }

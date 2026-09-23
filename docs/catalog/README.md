@@ -1,5 +1,17 @@
 # Catalog
 
+## MVP-FC-CAT-PDEL — eligible Product Delete: CLOSED
+
+RF-CAT-018 permite `DELETE /api/catalog/products/{productId}` únicamente cuando el Product nunca participó en un Order confirmado. Un Product activo o retirado puede ser elegible sin Retire previo. Delete elimina su fila de Estado actual de Catalog, incluido nombre, precio, Group asociado, Availability, configuración de Preparation y lifecycle; no elimina el Group, modifica Inventory ni Orders, ni reescribe Composition. El nombre operacional vuelve a estar disponible según la unicidad ordinaria del Estado vigente. El Product nuevo tiene otra identidad.
+
+La autoridad para un comando nuevo es `CatalogConfiguration`, además de Session utilizable, Identity activa, antiforgery y actor obtenido en servidor. `GeneralConfiguration` por sí sola y las capacidades operacionales no autorizan Delete. El cliente no envía elegibilidad ni referencias de Order. `catalog.product.delete.confirmed_participation` responde `409` cuando existe participación confirmada; `catalog.product.not_found` responde `404` para un Product desconocido. Retire permanece como operación distinta y aplicable al Product con Historia confirmada.
+
+OrderOperations posee el hecho de participación: la capacidad en proceso `IConfirmedProductParticipation` consulta `IncorporationContent` durable dentro de la misma transacción PostgreSQL de Catalog. No cuentan creación, cambios administrativos ni Composition sin confirmar. La participación sigue existiendo tras corrección o cancelación de Content, Complete Cancellation o Closure. El bloqueo `FOR UPDATE` de la fila Product en Delete es incompatible con el `FOR SHARE` que usa First/Subsequent Confirmation: si Confirmation confirma primero, Delete consulta la participación comprometida y rechaza; si Delete confirma primero, Confirmation revalida el Product ausente y rechaza. Ambas no pueden confirmar para el mismo Product.
+
+El comando Delete guarda actor, Product e intención en `catalog.product_delete_commands` dentro de la misma transacción que borra Estado. El replay exacto devuelve el Product ID original aunque la fila ya no exista; misma key con otro actor o Product produce conflicto. La migración Catalog `20260923120000_AddEligibleProductDelete` crea ese registro y suelta las FK desde comandos durables previos hacia `catalog.products` para preservar replay técnico después del borrado. El Down restablece las FK sólo si no hay comandos que referencien Products ya borrados; no destruye Historia técnica para forzar rollback.
+
+La UI de CatalogConfiguration ofrece «Eliminar definitivamente» con confirmación y consecuencia explícita, aparte de «Retirar». La autoridad decide elegibilidad al ejecutar el comando, sin consultas históricas por cada fila. El conflicto guía hacia Retire sin ejecutarlo automáticamente. Un resultado de red incierto conserva key, Product y antiforgery para reintento exacto; una eliminación confirmada recarga la lista desde la autoridad.
+
 ## MVP-FC-CAT — Catalog Structure and Product Lifecycle: CLOSED
 
 El bloque de estructura de Catalog y lifecycle de Product esta cerrado. La evidencia de implementacion es MVP-FC-CAT-I1 (backend), MVP-FC-CAT-I2 (frontend) y MVP-FC-CAT-I3 (E2E real sobre PostgreSQL).

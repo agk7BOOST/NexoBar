@@ -7,6 +7,7 @@ import {
   changeProductGroup,
   changeProductOperationalName,
   createProduct,
+  deleteProduct,
   createGroup,
   listGroups,
   reactivateProduct,
@@ -95,6 +96,13 @@ interface ProductLifecycleIntention {
   productId: string;
   operationalName: string;
   action: "retire" | "reactivate";
+  idempotencyKey: string;
+  antiforgeryToken: string;
+}
+
+interface ProductDeleteIntention {
+  productId: string;
+  operationalName: string;
   idempotencyKey: string;
   antiforgeryToken: string;
 }
@@ -285,6 +293,10 @@ export function CatalogPanel({
   const [uncertainLifecycle, setUncertainLifecycle] =
     useState<ProductLifecycleIntention | null>(null);
   const [isChangingLifecycle, setIsChangingLifecycle] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState<Product | null>(null);
+  const [uncertainDelete, setUncertainDelete] = useState<ProductDeleteIntention | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteNotice, setDeleteNotice] = useState<Notice | null>(null);
   const [isChangingGroup, setIsChangingGroup] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
@@ -866,6 +878,43 @@ export function CatalogPanel({
     await submitLifecycle({ productId: product.id, operationalName: product.operationalName, action, idempotencyKey: crypto.randomUUID(), antiforgeryToken });
   }
 
+  async function submitDelete(intention: ProductDeleteIntention) {
+    setDeleteNotice(null);
+    setIsDeleting(true);
+    try {
+      await deleteProduct(intention.productId, intention.idempotencyKey, intention.antiforgeryToken);
+      setUncertainDelete(null);
+      setDeleteCandidate(null);
+      setDeleteNotice({ kind: "success", message: "Producto eliminado definitivamente del Catálogo." });
+      await reloadProducts();
+    } catch (error) {
+      if (error instanceof CatalogProblemError) {
+        if (error.problem.status === 401) { onUnauthorized(); return; }
+        if (error.problem.status === 403) { setIsForbidden(true); return; }
+        setUncertainDelete(null);
+        setDeleteNotice({
+          kind: "functional-error",
+          message: error.problem.code === "catalog.product.delete.confirmed_participation"
+            ? "El Producto no puede eliminarse porque participó en un Pedido confirmado. Podés retirarlo por separado."
+            : error.problem.code === "catalog.product.not_found"
+              ? "El Producto ya no existe en el Catálogo."
+              : "No se pudo eliminar el Producto.",
+        });
+      } else {
+        setUncertainDelete(intention);
+        setDeleteNotice({ kind: "uncertain", message: "Resultado de eliminación no confirmado. Reintentá con la misma identidad." });
+      }
+    } finally { setIsDeleting(false); }
+  }
+
+  async function handleDelete(product: Product) {
+    if (isDeleting || uncertainDelete !== null) return;
+    const antiforgeryToken = await prepareMutation(setDeleteNotice);
+    if (antiforgeryToken === null) return;
+    await submitDelete({ productId: product.id, operationalName: product.operationalName,
+      idempotencyKey: crypto.randomUUID(), antiforgeryToken });
+  }
+
   function preparationDestinationLabel(
     preparationResponsibilityId: string | null,
   ): string {
@@ -1034,6 +1083,7 @@ export function CatalogPanel({
         {groupNoticeForProduct && <p className={`notice notice--${groupNoticeForProduct.kind}`} role="status">{groupNoticeForProduct.message}</p>}
         {renameNotice && <p className={`notice notice--${renameNotice.kind}`} role="status">{renameNotice.message}</p>}
         {lifecycleNotice && <p className={`notice notice--${lifecycleNotice.kind}`} role="status">{lifecycleNotice.message}</p>}
+        {deleteNotice && <p className={`notice notice--${deleteNotice.kind}`} role="status">{deleteNotice.message}</p>}
 
         {isPreparationResponsibilityOptionsLoading && (
           <p>Cargando responsabilidades de preparación…</p>
@@ -1223,6 +1273,12 @@ export function CatalogPanel({
                       ) : (
                         <button className="secondary-button" type="button" onClick={() => void handleLifecycle(product, "reactivate")} disabled={isChangingLifecycle || uncertainLifecycle !== null} aria-label={`Reactivar ${product.operationalName}`}>Reactivar</button>
                       )}
+                      <button type="button" className="secondary-button"
+                        onClick={() => setDeleteCandidate(product)}
+                        disabled={isDeleting || uncertainDelete !== null}
+                        aria-label={`Eliminar definitivamente ${product.operationalName}`}>
+                        Eliminar definitivamente
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1439,6 +1495,20 @@ export function CatalogPanel({
               <button type="button" onClick={() => void submitLifecycle(uncertainLifecycle)} disabled={isChangingLifecycle}>Reintentar misma acción</button>
               <button className="secondary-button" type="button" onClick={() => setUncertainLifecycle(null)} disabled={isChangingLifecycle}>Descartar acción incierta</button>
             </div>
+          </div>
+        )}
+        {deleteCandidate && uncertainDelete === null && (
+          <div role="alertdialog" aria-label="Confirmar eliminación definitiva de Producto">
+            <p>Eliminar definitivamente {deleteCandidate.operationalName} quita su configuración del Catálogo. Sólo es posible si nunca participó en un Pedido confirmado. Esta acción no se puede deshacer.</p>
+            <button type="button" disabled={isDeleting} onClick={() => void handleDelete(deleteCandidate)}>Confirmar eliminación definitiva</button>
+            <button type="button" className="secondary-button" disabled={isDeleting} onClick={() => setDeleteCandidate(null)}>Cancelar</button>
+          </div>
+        )}
+        {uncertainDelete && (
+          <div className="uncertain-intention" role="region" aria-label="Eliminación con resultado no confirmado">
+            <p>La eliminación de {uncertainDelete.operationalName} tiene resultado incierto. El reintento usa la misma identidad y token.</p>
+            <button type="button" disabled={isDeleting} onClick={() => void submitDelete(uncertainDelete)}>Reintentar misma eliminación</button>
+            <button type="button" className="secondary-button" disabled={isDeleting} onClick={() => { setUncertainDelete(null); setDeleteCandidate(null); }}>Descartar intención incierta</button>
           </div>
         )}
       </section>

@@ -99,6 +99,7 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 order_operations.incorporations,
                 order_operations.orders,
                 catalog.product_availability_change_commands,
+                catalog.product_delete_commands,
                 catalog.product_reactivate_commands,
                 catalog.product_retire_commands,
                 catalog.product_operational_name_change_commands,
@@ -1363,6 +1364,15 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IOrderConfirmationCatalog>();
+                services.AddScoped(factory);
+            }));
+
+    internal WebApplicationFactory<Program> CreateApplicationWithParticipationDecorator(
+        Func<IServiceProvider, IConfirmedProductParticipation> factory) =>
+        CreateApplication(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IConfirmedProductParticipation>();
                 services.AddScoped(factory);
             }));
 

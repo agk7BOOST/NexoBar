@@ -39,6 +39,7 @@ internal sealed record ChangeProductOperationalNameRequest(
 internal sealed record ProductOperationalNameResponse(Guid ProductId, string OperationalName);
 
 internal sealed record ProductLifecycleResponse(Guid ProductId, bool IsActive, bool IsAvailable);
+internal sealed record ProductDeleteResponse(Guid ProductId);
 
 internal sealed record AvailabilityAdministrationProductResponse(
     Guid Id,

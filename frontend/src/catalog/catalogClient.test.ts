@@ -8,6 +8,7 @@ import {
   changeProductOperationalName,
   createGroup,
   createProduct,
+  deleteProduct,
   listGroups,
   listOperationalProducts,
   listProducts,
@@ -94,6 +95,16 @@ describe("Catalog group and lifecycle commands", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("sends definitive Delete with the durable command key and antiforgery", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ productId: "product-1" }), { status: 200 }));
+    await expect(deleteProduct("product-1", "delete-key", "csrf")).resolves.toEqual({ productId: "product-1" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/catalog/products/product-1", {
+      method: "DELETE",
+      headers: { "Idempotency-Key": "delete-key", "X-NexoBar-CSRF": "csrf" },
+      credentials: "same-origin",
+    });
   });
 
   it("sends Group creation and nullable Group change exactly", async () => {
