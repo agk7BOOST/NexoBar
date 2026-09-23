@@ -402,6 +402,32 @@ namespace NexoBar.Inventory.Migrations
                         });
                 });
 
+            modelBuilder.Entity("NexoBar.Inventory.InventoryMovementCorrection", b =>
+                {
+                    b.Property<Guid>("IdempotencyKey").ValueGeneratedNever().HasColumnType("uuid").HasColumnName("idempotency_key");
+                    b.Property<Guid>("ActorIdentityId").ValueGeneratedNever().HasColumnType("uuid").HasColumnName("actor_identity_id");
+                    b.Property<string>("CorrectedNature").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)").HasColumnName("corrected_nature");
+                    b.Property<decimal>("CorrectedQuantity").HasColumnType("numeric(28,12)").HasColumnName("corrected_quantity");
+                    b.Property<decimal>("DeltaApplied").HasColumnType("numeric(29,12)").HasColumnName("delta_applied");
+                    b.Property<Guid>("InventoryItemId").ValueGeneratedNever().HasColumnType("uuid").HasColumnName("inventory_item_id");
+                    b.Property<long>("MovementRevision").HasColumnType("bigint").HasColumnName("movement_revision");
+                    b.Property<DateTimeOffset>("OccurredAtUtc").HasColumnType("timestamp with time zone").HasColumnName("occurred_at_utc");
+                    b.Property<string>("PreviousNature").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)").HasColumnName("previous_nature");
+                    b.Property<decimal>("PreviousQuantity").HasColumnType("numeric(28,12)").HasColumnName("previous_quantity");
+                    b.Property<decimal?>("ResultingRegisteredQuantity").HasColumnType("numeric(28,12)").HasColumnName("resulting_registered_quantity");
+                    b.Property<Guid>("RootMovementId").ValueGeneratedNever().HasColumnType("uuid").HasColumnName("root_movement_id");
+                    b.Property<long>("Sequence").HasColumnType("bigint").HasColumnName("sequence");
+                    b.HasKey("IdempotencyKey").HasName("PK_inventory_movement_corrections");
+                    b.HasIndex("InventoryItemId").HasDatabaseName("IX_inventory_movement_corrections_item");
+                    b.HasIndex("RootMovementId", "Sequence").IsUnique().HasDatabaseName("UX_inventory_movement_corrections_root_sequence");
+                    b.ToTable("movement_corrections", "inventory", t =>
+                    {
+                        t.HasCheckConstraint("CK_inventory_movement_corrections_sequence", "sequence > 0 AND movement_revision > 0");
+                        t.HasCheckConstraint("CK_inventory_movement_corrections_nature", "previous_nature IN ('Entry','ManualExit','Waste') AND corrected_nature IN ('Entry','ManualExit','Waste')");
+                        t.HasCheckConstraint("CK_inventory_movement_corrections_quantity", "previous_quantity >= 0 AND corrected_quantity >= 0");
+                    });
+                });
+
             modelBuilder.Entity("NexoBar.Inventory.InventoryMovement", b =>
                 {
                     b.Property<Guid>("Id")
@@ -575,6 +601,12 @@ namespace NexoBar.Inventory.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_inventory_movements_item");
+                });
+
+            modelBuilder.Entity("NexoBar.Inventory.InventoryMovementCorrection", b =>
+                {
+                    b.HasOne("NexoBar.Inventory.InventoryMovement", null).WithMany().HasForeignKey("RootMovementId").OnDelete(DeleteBehavior.Restrict).IsRequired().HasConstraintName("FK_inventory_movement_corrections_root");
+                    b.HasOne("NexoBar.Inventory.InventoryItem", null).WithMany().HasForeignKey("InventoryItemId").OnDelete(DeleteBehavior.Restrict).IsRequired().HasConstraintName("FK_inventory_movement_corrections_item");
                 });
 
             modelBuilder.Entity("NexoBar.Inventory.InventoryMovementCommand", b =>

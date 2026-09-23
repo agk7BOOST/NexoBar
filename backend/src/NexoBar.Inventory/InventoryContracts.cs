@@ -30,6 +30,9 @@ internal sealed record ReconcileInventoryCountRequest(Guid CountObservationId);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record RecordInventoryMovementRequest(string? Quantity);
 
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record CorrectInventoryMovementRequest(string? CorrectedNature, string? CorrectedQuantity, [property: JsonRequired] long? ExpectedMovementRevision);
+
 public sealed record InventoryItemResponse(
     Guid ItemId,
     string OperationalName,
@@ -109,7 +112,8 @@ public sealed record InventoryMovementHistoryResponse(
     string OperationalName,
     string OperationalUnit,
     IReadOnlyList<InventoryMovementHistoryEntryResponse> Movements,
-    long? NextBeforeRevision);
+    long? NextBeforeRevision,
+    long AsOfMovementRevision = 0);
 
 public sealed record InventoryMovementHistoryEntryResponse(
     Guid MovementId,
@@ -122,7 +126,13 @@ public sealed record InventoryMovementHistoryEntryResponse(
     DateTimeOffset OccurredAt,
     Guid ActorIdentityId,
     string ActorOperationalName,
-    InventoryMovementReconciliationResponse? Reconciliation);
+    InventoryMovementReconciliationResponse? Reconciliation,
+    string? EffectiveNature = null,
+    string? EffectiveQuantity = null,
+    IReadOnlyList<InventoryMovementCorrectionHistoryResponse>? Corrections = null);
+
+public sealed record InventoryMovementCorrectionResponse(Guid RootMovementId, long Sequence, string PreviousNature, string PreviousQuantity, string CorrectedNature, string CorrectedQuantity, string DeltaApplied, string? ResultingRegisteredQuantity, long MovementRevision, Guid ActorIdentityId, DateTimeOffset OccurredAtUtc, bool Replayed);
+public sealed record InventoryMovementCorrectionHistoryResponse(long Sequence, string PreviousNature, string PreviousQuantity, string CorrectedNature, string CorrectedQuantity, string DeltaApplied, string? ResultingRegisteredQuantity, long MovementRevision, Guid ActorIdentityId, string ActorOperationalName, DateTimeOffset OccurredAtUtc);
 
 public sealed record InventoryMovementReconciliationResponse(
     string ObservedQuantity,

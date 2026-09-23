@@ -30,6 +30,7 @@ public static class InventoryModule
         services.AddScoped<InventoryService>();
         services.AddScoped<InventoryCountService>();
         services.AddScoped<InventoryMovementService>();
+        services.AddScoped<InventoryMovementCorrectionService>();
         services.AddScoped<InventoryMovementHistoryService>();
         services.AddScoped<InventoryLifecycleService>();
         services.AddScoped<InventoryDeleteService>();
@@ -164,6 +165,14 @@ public static class InventoryModule
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
+        endpoints.MapPost("/api/inventory/movements/{rootMovementId}/corrections", CorrectMovementAsync)
+            .WithName("CorrectInventoryMovement").WithTags("Inventory").RequireAuthorization()
+            .Accepts<CorrectInventoryMovementRequest>("application/json")
+            .Produces<InventoryMovementCorrectionResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden).ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         endpoints.MapGet(
                 "/api/inventory/configuration/items",
                 ListConfigurationItemsAsync)
@@ -185,6 +194,36 @@ public static class InventoryModule
             .ProducesProblem(StatusCodes.Status403Forbidden);
 
         return endpoints;
+    }
+
+    private static async Task<IResult> CorrectMovementAsync(
+        string rootMovementId,
+        [FromHeader(Name = "Idempotency-Key"), Required] string? idempotencyKey,
+        CorrectInventoryMovementRequest request,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        InventoryMovementCorrectionService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(rootMovementId, out var rootId) || rootId == Guid.Empty) return InvalidItemIdProblem();
+        if (!TryParseIdempotencyKey(idempotencyKey, out var key)) return IdempotencyKeyProblem(idempotencyKey);
+        if (request.ExpectedMovementRevision is null || request.ExpectedMovementRevision < 1 || request.CorrectedNature is not ("Entry" or "ManualExit" or "Waste") || !InventoryQuantity.TryParseNonNegative(request.CorrectedQuantity, out var quantity, out _))
+            return Problem(StatusCodes.Status400BadRequest, "Invalid movement correction", "A valid correctedNature, correctedQuantity and expectedMovementRevision are required.", "inventory.movement_correction.request_invalid");
+        var antiforgeryProblem = await ValidateAntiforgeryAsync(httpContext, antiforgery, "inventory.movement_correction.antiforgery_invalid");
+        if (antiforgeryProblem is not null) return antiforgeryProblem;
+        var result = await service.CorrectAsync(key, rootId, request.CorrectedNature, quantity, request.ExpectedMovementRevision.Value, cancellationToken);
+        return result.Outcome switch
+        {
+            "succeeded" => Results.Ok(result.Response),
+            "unauthenticated" => InvalidSessionProblem(),
+            "forbidden" => InventoryOperationForbiddenProblem(),
+            "item_not_found" => InventoryItemNotFoundProblem(),
+            "invalid_root" => Problem(StatusCodes.Status409Conflict, "Movement cannot be corrected", "The target must be an ordinary root Movement.", "inventory.movement_correction.invalid_root"),
+            "stale" => Problem(StatusCodes.Status409Conflict, "Movement changed concurrently", "Reload History before correcting this Movement.", "inventory.movement_correction.stale"),
+            "idempotency_conflict" => Problem(StatusCodes.Status409Conflict, "Idempotency-Key conflict", "The key was committed for another actor or intention.", "inventory.movement_correction.idempotency_conflict"),
+            "out_of_range" => Problem(StatusCodes.Status409Conflict, "Result out of range", "The correction would exceed the supported quantity range.", "inventory.movement_correction.result_out_of_range"),
+            _ => throw new UnreachableException()
+        };
     }
 
     private static void MapQuantityMovementEndpoint(

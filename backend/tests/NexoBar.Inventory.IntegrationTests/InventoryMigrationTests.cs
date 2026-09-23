@@ -15,6 +15,28 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         "20260922150000_AddInventoryLifecycleAndUnitCorrection";
     private const string ElementDeleteMigration =
         "20260922170000_AddInventoryElementDelete";
+    private const string MovementCorrectionMigration =
+        "20260923100000_AddInventoryMovementCorrection";
+
+    [Fact]
+    public async Task Movement_correction_migration_is_reversible()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await fixture.ResetAsync(token);
+        try
+        {
+            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
+            Assert.False(await TableExistsAsync("movement_corrections", token));
+            await fixture.MigrateInventoryAsync(MovementCorrectionMigration, token);
+            Assert.True(await TableExistsAsync("movement_corrections", token));
+            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
+            Assert.False(await TableExistsAsync("movement_corrections", token));
+        }
+        finally
+        {
+            await fixture.MigrateInventoryAsync(MovementCorrectionMigration, token);
+        }
+    }
 
     [Fact]
     public async Task Initial_migration_has_safe_up_and_down()
@@ -34,7 +56,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
+            await fixture.MigrateInventoryAsync(MovementCorrectionMigration, token);
         }
     }
 
@@ -61,7 +83,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
+            await fixture.MigrateInventoryAsync(MovementCorrectionMigration, token);
         }
     }
 
@@ -106,7 +128,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
+            await fixture.MigrateInventoryAsync(MovementCorrectionMigration, token);
         }
     }
 
@@ -157,7 +179,7 @@ public sealed class InventoryMigrationTests(InventoryApiFixture fixture)
         }
         finally
         {
-            await fixture.MigrateInventoryAsync(ElementDeleteMigration, token);
+            await fixture.MigrateInventoryAsync(MovementCorrectionMigration, token);
         }
     }
 

@@ -15,6 +15,8 @@ internal sealed class InventoryDbContext(
 
     internal DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
 
+    internal DbSet<InventoryMovementCorrection> InventoryMovementCorrections => Set<InventoryMovementCorrection>();
+
     internal DbSet<InventoryCountCommand> InventoryCountCommands =>
         Set<InventoryCountCommand>();
 
@@ -40,12 +42,44 @@ internal sealed class InventoryDbContext(
         modelBuilder.ApplyConfiguration(new InventoryItemCreationCommandConfiguration());
         modelBuilder.ApplyConfiguration(new CountObservationConfiguration());
         modelBuilder.ApplyConfiguration(new InventoryMovementConfiguration());
+        modelBuilder.ApplyConfiguration(new InventoryMovementCorrectionConfiguration());
         modelBuilder.ApplyConfiguration(new InventoryCountCommandConfiguration());
         modelBuilder.ApplyConfiguration(new InventoryMovementCommandConfiguration());
         modelBuilder.ApplyConfiguration(new InventoryRetireCommandConfiguration());
         modelBuilder.ApplyConfiguration(new InventoryReactivateCommandConfiguration());
         modelBuilder.ApplyConfiguration(new InventoryUnitCorrectionCommandConfiguration());
         modelBuilder.ApplyConfiguration(new InventoryDeleteCommandConfiguration());
+    }
+
+    private sealed class InventoryMovementCorrectionConfiguration : IEntityTypeConfiguration<InventoryMovementCorrection>
+    {
+        public void Configure(EntityTypeBuilder<InventoryMovementCorrection> builder)
+        {
+            builder.ToTable("movement_corrections", table =>
+            {
+                table.HasCheckConstraint("CK_inventory_movement_corrections_sequence", "sequence > 0 AND movement_revision > 0");
+                table.HasCheckConstraint("CK_inventory_movement_corrections_nature", "previous_nature IN ('Entry','ManualExit','Waste') AND corrected_nature IN ('Entry','ManualExit','Waste')");
+                table.HasCheckConstraint("CK_inventory_movement_corrections_quantity", "previous_quantity >= 0 AND corrected_quantity >= 0");
+            });
+            builder.HasKey(x => x.IdempotencyKey).HasName("PK_inventory_movement_corrections");
+            builder.Property(x => x.IdempotencyKey).HasColumnName("idempotency_key").ValueGeneratedNever();
+            builder.Property(x => x.ActorIdentityId).HasColumnName("actor_identity_id").ValueGeneratedNever();
+            builder.Property(x => x.RootMovementId).HasColumnName("root_movement_id").ValueGeneratedNever();
+            builder.Property(x => x.InventoryItemId).HasColumnName("inventory_item_id").ValueGeneratedNever();
+            builder.Property(x => x.Sequence).HasColumnName("sequence").HasColumnType("bigint");
+            builder.Property(x => x.MovementRevision).HasColumnName("movement_revision").HasColumnType("bigint");
+            builder.Property(x => x.PreviousNature).HasColumnName("previous_nature").HasMaxLength(20);
+            builder.Property(x => x.PreviousQuantity).HasColumnName("previous_quantity").HasColumnType("numeric(28,12)");
+            builder.Property(x => x.CorrectedNature).HasColumnName("corrected_nature").HasMaxLength(20);
+            builder.Property(x => x.CorrectedQuantity).HasColumnName("corrected_quantity").HasColumnType("numeric(28,12)");
+            builder.Property(x => x.DeltaApplied).HasColumnName("delta_applied").HasColumnType("numeric(29,12)");
+            builder.Property(x => x.ResultingRegisteredQuantity).HasColumnName("resulting_registered_quantity").HasColumnType("numeric(28,12)");
+            builder.Property(x => x.OccurredAtUtc).HasColumnName("occurred_at_utc").HasColumnType("timestamp with time zone");
+            builder.HasIndex(x => new { x.RootMovementId, x.Sequence }).IsUnique().HasDatabaseName("UX_inventory_movement_corrections_root_sequence");
+            builder.HasIndex(x => x.InventoryItemId).HasDatabaseName("IX_inventory_movement_corrections_item");
+            builder.HasOne<InventoryMovement>().WithMany().HasForeignKey(x => x.RootMovementId).HasConstraintName("FK_inventory_movement_corrections_root").OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<InventoryItem>().WithMany().HasForeignKey(x => x.InventoryItemId).HasConstraintName("FK_inventory_movement_corrections_item").OnDelete(DeleteBehavior.Restrict);
+        }
     }
 
     private sealed class InventoryItemConfiguration :

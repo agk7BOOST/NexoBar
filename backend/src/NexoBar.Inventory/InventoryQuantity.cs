@@ -74,6 +74,13 @@ internal static class InventoryQuantity
         return true;
     }
 
+    internal static bool TryParseNonNegative(string? value, out decimal quantity, out string canonical)
+    {
+        if (TryParseObserved(value, out quantity, out canonical)) return true;
+        canonical = string.Empty;
+        return false;
+    }
+
     internal static bool IsWithinStorageRange(decimal quantity) =>
         quantity > -10_000_000_000_000_000m &&
         quantity < 10_000_000_000_000_000m;

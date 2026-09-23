@@ -1,10 +1,14 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { discardAntiforgeryToken } from "../identity/sessionClient.ts";
+import {
+  discardAntiforgeryToken,
+  getAntiforgeryToken,
+} from "../identity/sessionClient.ts";
 import { InventoryHistory } from "./InventoryHistory.tsx";
 import {
   getInventoryMovementHistory,
+  correctInventoryMovement,
   InventoryNetworkError,
   InventoryProblemError,
   type InventoryMovement,
@@ -15,13 +19,21 @@ import {
 vi.mock("../identity/sessionClient.ts", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("../identity/sessionClient.ts")>();
-  return { ...original, discardAntiforgeryToken: vi.fn() };
+  return {
+    ...original,
+    discardAntiforgeryToken: vi.fn(),
+    getAntiforgeryToken: vi.fn().mockResolvedValue("csrf"),
+  };
 });
 
 vi.mock("./inventoryClient.ts", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("./inventoryClient.ts")>();
-  return { ...original, getInventoryMovementHistory: vi.fn() };
+  return {
+    ...original,
+    getInventoryMovementHistory: vi.fn(),
+    correctInventoryMovement: vi.fn(),
+  };
 });
 
 const item: InventoryOperationalItem = {
@@ -76,6 +88,7 @@ function renderHistory(onUnauthorized = vi.fn(), onItemUnavailable = vi.fn()) {
       onClose={vi.fn()}
       onUnauthorized={onUnauthorized}
       onItemUnavailable={onItemUnavailable}
+      onAuthoritativeMutation={vi.fn().mockResolvedValue(undefined)}
     />,
   );
   return { onUnauthorized, onItemUnavailable };
@@ -84,7 +97,9 @@ function renderHistory(onUnauthorized = vi.fn(), onItemUnavailable = vi.fn()) {
 describe("InventoryHistory", () => {
   beforeEach(() => {
     vi.mocked(discardAntiforgeryToken).mockReset();
+    vi.mocked(getAntiforgeryToken).mockResolvedValue("csrf");
     vi.mocked(getInventoryMovementHistory).mockReset();
+    vi.mocked(correctInventoryMovement).mockReset();
   });
 
   it("presents distinct natures, movement effects, actor names and timestamp", async () => {
@@ -310,6 +325,215 @@ describe("InventoryHistory", () => {
     expect(
       screen.queryByText(/Conteo correcto|No hubo cambios/),
     ).not.toBeInTheDocument();
+  });
+
+  it("corrects an eligible displayed root, explains zero and refreshes authoritative state and History", async () => {
+    const root = movement({
+      movementId: "root",
+      movementRevision: 5,
+      nature: "entry",
+      quantity: "10",
+    });
+    vi.mocked(getInventoryMovementHistory)
+      .mockResolvedValueOnce(history([root]))
+      .mockResolvedValueOnce(
+        history([
+          {
+            ...root,
+            effectiveQuantity: "0",
+            corrections: [
+              {
+                sequence: 1,
+                previousNature: "Entry",
+                previousQuantity: "10",
+                correctedNature: "Entry",
+                correctedQuantity: "0",
+                deltaApplied: "-10",
+                resultingRegisteredQuantity: "0",
+                movementRevision: 7,
+                actorIdentityId: "actor",
+                actorOperationalName: "Operador",
+                occurredAtUtc: "2026-09-23T00:00:00Z",
+              },
+            ],
+          },
+        ]),
+      );
+    vi.mocked(correctInventoryMovement).mockResolvedValue({
+      rootMovementId: "root",
+      sequence: 1,
+      previousNature: "Entry",
+      previousQuantity: "10",
+      correctedNature: "Entry",
+      correctedQuantity: "0",
+      deltaApplied: "-10",
+      resultingRegisteredQuantity: "0",
+      movementRevision: 7,
+      replayed: false,
+    });
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByText("Actor root");
+    await user.click(
+      screen.getByRole("button", { name: "Corregir movimiento" }),
+    );
+    const quantity = screen.getByLabelText("Cantidad corregida");
+    await user.clear(quantity);
+    await user.type(quantity, "0");
+    expect(
+      screen.getByText(
+        "Este movimiento queda sin efecto. La History permanece.",
+      ),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Guardar corrección" }),
+    );
+    await waitFor(() =>
+      expect(correctInventoryMovement).toHaveBeenCalledWith(
+        "root",
+        {
+          correctedNature: "Entry",
+          correctedQuantity: "0",
+          expectedMovementRevision: 6,
+        },
+        expect.any(String),
+        "csrf",
+      ),
+    );
+    expect(
+      await screen.findByText(/Significado efectivo actual/),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps root, corrected intent and idempotency key on uncertain retry", async () => {
+    const root = movement({
+      movementId: "retry-root",
+      movementRevision: 5,
+      nature: "entry",
+      quantity: "10",
+    });
+    vi.mocked(getInventoryMovementHistory)
+      .mockResolvedValueOnce(history([root]))
+      .mockResolvedValueOnce(history([root]));
+    vi.mocked(correctInventoryMovement)
+      .mockRejectedValueOnce(new InventoryNetworkError())
+      .mockResolvedValueOnce({
+        rootMovementId: "retry-root",
+        sequence: 1,
+        previousNature: "Entry",
+        previousQuantity: "10",
+        correctedNature: "Entry",
+        correctedQuantity: "6",
+        deltaApplied: "-4",
+        resultingRegisteredQuantity: "11",
+        movementRevision: 7,
+        replayed: true,
+      });
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByText("Actor retry-root");
+    await user.click(
+      screen.getByRole("button", { name: "Corregir movimiento" }),
+    );
+    const quantity = screen.getByLabelText("Cantidad corregida");
+    await user.clear(quantity);
+    await user.type(quantity, "6");
+    await user.click(
+      screen.getByRole("button", { name: "Guardar corrección" }),
+    );
+    expect(
+      await screen.findByText(/resultado todavía no está confirmado/),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Reintentar corrección" }),
+    );
+    await waitFor(() =>
+      expect(correctInventoryMovement).toHaveBeenCalledTimes(2),
+    );
+    expect(vi.mocked(correctInventoryMovement).mock.calls[1]).toEqual(
+      vi.mocked(correctInventoryMovement).mock.calls[0],
+    );
+  });
+
+  it("shows the root's effective value and previous corrections", async () => {
+    const root = movement({
+      movementId: "corrected-root",
+      movementRevision: 5,
+      nature: "entry",
+      quantity: "10",
+      effectiveNature: "waste",
+      effectiveQuantity: "2",
+      corrections: [
+        {
+          sequence: 1,
+          previousNature: "Entry",
+          previousQuantity: "10",
+          correctedNature: "Entry",
+          correctedQuantity: "6",
+          deltaApplied: "-4",
+          resultingRegisteredQuantity: "6",
+          movementRevision: 6,
+          actorIdentityId: "actor-1",
+          actorOperationalName: "Operadora 1",
+          occurredAtUtc: "2026-09-23T00:00:00Z",
+        },
+        {
+          sequence: 2,
+          previousNature: "Entry",
+          previousQuantity: "6",
+          correctedNature: "Waste",
+          correctedQuantity: "2",
+          deltaApplied: "-8",
+          resultingRegisteredQuantity: "-2",
+          movementRevision: 7,
+          actorIdentityId: "actor-2",
+          actorOperationalName: "Operadora 2",
+          occurredAtUtc: "2026-09-23T00:01:00Z",
+        },
+      ],
+    });
+    vi.mocked(getInventoryMovementHistory).mockResolvedValueOnce(
+      history([root]),
+    );
+    const user = userEvent.setup();
+    renderHistory();
+    const card = (await screen.findByText("Actor corrected-root")).closest(
+      "li",
+    )!;
+    expect(card).toHaveTextContent("Entrada");
+    expect(card).toHaveTextContent("Significado efectivo actual: waste 2");
+    expect(card).toHaveTextContent("Operadora 1");
+    expect(card).toHaveTextContent("Operadora 2");
+    await user.click(
+      within(card).getByRole("button", { name: "Corregir movimiento" }),
+    );
+    expect(screen.getByLabelText("Cantidad corregida")).toHaveValue("2");
+    expect(screen.getByLabelText("Naturaleza corregida")).toHaveValue("Waste");
+  });
+
+  it("blocks malformed correction quantities in the form", async () => {
+    vi.mocked(getInventoryMovementHistory).mockResolvedValueOnce(
+      history([
+        movement({
+          movementId: "invalid-root",
+          movementRevision: 5,
+          nature: "entry",
+        }),
+      ]),
+    );
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByText("Actor invalid-root");
+    await user.click(
+      screen.getByRole("button", { name: "Corregir movimiento" }),
+    );
+    const quantity = screen.getByLabelText("Cantidad corregida");
+    await user.clear(quantity);
+    await user.type(quantity, "-4");
+    await user.click(
+      screen.getByRole("button", { name: "Guardar corrección" }),
+    );
+    expect(correctInventoryMovement).not.toHaveBeenCalled();
   });
 
   it("handles 401, 403 and 404 with their distinct semantics", async () => {

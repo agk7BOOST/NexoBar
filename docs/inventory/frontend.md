@@ -12,7 +12,7 @@ Después de una mutación local o un conflicto conocido, Configuración vuelve a
 
 ## Estado actual de Inventario
 
-Una Identity con `InventoryOperation` consulta la superficie operacional y puede realizar Count, Reconciliation, Entry, ManualExit, Waste y consultar Movement History. Esa responsabilidad no concede acceso a Configuración; `InventoryConfiguration` tampoco concede autoridad operacional. Una Identity puede tener ambas asignaciones, pero ninguna implica la otra.
+Una Identity con `InventoryOperation` consulta la superficie operacional y puede realizar Count, Reconciliation, Entry, ManualExit, Waste, corregir un Movement raíz desde History y consultar Movement History. Esa responsabilidad no concede acceso a Configuración; `InventoryConfiguration` tampoco concede autoridad operacional. Una Identity puede tener ambas asignaciones, pero ninguna implica la otra.
 
 - Un Element activo y listo muestra la cantidad actual autoritativa y su Unit; habilita Entry, ManualExit y Waste.
 - Un Element activo que espera Reconciliation permanece visible con su Unit. Muestra “Existencia física no establecida” y cantidad actual no establecida, no cero. Count/Reconciliation están disponibles; Entry, ManualExit y Waste no.
@@ -24,6 +24,8 @@ Cada Count registra una observación sin cambiar el saldo. El usuario ejecuta Re
 ## History, intenciones y frescura
 
 **Movimientos** presenta History paginada, separa Reconciliation de Entry, ManualExit y Waste, e incluye actor, timestamp, efecto y saldos. El establecimiento inicial se presenta sin diferencia ficticia. La Unit del Element no puede cambiar después de su primer Movement; por eso la History mantiene un único significado de Unit sin snapshots históricos ni migración de Movements.
+
+Desde el Movement raíz, «Corregir movimiento» muestra el valor original y efectivo, permite corregir naturaleza/cantidad y explica que cero deja el Movement sin efecto. Después de una corrección, la misma acción sigue en el root y presenta las correcciones anteriores; el envío incierto conserva key e intención para reintentar. Tras éxito, el cliente actualiza el saldo desde la autoridad y relee History.
 
 Cada intención nueva congela tipo, Element, body e `Idempotency-Key`. Ante network, timeout o `5xx` incierto, la UI conserva esos datos, bloquea otra acción sobre el Element y ofrece reintentar exactamente la misma operación. Los intents inciertos viven en memoria y una recarga puede perder la key; no hay cola offline ni retry automático en background.
 

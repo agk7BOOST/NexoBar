@@ -85,6 +85,36 @@ export interface InventoryMovement {
   actorIdentityId: string;
   actorOperationalName: string;
   reconciliation: InventoryMovementReconciliation | null;
+  effectiveNature?: InventoryMovementNature | null;
+  effectiveQuantity?: string | null;
+  corrections?: InventoryMovementCorrection[];
+}
+
+export interface InventoryMovementCorrection {
+  sequence: number;
+  previousNature: string;
+  previousQuantity: string;
+  correctedNature: string;
+  correctedQuantity: string;
+  deltaApplied: string;
+  resultingRegisteredQuantity: string | null;
+  movementRevision: number;
+  actorIdentityId: string;
+  actorOperationalName: string;
+  occurredAtUtc: string;
+}
+
+export interface InventoryMovementCorrectionResult {
+  rootMovementId: string;
+  sequence: number;
+  previousNature: string;
+  previousQuantity: string;
+  correctedNature: string;
+  correctedQuantity: string;
+  deltaApplied: string;
+  resultingRegisteredQuantity: string | null;
+  movementRevision: number;
+  replayed: boolean;
 }
 
 export interface InventoryMovementHistory {
@@ -93,6 +123,7 @@ export interface InventoryMovementHistory {
   operationalUnit: string;
   movements: InventoryMovement[];
   nextBeforeRevision: number | null;
+  asOfMovementRevision?: number;
 }
 
 export interface InventoryProblemDetails {
@@ -451,7 +482,44 @@ function parseMovement(value: unknown): InventoryMovement {
     actorIdentityId: value.actorIdentityId,
     actorOperationalName: value.actorOperationalName,
     reconciliation,
+    effectiveNature:
+      (value.effectiveNature as InventoryMovementNature | null | undefined) ??
+      null,
+    effectiveQuantity:
+      typeof value.effectiveQuantity === "string"
+        ? value.effectiveQuantity
+        : null,
+    corrections: Array.isArray(value.corrections)
+      ? (value.corrections as InventoryMovementCorrection[])
+      : [],
   };
+}
+
+export async function correctInventoryMovement(
+  rootMovementId: string,
+  request: {
+    correctedNature: string;
+    correctedQuantity: string;
+    expectedMovementRevision: number;
+  },
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<InventoryMovementCorrectionResult> {
+  const response = await send(
+    `/api/inventory/movements/${encodeURIComponent(rootMovementId)}/corrections`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+        "X-NexoBar-CSRF": antiforgeryToken,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  await requireSuccess(response);
+  return (await response.json()) as InventoryMovementCorrectionResult;
 }
 
 function parseArray<T>(
@@ -794,5 +862,8 @@ export async function getInventoryMovementHistory(
     operationalUnit: payload.operationalUnit,
     movements: payload.movements.map(parseMovement),
     nextBeforeRevision: payload.nextBeforeRevision,
+    asOfMovementRevision: isNonNegativeInteger(payload.asOfMovementRevision)
+      ? payload.asOfMovementRevision
+      : 0,
   };
 }

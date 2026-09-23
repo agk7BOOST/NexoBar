@@ -102,7 +102,7 @@ public sealed class InventoryMovementHistoryApiTests(InventoryApiFixture fixture
             "currentRegisteredQuantity", out _));
         Assert.False(document.RootElement.TryGetProperty(
             "quantityEstablished", out _));
-        Assert.False(document.RootElement.TryGetProperty(
+        Assert.True(document.RootElement.TryGetProperty(
             "asOfMovementRevision", out _));
         var serializedMovement = document.RootElement
             .GetProperty("movements")[0];

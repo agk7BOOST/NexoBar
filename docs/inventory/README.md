@@ -74,7 +74,17 @@ Delete y Movement se serializan mediante `FOR UPDATE` sobre la fila del Element,
 
 `CountObservation` no modifica el saldo. La Reconciliation inicial desde `null` crea un Movement, conserva `PreviousRegisteredQuantity = null` y no inventa diferencia contra cero (**AD-INV-01**). La Reconciliation ordinaria deriva diferencia contra saldo actual; sin discrepancia responde `no_discrepancy`, no crea Movement ni avanza `MovementRevision` (**AD-INV-02**).
 
-Entry suma una cantidad positiva. ManualExit y Waste restan una cantidad positiva y pueden atravesar cero; el saldo negativo se conserva y se muestra como inconsistencia. Cuando cambia Estado, el comando confirma atómicamente Element, Movement y resultado durable. La History paginada va en orden descendente de `MovementRevision` e incluye efecto con signo, saldos, datos de Reconciliation, actor y timestamp. El Estado actual no se reconstruye ordinariamente desde History. `Correction` no cuenta aquí con comando/API/comportamiento implementado.
+Entry suma una cantidad positiva. ManualExit y Waste restan una cantidad positiva y pueden atravesar cero; el saldo negativo se conserva y se muestra como inconsistencia. Cuando cambia Estado, el comando confirma atómicamente Element, Movement y resultado durable. La History paginada va en orden descendente de `MovementRevision` e incluye efecto con signo, saldos, datos de Reconciliation, actor y timestamp. El Estado actual no se reconstruye ordinariamente desde History.
+
+## MVP-FC-INV-MC — Inventory Movement Correction: CLOSED
+
+`POST /api/inventory/movements/{rootMovementId}/corrections` permite a `InventoryOperation` rectificar un Movement raíz Entry, ManualExit o Waste. El root y su History original permanecen; cada rectificación registra su interpretación anterior/nueva, actor, timestamp, secuencia y delta aplicado en `movement_corrections`. Reconciliation, Count y Correction no son roots elegibles.
+
+La cantidad corregida representa la cantidad semántica, incluida cero («sin efecto»), no un delta manual. Entry(q) = +q; ManualExit(q) y Waste(q) = -q; cero = 0. Cada delta se deriva de nueva interpretación menos interpretación efectiva anterior, por lo que las sucesivas rectificaciones permanecen unidas al mismo root.
+
+**AD-INV-04:** se guarda rectificación histórica aunque el Element esté retirado o una Reconciliation posterior al root haya sustituido su contribución. El delta sólo cambia RegisteredExistence si esta existe y no hay Reconciliation posterior al root; en otro caso el delta aplicado es cero y el saldo no se crea, restaura ni reescribe. No reactiva el Element. Una Correction confirmada avanza `MovementRevision` e invalida Counts pendientes bajo la regla de Movement posterior.
+
+El comando estabiliza sesión e Identity, exige `InventoryOperation`, antiforgery y `Idempotency-Key` UUID v4. Serializa la key durable y bloquea sólo la fila del Element; el `expectedMovementRevision` rechaza competidores obsoletos. Estado, History semántica y replay durable son atómicos. History conserva el Movement raíz, valor efectivo actual y todas sus rectificaciones con actor, tiempo, delta y saldo cuando existe.
 
 Los comandos usan `Idempotency-Key` UUID v4 y replay durable. Igual key e intención exacta reproduce el resultado; una intención incompatible entra en conflicto. Los detalles transversales siguen en [HTTP e idempotencia](../architecture/http-and-idempotency.md).
 
@@ -93,10 +103,10 @@ La misma señal se consume con `FreshnessReadCoordinator` sólo mientras la supe
 - `AddEverydayInventoryMovements`: Entry, ManualExit y Waste sobre el mismo Estado e History.
 - `20260922150000_AddInventoryLifecycleAndUnitCorrection`: `IsActive`, invariante activo/existencia, unicidad de nombre activo, invalidación de CountObservation y persistencia durable para Retire, Reactivate y Unit Correction.
 - `20260922170000_AddInventoryElementDelete`: ledger durable de Delete, ajustes de FK de ledgers técnicos para permitir Delete físico, limpieza de Counts y cambios de snapshot.
+- `20260923100000_AddInventoryMovementCorrection`: History semántica y resultado durable por key para las correcciones de Movement.
 
 Las dos migraciones nuevas pasaron Up y Down; `HasPendingModelChanges = false`. No materializan Unit versionada ni relación de sucesor.
 
 ## Pendientes
 
-- Inventory Movement Correction; su relación con Movements previos sigue sin decisión aplicable.
 - Continuidad cross-reload de intents inciertos; siguen en memoria en el frontend.

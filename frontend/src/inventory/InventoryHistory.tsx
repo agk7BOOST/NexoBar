@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { discardAntiforgeryToken } from "../identity/sessionClient.ts";
+import {
+  discardAntiforgeryToken,
+  getAntiforgeryToken,
+} from "../identity/sessionClient.ts";
 import {
   getInventoryMovementHistory,
   InventoryProblemError,
@@ -7,6 +10,7 @@ import {
   type InventoryMovementHistory,
   type InventoryMovementNature,
   type InventoryOperationalItem,
+  correctInventoryMovement,
 } from "./inventoryClient.ts";
 
 interface InventoryHistoryProps {
@@ -15,6 +19,7 @@ interface InventoryHistoryProps {
   onClose: () => void;
   onUnauthorized: () => void;
   onItemUnavailable: () => void;
+  onAuthoritativeMutation: (itemId: string) => Promise<void>;
 }
 
 type HistoryState =
@@ -156,9 +161,13 @@ function MovementDetails({
 function MovementCard({
   movement,
   unit,
+  onCorrect,
+  busy,
 }: {
   movement: InventoryMovement;
   unit: string;
+  onCorrect: (movement: InventoryMovement) => void;
+  busy: boolean;
 }) {
   return (
     <li className="inventory-movement">
@@ -167,6 +176,34 @@ function MovementCard({
         <time dateTime={movement.occurredAt}>{movement.occurredAt}</time>
       </div>
       <MovementDetails movement={movement} unit={unit} />
+      {(movement.corrections?.length ?? 0) > 0 && (
+        <section>
+          <h6>Correcciones anteriores</h6>
+          <ol>
+            {movement.corrections?.map((c) => (
+              <li key={c.sequence}>
+                {c.previousNature} {c.previousQuantity} → {c.correctedNature}{" "}
+                {c.correctedQuantity}; delta aplicado {c.deltaApplied}; saldo{" "}
+                {c.resultingRegisteredQuantity ?? "no establecido"};{" "}
+                {c.actorOperationalName} · {c.occurredAtUtc}
+              </li>
+            ))}
+          </ol>
+          <p>
+            Significado efectivo actual: {movement.effectiveNature}{" "}
+            {movement.effectiveQuantity}
+          </p>
+        </section>
+      )}
+      {movement.nature !== "reconciliation" && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onCorrect(movement)}
+        >
+          Corregir movimiento
+        </button>
+      )}
       <p className="inventory-movement-actor">
         Realizado por <strong>{movement.actorOperationalName}</strong>
       </p>
@@ -180,10 +217,21 @@ export function InventoryHistory({
   onClose,
   onUnauthorized,
   onItemUnavailable,
+  onAuthoritativeMutation,
 }: InventoryHistoryProps) {
   const [state, setState] = useState<HistoryState>({ status: "idle" });
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [paginationError, setPaginationError] = useState(false);
+  const [correction, setCorrection] = useState<InventoryMovement | null>(null);
+  const [nature, setNature] = useState("Entry");
+  const [quantity, setQuantity] = useState("");
+  const [pending, setPending] = useState<{
+    key: string;
+    root: string;
+    nature: string;
+    quantity: string;
+    revision: number;
+  } | null>(null);
   const requestSequence = useRef(0);
   const cancelRequests = useCallback(() => {
     requestSequence.current++;
@@ -275,6 +323,66 @@ export function InventoryHistory({
     }
   }
 
+  async function saveCorrection() {
+    if (!correction || !item || state.status !== "ready") return;
+    const intent = pending ?? {
+      key: crypto.randomUUID(),
+      root: correction.movementId,
+      nature,
+      quantity,
+      revision:
+        state.history.asOfMovementRevision ?? item.asOfMovementRevision ?? 0,
+    };
+    setPending(intent);
+    try {
+      const token = await getAntiforgeryToken();
+      await correctInventoryMovement(
+        intent.root,
+        {
+          correctedNature: intent.nature,
+          correctedQuantity: intent.quantity,
+          expectedMovementRevision: intent.revision,
+        },
+        intent.key,
+        token,
+      );
+      setPending(null);
+      setCorrection(null);
+      setQuantity("");
+      await onAuthoritativeMutation(item.itemId);
+      await loadFirstPage();
+    } catch (error) {
+      if (error instanceof InventoryProblemError && error.status === 401) {
+        discardAntiforgeryToken();
+        onUnauthorized();
+        return;
+      }
+      if (
+        error instanceof InventoryProblemError &&
+        error.status !== 408 &&
+        error.status < 500
+      ) {
+        setPending(null);
+        setState({ status: "error" });
+        return;
+      }
+      setPending(intent);
+    }
+  }
+
+  function beginCorrection(movement: InventoryMovement) {
+    setCorrection(movement);
+    const effective = movement.effectiveNature ?? movement.nature;
+    setNature(
+      effective === "manual_exit"
+        ? "ManualExit"
+        : effective === "waste"
+          ? "Waste"
+          : "Entry",
+    );
+    setQuantity(movement.effectiveQuantity ?? movement.quantity);
+  }
+
   if (item === null) return null;
 
   return (
@@ -333,9 +441,73 @@ export function InventoryHistory({
               key={movement.movementId}
               movement={movement}
               unit={state.history.operationalUnit}
+              onCorrect={beginCorrection}
+              busy={pending !== null}
             />
           ))}
         </ol>
+      )}
+      {correction && state.status === "ready" && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveCorrection();
+          }}
+        >
+          <h5>
+            Corregir {correction.nature} {correction.quantity}
+          </h5>
+          <p>
+            Significado vigente:{" "}
+            {correction.effectiveNature ?? correction.nature}{" "}
+            {correction.effectiveQuantity ?? correction.quantity}
+          </p>
+          <label>
+            Naturaleza corregida
+            <select
+              disabled={pending !== null}
+              value={nature}
+              onChange={(e) => setNature(e.target.value)}
+            >
+              <option value="Entry">Entrada</option>
+              <option value="ManualExit">Salida manual</option>
+              <option value="Waste">Merma</option>
+            </select>
+          </label>
+          <label>
+            Cantidad corregida
+            <input
+              disabled={pending !== null}
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              inputMode="decimal"
+              required
+              pattern="[0-9]{1,16}([.][0-9]{1,12})?"
+            />
+          </label>
+          {/^0+(?:\.0+)?$/.test(quantity) && (
+            <p>Este movimiento queda sin efecto. La History permanece.</p>
+          )}
+          {pending !== null && (
+            <p role="status">
+              El resultado todavía no está confirmado. Reintentá esta misma
+              corrección para consultar el resultado.
+            </p>
+          )}
+          <button type="submit">
+            {pending ? "Reintentar corrección" : "Guardar corrección"}
+          </button>
+          <button
+            type="button"
+            disabled={pending !== null}
+            onClick={() => {
+              setCorrection(null);
+              if (!pending) setQuantity("");
+            }}
+          >
+            Cerrar
+          </button>
+        </form>
       )}
       {state.status === "ready" && paginationError && (
         <p className="notice notice--functional-error" role="alert">

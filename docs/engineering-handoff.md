@@ -42,7 +42,9 @@ El mínimo de Groups, rename de Product y Retire/Reactivate de Product está imp
 
 **Terminal Order History — CLOSED.** El contrato, la superficie read-only y la evidencia dirigida están registrados en [Contratos e Historia](order-operations/contracts-and-history.md#terminal-order-history--mvp-fc-toh-closed), [workflow frontend](order-operations/frontend.md#terminal-order-history--mvp-fc-toh-closed) y [Testing](testing/verification.md#mvp-fc-toh--terminal-order-history).
 
-Los frontiers restantes de MVP Functional Completion son Inventory Movement Correction, eligible Product Delete y eligible Identity Delete. El siguiente frontier planificado es **Inventory Movement Correction**.
+MVP-FC-INV-MC — Inventory Movement Correction: **CLOSED**. AD-INV-04 permite la rectificación histórica aunque el Element se retire o una Reconciliation posterior sustituya el aporte al saldo. Contrato, comportamiento y UX viven en [Inventory](inventory/README.md#mvp-fc-inv-mc--inventory-movement-correction-closed) y [Inventory frontend](inventory/frontend.md); la evidencia se registra en [Testing](testing/verification.md#mvp-fc-inv-mc--inventory-movement-correction).
+
+Los frontiers restantes de MVP Functional Completion son eligible Product Delete y eligible Identity Delete. El siguiente frontier es **eligible Product Delete**.
 
 ## Estado actual de Slice
 
@@ -68,6 +70,6 @@ Los frontiers restantes de MVP Functional Completion son Inventory Movement Corr
 
 **Preparation Configuration Completion: CLOSED.** La UI de `GeneralConfiguration` crea y lista Preparation Responsibilities; la UI de `CatalogConfiguration` configura el destino de Preparation de Products existentes. La evidencia focalizada está en [Testing](testing/verification.md#mvp-fc-prep--preparation-configuration-completion). Este cierre no inicia un Slice ni atribuye una capacidad nueva a OrderOperations.
 
-El trabajo restante preservado fuera de estos cierres incluye el lifecycle completo de Preparation Responsibility (rename, retiro/reactivación, delete, ordering y gestión de estaciones); Inventory Movement Correction; eligible Product Delete; eligible Identity Delete; administración arbitraria de Sessions; y hardening de piloto/RNF. Estos frontiers permanecen no iniciados. No se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
+El trabajo restante preservado fuera de estos cierres incluye el lifecycle completo de Preparation Responsibility (rename, retiro/reactivación, delete, ordering y gestión de estaciones); eligible Product Delete; eligible Identity Delete; administración arbitraria de Sessions; y hardening de piloto/RNF. Estos frontiers permanecen no iniciados. No se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
 
 Solo para trazabilidad: [checkpoints históricos de slices](history/slice-checkpoints.md) y [auditoría de esta reorganización](context-audit.md). No son fuentes de nuevas decisiones ni lecturas de arranque obligatorias.

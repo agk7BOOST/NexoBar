@@ -62,6 +62,7 @@ public sealed class InventoryApiFixture : IAsyncLifetime
                     'reactivate_commands',
                     'retire_commands',
                     'movement_commands',
+                    'movement_corrections',
                     'inventory_movements',
                     'count_commands',
                     'count_observations',
@@ -429,6 +430,18 @@ public sealed class InventoryApiFixture : IAsyncLifetime
             quantity,
             cancellationToken,
             antiforgeryToken);
+
+    internal async Task<HttpResponseMessage> PostCorrectionAsync(Guid rootId, Guid key, string nature, string quantity, long expectedRevision, CancellationToken cancellationToken)
+    {
+        var token = await GetAntiforgeryTokenAsync(cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/inventory/movements/{rootId:D}/corrections")
+        {
+            Content = JsonContent.Create(new { correctedNature = nature, correctedQuantity = quantity, expectedMovementRevision = expectedRevision })
+        };
+        request.Headers.Add("Idempotency-Key", key.ToString("D"));
+        request.Headers.Add("X-NexoBar-CSRF", token);
+        return await Client.SendAsync(request, cancellationToken);
+    }
 
     internal static async Task<HttpResponseMessage> PostMovementAsync(
         HttpClient client,

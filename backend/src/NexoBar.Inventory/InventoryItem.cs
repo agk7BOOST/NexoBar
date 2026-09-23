@@ -54,6 +54,22 @@ internal sealed class InventoryItem
     internal void CorrectOperationalUnit(OperationalUnit operationalUnit) =>
         OperationalUnit = operationalUnit;
 
+    internal long AdvanceCorrectionRevision(decimal? deltaToApply)
+    {
+        var revision = checked(MovementRevision + 1);
+        if (deltaToApply is not null && CurrentRegisteredQuantity is not null)
+        {
+            var result = checked(CurrentRegisteredQuantity.Value + deltaToApply.Value);
+            if (!InventoryQuantity.IsWithinStorageRange(result))
+            {
+                throw new ArgumentOutOfRangeException(nameof(deltaToApply));
+            }
+            CurrentRegisteredQuantity = result;
+        }
+        MovementRevision = revision;
+        return revision;
+    }
+
     internal InventoryReconciliationTransition Reconcile(decimal observedQuantity)
     {
         if (observedQuantity < 0)

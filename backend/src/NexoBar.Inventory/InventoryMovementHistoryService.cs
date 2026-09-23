@@ -38,10 +38,10 @@ internal sealed class InventoryMovementHistoryService(
             return InventoryMovementHistoryResult.Forbidden();
         }
 
-        var item = await dbContext.InventoryItems.AsNoTracking()
-            .SingleOrDefaultAsync(
-                candidate => candidate.Id == itemId,
-                cancellationToken);
+        var item = await dbContext.InventoryItems
+            .FromSqlInterpolated($"SELECT * FROM inventory.inventory_items WHERE id = {itemId} FOR SHARE")
+            .AsNoTracking()
+            .SingleOrDefaultAsync(cancellationToken);
         if (item is null)
         {
             return InventoryMovementHistoryResult.ItemNotFound();
@@ -59,6 +59,10 @@ internal sealed class InventoryMovementHistoryService(
             .OrderByDescending(movement => movement.MovementRevision)
             .Take(limit + 1)
             .ToArrayAsync(cancellationToken);
+        var rootIds = persistedPage.Select(x => x.Id).ToArray();
+        var corrections = await dbContext.InventoryMovementCorrections.AsNoTracking()
+            .Where(x => rootIds.Contains(x.RootMovementId))
+            .OrderBy(x => x.MovementRevision).ToArrayAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         var hasMore = persistedPage.Length > limit;
@@ -71,8 +75,8 @@ internal sealed class InventoryMovementHistoryService(
             return InventoryMovementHistoryResult.StateInconsistent();
         }
 
-        var actorIds = movements
-            .Select(movement => movement.ActorIdentityId)
+        var actorIds = movements.Select(movement => movement.ActorIdentityId)
+            .Concat(corrections.Select(x => x.ActorIdentityId))
             .Distinct()
             .ToArray();
         var resolvedNames = actorIds.Length == 0
@@ -96,14 +100,28 @@ internal sealed class InventoryMovementHistoryService(
             return InventoryMovementHistoryResult.ActorMissing();
         }
 
+        var byRoot = corrections.GroupBy(x => x.RootMovementId).ToDictionary(x => x.Key, x => x.ToArray());
         var response = new InventoryMovementHistoryResponse(
             item.Id,
             item.OperationalName,
             item.OperationalUnit.Value,
-            movements.Select(movement => Map(
-                movement,
-                namesById[movement.ActorIdentityId].OperationalName)).ToArray(),
-            hasMore ? movements[^1].MovementRevision : null);
+            movements.Select(movement =>
+            {
+                var rows = byRoot.GetValueOrDefault(movement.Id) ?? [];
+                var latest = rows.LastOrDefault();
+                return Map(movement, namesById[movement.ActorIdentityId].OperationalName) with
+                {
+                    EffectiveNature = MapNature(latest?.CorrectedNature ?? movement.Nature),
+                    EffectiveQuantity = InventoryQuantity.Format(latest?.CorrectedQuantity ?? movement.Quantity),
+                    Corrections = rows.Select(x => new InventoryMovementCorrectionHistoryResponse(
+                        x.Sequence, x.PreviousNature, InventoryQuantity.Format(x.PreviousQuantity),
+                        x.CorrectedNature, InventoryQuantity.Format(x.CorrectedQuantity), InventoryQuantity.Format(x.DeltaApplied),
+                        InventoryQuantity.Format(x.ResultingRegisteredQuantity), x.MovementRevision, x.ActorIdentityId,
+                        namesById[x.ActorIdentityId].OperationalName, x.OccurredAtUtc)).ToArray()
+                };
+            }).ToArray(),
+            hasMore ? movements[^1].MovementRevision : null,
+            item.MovementRevision);
         return InventoryMovementHistoryResult.Succeeded(response);
     }
 

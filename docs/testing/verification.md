@@ -105,6 +105,12 @@ MVP-FC-CAT-I2 frontend evidence:
 - The broader `tsc -b` command is not claimed clean; it retains pre-existing unused `Browser`/`BrowserContext` imports in E2E files.
 
 
+## MVP-FC-INV-MC — Inventory Movement Correction
+
+MVP-FC-INV-MC — **CLOSED**. PostgreSQL real: pruebas focalizadas de corrección, autoridad, replay/intención cambiada, secuencia/delta, cero, Balance, Retire, Reconciliation posterior, Count invalidado y competencia obsoleta **8/8**; migración Inventory Up/Down y `HasPendingModelChanges=false` incluidas. Suite completo del módulo Inventory: **222/222**, proceso finalizado correctamente con código **0**.
+
+Frontend: `InventoryHistory.test.tsx` **12/12** y `npx tsc -p tsconfig.app.json --noEmit` **PASS**. E2E dirigido `inventory-movement-correction.spec.ts`: **1 discovered, 1 passed, 0 failed, 0 skipped** con PostgreSQL aislado y migraciones canónicas; el harness verificó `HasPendingModelChanges=false` para los cinco módulos. `git diff --check` **PASS**.
+
 ## MVP-FC-INV-LU — Inventory Element Lifecycle, Unit Correction y eligible Delete
 
 MVP-FC-INV-LU-I1A verificó lifecycle y corrección de Unit en backend: Inventory **201 discovered, 201 passed, 0 failed, 0 skipped**; migración Up/Down **PASS**; `HasPendingModelChanges=false`.

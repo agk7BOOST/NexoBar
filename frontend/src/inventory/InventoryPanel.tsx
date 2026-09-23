@@ -337,6 +337,13 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
     [historyItem?.itemId, refreshOperation],
   );
 
+  const refreshCorrectionState = useCallback(
+    async (_itemId: string) => {
+      await refreshOperation(false);
+    },
+    [refreshOperation],
+  );
+
   const handleAuthoritativeConfiguration = useCallback(async () => {
     await refreshConfiguration();
     if (operationAuthorizedRef.current) await refreshOperation(false);
@@ -624,6 +631,7 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
           onClose={() => setHistoryItem(null)}
           onUnauthorized={handleUnauthorized}
           onItemUnavailable={() => void refreshOperation()}
+          onAuthoritativeMutation={refreshCorrectionState}
         />
       </section>
     </section>
