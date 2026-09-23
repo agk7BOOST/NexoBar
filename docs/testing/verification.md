@@ -2,6 +2,12 @@
 
 ## Testing y verificación
 
+## MVP-FC-TOH — Terminal Order History
+
+Terminal Order History — **CLOSED**. Evidencia backend registrada en I1: proyección terminal focalizada **5/5**, pruebas terminales existentes **10/10**, suite final de OrderOperations **812/812**; `HasPendingModelChanges` ya había pasado en I1 y `git diff --check` pasó. Evidencia frontend registrada en I2: corrida focalizada **4 archivos / 55 pruebas**, `npx tsc -p tsconfig.app.json --noEmit` pasó exactamente y `git diff --check` pasó. Esos resultados backend/frontend son del checkpoint I1/I2 y no se reejecutaron para este cierre.
+
+I3 ejecutó sólo los escenarios Playwright focalizados de [Terminal Order History](../../frontend/e2e/terminal-order-history.spec.ts): **2 discovered, 2 passed, 0 failed, 0 skipped**. Closure usa OABC para crear, entregar, liquidar y cerrar; demuestra el 404 del endpoint activo y consulta History por referencia exacta. Complete Cancellation aparece como terminación distinta, sin Liquidation ni Closure, y sin controles mutantes. GeneralConfiguration sin OABC no recibe el entry point. No representa la suite Playwright completa ni la suite frontend completa.
+
 Existen tres capas:
 
 - backend: suites de integración xUnit con PostgreSQL real mediante Testcontainers;

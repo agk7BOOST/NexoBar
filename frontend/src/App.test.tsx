@@ -98,6 +98,7 @@ describe("App capability-aware administrative mounting", () => {
 
   it.each([
     [["GeneralConfiguration"], true, false],
+    [["Preparation"], false, false],
     [["OrderOperationsAndBasicClosure"], false, true],
     [["GeneralConfiguration", "OrderOperationsAndBasicClosure"], true, true],
     [[], false, false],
@@ -109,7 +110,7 @@ describe("App capability-aware administrative mounting", () => {
     if (seesOrder) expect(await screen.findByLabelText("Composicion operacional")).toBeInTheDocument();
     else expect(screen.queryByLabelText("Composicion operacional")).not.toBeInTheDocument();
     expect(orderWorkflowPropsMock).toHaveBeenCalledTimes(seesOrder ? 1 : 0);
-    expect(orderLookupPropsMock).toHaveBeenCalledWith(expect.objectContaining({ canChangeOrderContext: seesOrder }));
+    expect(orderLookupPropsMock).toHaveBeenCalledWith(expect.objectContaining({ canChangeOrderContext: seesOrder, canViewTerminalHistory: seesOrder }));
   });
 
   it("does not mount General Configuration while unauthenticated", async () => {

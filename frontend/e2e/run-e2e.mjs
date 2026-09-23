@@ -14,7 +14,7 @@ const composeArguments = ["compose", "-f", composeFile, "-p", composeProject];
 const cliArguments = process.argv.slice(2);
 const playwrightDelimiter = cliArguments.indexOf("--");
 const playwrightArguments =
-  playwrightDelimiter === -1 ? [] : cliArguments.slice(playwrightDelimiter + 1);
+  playwrightDelimiter === -1 ? cliArguments : cliArguments.slice(playwrightDelimiter + 1);
 
 function invocation(command, args) {
   if (process.platform !== "win32" || command !== "npm") {

@@ -27,6 +27,7 @@ import {
   type OperationalContextOption,
 } from "./orderOperationsClient.ts";
 import { getAntiforgeryToken } from "../identity/sessionClient.ts";
+import { TerminalOrderHistoryView } from "./TerminalOrderHistoryView.tsx";
 
 export interface RequestedOrderLookup {
   operationalReference: string;
@@ -47,6 +48,7 @@ interface OrderLookupProps {
   onEndingBusy?: (reference: string, busy: boolean) => void;
   onActiveOrderRetired?: (reference: string) => void;
   canChangeOrderContext?: boolean;
+  canViewTerminalHistory?: boolean;
 }
 
 function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
@@ -77,6 +79,7 @@ export function OrderLookup({
   onActiveOrderRetired,
   isOrderMutationBusy,
   canChangeOrderContext = false,
+  canViewTerminalHistory = false,
 }: OrderLookupProps) {
   const [operationalReference, setOperationalReference] = useState("");
   const [order, setOrder] = useState<OrderResponse | null>(null);
@@ -259,6 +262,7 @@ export function OrderLookup({
   }
 
   return (
+    <>
     <section className="panel" aria-labelledby="order-lookup-title">
       <ActiveOrderFreshnessSubscription
         orderId={activeOrderScopeId}
@@ -504,5 +508,7 @@ export function OrderLookup({
         </div>
       )}
     </section>
+    {canViewTerminalHistory && <TerminalOrderHistoryView onUnauthorized={onUnauthorized} />}
+    </>
   );
 }

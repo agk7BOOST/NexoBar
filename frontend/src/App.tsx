@@ -303,6 +303,7 @@ function App() {
           }
           requestedLookup={requestedLookup}
           canChangeOrderContext={canComposeOrders}
+          canViewTerminalHistory={canComposeOrders}
           activeOperationalReference={activeOperationalReference}
           activeOrderId={activeOrderId}
           onContinueOrder={requestContinueOrder}

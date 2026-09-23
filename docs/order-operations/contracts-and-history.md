@@ -15,6 +15,16 @@ Este documento conserva las estructuras de Historia, matching durable y contrato
 - No existe todavía query ni UI de Historia de Delivery.
 - Esta separación no constituye Event Sourcing.
 
+## Terminal Order History — MVP-FC-TOH: CLOSED
+
+`GET /api/order-operations/order-history/{operationalReference}` es el read autorizado por `OrderOperationsAndBasicClosure` para una referencia exacta. Sólo devuelve una History cuando el Order terminó mediante Closure o Complete Cancellation. Una referencia malformada conserva su ProblemDetails específico; Order desconocido, activo o no terminal obtiene el resultado genérico no disponible. El lookup activo continúa usando su endpoint de Order activo y no consulta History como fallback. La History usa su endpoint dedicado y no vuelve a consultar el endpoint activo.
+
+La consulta proyecta snapshots y hechos persistidos de OrderOperations en secciones estructuradas, respetando el orden de backend por sección; no produce una cronología global ni representa Event Store. Incluye Context final y cambios secuenciados con nombres anterior/nuevo, actor y tiempo; cada Incorporation ordinal conserva su confirmación, Context snapshot, actor y Contents; cada Content conserva cantidad confirmada, Applied Price original/efectivo, instruction, preparación y responsabilidad de Preparation cuando exista, excepción de Product no disponible, historial de correcciones de precio, Content Corrections y Cancellations, Preparation, Delivery y Delivery Corrections. Closure History presenta Liquidation/pago y Closure como hechos independientes. Complete Cancellation conserva su decisión terminal, descarte de PendingComposition y consecuencias por Content, y no aporta Liquidation, pago ni Closure.
+
+`productOperationalNameSnapshot` es nullable por compatibilidad histórica. La vista presenta el snapshot cuando existe y, para `null`, exactamente «Nombre histórico no disponible»; no busca Catalog ni sustituye con un nombre o ID vigente. Contextos proceden de snapshots de OrderOperations, sin lookup runtime de OperationalConfiguration. `ActorIdentityId` estable se presenta como referencia técnica neutral, sin traducirlo mediante Identity administration.
+
+El frontend expone la consulta exacta en una superficie explícitamente «Historial del pedido / Solo lectura», gated por OABC y sin affordances mutantes. History carga sólo tras una solicitud explícita; no hay polling ni scopes SSE terminales.
+
 ## Context actual, cambio e Historia — MVP-FC-CTX: CLOSED
 
 `OrderOperations` posee el Context actual del Order (`CurrentContextId`, `CurrentContextOperationalName`), el Context Change History y el resultado durable de sus comandos. El nombre actual es un snapshot propiedad del Order. Reads de Order, Preparation y Delivery usan ese Estado de Order; no consultan OperationalConfiguration en vivo y no copian Context a `PreparationWork` o `DeliveryState`. La resolución de IDs configurados ocurre mediante la capacidad estrecha de Context; no hay acceso runtime cross-module a DbContext/schema ni FK cross-module.

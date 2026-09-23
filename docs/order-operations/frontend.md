@@ -36,6 +36,16 @@ Después de una mutación exitosa, el frontend relee el Order y la preparación 
 - La acción distinta «Corregir precio aplicado» identifica el Content exacto por `(IncorporationId, ContentOrdinal)`. Muestra separadamente precio confirmado original, precio aplicado efectivo actual y precio vigente de Catalog; no ofrece input monetario libre.
 - La evaluación autoritativa determina disponibilidad y bloqueadores. Tras éxito refresca la evaluación de precio y el Estado económico/de terminación del Order; no trata una mutación optimista de Delivery o importe como autoritativa. Puede reutilizar el read de Delivery para la identidad exacta, pero la elegibilidad de precio procede de su evaluación autoritativa.
 
+### Terminal Order History — MVP-FC-TOH: CLOSED
+
+Order Lookup ofrece una acción separada de History para escribir la referencia operacional exacta. Active lookup permanece en el endpoint activo; History usa exclusivamente `GET /api/order-operations/order-history/{operationalReference}` y un Order no terminal/ausente se muestra como History no disponible. No se hace probe cruzado.
+
+La superficie dedicada «Historial del pedido» indica «Solo lectura» y no monta el workflow activo ni controles de mutación. App la ofrece únicamente a una Identity cuya proyección actual contiene `OrderOperationsAndBasicClosure`; GeneralConfiguration o Preparation por sí solas no la muestran.
+
+Se presentan los snapshots de Context de confirmación/final y cambios de Context, Incorporations separadas y sus Contents, preparación, Delivery y sus correcciones, Content Corrections/Cancellations, Applied Price corrections y, según la rama terminal, Liquidation/pago seguido de Closure o Complete Cancellation con sus consecuencias. Se conserva el orden backend dentro de cada sección, sin fabricar una cronología global.
+
+El Product visible se deriva únicamente de `productOperationalNameSnapshot`; un snapshot nulo muestra exactamente «Nombre histórico no disponible». No se consulta Catalog, Identity administration ni OperationalConfiguration en runtime. Los actores se atribuyen mediante el `ActorIdentityId` estable. History carga bajo demanda y no usa SSE ni polling. El contrato y la semántica de los hechos están en [Contratos, Historia e idempotencia](contracts-and-history.md#terminal-order-history--mvp-fc-toh-closed).
+
 ### RF-PED-024/025 — intervención explícita sobre Product no disponible (S10)
 
 La UI deriva una señal de presentación sólo cuando la Identity actual tiene conjuntamente `OrderOperationsAndBasicClosure` y `OperationalIntervention`. El backend sigue siendo la autoridad: la señal no es una autorización persistida ni sustituye la comprobación de Confirmation.
