@@ -7,6 +7,27 @@ namespace NexoBar.OrderOperations.IntegrationTests;
 
 public sealed partial class CompleteCancellationTests
 {
+    [Fact]
+    public async Task Terminal_history_preserves_complete_cancellation_as_its_own_path()
+    {
+        var target = await Setup(true, 5, 3);
+        await GrantIntervention();
+        using var cancelled = await Post(fixture.OrderOperationsClient, target.OperationalReference);
+        var result = await Success(cancelled);
+        using var response = await fixture.OrderOperationsClient.GetAsync($"/api/order-operations/order-history/{target.OperationalReference}", Token);
+        response.EnsureSuccessStatusCode();
+        var history = Assert.IsType<TerminalOrderHistory>(await response.Content.ReadFromJsonAsync<TerminalOrderHistory>(Token));
+        Assert.Equal("CompleteCancellation", history.Termination.Type);
+        Assert.Equal(result.OccurredAt, history.Termination.OccurredAt);
+        Assert.Equal(fixture.DefaultOrderOperationsActor.IdentityId, history.Termination.ActorIdentityId);
+        Assert.Null(history.Liquidation);
+        Assert.Null(history.Closure);
+        Assert.NotNull(history.CompleteCancellation);
+        Assert.Single(history.Incorporations);
+        Assert.NotEmpty(history.Incorporations[0].Contents[0].PreparationHistory);
+        Assert.NotEmpty(history.CompleteCancellation.Consequences);
+    }
+
     [Theory]
     [InlineData("delivery")] [InlineData("missing-quantity")] [InlineData("missing-delivery")]
     [InlineData("missing-work")] [InlineData("inconsistent-work")] [InlineData("success")]

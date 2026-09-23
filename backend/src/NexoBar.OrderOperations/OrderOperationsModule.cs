@@ -33,6 +33,7 @@ public static partial class OrderOperationsModule
         services.AddScoped<SubsequentConfirmationService>();
         services.AddScoped<PendingCompositionService>();
         services.AddScoped<OrderQueryService>();
+        services.AddScoped<TerminalOrderHistoryQueryService>();
         services.AddScoped<ActiveOrderReadState>();
         services.AddScoped<IActiveOrderSubscriptionAuthorization, ActiveOrderSubscriptionAuthorization>();
         services.AddScoped<OrderEconomicStateReader>();
@@ -174,6 +175,15 @@ public static partial class OrderOperationsModule
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        endpoints.MapGet(
+                "/api/order-operations/order-history/{operationalReference}",
+                FindTerminalOrderHistoryAsync)
+            .WithName("GetTerminalOrderHistoryByOperationalReference")
+            .WithTags("OrderOperations")
+            .RequireAuthorization()
+            .Produces<TerminalOrderHistory>()
+            .ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404);
 
         endpoints.MapGet(
                 "/api/order-operations/orders/{operationalReference}",
@@ -1405,6 +1415,30 @@ public static partial class OrderOperationsModule
                 "Order not found",
                 "No Order exists with the supplied operational reference.",
                 "order_operations.order.not_found"),
+            _ => throw new UnreachableException()
+        };
+    }
+
+    private static async Task<IResult> FindTerminalOrderHistoryAsync(
+        string operationalReference,
+        TerminalOrderHistoryQueryService service,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(operationalReference, out var orderId))
+            return Problem(StatusCodes.Status400BadRequest, "Invalid operational reference",
+                "The supplied operational reference is structurally invalid.",
+                "order_operations.order.operational_reference_invalid");
+
+        var result = await service.FindAsync(orderId, cancellationToken);
+        return result.Outcome switch
+        {
+            TerminalOrderHistoryOutcome.Succeeded => Results.Ok(result.History),
+            TerminalOrderHistoryOutcome.Unauthenticated => Problem(StatusCodes.Status401Unauthorized,
+                "Invalid session", "The current session is invalid or expired.", "identities_and_capabilities.invalid_session"),
+            TerminalOrderHistoryOutcome.Forbidden => Problem(StatusCodes.Status403Forbidden,
+                "Order access forbidden", "The current Identity is not authorized for Order Operations.", "order_operations.order.forbidden"),
+            TerminalOrderHistoryOutcome.NotFound => Problem(StatusCodes.Status404NotFound,
+                "Order history not found", "No terminal Order exists with the supplied operational reference.", "order_operations.order_history.not_found"),
             _ => throw new UnreachableException()
         };
     }
