@@ -133,9 +133,12 @@ async function renderWithWork(items: PreparationWork[] = [work]) {
   vi.mocked(listPreparationWork).mockResolvedValueOnce(items);
   render(<PreparationPanel onUnauthorized={vi.fn()} />);
   if (items.length > 0) {
-    await screen.findAllByText(items[0].productOperationalName ?? "Nombre histórico no disponible", {
-      selector: "strong",
-    });
+    await screen.findAllByText(
+      items[0].productOperationalName ?? "Nombre histórico no disponible",
+      {
+        selector: "strong",
+      },
+    );
   }
 }
 
@@ -212,9 +215,21 @@ describe("PreparationPanel", () => {
     const legacyWork = { ...work, productOperationalName: null };
     await renderWithWork([legacyWork]);
 
-    expect(screen.getByText("Nombre histórico no disponible", { selector: "strong" })).toBeVisible();
-    expect(screen.getByLabelText(/Cantidad a iniciar de Nombre histórico no disponible/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Iniciar Nombre histórico no disponible/ })).toBeInTheDocument();
+    expect(
+      screen.getByText("Nombre histórico no disponible", {
+        selector: "strong",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByLabelText(
+        /Cantidad a iniciar de Nombre histórico no disponible/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /Iniciar Nombre histórico no disponible/,
+      }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(legacyWork.productId)).not.toBeInTheDocument();
   });
 

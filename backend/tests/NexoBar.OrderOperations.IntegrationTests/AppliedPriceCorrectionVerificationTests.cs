@@ -243,8 +243,10 @@ public sealed partial class AppliedPriceCorrectionApiTests
         var product = Assert.Single(await fixture.ReadConfirmedContentsAsync(Token)).ProductId;
         var pending = await fixture.StartPendingCompositionAsync(target.OperationalReference, Token);
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/order-operations/orders/{target.OperationalReference}/confirmations")
-        { Content = JsonContent.Create(new SubsequentConfirmationRequest(pending.PendingCompositionId,
-            [new SubsequentConfirmationItemRequest(product, 1)])) };
+        {
+            Content = JsonContent.Create(new SubsequentConfirmationRequest(pending.PendingCompositionId,
+            [new SubsequentConfirmationItemRequest(product, 1)]))
+        };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString());
         using var confirmed = await OrderOperationsApiFixture.SendWithAntiforgeryAsync(fixture.OrderOperationsClient, request, Token);
         confirmed.EnsureSuccessStatusCode();

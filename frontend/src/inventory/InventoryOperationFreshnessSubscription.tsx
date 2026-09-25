@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import {
   useInventoryOperationConnectionGeneration,
   useInventoryOperationInvalidation,
-} from "../notifications/NotificationSseProvider.tsx";
+} from "../notifications/NotificationSseHooks.ts";
 
 /** The mounted operational list alone owns this static freshness interest. */
 export function InventoryOperationFreshnessSubscription({
@@ -11,7 +11,9 @@ export function InventoryOperationFreshnessSubscription({
   invalidate: () => void;
 }) {
   const invalidateRef = useRef(invalidate);
-  invalidateRef.current = invalidate;
+  useEffect(() => {
+    invalidateRef.current = invalidate;
+  }, [invalidate]);
   const invalidateCurrent = useCallback(() => invalidateRef.current(), []);
   useInventoryOperationInvalidation(invalidateCurrent);
   const generation = useInventoryOperationConnectionGeneration();

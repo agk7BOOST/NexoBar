@@ -7,11 +7,12 @@ import {
   type CurrentIdentity,
 } from "./identity/sessionClient.ts";
 
-const { getCurrentIdentityMock, orderWorkflowPropsMock, orderLookupPropsMock } = vi.hoisted(() => ({
-  getCurrentIdentityMock: vi.fn(),
-  orderWorkflowPropsMock: vi.fn(),
-  orderLookupPropsMock: vi.fn(),
-}));
+const { getCurrentIdentityMock, orderWorkflowPropsMock, orderLookupPropsMock } =
+  vi.hoisted(() => ({
+    getCurrentIdentityMock: vi.fn(),
+    orderWorkflowPropsMock: vi.fn(),
+    orderLookupPropsMock: vi.fn(),
+  }));
 const fetchMock = vi.fn<typeof fetch>();
 
 vi.mock("./identity/sessionClient.ts", async (importOriginal) => {
@@ -56,7 +57,12 @@ vi.mock("./orderOperations/OrderWorkflow.tsx", () => ({
     return <section aria-label="Composicion operacional" />;
   },
 }));
-vi.mock("./orderOperations/OrderLookup.tsx", () => ({ OrderLookup: (props: unknown) => { orderLookupPropsMock(props); return null; } }));
+vi.mock("./orderOperations/OrderLookup.tsx", () => ({
+  OrderLookup: (props: unknown) => {
+    orderLookupPropsMock(props);
+    return null;
+  },
+}));
 vi.mock("./orderOperations/OperationalInterventionPanel.tsx", () => ({
   OperationalInterventionPanel: () => null,
 }));
@@ -103,16 +109,40 @@ describe("App capability-aware administrative mounting", () => {
     [["OrderOperationsAndBasicClosure"], false, true],
     [["GeneralConfiguration", "OrderOperationsAndBasicClosure"], true, true],
     [[], false, false],
-  ])("keeps Context administration and Order operations separately gated: %j", async (responsibilities, seesAdmin, seesOrder) => {
-    getCurrentIdentityMock.mockResolvedValueOnce(identity(responsibilities as string[]));
-    render(<App />);
-    if (seesAdmin) expect(await screen.findByLabelText("Configuracion general administrativa")).toBeInTheDocument();
-    else await waitFor(() => expect(screen.queryByLabelText("Configuracion general administrativa")).not.toBeInTheDocument());
-    if (seesOrder) expect(await screen.findByLabelText("Composicion operacional")).toBeInTheDocument();
-    else expect(screen.queryByLabelText("Composicion operacional")).not.toBeInTheDocument();
-    expect(orderWorkflowPropsMock).toHaveBeenCalledTimes(seesOrder ? 1 : 0);
-    expect(orderLookupPropsMock).toHaveBeenCalledWith(expect.objectContaining({ canChangeOrderContext: seesOrder, canViewTerminalHistory: seesOrder }));
-  });
+  ])(
+    "keeps Context administration and Order operations separately gated: %j",
+    async (responsibilities, seesAdmin, seesOrder) => {
+      getCurrentIdentityMock.mockResolvedValueOnce(
+        identity(responsibilities as string[]),
+      );
+      render(<App />);
+      if (seesAdmin)
+        expect(
+          await screen.findByLabelText("Configuracion general administrativa"),
+        ).toBeInTheDocument();
+      else
+        await waitFor(() =>
+          expect(
+            screen.queryByLabelText("Configuracion general administrativa"),
+          ).not.toBeInTheDocument(),
+        );
+      if (seesOrder)
+        expect(
+          await screen.findByLabelText("Composicion operacional"),
+        ).toBeInTheDocument();
+      else
+        expect(
+          screen.queryByLabelText("Composicion operacional"),
+        ).not.toBeInTheDocument();
+      expect(orderWorkflowPropsMock).toHaveBeenCalledTimes(seesOrder ? 1 : 0);
+      expect(orderLookupPropsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          canChangeOrderContext: seesOrder,
+          canViewTerminalHistory: seesOrder,
+        }),
+      );
+    },
+  );
 
   it("does not mount General Configuration while unauthenticated", async () => {
     getCurrentIdentityMock.mockRejectedValueOnce({ status: 401 });
@@ -130,7 +160,9 @@ describe("App capability-aware administrative mounting", () => {
       "/api/operational-configuration/preparation-responsibilities",
       expect.anything(),
     );
-    expect(screen.queryByLabelText("Catalog administrativo")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Catalog administrativo"),
+    ).not.toBeInTheDocument();
   });
 
   it("does not mount CatalogConfiguration without that responsibility", async () => {
@@ -140,7 +172,9 @@ describe("App capability-aware administrative mounting", () => {
     render(<App />);
 
     await screen.findByLabelText("Composicion operacional");
-    expect(screen.queryByLabelText("Catalog administrativo")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Catalog administrativo"),
+    ).not.toBeInTheDocument();
   });
 
   it("does not expose an Order workflow to an OperationalIntervention-only Identity", async () => {
@@ -150,32 +184,45 @@ describe("App capability-aware administrative mounting", () => {
     render(<App />);
 
     await screen.findByRole("button", { name: "Salir" });
-    expect(screen.queryByLabelText("Composicion operacional")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Composicion operacional"),
+    ).not.toBeInTheDocument();
   });
 
   it("mounts Availability Intervention for OperationalIntervention alone", async () => {
-    getCurrentIdentityMock.mockResolvedValueOnce(identity(["OperationalIntervention"]));
+    getCurrentIdentityMock.mockResolvedValueOnce(
+      identity(["OperationalIntervention"]),
+    );
     render(<App />);
 
     expect(
-      await screen.findByLabelText("Intervencion de disponibilidad de Products"),
+      await screen.findByLabelText(
+        "Intervencion de disponibilidad de Products",
+      ),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Catalog administrativo")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Composicion operacional")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Catalog administrativo"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Composicion operacional"),
+    ).not.toBeInTheDocument();
   });
 
   it.each([
     ["OrderOperationsAndBasicClosure", "OrderOperations-only"],
     ["CatalogConfiguration", "CatalogConfiguration-only"],
-  ])("does not mount Availability Intervention for %s", async (responsibility) => {
-    getCurrentIdentityMock.mockResolvedValueOnce(identity([responsibility]));
-    render(<App />);
+  ])(
+    "does not mount Availability Intervention for %s",
+    async (responsibility) => {
+      getCurrentIdentityMock.mockResolvedValueOnce(identity([responsibility]));
+      render(<App />);
 
-    await screen.findByRole("button", { name: "Salir" });
-    expect(
-      screen.queryByLabelText("Intervencion de disponibilidad de Products"),
-    ).not.toBeInTheDocument();
-  });
+      await screen.findByRole("button", { name: "Salir" });
+      expect(
+        screen.queryByLabelText("Intervencion de disponibilidad de Products"),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("mounts Availability Intervention independently for combined responsibilities", async () => {
     getCurrentIdentityMock.mockResolvedValueOnce(
@@ -184,17 +231,18 @@ describe("App capability-aware administrative mounting", () => {
     render(<App />);
 
     expect(
-      await screen.findByLabelText("Intervencion de disponibilidad de Products"),
+      await screen.findByLabelText(
+        "Intervencion de disponibilidad de Products",
+      ),
     ).toBeInTheDocument();
-    expect(await screen.findByLabelText("Composicion operacional")).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText("Composicion operacional"),
+    ).toBeInTheDocument();
   });
 
   it("derives the unavailable-Product intervention presentation capability from both current responsibilities", async () => {
     getCurrentIdentityMock.mockResolvedValueOnce(
-      identity([
-        "OrderOperationsAndBasicClosure",
-        "OperationalIntervention",
-      ]),
+      identity(["OrderOperationsAndBasicClosure", "OperationalIntervention"]),
     );
     render(<App />);
 
@@ -207,25 +255,40 @@ describe("App capability-aware administrative mounting", () => {
   });
 
   it("mounts CatalogConfiguration only for its current responsibility", async () => {
-    getCurrentIdentityMock.mockResolvedValueOnce(identity(["CatalogConfiguration"]));
+    getCurrentIdentityMock.mockResolvedValueOnce(
+      identity(["CatalogConfiguration"]),
+    );
     render(<App />);
 
-    expect(await screen.findByLabelText("Catalog administrativo")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Eliminar definitivamente Producto" })).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText("Catalog administrativo"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Eliminar definitivamente Producto" }),
+    ).toBeInTheDocument();
   });
 
   it.each([
-    ["GeneralConfiguration"], ["OrderOperationsAndBasicClosure"],
-    ["OperationalIntervention"], ["Preparation"], ["InventoryConfiguration"],
+    ["GeneralConfiguration"],
+    ["OrderOperationsAndBasicClosure"],
+    ["OperationalIntervention"],
+    ["Preparation"],
+    ["InventoryConfiguration"],
   ])("does not expose Product Delete to %s alone", async (responsibility) => {
     getCurrentIdentityMock.mockResolvedValueOnce(identity([responsibility]));
     render(<App />);
     await screen.findByRole("button", { name: "Salir" });
-    expect(screen.queryByRole("button", { name: "Eliminar definitivamente Producto" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: "Eliminar definitivamente Producto",
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not mount or preload General Configuration without GeneralConfiguration", async () => {
-    getCurrentIdentityMock.mockResolvedValueOnce(identity(["CatalogConfiguration"]));
+    getCurrentIdentityMock.mockResolvedValueOnce(
+      identity(["CatalogConfiguration"]),
+    );
     render(<App />);
 
     await screen.findByLabelText("Catalog administrativo");
@@ -243,7 +306,9 @@ describe("App capability-aware administrative mounting", () => {
   });
 
   it("mounts General Configuration only for GeneralConfiguration", async () => {
-    getCurrentIdentityMock.mockResolvedValueOnce(identity(["GeneralConfiguration"]));
+    getCurrentIdentityMock.mockResolvedValueOnce(
+      identity(["GeneralConfiguration"]),
+    );
     render(<App />);
 
     expect(
@@ -261,7 +326,9 @@ describe("App capability-aware administrative mounting", () => {
   });
 
   it("keeps the General Configuration creation surface absent for a CatalogConfiguration-only Identity", async () => {
-    getCurrentIdentityMock.mockResolvedValueOnce(identity(["CatalogConfiguration"]));
+    getCurrentIdentityMock.mockResolvedValueOnce(
+      identity(["CatalogConfiguration"]),
+    );
     render(<App />);
 
     expect(
@@ -273,7 +340,9 @@ describe("App capability-aware administrative mounting", () => {
   });
 
   it("clears the General Configuration surface on logout", async () => {
-    getCurrentIdentityMock.mockResolvedValueOnce(identity(["GeneralConfiguration"]));
+    getCurrentIdentityMock.mockResolvedValueOnce(
+      identity(["GeneralConfiguration"]),
+    );
     const user = userEvent.setup();
     render(<App />);
 
@@ -298,8 +367,12 @@ describe("App capability-aware administrative mounting", () => {
     await user.click(screen.getByRole("button", { name: "Salir" }));
 
     await screen.findByRole("heading", { name: "Ingresar" });
-    expect(screen.queryByLabelText("Catalog administrativo")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Composicion operacional")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Catalog administrativo"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Composicion operacional"),
+    ).not.toBeInTheDocument();
   });
 
   it("retires General Configuration after a refreshed current Identity loses the responsibility", async () => {

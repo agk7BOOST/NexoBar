@@ -39,9 +39,9 @@ internal sealed class OperationalInterventionService(
             return PreparationProgressResult.Forbidden();
 
         var target = await (from work in dbContext.PreparationWork.AsNoTracking()
-            join incorporation in dbContext.Incorporations.AsNoTracking() on work.IncorporationId equals incorporation.Id
-            where work.Id == workId
-            select new { incorporation.OrderId, work.IncorporationId, work.ContentOrdinal }).SingleOrDefaultAsync(token);
+                            join incorporation in dbContext.Incorporations.AsNoTracking() on work.IncorporationId equals incorporation.Id
+                            where work.Id == workId
+                            select new { incorporation.OrderId, work.IncorporationId, work.ContentOrdinal }).SingleOrDefaultAsync(token);
         if (target is null) return PreparationProgressResult.WorkNotFound();
         if (!await dbContext.Orders.FromSqlInterpolated(
                 $"SELECT id, current_context_id, context FROM order_operations.orders WHERE id = {target.OrderId} FOR UPDATE")

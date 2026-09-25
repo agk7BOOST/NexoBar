@@ -89,16 +89,16 @@ internal static class HostExtraordinaryGeneralConfigurationRecoveryCommand
 
     private static string OutcomeName(
         ExtraordinaryGeneralConfigurationRecoveryOutcome outcome) => outcome switch
-    {
-        ExtraordinaryGeneralConfigurationRecoveryOutcome.Succeeded => "success",
-        ExtraordinaryGeneralConfigurationRecoveryOutcome.ReplayedSuccess => "replayed_success",
-        ExtraordinaryGeneralConfigurationRecoveryOutcome.InfrastructureFailure => "infrastructure_failure",
-        ExtraordinaryGeneralConfigurationRecoveryOutcome.InvalidInput => "invalid_input",
-        ExtraordinaryGeneralConfigurationRecoveryOutcome.InvalidRecoveryFactor => "invalid_recovery_factor",
-        ExtraordinaryGeneralConfigurationRecoveryOutcome.TargetNotFound => "target_not_found",
-        ExtraordinaryGeneralConfigurationRecoveryOutcome.DuplicateLogin => "duplicate_login",
-        ExtraordinaryGeneralConfigurationRecoveryOutcome.IntentConflict => "intent_conflict",
-        ExtraordinaryGeneralConfigurationRecoveryOutcome.RecoveryNotConfigured => "recovery_not_configured",
-        _ => throw new InvalidOperationException("Unknown extraordinary recovery outcome.")
-    };
+        {
+            ExtraordinaryGeneralConfigurationRecoveryOutcome.Succeeded => "success",
+            ExtraordinaryGeneralConfigurationRecoveryOutcome.ReplayedSuccess => "replayed_success",
+            ExtraordinaryGeneralConfigurationRecoveryOutcome.InfrastructureFailure => "infrastructure_failure",
+            ExtraordinaryGeneralConfigurationRecoveryOutcome.InvalidInput => "invalid_input",
+            ExtraordinaryGeneralConfigurationRecoveryOutcome.InvalidRecoveryFactor => "invalid_recovery_factor",
+            ExtraordinaryGeneralConfigurationRecoveryOutcome.TargetNotFound => "target_not_found",
+            ExtraordinaryGeneralConfigurationRecoveryOutcome.DuplicateLogin => "duplicate_login",
+            ExtraordinaryGeneralConfigurationRecoveryOutcome.IntentConflict => "intent_conflict",
+            ExtraordinaryGeneralConfigurationRecoveryOutcome.RecoveryNotConfigured => "recovery_not_configured",
+            _ => throw new InvalidOperationException("Unknown extraordinary recovery outcome.")
+        };
 }

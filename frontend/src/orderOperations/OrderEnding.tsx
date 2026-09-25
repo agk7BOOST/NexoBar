@@ -17,7 +17,8 @@ import {
 } from "./orderEndingClient.ts";
 
 const blockers: Record<string, string> = {
-  order_completely_cancelled: "El pedido terminó por cancelación completa. No admite Liquidación ni Cierre.",
+  order_completely_cancelled:
+    "El pedido terminó por cancelación completa. No admite Liquidación ni Cierre.",
   pending_composition:
     "Hay una Composición pendiente. Confirmala o descartala antes de Liquidar.",
   unresolved_fulfillment:
@@ -38,6 +39,7 @@ interface OrderEndingProps {
   onBusyChange: (busy: boolean) => void;
   occurredAt: string | null;
   onOccurredAt: (occurredAt: string) => void;
+  onClosed: (closedAt: string) => void;
 }
 
 export function OrderEnding({
@@ -48,6 +50,7 @@ export function OrderEnding({
   onBusyChange,
   occurredAt,
   onOccurredAt,
+  onClosed,
 }: OrderEndingProps) {
   const [medium, setMedium] = useState("");
   const [intent, setIntent] = useState<OrderEndingIntent | null>(null);
@@ -119,7 +122,14 @@ export function OrderEnding({
     try {
       const timestamp = await sendOrderEndingIntent(next, token);
       if (!mounted.current) return;
-      if (timestamp !== null) onOccurredAt(timestamp);
+      if (next.kind === "close") {
+        setIntent(null);
+        sending.current = false;
+        lock(false);
+        onClosed(timestamp);
+        return;
+      }
+      onOccurredAt(timestamp);
     } catch (error) {
       if (!mounted.current) return;
       sending.current = false;
@@ -163,7 +173,13 @@ export function OrderEnding({
   }
 
   function begin(kind: OrderEndingKind) {
-    if (busy.current || !canAct || order.isClosed || isOrderCompletelyCancelled(order)) return;
+    if (
+      busy.current ||
+      !canAct ||
+      order.isClosed ||
+      isOrderCompletelyCancelled(order)
+    )
+      return;
     if (
       kind === "close"
         ? !order.isClosureEligible || !order.isLiquidated
@@ -268,62 +284,68 @@ export function OrderEnding({
           )}
         </dl>
       )}
-      {!order.isLiquidated && !order.isClosed && !order.isFrozen && !isOrderCompletelyCancelled(order) && (
-        <>
-          <p>Después de Liquidar, el Pedido quedará congelado.</p>
-          <form
-            aria-label="Liquidación simple"
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              begin("simple");
-            }}
+      {!order.isLiquidated &&
+        !order.isClosed &&
+        !order.isFrozen &&
+        !isOrderCompletelyCancelled(order) && (
+          <>
+            <p>Después de Liquidar, el Pedido quedará congelado.</p>
+            <form
+              aria-label="Liquidación simple"
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                begin("simple");
+              }}
+            >
+              <label htmlFor="declared-payment-medium">
+                Medio de pago declarado
+              </label>
+              <input
+                id="declared-payment-medium"
+                type="text"
+                value={medium}
+                required
+                aria-describedby="declared-payment-medium-help"
+                disabled={disabled || !order.isLiquidationEligible}
+                onChange={(event) => setMedium(event.target.value)}
+              />
+              <p id="declared-payment-medium-help">
+                De 1 a 200 caracteres, sin contar espacios exteriores.
+              </p>
+              <button
+                type="submit"
+                disabled={disabled || !order.isLiquidationEligible}
+              >
+                Liquidar
+              </button>
+            </form>
+            <div className="external-collection">
+              <h4>Cobro gestionado externamente</h4>
+              <p>Registra la Liquidación sin declarar un medio de pago.</p>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={disabled || !order.isLiquidationEligible}
+                onClick={() => begin("external")}
+              >
+                Registrar cobro gestionado externamente
+              </button>
+            </div>
+          </>
+        )}
+      {order.isLiquidated &&
+        order.isClosureEligible &&
+        !order.isClosed &&
+        !isOrderCompletelyCancelled(order) && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => begin("close")}
           >
-            <label htmlFor="declared-payment-medium">
-              Medio de pago declarado
-            </label>
-            <input
-              id="declared-payment-medium"
-              type="text"
-              value={medium}
-              required
-              aria-describedby="declared-payment-medium-help"
-              disabled={disabled || !order.isLiquidationEligible}
-              onChange={(event) => setMedium(event.target.value)}
-            />
-            <p id="declared-payment-medium-help">
-              De 1 a 200 caracteres, sin contar espacios exteriores.
-            </p>
-            <button
-              type="submit"
-              disabled={disabled || !order.isLiquidationEligible}
-            >
-              Liquidar
-            </button>
-          </form>
-          <div className="external-collection">
-            <h4>Cobro gestionado externamente</h4>
-            <p>Registra la Liquidación sin declarar un medio de pago.</p>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={disabled || !order.isLiquidationEligible}
-              onClick={() => begin("external")}
-            >
-              Registrar cobro gestionado externamente
-            </button>
-          </div>
-        </>
-      )}
-      {order.isLiquidated && order.isClosureEligible && !order.isClosed && !isOrderCompletelyCancelled(order) && (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => begin("close")}
-        >
-          Cerrar Pedido
-        </button>
-      )}
+            Cerrar Pedido
+          </button>
+        )}
       {order.isClosed && (
         <div role="status">
           <strong>Pedido cerrado</strong>

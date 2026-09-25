@@ -1,4 +1,10 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   activateIdentity,
   assignResponsibility,
@@ -62,11 +68,7 @@ interface RenameEditor {
 }
 
 type IdentityMutationKind =
-  | "activate"
-  | "deactivate"
-  | "delete"
-  | "assign"
-  | "revoke";
+  "activate" | "deactivate" | "delete" | "assign" | "revoke";
 
 interface IdentityMutationIntention {
   kind: IdentityMutationKind;
@@ -123,7 +125,9 @@ function messageForProblem(
   if (problem.code === "identities_and_capabilities.identity_not_found") {
     return "La Identity ya no existe. Actualizá el listado.";
   }
-  if (problem.code === "identities_and_capabilities.functional_history_exists") {
+  if (
+    problem.code === "identities_and_capabilities.functional_history_exists"
+  ) {
     return "Esta Identity debe conservarse porque tiene Historia funcional atribuible. Podés desactivarla si ya no debe operar; no se desactivó automáticamente.";
   }
   if (
@@ -134,7 +138,9 @@ function messageForProblem(
       ? "Debe permanecer otra vía ordinaria utilizable de Configuración general antes de eliminar esta Identity."
       : "Debe permanecer al menos una vía administrativa utilizable.";
   }
-  if (problem.code === "identities_and_capabilities.responsibility_code_invalid") {
+  if (
+    problem.code === "identities_and_capabilities.responsibility_code_invalid"
+  ) {
     return "La responsabilidad indicada no es válida.";
   }
   return action === "create"
@@ -217,18 +223,28 @@ export function GeneralConfigurationPanel({
   const preparationResponsibilityReadGeneration = useRef(0);
   const [preparationResponsibilities, setPreparationResponsibilities] =
     useState<PreparationResponsibility[]>([]);
-  const [isPreparationResponsibilitiesLoading, setIsPreparationResponsibilitiesLoading] =
-    useState(true);
-  const [preparationResponsibilitiesError, setPreparationResponsibilitiesError] =
-    useState<string | null>(null);
+  const [
+    isPreparationResponsibilitiesLoading,
+    setIsPreparationResponsibilitiesLoading,
+  ] = useState(true);
+  const [
+    preparationResponsibilitiesError,
+    setPreparationResponsibilitiesError,
+  ] = useState<string | null>(null);
   const [preparationResponsibilityName, setPreparationResponsibilityName] =
     useState("");
-  const [isCreatingPreparationResponsibility, setIsCreatingPreparationResponsibility] =
-    useState(false);
-  const [preparationResponsibilityCreationNotice, setPreparationResponsibilityCreationNotice] =
-    useState<Notice | null>(null);
-  const [uncertainPreparationResponsibilityCreation, setUncertainPreparationResponsibilityCreation] =
-    useState<CreatePreparationResponsibilityIntention | null>(null);
+  const [
+    isCreatingPreparationResponsibility,
+    setIsCreatingPreparationResponsibility,
+  ] = useState(false);
+  const [
+    preparationResponsibilityCreationNotice,
+    setPreparationResponsibilityCreationNotice,
+  ] = useState<Notice | null>(null);
+  const [
+    uncertainPreparationResponsibilityCreation,
+    setUncertainPreparationResponsibilityCreation,
+  ] = useState<CreatePreparationResponsibilityIntention | null>(null);
   const [creationName, setCreationName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [creationNotice, setCreationNotice] = useState<Notice | null>(null);
@@ -243,98 +259,118 @@ export function GeneralConfigurationPanel({
   const [mutationNotice, setMutationNotice] = useState<Notice | null>(null);
   const [uncertainMutation, setUncertainMutation] =
     useState<IdentityMutationIntention | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<AdministrativeIdentity | null>(null);
+  const [deleteTarget, setDeleteTarget] =
+    useState<AdministrativeIdentity | null>(null);
   const [isMutatingEnablement, setIsMutatingEnablement] = useState(false);
   const [enablementNotice, setEnablementNotice] = useState<Notice | null>(null);
   const [uncertainEnablementMutation, setUncertainEnablementMutation] =
     useState<EnablementMutationIntention | null>(null);
-  const [credentialEditor, setCredentialEditor] = useState<CredentialEditor | null>(null);
+  const [credentialEditor, setCredentialEditor] =
+    useState<CredentialEditor | null>(null);
   const [isSettingCredential, setIsSettingCredential] = useState(false);
   const [credentialNotice, setCredentialNotice] = useState<Notice | null>(null);
   const [uncertainCredential, setUncertainCredential] =
     useState<CredentialIntention | null>(null);
 
-  function retireForbiddenState() {
+  const retireForbiddenState = useCallback(() => {
     readGeneration.current += 1;
     preparationResponsibilityReadGeneration.current += 1;
     setIdentities([]);
     setPreparationResponsibilities([]);
     setIsForbidden(true);
     onForbidden();
-  }
+  }, [onForbidden]);
 
-  async function reloadIdentities() {
+  const loadIdentities = useCallback(
+    async (generation: number) => {
+      try {
+        const loaded = await listAdministrativeIdentities();
+        if (generation === readGeneration.current) {
+          setIdentities(sortIdentities(loaded));
+        }
+      } catch (error) {
+        if (generation !== readGeneration.current) return;
+        if (error instanceof IdentityAdministrationProblemError) {
+          if (error.problem.status === 401) {
+            onUnauthorized();
+            return;
+          }
+          if (error.problem.status === 403) {
+            retireForbiddenState();
+            return;
+          }
+        }
+        setLoadError("No se pudo cargar el listado de Identities.");
+      } finally {
+        if (generation === readGeneration.current) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [onUnauthorized, retireForbiddenState],
+  );
+
+  const reloadIdentities = useCallback(() => {
     const generation = ++readGeneration.current;
     setIsLoading(true);
     setLoadError(null);
-    try {
-      const loaded = await listAdministrativeIdentities();
-      if (generation === readGeneration.current) {
-        setIdentities(sortIdentities(loaded));
-      }
-    } catch (error) {
-      if (generation !== readGeneration.current) return;
-      if (error instanceof IdentityAdministrationProblemError) {
-        if (error.problem.status === 401) {
-          onUnauthorized();
-          return;
-        }
-        if (error.problem.status === 403) {
-          retireForbiddenState();
-          return;
-        }
-      }
-      setLoadError("No se pudo cargar el listado de Identities.");
-    } finally {
-      if (generation === readGeneration.current) {
-        setIsLoading(false);
-      }
-    }
-  }
+    return loadIdentities(generation);
+  }, [loadIdentities]);
 
-  async function reloadPreparationResponsibilities() {
+  const loadPreparationResponsibilities = useCallback(
+    async (generation: number) => {
+      try {
+        const loaded = await listPreparationResponsibilities();
+        if (generation === preparationResponsibilityReadGeneration.current) {
+          setPreparationResponsibilities(loaded);
+        }
+      } catch (error) {
+        if (generation !== preparationResponsibilityReadGeneration.current)
+          return;
+        if (error instanceof IdentityAdministrationProblemError) {
+          if (error.problem.status === 401) {
+            onUnauthorized();
+            return;
+          }
+          if (error.problem.status === 403) {
+            retireForbiddenState();
+            return;
+          }
+        }
+        setPreparationResponsibilitiesError(
+          "No se pudo cargar el listado de responsabilidades de preparación.",
+        );
+      } finally {
+        if (generation === preparationResponsibilityReadGeneration.current) {
+          setIsPreparationResponsibilitiesLoading(false);
+        }
+      }
+    },
+    [onUnauthorized, retireForbiddenState],
+  );
+
+  const reloadPreparationResponsibilities = useCallback(() => {
     const generation = ++preparationResponsibilityReadGeneration.current;
     setIsPreparationResponsibilitiesLoading(true);
     setPreparationResponsibilitiesError(null);
-    try {
-      const loaded = await listPreparationResponsibilities();
-      if (generation === preparationResponsibilityReadGeneration.current) {
-        setPreparationResponsibilities(loaded);
-      }
-    } catch (error) {
-      if (generation !== preparationResponsibilityReadGeneration.current) return;
-      if (error instanceof IdentityAdministrationProblemError) {
-        if (error.problem.status === 401) {
-          onUnauthorized();
-          return;
-        }
-        if (error.problem.status === 403) {
-          retireForbiddenState();
-          return;
-        }
-      }
-      setPreparationResponsibilitiesError(
-        "No se pudo cargar el listado de responsabilidades de preparación.",
-      );
-    } finally {
-      if (generation === preparationResponsibilityReadGeneration.current) {
-        setIsPreparationResponsibilitiesLoading(false);
-      }
-    }
-  }
+    return loadPreparationResponsibilities(generation);
+  }, [loadPreparationResponsibilities]);
 
-  function reloadAdministrativeState() {
+  const reloadAdministrativeState = useCallback(() => {
     void reloadIdentities();
     void reloadPreparationResponsibilities();
-  }
+  }, [reloadIdentities, reloadPreparationResponsibilities]);
 
   useEffect(() => {
-    reloadAdministrativeState();
+    void loadIdentities(++readGeneration.current);
+    void loadPreparationResponsibilities(
+      ++preparationResponsibilityReadGeneration.current,
+    );
     return () => {
       readGeneration.current += 1;
       preparationResponsibilityReadGeneration.current += 1;
     };
-  }, []);
+  }, [loadIdentities, loadPreparationResponsibilities]);
 
   async function prepareMutation(
     setNotice: (notice: Notice) => void,
@@ -356,7 +392,8 @@ export function GeneralConfigurationPanel({
   async function submitCreation(intention: CreateIdentityIntention) {
     setCreationNotice(null);
     setIsCreating(true);
-    const formMatchesIntention = creationName === intention.request.operationalName;
+    const formMatchesIntention =
+      creationName === intention.request.operationalName;
     try {
       const created = await createIdentity(
         intention.request,
@@ -366,7 +403,10 @@ export function GeneralConfigurationPanel({
       setIdentities((current) => reconcileIdentity(current, created));
       setUncertainCreation(null);
       if (formMatchesIntention) setCreationName("");
-      setCreationNotice({ kind: "success", message: "Identity creada correctamente." });
+      setCreationNotice({
+        kind: "success",
+        message: "Identity creada correctamente.",
+      });
     } catch (error) {
       if (error instanceof IdentityAdministrationProblemError) {
         if (error.problem.status === 401) {
@@ -534,9 +574,7 @@ export function GeneralConfigurationPanel({
     }
   }
 
-  async function submitIdentityMutation(
-    intention: IdentityMutationIntention,
-  ) {
+  async function submitIdentityMutation(intention: IdentityMutationIntention) {
     setMutationNotice(null);
     setIsMutatingIdentity(true);
     try {
@@ -559,24 +597,26 @@ export function GeneralConfigurationPanel({
                   intention.idempotencyKey,
                   intention.antiforgeryToken,
                 )
-            : intention.kind === "assign"
-              ? await assignResponsibility(
-                  intention.identityId,
-                  intention.responsibility!,
-                  intention.idempotencyKey,
-                  intention.antiforgeryToken,
-                )
-              : await revokeResponsibility(
-                  intention.identityId,
-                  intention.responsibility!,
-                  intention.idempotencyKey,
-                  intention.antiforgeryToken,
-                );
+              : intention.kind === "assign"
+                ? await assignResponsibility(
+                    intention.identityId,
+                    intention.responsibility!,
+                    intention.idempotencyKey,
+                    intention.antiforgeryToken,
+                  )
+                : await revokeResponsibility(
+                    intention.identityId,
+                    intention.responsibility!,
+                    intention.idempotencyKey,
+                    intention.antiforgeryToken,
+                  );
       if (intention.kind === "delete") {
         setDeleteTarget(null);
-        setIdentities((current) => current.filter(
-          (identity) => identity.identityId !== intention.identityId,
-        ));
+        setIdentities((current) =>
+          current.filter(
+            (identity) => identity.identityId !== intention.identityId,
+          ),
+        );
       } else {
         setIdentities((current) => reconcileIdentity(current, response));
       }
@@ -732,7 +772,10 @@ export function GeneralConfigurationPanel({
       );
       setIdentities((current) => reconcileIdentity(current, response));
       clearCredentialEditor();
-      setCredentialNotice({ kind: "success", message: "Credencial actualizada correctamente." });
+      setCredentialNotice({
+        kind: "success",
+        message: "Credencial actualizada correctamente.",
+      });
       if (intention.identityId === currentIdentityId) {
         onUnauthorized();
       }
@@ -750,7 +793,8 @@ export function GeneralConfigurationPanel({
         setCredentialNotice({
           kind: "functional-error",
           message:
-            error.problem.code === "identities_and_capabilities.idempotency_conflict"
+            error.problem.code ===
+            "identities_and_capabilities.idempotency_conflict"
               ? messageForProblem(error.problem, "rename")
               : error.problem.status === 409
                 ? "El identificador de acceso ya está en uso."
@@ -761,7 +805,8 @@ export function GeneralConfigurationPanel({
       setUncertainCredential(intention);
       setCredentialNotice({
         kind: "uncertain",
-        message: "Resultado no confirmado: no sabemos si la credencial fue actualizada.",
+        message:
+          "Resultado no confirmado: no sabemos si la credencial fue actualizada.",
       });
     } finally {
       setIsSettingCredential(false);
@@ -771,14 +816,25 @@ export function GeneralConfigurationPanel({
   async function handleCredential(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (credentialEditor === null || uncertainCredential !== null) return;
-    if (!credentialEditor.hasLocalCredential && !credentialEditor.loginIdentifier.trim()) {
-      setCredentialNotice({ kind: "functional-error", message: "Ingresá un identificador de acceso." });
+    if (
+      !credentialEditor.hasLocalCredential &&
+      !credentialEditor.loginIdentifier.trim()
+    ) {
+      setCredentialNotice({
+        kind: "functional-error",
+        message: "Ingresá un identificador de acceso.",
+      });
       return;
     }
     const antiforgeryToken = await prepareMutation(setCredentialNotice);
     if (antiforgeryToken === null) return;
-    const request: SetLocalCredentialRequest = { secret: credentialEditor.secret };
-    if (!credentialEditor.hasLocalCredential || credentialEditor.changeLoginIdentifier) {
+    const request: SetLocalCredentialRequest = {
+      secret: credentialEditor.secret,
+    };
+    if (
+      !credentialEditor.hasLocalCredential ||
+      credentialEditor.changeLoginIdentifier
+    ) {
       request.loginIdentifier = credentialEditor.loginIdentifier;
     }
     await submitCredential({
@@ -972,13 +1028,18 @@ export function GeneralConfigurationPanel({
           preparationResponsibilities.length > 0 && (
             <ul aria-label="Listado de responsabilidades de preparación">
               {preparationResponsibilities.map((responsibility) => (
-                <li key={responsibility.id}>{responsibility.operationalName}</li>
+                <li key={responsibility.id}>
+                  {responsibility.operationalName}
+                </li>
               ))}
             </ul>
           )}
       </section>
 
-      <ContextConfigurationSection onUnauthorized={onUnauthorized} onForbidden={onForbidden} />
+      <ContextConfigurationSection
+        onUnauthorized={onUnauthorized}
+        onForbidden={onForbidden}
+      />
 
       <div className="section-heading">
         <h3>Identities</h3>
@@ -1033,156 +1094,178 @@ export function GeneralConfigurationPanel({
                     : identity.preparationEnablements.filter(
                         (enablementId) =>
                           !preparationResponsibilities.some(
-                            (responsibility) => responsibility.id === enablementId,
+                            (responsibility) =>
+                              responsibility.id === enablementId,
                           ),
                       );
                 return (
                   <tr key={identity.identityId}>
-                  <td>{identity.operationalName}</td>
-                  <td>{identity.isActive ? "Activa" : "Inactiva"}</td>
-                  <td>
-                    {identity.hasLocalCredential
-                      ? "Configurada"
-                      : "No configurada"}
-                  </td>
-                  <td>{identity.loginIdentifier ?? ""}</td>
-                  <td>
-                    <ul aria-label={`Responsabilidades de ${identity.operationalName}`}>
-                      {FUNCTIONAL_RESPONSIBILITIES.map((responsibility) => {
-                        const isAssigned = identity.responsibilities.includes(
-                          responsibility,
-                        );
-                        return (
-                          <li key={responsibility}>
+                    <td>{identity.operationalName}</td>
+                    <td>{identity.isActive ? "Activa" : "Inactiva"}</td>
+                    <td>
+                      {identity.hasLocalCredential
+                        ? "Configurada"
+                        : "No configurada"}
+                    </td>
+                    <td>{identity.loginIdentifier ?? ""}</td>
+                    <td>
+                      <ul
+                        aria-label={`Responsabilidades de ${identity.operationalName}`}
+                      >
+                        {FUNCTIONAL_RESPONSIBILITIES.map((responsibility) => {
+                          const isAssigned =
+                            identity.responsibilities.includes(responsibility);
+                          return (
+                            <li key={responsibility}>
+                              <span>
+                                {responsibility}:{" "}
+                                {isAssigned ? "Asignada" : "No asignada"}
+                              </span>{" "}
+                              <button
+                                className="secondary-button"
+                                type="button"
+                                onClick={() =>
+                                  void startIdentityMutation(
+                                    isAssigned ? "revoke" : "assign",
+                                    identity,
+                                    responsibility,
+                                  )
+                                }
+                                disabled={
+                                  isMutatingIdentity ||
+                                  uncertainMutation !== null
+                                }
+                                aria-label={`${isAssigned ? "Revocar" : "Asignar"} ${responsibility} ${isAssigned ? "a" : "a"} ${identity.operationalName}`}
+                              >
+                                {isAssigned ? "Revocar" : "Asignar"}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </td>
+                    <td>
+                      <p>Habilitaciones de preparación</p>
+                      <ul
+                        aria-label={`Habilitaciones de preparación de ${identity.operationalName}`}
+                      >
+                        {preparationResponsibilities.map((responsibility) => {
+                          const isEnabled =
+                            identity.preparationEnablements.includes(
+                              responsibility.id,
+                            );
+                          return (
+                            <li key={responsibility.id}>
+                              <span>
+                                {responsibility.operationalName}:{" "}
+                                {isEnabled ? "Habilitada" : "No habilitada"}
+                              </span>{" "}
+                              <button
+                                className="secondary-button"
+                                type="button"
+                                onClick={() =>
+                                  void startEnablementMutation(
+                                    isEnabled ? "revoke" : "grant",
+                                    identity,
+                                    responsibility,
+                                  )
+                                }
+                                disabled={
+                                  isMutatingEnablement ||
+                                  uncertainEnablementMutation !== null
+                                }
+                                aria-label={`${isEnabled ? "Revocar habilitación" : "Otorgar habilitación"} ${responsibility.operationalName} a ${identity.operationalName}`}
+                              >
+                                {isEnabled
+                                  ? "Revocar habilitación"
+                                  : "Otorgar habilitación"}
+                              </button>
+                            </li>
+                          );
+                        })}
+                        {unresolvedEnablements.map((enablementId) => (
+                          <li key={enablementId}>
                             <span>
-                              {responsibility}: {isAssigned ? "Asignada" : "No asignada"}
+                              Responsabilidad de preparación desconocida
                             </span>{" "}
-                            <button
-                              className="secondary-button"
-                              type="button"
-                              onClick={() =>
-                                void startIdentityMutation(
-                                  isAssigned ? "revoke" : "assign",
-                                  identity,
-                                  responsibility,
-                                )
-                              }
-                              disabled={
-                                isMutatingIdentity || uncertainMutation !== null
-                              }
-                              aria-label={`${isAssigned ? "Revocar" : "Asignar"} ${responsibility} ${isAssigned ? "a" : "a"} ${identity.operationalName}`}
-                            >
-                              {isAssigned ? "Revocar" : "Asignar"}
-                            </button>
+                            <small>Id: {enablementId}</small>
                           </li>
-                        );
-                      })}
-                    </ul>
-                  </td>
-                  <td>
-                    <p>Habilitaciones de preparación</p>
-                    <ul
-                      aria-label={`Habilitaciones de preparación de ${identity.operationalName}`}
-                    >
-                      {preparationResponsibilities.map((responsibility) => {
-                        const isEnabled = identity.preparationEnablements.includes(
-                          responsibility.id,
-                        );
-                        return (
-                          <li key={responsibility.id}>
-                            <span>
-                              {responsibility.operationalName}: {isEnabled ? "Habilitada" : "No habilitada"}
-                            </span>{" "}
-                            <button
-                              className="secondary-button"
-                              type="button"
-                              onClick={() =>
-                                void startEnablementMutation(
-                                  isEnabled ? "revoke" : "grant",
-                                  identity,
-                                  responsibility,
-                                )
-                              }
-                              disabled={
-                                isMutatingEnablement ||
-                                uncertainEnablementMutation !== null
-                              }
-                              aria-label={`${isEnabled ? "Revocar habilitación" : "Otorgar habilitación"} ${responsibility.operationalName} a ${identity.operationalName}`}
-                            >
-                              {isEnabled ? "Revocar habilitación" : "Otorgar habilitación"}
-                            </button>
-                          </li>
-                        );
-                      })}
-                      {unresolvedEnablements.map((enablementId) => (
-                        <li key={enablementId}>
-                          <span>Responsabilidad de preparación desconocida</span>{" "}
-                          <small>Id: {enablementId}</small>
-                        </li>
-                      ))}
-                    </ul>
-                  </td>
-                  <td>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() =>
-                        void startIdentityMutation(
-                          identity.isActive ? "deactivate" : "activate",
-                          identity,
-                        )
-                      }
-                      disabled={isMutatingIdentity || uncertainMutation !== null}
-                      aria-label={`${identity.isActive ? "Desactivar" : "Activar"} ${identity.operationalName}`}
-                    >
-                      {identity.isActive ? "Desactivar" : "Activar"}
-                    </button>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => {
-                        if (!isSettingCredential && uncertainCredential === null) {
-                          setCredentialEditor({
-                            identityId: identity.identityId,
-                            hasLocalCredential: identity.hasLocalCredential,
-                            changeLoginIdentifier: !identity.hasLocalCredential,
-                            loginIdentifier: "",
-                            secret: "",
-                          });
-                          setCredentialNotice(null);
+                        ))}
+                      </ul>
+                    </td>
+                    <td>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() =>
+                          void startIdentityMutation(
+                            identity.isActive ? "deactivate" : "activate",
+                            identity,
+                          )
                         }
-                      }}
-                      disabled={isSettingCredential || uncertainCredential !== null}
-                      aria-label={`Configurar credencial de ${identity.operationalName}`}
-                    >
-                      {identity.hasLocalCredential ? "Reemplazar credencial" : "Configurar credencial"}
-                    </button>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => {
-                        if (uncertainRename === null && !isRenaming) {
-                          setRenameEditor({
-                            identityId: identity.identityId,
-                            operationalName: identity.operationalName,
-                          });
-                          setRenameNotice(null);
+                        disabled={
+                          isMutatingIdentity || uncertainMutation !== null
                         }
-                      }}
-                      disabled={isRenaming || uncertainRename !== null}
-                      aria-label={`Cambiar nombre de ${identity.operationalName}`}
-                    >
-                      Cambiar nombre
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteTarget(identity)}
-                      disabled={isMutatingIdentity || uncertainMutation !== null}
-                      aria-label={`Eliminar definitivamente ${identity.operationalName}`}
-                    >
-                      Eliminar definitivamente
-                    </button>
-                  </td>
+                        aria-label={`${identity.isActive ? "Desactivar" : "Activar"} ${identity.operationalName}`}
+                      >
+                        {identity.isActive ? "Desactivar" : "Activar"}
+                      </button>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => {
+                          if (
+                            !isSettingCredential &&
+                            uncertainCredential === null
+                          ) {
+                            setCredentialEditor({
+                              identityId: identity.identityId,
+                              hasLocalCredential: identity.hasLocalCredential,
+                              changeLoginIdentifier:
+                                !identity.hasLocalCredential,
+                              loginIdentifier: "",
+                              secret: "",
+                            });
+                            setCredentialNotice(null);
+                          }
+                        }}
+                        disabled={
+                          isSettingCredential || uncertainCredential !== null
+                        }
+                        aria-label={`Configurar credencial de ${identity.operationalName}`}
+                      >
+                        {identity.hasLocalCredential
+                          ? "Reemplazar credencial"
+                          : "Configurar credencial"}
+                      </button>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => {
+                          if (uncertainRename === null && !isRenaming) {
+                            setRenameEditor({
+                              identityId: identity.identityId,
+                              operationalName: identity.operationalName,
+                            });
+                            setRenameNotice(null);
+                          }
+                        }}
+                        disabled={isRenaming || uncertainRename !== null}
+                        aria-label={`Cambiar nombre de ${identity.operationalName}`}
+                      >
+                        Cambiar nombre
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(identity)}
+                        disabled={
+                          isMutatingIdentity || uncertainMutation !== null
+                        }
+                        aria-label={`Eliminar definitivamente ${identity.operationalName}`}
+                      >
+                        Eliminar definitivamente
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -1192,9 +1275,16 @@ export function GeneralConfigurationPanel({
       )}
 
       {deleteTarget && (
-        <section role="region" aria-label={`Confirmar eliminación de ${deleteTarget.operationalName}`}>
+        <section
+          role="region"
+          aria-label={`Confirmar eliminación de ${deleteTarget.operationalName}`}
+        >
           <h3>Eliminar definitivamente {deleteTarget.operationalName}</h3>
-          <p>Se quitará la Identity de la configuración actual. Sólo puede eliminarse si ninguna Historia funcional relevante necesita conservar su atribución. El servidor comprobará la elegibilidad.</p>
+          <p>
+            Se quitará la Identity de la configuración actual. Sólo puede
+            eliminarse si ninguna Historia funcional relevante necesita
+            conservar su atribución. El servidor comprobará la elegibilidad.
+          </p>
           <button
             type="button"
             disabled={isMutatingIdentity || uncertainMutation !== null}
@@ -1202,7 +1292,11 @@ export function GeneralConfigurationPanel({
           >
             Confirmar eliminación definitiva
           </button>
-          <button type="button" className="secondary-button" onClick={() => setDeleteTarget(null)}>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setDeleteTarget(null)}
+          >
             Cancelar
           </button>
         </section>
@@ -1250,35 +1344,97 @@ export function GeneralConfigurationPanel({
         </p>
       )}
       {credentialEditor && uncertainCredential === null && (
-        <form onSubmit={(event) => void handleCredential(event)} aria-label="Configurar credencial local">
+        <form
+          onSubmit={(event) => void handleCredential(event)}
+          aria-label="Configurar credencial local"
+        >
           <h3>Credencial local</h3>
-          {(!credentialEditor.hasLocalCredential || credentialEditor.changeLoginIdentifier) && (
+          {(!credentialEditor.hasLocalCredential ||
+            credentialEditor.changeLoginIdentifier) && (
             <>
-              <label htmlFor="credential-login-identifier">Identificador de acceso</label>
+              <label htmlFor="credential-login-identifier">
+                Identificador de acceso
+              </label>
               <input
                 id="credential-login-identifier"
                 value={credentialEditor.loginIdentifier}
-                onChange={(event) => setCredentialEditor((current) => current && { ...current, loginIdentifier: event.target.value })}
+                onChange={(event) =>
+                  setCredentialEditor(
+                    (current) =>
+                      current && {
+                        ...current,
+                        loginIdentifier: event.target.value,
+                      },
+                  )
+                }
                 disabled={isSettingCredential}
               />
             </>
           )}
-          {credentialEditor.hasLocalCredential && !credentialEditor.changeLoginIdentifier && (
-            <button type="button" className="secondary-button" onClick={() => setCredentialEditor((current) => current && { ...current, changeLoginIdentifier: true })}>
-              Cambiar identificador de acceso
-            </button>
-          )}
+          {credentialEditor.hasLocalCredential &&
+            !credentialEditor.changeLoginIdentifier && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() =>
+                  setCredentialEditor(
+                    (current) =>
+                      current && { ...current, changeLoginIdentifier: true },
+                  )
+                }
+              >
+                Cambiar identificador de acceso
+              </button>
+            )}
           <label htmlFor="credential-secret">Nueva clave secreta</label>
-          <input id="credential-secret" type="password" value={credentialEditor.secret} onChange={(event) => setCredentialEditor((current) => current && { ...current, secret: event.target.value })} disabled={isSettingCredential} required />
-          <button type="submit" disabled={isSettingCredential}>{isSettingCredential ? "Actualizando…" : "Guardar credencial"}</button>
-          <button type="button" className="secondary-button" onClick={clearCredentialEditor} disabled={isSettingCredential}>Cancelar</button>
+          <input
+            id="credential-secret"
+            type="password"
+            value={credentialEditor.secret}
+            onChange={(event) =>
+              setCredentialEditor(
+                (current) =>
+                  current && { ...current, secret: event.target.value },
+              )
+            }
+            disabled={isSettingCredential}
+            required
+          />
+          <button type="submit" disabled={isSettingCredential}>
+            {isSettingCredential ? "Actualizando…" : "Guardar credencial"}
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={clearCredentialEditor}
+            disabled={isSettingCredential}
+          >
+            Cancelar
+          </button>
         </form>
       )}
       {uncertainCredential && (
-        <div className="uncertain-intention" role="region" aria-label="Credencial con resultado no confirmado">
+        <div
+          className="uncertain-intention"
+          role="region"
+          aria-label="Credencial con resultado no confirmado"
+        >
           <h3>Credencial pendiente de confirmación</h3>
-          <button type="button" onClick={() => void submitCredential(uncertainCredential)} disabled={isSettingCredential}>Reintentar misma intención</button>
-          <button type="button" className="secondary-button" onClick={clearCredentialEditor} disabled={isSettingCredential}>Descartar e iniciar nueva</button>
+          <button
+            type="button"
+            onClick={() => void submitCredential(uncertainCredential)}
+            disabled={isSettingCredential}
+          >
+            Reintentar misma intención
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={clearCredentialEditor}
+            disabled={isSettingCredential}
+          >
+            Descartar e iniciar nueva
+          </button>
         </div>
       )}
 

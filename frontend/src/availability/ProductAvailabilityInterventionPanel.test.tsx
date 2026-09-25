@@ -16,7 +16,8 @@ const { listMock, sendMock, tokenMock, discardMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("./availabilityClient.ts", async (importOriginal) => {
-  const original = await importOriginal<typeof import("./availabilityClient.ts")>();
+  const original =
+    await importOriginal<typeof import("./availabilityClient.ts")>();
   return {
     ...original,
     listAvailabilityAdministrationProducts: listMock,
@@ -25,7 +26,8 @@ vi.mock("./availabilityClient.ts", async (importOriginal) => {
 });
 
 vi.mock("../identity/sessionClient.ts", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../identity/sessionClient.ts")>();
+  const original =
+    await importOriginal<typeof import("../identity/sessionClient.ts")>();
   return {
     ...original,
     getAntiforgeryToken: tokenMock,
@@ -44,7 +46,9 @@ const unavailable: AvailabilityAdministrationProduct = {
   isAvailable: false,
 };
 
-function renderPanel(products: AvailabilityAdministrationProduct[] = [available, unavailable]) {
+function renderPanel(
+  products: AvailabilityAdministrationProduct[] = [available, unavailable],
+) {
   const onUnauthorized = vi.fn();
   const onForbidden = vi.fn();
   render(
@@ -71,48 +75,68 @@ describe("ProductAvailabilityInterventionPanel", () => {
 
     expect(await screen.findByText("Disponible")).toBeInTheDocument();
     expect(screen.getByText("No disponible")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Marcar no disponible Agua" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Marcar disponible Café" })).toBeInTheDocument();
-    expect(screen.queryByText(/Retirar|Reactivar|Precio|Grupo|Preparación/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Marcar no disponible Agua" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Marcar disponible Café" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Retirar|Reactivar|Precio|Grupo|Preparación/),
+    ).not.toBeInTheDocument();
   });
 
   it.each([
     [available, "Marcar no disponible Agua", false],
     [unavailable, "Marcar disponible Café", true],
-  ])("sends the observed state and requested transition", async (product, label, next) => {
-    listMock.mockResolvedValueOnce([product]);
-    sendMock.mockResolvedValueOnce({ productId: product.id, isAvailable: next });
-    listMock.mockResolvedValueOnce([{ ...product, isAvailable: next }]);
-    const user = userEvent.setup();
-    renderPanel();
+  ])(
+    "sends the observed state and requested transition",
+    async (product, label, next) => {
+      listMock.mockResolvedValueOnce([product]);
+      sendMock.mockResolvedValueOnce({
+        productId: product.id,
+        isAvailable: next,
+      });
+      listMock.mockResolvedValueOnce([{ ...product, isAvailable: next }]);
+      const user = userEvent.setup();
+      renderPanel();
 
-    await user.click(await screen.findByRole("button", { name: label }));
-    await waitFor(() => expect(sendMock).toHaveBeenCalledTimes(1));
-    expect(sendMock.mock.calls[0]?.[0]).toMatchObject({
-      productId: product.id,
-      request: {
-        expectedCurrentAvailability: product.isAvailable,
-        newAvailability: next,
-      },
-      idempotencyKey: "availability-key",
-      antiforgeryToken: "csrf",
-    });
-    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
-  });
+      await user.click(await screen.findByRole("button", { name: label }));
+      await waitFor(() => expect(sendMock).toHaveBeenCalledTimes(1));
+      expect(sendMock.mock.calls[0]?.[0]).toMatchObject({
+        productId: product.id,
+        request: {
+          expectedCurrentAvailability: product.isAvailable,
+          newAvailability: next,
+        },
+        idempotencyKey: "availability-key",
+        antiforgeryToken: "csrf",
+      });
+      await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
+    },
+  );
 
   it("reloads after a stale concurrency conflict without resubmitting", async () => {
-    listMock.mockResolvedValueOnce([available]).mockResolvedValueOnce([{ ...available, isAvailable: true }]);
-    sendMock.mockRejectedValueOnce(new AvailabilityProblemError({
-      status: 409,
-      code: "catalog.product.availability_concurrency_conflict",
-      productId: "p1",
-      currentAvailability: true,
-    }));
+    listMock
+      .mockResolvedValueOnce([available])
+      .mockResolvedValueOnce([{ ...available, isAvailable: true }]);
+    sendMock.mockRejectedValueOnce(
+      new AvailabilityProblemError({
+        status: 409,
+        code: "catalog.product.availability_concurrency_conflict",
+        productId: "p1",
+        currentAvailability: true,
+      }),
+    );
     const user = userEvent.setup();
     renderPanel();
-    await user.click(await screen.findByRole("button", { name: "Marcar no disponible Agua" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Marcar no disponible Agua" }),
+    );
 
-    expect(await screen.findByText(/disponibilidad cambió/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/disponibilidad cambió/),
+    ).toBeInTheDocument();
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
     expect(sendMock).toHaveBeenCalledTimes(1);
   });
@@ -122,10 +146,17 @@ describe("ProductAvailabilityInterventionPanel", () => {
     ["catalog.product.not_found", "ya no existe"],
   ])("reloads after %s and removes the stale Product", async (code, text) => {
     listMock.mockResolvedValueOnce([available]).mockResolvedValueOnce([]);
-    sendMock.mockRejectedValueOnce(new AvailabilityProblemError({ status: code === "catalog.product.not_found" ? 404 : 409, code }));
+    sendMock.mockRejectedValueOnce(
+      new AvailabilityProblemError({
+        status: code === "catalog.product.not_found" ? 404 : 409,
+        code,
+      }),
+    );
     const user = userEvent.setup();
     renderPanel();
-    await user.click(await screen.findByRole("button", { name: "Marcar no disponible Agua" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Marcar no disponible Agua" }),
+    );
 
     expect(await screen.findByText(new RegExp(text))).toBeInTheDocument();
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
@@ -140,8 +171,12 @@ describe("ProductAvailabilityInterventionPanel", () => {
     listMock.mockResolvedValueOnce([{ ...available, isAvailable: false }]);
     const user = userEvent.setup();
     renderPanel();
-    await user.click(await screen.findByRole("button", { name: "Marcar no disponible Agua" }));
-    await user.click(await screen.findByRole("button", { name: "Reintentar misma intención" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Marcar no disponible Agua" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Reintentar misma intención" }),
+    );
 
     await waitFor(() => expect(sendMock).toHaveBeenCalledTimes(2));
     expect(sendMock.mock.calls[1]?.[0]).toBe(sendMock.mock.calls[0]?.[0]);

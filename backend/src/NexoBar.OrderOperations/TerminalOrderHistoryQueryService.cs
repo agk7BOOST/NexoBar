@@ -29,9 +29,10 @@ internal sealed class TerminalOrderHistoryQueryService(
         if (closure is null && cancellation is null) return new(TerminalOrderHistoryOutcome.NotFound);
 
         var headers = await (from i in db.Incorporations.AsNoTracking()
-            join h in db.ConfirmationHistory.AsNoTracking() on i.Id equals h.IncorporationId
-            where i.OrderId == orderId orderby i.Ordinal
-            select new { i.Id, i.Ordinal, h.OccurredAt, h.ActorIdentityId, h.ConfirmedContextId, h.ConfirmedContext }).ToArrayAsync(token);
+                             join h in db.ConfirmationHistory.AsNoTracking() on i.Id equals h.IncorporationId
+                             where i.OrderId == orderId
+                             orderby i.Ordinal
+                             select new { i.Id, i.Ordinal, h.OccurredAt, h.ActorIdentityId, h.ConfirmedContextId, h.ConfirmedContext }).ToArrayAsync(token);
         var ids = headers.Select(x => x.Id).ToArray();
         var contents = ids.Length == 0 ? [] : await db.IncorporationContents.AsNoTracking()
             .Where(x => ids.Contains(x.IncorporationId)).OrderBy(x => x.IncorporationId).ThenBy(x => x.ContentOrdinal).ToArrayAsync(token);

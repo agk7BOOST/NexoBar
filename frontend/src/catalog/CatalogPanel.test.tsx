@@ -55,38 +55,85 @@ describe("CatalogPanel - eliminación definitiva", () => {
   });
 
   it("distinguishes Delete from Retire and reloads Catalog after success", async () => {
-    listProductsMock.mockResolvedValueOnce([product()]).mockResolvedValueOnce([]);
+    listProductsMock
+      .mockResolvedValueOnce([product()])
+      .mockResolvedValueOnce([]);
     deleteProductMock.mockResolvedValue({ productId: "product-1" });
     const user = userEvent.setup();
     render(<CatalogPanel onUnauthorized={vi.fn()} />);
-    const remove = await screen.findByRole("button", { name: "Eliminar definitivamente Agua tónica" });
-    expect(screen.getByRole("button", { name: "Retirar Agua tónica" })).toBeInTheDocument();
+    const remove = await screen.findByRole("button", {
+      name: "Eliminar definitivamente Agua tónica",
+    });
+    expect(
+      screen.getByRole("button", { name: "Retirar Agua tónica" }),
+    ).toBeInTheDocument();
     await user.click(remove);
-    expect(screen.getByText(/nunca participó en un Pedido confirmado/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Confirmar eliminación definitiva" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Eliminar definitivamente Agua tónica" })).not.toBeInTheDocument());
-    expect(deleteProductMock).toHaveBeenCalledWith("product-1", expect.any(String), "csrf-token");
+    expect(
+      screen.getByText(/nunca participó en un Pedido confirmado/),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", {
+          name: "Eliminar definitivamente Agua tónica",
+        }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(deleteProductMock).toHaveBeenCalledWith(
+      "product-1",
+      expect.any(String),
+      "csrf-token",
+    );
   });
 
   it("explains confirmed participation and does not retire automatically", async () => {
-    deleteProductMock.mockRejectedValue(new CatalogProblemError({
-      status: 409, code: "catalog.product.delete.confirmed_participation",
-    }));
+    deleteProductMock.mockRejectedValue(
+      new CatalogProblemError({
+        status: 409,
+        code: "catalog.product.delete.confirmed_participation",
+      }),
+    );
     const { user } = renderPanel([product()]);
-    await user.click(screen.getByRole("button", { name: "Eliminar definitivamente Agua tónica" }));
-    await user.click(screen.getByRole("button", { name: "Confirmar eliminación definitiva" }));
-    expect(await screen.findByText(/Podés retirarlo por separado/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retirar Agua tónica" })).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Eliminar definitivamente Agua tónica",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+    );
+    expect(
+      await screen.findByText(/Podés retirarlo por separado/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Retirar Agua tónica" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps the same intent for an uncertain Delete retry", async () => {
-    deleteProductMock.mockRejectedValueOnce(new CatalogNetworkError()).mockResolvedValueOnce({ productId: "product-1" });
+    deleteProductMock
+      .mockRejectedValueOnce(new CatalogNetworkError())
+      .mockResolvedValueOnce({ productId: "product-1" });
     const { user } = renderPanel([product()]);
-    await user.click(screen.getByRole("button", { name: "Eliminar definitivamente Agua tónica" }));
-    await user.click(screen.getByRole("button", { name: "Confirmar eliminación definitiva" }));
-    await user.click(await screen.findByRole("button", { name: "Reintentar misma eliminación" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Eliminar definitivamente Agua tónica",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Reintentar misma eliminación",
+      }),
+    );
     await waitFor(() => expect(deleteProductMock).toHaveBeenCalledTimes(2));
-    expect(deleteProductMock.mock.calls[1]).toEqual(deleteProductMock.mock.calls[0]);
+    expect(deleteProductMock.mock.calls[1]).toEqual(
+      deleteProductMock.mock.calls[0],
+    );
   });
 });
 
@@ -489,7 +536,9 @@ describe("CatalogPanel - configuración de preparación", () => {
         name: "Confirmar configuración de preparación",
       }),
     );
-    expect(changeProductPreparationConfigurationMock.mock.calls[0]?.[1]).toEqual({
+    expect(
+      changeProductPreparationConfigurationMock.mock.calls[0]?.[1],
+    ).toEqual({
       expectedCurrentPreparationResponsibilityId: kitchen.id,
       newPreparationResponsibilityId: bar.id,
     });
@@ -501,7 +550,9 @@ describe("CatalogPanel - configuración de preparación", () => {
         name: "Confirmar configuración de preparación",
       }),
     );
-    expect(changeProductPreparationConfigurationMock.mock.calls[1]?.[1]).toEqual({
+    expect(
+      changeProductPreparationConfigurationMock.mock.calls[1]?.[1],
+    ).toEqual({
       expectedCurrentPreparationResponsibilityId: kitchen.id,
       newPreparationResponsibilityId: null,
     });
@@ -543,14 +594,22 @@ describe("CatalogPanel - configuración de preparación", () => {
       screen.getByLabelText("Responsabilidad de preparación de destino"),
       kitchen.id,
     );
-    await user.click(screen.getByRole("button", { name: "Confirmar configuración de preparación" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Confirmar configuración de preparación",
+      }),
+    );
     await openPreparationChange(user, listedProduct);
     await user.click(screen.getByLabelText("Requiere preparación"));
     await user.selectOptions(
       screen.getByLabelText("Responsabilidad de preparación de destino"),
       kitchen.id,
     );
-    await user.click(screen.getByRole("button", { name: "Confirmar configuración de preparación" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Confirmar configuración de preparación",
+      }),
+    );
 
     expect(
       await screen.findByText(/configuración de preparación cambió/),
@@ -578,7 +637,11 @@ describe("CatalogPanel - configuración de preparación", () => {
       screen.getByLabelText("Responsabilidad de preparación de destino"),
       kitchen.id,
     );
-    await user.click(screen.getByRole("button", { name: "Confirmar configuración de preparación" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Confirmar configuración de preparación",
+      }),
+    );
 
     expect(
       await screen.findByText(/ya no está disponible/),
@@ -603,7 +666,11 @@ describe("CatalogPanel - configuración de preparación", () => {
       screen.getByLabelText("Responsabilidad de preparación de destino"),
       bar.id,
     );
-    await user.click(screen.getByRole("button", { name: "Confirmar configuración de preparación" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Confirmar configuración de preparación",
+      }),
+    );
     await screen.findByRole("region", {
       name: "Configuración de preparación con resultado no confirmado",
     });

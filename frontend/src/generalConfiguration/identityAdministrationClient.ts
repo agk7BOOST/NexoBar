@@ -62,7 +62,10 @@ export class IdentityAdministrationProblemError extends Error {
 
 export class IdentityAdministrationNetworkError extends Error {
   constructor(options?: ErrorOptions) {
-    super("The Identity administration request did not receive a response.", options);
+    super(
+      "The Identity administration request did not receive a response.",
+      options,
+    );
     this.name = "IdentityAdministrationNetworkError";
   }
 }
@@ -224,14 +227,17 @@ export async function deleteIdentity(
   idempotencyKey: string,
   antiforgeryToken: string,
 ): Promise<AdministrativeIdentity> {
-  const response = await send(`/api/identities/${encodeURIComponent(identityId)}`, {
-    method: "DELETE",
-    credentials: "same-origin",
-    headers: {
-      "Idempotency-Key": idempotencyKey,
-      "X-NexoBar-CSRF": antiforgeryToken,
+  const response = await send(
+    `/api/identities/${encodeURIComponent(identityId)}`,
+    {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: {
+        "Idempotency-Key": idempotencyKey,
+        "X-NexoBar-CSRF": antiforgeryToken,
+      },
     },
-  });
+  );
   await requireSuccess(response);
   return (await response.json()) as AdministrativeIdentity;
 }

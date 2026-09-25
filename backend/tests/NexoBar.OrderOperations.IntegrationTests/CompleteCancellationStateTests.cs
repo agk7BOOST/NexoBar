@@ -29,8 +29,12 @@ public sealed partial class CompleteCancellationTests
     }
 
     [Theory]
-    [InlineData("delivery")] [InlineData("missing-quantity")] [InlineData("missing-delivery")]
-    [InlineData("missing-work")] [InlineData("inconsistent-work")] [InlineData("success")]
+    [InlineData("delivery")]
+    [InlineData("missing-quantity")]
+    [InlineData("missing-delivery")]
+    [InlineData("missing-work")]
+    [InlineData("inconsistent-work")]
+    [InlineData("success")]
     public async Task Whole_Order_plan_includes_mixed_contents_and_aborts_for_any_bad_content(string condition)
     {
         var target = await Setup(true, 5, 3);
@@ -97,8 +101,10 @@ public sealed partial class CompleteCancellationTests
     }
 
     [Theory]
-    [InlineData("complete_cancellation_history")] [InlineData("complete_cancellation_details")]
-    [InlineData("order_cancellation_states")] [InlineData("complete_cancellation_commands")]
+    [InlineData("complete_cancellation_history")]
+    [InlineData("complete_cancellation_details")]
+    [InlineData("order_cancellation_states")]
+    [InlineData("complete_cancellation_commands")]
     public async Task Persistence_failure_rolls_back_quantities_pending_history_terminal_state_and_intent(string table)
     {
         var target = await Setup(true, 5, 3);
@@ -133,7 +139,8 @@ public sealed partial class CompleteCancellationTests
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Liquidation_or_Closure_winning_first_blocks_complete_cancellation(bool closed)
     {
         var target = await Setup();
@@ -176,8 +183,11 @@ public sealed partial class CompleteCancellationTests
     }
 
     [Theory]
-    [InlineData("missing-key")] [InlineData("v7-key")] [InlineData("antiforgery")]
-    [InlineData("body")] [InlineData("anonymous")]
+    [InlineData("missing-key")]
+    [InlineData("v7-key")]
+    [InlineData("antiforgery")]
+    [InlineData("body")]
+    [InlineData("anonymous")]
     public async Task Http_boundary_rejects_invalid_intentions(string condition)
     {
         var target = await Setup();

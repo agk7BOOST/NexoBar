@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Product } from "../catalog/catalogClient.ts";
@@ -9,17 +9,58 @@ import {
   type OrderResponse,
 } from "./orderOperationsClient.ts";
 
-const { getOrderMock, listContextsMock, changeContextMock, antiforgeryMock } = vi.hoisted(() => ({
-  getOrderMock: vi.fn(), listContextsMock: vi.fn(), changeContextMock: vi.fn(), antiforgeryMock: vi.fn(),
+const {
+  getOrderMock,
+  listContextsMock,
+  changeContextMock,
+  antiforgeryMock,
+  endingSendMock,
+  evaluateCancellationMock,
+  sse,
+} = vi.hoisted(() => ({
+  getOrderMock: vi.fn(),
+  listContextsMock: vi.fn(),
+  changeContextMock: vi.fn(),
+  antiforgeryMock: vi.fn(),
+  endingSendMock: vi.fn(),
+  evaluateCancellationMock: vi.fn(),
+  sse: { invalidate: null as null | (() => void) },
+}));
+
+vi.mock("../notifications/ActiveOrderFreshnessSubscription.tsx", () => ({
+  ActiveOrderFreshnessSubscription: ({
+    invalidate,
+  }: {
+    invalidate: () => void;
+  }) => {
+    sse.invalidate = invalidate;
+    return null;
+  },
+}));
+vi.mock("./orderEndingClient.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./orderEndingClient.ts")>()),
+  sendOrderEndingIntent: endingSendMock,
+}));
+vi.mock("./completeCancellationClient.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./completeCancellationClient.ts")>()),
+  evaluateCompleteCancellation: evaluateCancellationMock,
 }));
 
 vi.mock("./orderOperationsClient.ts", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("./orderOperationsClient.ts")>();
 
-  return { ...original, getOrder: getOrderMock, listOrderContexts: listContextsMock, changeOrderContext: changeContextMock };
+  return {
+    ...original,
+    getOrder: getOrderMock,
+    listOrderContexts: listContextsMock,
+    changeOrderContext: changeContextMock,
+  };
 });
-vi.mock("../identity/sessionClient.ts", async (importOriginal) => ({ ...(await importOriginal<typeof import("../identity/sessionClient.ts")>()), getAntiforgeryToken: antiforgeryMock }));
+vi.mock("../identity/sessionClient.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../identity/sessionClient.ts")>()),
+  getAntiforgeryToken: antiforgeryMock,
+}));
 
 const currentProduct: Product = {
   id: "product-current",
@@ -45,7 +86,7 @@ const order: OrderResponse = {
   closedAt: null,
   operationalReference: "order-reference-from-response",
   context: "Mesa 7",
-      contextId: "ctx-test",
+  contextId: "ctx-test",
   incorporations: [
     {
       id: "incorporation-1",
@@ -88,6 +129,7 @@ function renderLookup(
   options?: {
     activeOperationalReference?: string | null;
     activeOrderId?: string | null;
+    identityId?: string;
     canChangeOrderContext?: boolean;
     isOrderMutationBusy?: (reference: string) => boolean;
     onContinueOrder?: (reference: string) => void;
@@ -103,6 +145,7 @@ function renderLookup(
       products={products}
       activeOperationalReference={options?.activeOperationalReference ?? null}
       activeOrderId={options?.activeOrderId ?? null}
+      identityId={options?.identityId}
       canChangeOrderContext={options?.canChangeOrderContext ?? false}
       isOrderMutationBusy={options?.isOrderMutationBusy}
       onContinueOrder={options?.onContinueOrder ?? (() => undefined)}
@@ -115,9 +158,77 @@ function renderLookup(
 describe("OrderLookup", () => {
   beforeEach(() => {
     getOrderMock.mockReset();
-    listContextsMock.mockReset().mockResolvedValue([{ id: "ctx-test", operationalName: "Mesa 7" }, { id: "ctx-b", operationalName: "Mesa 8" }]);
+    listContextsMock.mockReset().mockResolvedValue([
+      { id: "ctx-test", operationalName: "Mesa 7" },
+      { id: "ctx-b", operationalName: "Mesa 8" },
+    ]);
     changeContextMock.mockReset();
     antiforgeryMock.mockReset().mockResolvedValue("csrf");
+    endingSendMock.mockReset();
+    evaluateCancellationMock.mockReset().mockResolvedValue({
+      orderId: order.operationalReference,
+      isTerminal: false,
+      isCompletelyCancelled: false,
+      cancellationId: null,
+      cancelledAt: null,
+      hasEffectiveDelivery: true,
+      hasPendingComposition: false,
+      remainingFulfillmentQuantity: 0,
+      requiresOperationalIntervention: false,
+      isEligible: false,
+      blockers: ["effective_delivery"],
+      consequences: [],
+    });
+    sse.invalidate = null;
+  });
+
+  it("keeps the command refresh authoritative when SSE invalidates during Liquidation", async () => {
+    const before = {
+      ...order,
+      isLiquidationEligible: true,
+      liquidationBlockers: [],
+    };
+    const frozen = {
+      ...before,
+      isLiquidationEligible: false,
+      liquidationBlockers: ["already_liquidated"],
+      isLiquidated: true,
+      isFrozen: true,
+      liquidatedAmount: before.functionalAmount,
+      liquidationMode: "Simple",
+      declaredPaymentMedium: "Vale",
+      isClosureEligible: true,
+    };
+    let confirmCommand!: (timestamp: string) => void;
+    endingSendMock.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        confirmCommand = resolve;
+      }),
+    );
+    getOrderMock.mockResolvedValueOnce(before).mockResolvedValue(frozen);
+    const user = userEvent.setup();
+    renderLookup([], {
+      activeOperationalReference: order.operationalReference,
+      activeOrderId: "order-id",
+      identityId: "identity-id",
+    });
+    await search(user, order.operationalReference);
+    await screen.findByRole("region", { name: "Pedido activo" });
+    await user.type(screen.getByLabelText("Medio de pago declarado"), "Vale");
+    await user.click(screen.getByRole("button", { name: "Liquidar" }));
+    await waitFor(() => expect(endingSendMock).toHaveBeenCalledOnce());
+    act(() => sse.invalidate?.());
+    expect(getOrderMock).toHaveBeenCalledTimes(1);
+    await act(async () => confirmCommand("2026-09-24T21:28:47Z"));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Cerrar Pedido" }),
+      ).toBeEnabled(),
+    );
+    expect(getOrderMock).toHaveBeenCalledTimes(2);
+    expect(
+      screen.queryByText(/No se pudo actualizar el Pedido/),
+    ).not.toBeInTheDocument();
   });
 
   it("renderiza el campo etiquetado y el botón", () => {
@@ -180,19 +291,30 @@ describe("OrderLookup", () => {
   it("uses the explicit legacy fallback for a null snapshot without using Catalog or ProductId", async () => {
     getOrderMock.mockResolvedValueOnce({
       ...order,
-      incorporations: [{
-        ...order.incorporations[0]!,
-        items: [{ ...order.incorporations[0]!.items[0]!, productOperationalNameSnapshot: null }],
-      }],
+      incorporations: [
+        {
+          ...order.incorporations[0]!,
+          items: [
+            {
+              ...order.incorporations[0]!.items[0]!,
+              productOperationalNameSnapshot: null,
+            },
+          ],
+        },
+      ],
     });
     const user = userEvent.setup();
     renderLookup([currentProduct]);
     await search(user, order.operationalReference);
 
-    const result = await screen.findByRole("region", { name: "Pedido consultado" });
-    expect(within(result).getByRole("row", {
-      name: "Nombre histórico no disponible, cantidad 2, sin hielo",
-    })).toBeVisible();
+    const result = await screen.findByRole("region", {
+      name: "Pedido consultado",
+    });
+    expect(
+      within(result).getByRole("row", {
+        name: "Nombre histórico no disponible, cantidad 2, sin hielo",
+      }),
+    ).toBeVisible();
     expect(result).not.toHaveTextContent(currentProduct.operationalName);
     expect(result).not.toHaveTextContent(currentProduct.id);
   });
@@ -402,73 +524,153 @@ describe("OrderLookup", () => {
 
   it("changes A to B with exact expected Context, reloads the same Order, and hides the UUID", async () => {
     const user = userEvent.setup();
-    getOrderMock.mockResolvedValueOnce(order).mockResolvedValueOnce({ ...order, context: "Mesa 8", contextId: "ctx-b" });
+    getOrderMock.mockResolvedValueOnce(order).mockResolvedValueOnce({
+      ...order,
+      context: "Mesa 8",
+      contextId: "ctx-b",
+    });
     changeContextMock.mockResolvedValueOnce(undefined);
-    renderLookup([], { activeOperationalReference: order.operationalReference, activeOrderId: "order-id", canChangeOrderContext: true });
+    renderLookup([], {
+      activeOperationalReference: order.operationalReference,
+      activeOrderId: "order-id",
+      canChangeOrderContext: true,
+    });
     await search(user, order.operationalReference);
-    expect(await screen.findByLabelText("Contexto actual del Pedido")).toHaveTextContent("Mesa 7");
-    expect(screen.getByLabelText("Contexto actual del Pedido")).not.toHaveTextContent("ctx-test");
-    await user.selectOptions(screen.getByLabelText("Contexto destino"), "ctx-b");
+    expect(
+      await screen.findByLabelText("Contexto actual del Pedido"),
+    ).toHaveTextContent("Mesa 7");
+    expect(
+      screen.getByLabelText("Contexto actual del Pedido"),
+    ).not.toHaveTextContent("ctx-test");
+    await user.selectOptions(
+      screen.getByLabelText("Contexto destino"),
+      "ctx-b",
+    );
     await user.click(screen.getByRole("button", { name: "Cambiar contexto" }));
-    await waitFor(() => expect(changeContextMock).toHaveBeenCalledWith("order-id", { expectedCurrentContextId: "ctx-test", newContextId: "ctx-b" }, expect.any(String), "csrf"));
-    expect(await screen.findByLabelText("Contexto actual del Pedido")).toHaveTextContent("Mesa 8");
-    expect(screen.getByText("order-reference-from-response")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(changeContextMock).toHaveBeenCalledWith(
+        "order-id",
+        { expectedCurrentContextId: "ctx-test", newContextId: "ctx-b" },
+        expect.any(String),
+        "csrf",
+      ),
+    );
+    expect(
+      await screen.findByLabelText("Contexto actual del Pedido"),
+    ).toHaveTextContent("Mesa 8");
+    expect(
+      screen.getByText("order-reference-from-response"),
+    ).toBeInTheDocument();
     expect(screen.getByText("sin hielo")).toBeInTheDocument();
   });
 
   it.each([
     ["order.context_change.no_change", "ya tiene ese Contexto"],
-    ["order.context_change.expected_context_stale", "Otra persona cambió el Contexto"],
+    [
+      "order.context_change.expected_context_stale",
+      "Otra persona cambió el Contexto",
+    ],
     ["order.context_change.target_context_not_found", "ya no está disponible"],
-  ])("refreshes authoritative Order after %s without automatic resubmission", async (code, message) => {
-    const user = userEvent.setup();
-    getOrderMock.mockResolvedValue(order);
-    changeContextMock.mockRejectedValueOnce(new OrderOperationsProblemError({ status: 409, code }));
-    renderLookup([], { activeOperationalReference: order.operationalReference, activeOrderId: "order-id", canChangeOrderContext: true });
-    await search(user, order.operationalReference);
-    await screen.findByRole("option", { name: "Mesa 8" });
-    await user.selectOptions(screen.getByLabelText("Contexto destino"), "ctx-b");
-    await user.click(screen.getByRole("button", { name: "Cambiar contexto" }));
-    expect(await screen.findByLabelText("Estado del cambio de Contexto")).toHaveTextContent(message);
-    expect(changeContextMock).toHaveBeenCalledTimes(1);
-    expect(getOrderMock).toHaveBeenCalledTimes(2);
-    if (code === "order.context_change.target_context_not_found") expect(listContextsMock).toHaveBeenCalledTimes(2);
-  });
+  ])(
+    "refreshes authoritative Order after %s without automatic resubmission",
+    async (code, message) => {
+      const user = userEvent.setup();
+      getOrderMock.mockResolvedValue(order);
+      changeContextMock.mockRejectedValueOnce(
+        new OrderOperationsProblemError({ status: 409, code }),
+      );
+      renderLookup([], {
+        activeOperationalReference: order.operationalReference,
+        activeOrderId: "order-id",
+        canChangeOrderContext: true,
+      });
+      await search(user, order.operationalReference);
+      await screen.findByRole("option", { name: "Mesa 8" });
+      await user.selectOptions(
+        screen.getByLabelText("Contexto destino"),
+        "ctx-b",
+      );
+      await user.click(
+        screen.getByRole("button", { name: "Cambiar contexto" }),
+      );
+      expect(
+        await screen.findByLabelText("Estado del cambio de Contexto"),
+      ).toHaveTextContent(message);
+      expect(changeContextMock).toHaveBeenCalledTimes(1);
+      expect(getOrderMock).toHaveBeenCalledTimes(2);
+      if (code === "order.context_change.target_context_not_found")
+        expect(listContextsMock).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it.each([
     ["frozen", { isFrozen: true }],
     ["closed", { isClosed: true }],
     ["cancelled", { liquidationBlockers: ["order_completely_cancelled"] }],
-  ])("does not offer enabled Context Change for %s Order", async (_label, state) => {
-    const user = userEvent.setup();
-    getOrderMock.mockResolvedValue({ ...order, ...state });
-    renderLookup([], { activeOperationalReference: order.operationalReference, activeOrderId: "order-id", canChangeOrderContext: true });
-    await search(user, order.operationalReference);
-    expect(await screen.findByLabelText("Contexto actual del Pedido")).toBeVisible();
-    expect(screen.queryByRole("button", { name: "Cambiar contexto" })).not.toBeInTheDocument();
-  });
+  ])(
+    "does not offer enabled Context Change for %s Order",
+    async (_label, state) => {
+      const user = userEvent.setup();
+      getOrderMock.mockResolvedValue({ ...order, ...state });
+      renderLookup([], {
+        activeOperationalReference: order.operationalReference,
+        activeOrderId: "order-id",
+        canChangeOrderContext: true,
+      });
+      await search(user, order.operationalReference);
+      expect(
+        await screen.findByLabelText("Contexto actual del Pedido"),
+      ).toBeVisible();
+      expect(
+        screen.queryByRole("button", { name: "Cambiar contexto" }),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("retries an uncertain A to B change with the exact original intent and key", async () => {
     const user = userEvent.setup();
     getOrderMock.mockResolvedValue(order);
-    changeContextMock.mockRejectedValueOnce(new Error("uncertain")).mockResolvedValueOnce(undefined);
-    renderLookup([], { activeOperationalReference: order.operationalReference, activeOrderId: "order-id", canChangeOrderContext: true });
+    changeContextMock
+      .mockRejectedValueOnce(new Error("uncertain"))
+      .mockResolvedValueOnce(undefined);
+    renderLookup([], {
+      activeOperationalReference: order.operationalReference,
+      activeOrderId: "order-id",
+      canChangeOrderContext: true,
+    });
     await search(user, order.operationalReference);
     await screen.findByRole("option", { name: "Mesa 8" });
-    await user.selectOptions(screen.getByLabelText("Contexto destino"), "ctx-b");
+    await user.selectOptions(
+      screen.getByLabelText("Contexto destino"),
+      "ctx-b",
+    );
     await user.click(screen.getByRole("button", { name: "Cambiar contexto" }));
-    await user.click(await screen.findByRole("button", { name: "Reintentar mismo cambio" }));
-    expect(changeContextMock.mock.calls[0]).toEqual(changeContextMock.mock.calls[1]);
+    await user.click(
+      await screen.findByRole("button", { name: "Reintentar mismo cambio" }),
+    );
+    expect(changeContextMock.mock.calls[0]).toEqual(
+      changeContextMock.mock.calls[1],
+    );
   });
 
   it("keeps Context Change available while another Order mutation signal is busy", async () => {
     const user = userEvent.setup();
     getOrderMock.mockResolvedValue(order);
-    renderLookup([], { activeOperationalReference: order.operationalReference, activeOrderId: "order-id", canChangeOrderContext: true, isOrderMutationBusy: () => true });
+    renderLookup([], {
+      activeOperationalReference: order.operationalReference,
+      activeOrderId: "order-id",
+      canChangeOrderContext: true,
+      isOrderMutationBusy: () => true,
+    });
     await search(user, order.operationalReference);
     await screen.findByRole("option", { name: "Mesa 8" });
-    await user.selectOptions(screen.getByLabelText("Contexto destino"), "ctx-b");
-    expect(await screen.findByRole("button", { name: "Cambiar contexto" })).toBeEnabled();
+    await user.selectOptions(
+      screen.getByLabelText("Contexto destino"),
+      "ctx-b",
+    );
+    expect(
+      await screen.findByRole("button", { name: "Cambiar contexto" }),
+    ).toBeEnabled();
   });
 
   it("renders the intervention marker only from the persisted applied fact", async () => {

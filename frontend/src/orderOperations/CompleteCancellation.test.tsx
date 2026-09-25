@@ -94,7 +94,7 @@ beforeEach(() => {
   order = {
     operationalReference: reference,
     context: "Mesa",
-      contextId: "ctx-test",
+    contextId: "ctx-test",
     incorporations: [
       { id: "inc", ordinal: 1, confirmedAt: "2026-09-10T00:00:00Z", items: [] },
     ],
@@ -250,7 +250,7 @@ it("does not derive intervention eligibility from local quantities", async () =>
   expect(screen.getByText(/La evaluación requiere además/)).toBeVisible();
 });
 
-it("refreshes authoritative Order/evaluation and shows terminal cancellation without synthetic ending state", async () => {
+it("uses the confirmed terminal response and retires the active Order without a new active GET", async () => {
   evaluation.hasPendingComposition = true;
   mutation.mockImplementation(async () => {
     finish();
@@ -259,7 +259,7 @@ it("refreshes authoritative Order/evaluation and shows terminal cancellation wit
   const user = await open();
   await confirm(user);
   expect(
-    await screen.findByText("Pedido completamente cancelado"),
+    await screen.findByText(/Pedido completamente cancelado:/),
   ).toBeVisible();
   expect(
     screen.getByText(/Composición pendiente fue descartada/),
@@ -275,12 +275,13 @@ it("refreshes authoritative Order/evaluation and shows terminal cancellation wit
     ),
   ).not.toBeInTheDocument();
   expect(
-    screen.getByRole("article", { name: "Incorporación 1" }),
-  ).toBeVisible();
-  expect(state).toHaveBeenLastCalledWith(order);
-  expect(fetchMock.mock.calls.filter(([url]) => url === endpoint)).toHaveLength(
-    3,
-  );
+    screen.queryByRole("article", { name: "Incorporación 1" }),
+  ).not.toBeInTheDocument();
+  expect(
+    fetchMock.mock.calls.filter(
+      ([url, init]) => url === endpoint && init?.method !== "POST",
+    ),
+  ).toHaveLength(1);
   expect(busy).toHaveBeenLastCalledWith(reference, false);
   const [url, init] = mutation.mock.calls[0];
   expect(url).toBe(endpoint);
@@ -314,7 +315,7 @@ it("allows all F already zero when the evaluation permits a meaningful terminal 
   const user = await open();
   await confirm(user);
   expect(
-    await screen.findByText("Pedido completamente cancelado"),
+    await screen.findByText(/Pedido completamente cancelado:/),
   ).toBeVisible();
   expect(mutation).toHaveBeenCalledOnce();
 });
@@ -355,7 +356,7 @@ it.each(["network", "408", "500", "malformed"])(
         name: "Reintentar misma cancelación completa",
       }),
     );
-    await screen.findByText("Pedido completamente cancelado");
+    await screen.findByText(/Pedido completamente cancelado:/);
     expect(mutation.mock.calls[1]).toEqual(mutation.mock.calls[0]);
     expect(
       fetchMock.mock.calls.filter(
@@ -424,24 +425,22 @@ it.each([401, 403, 404])(
   },
 );
 
-it("keeps mutations locked when refresh fails and never manufactures terminal state from the command", async () => {
+it("uses a confirmed terminal command even when a subsequent active read would fail", async () => {
   mutation.mockImplementation(async () => {
     failRead = true;
     return result();
   });
   const user = await open();
   await confirm(user);
-  await screen.findByText(/No se pudo actualizar el Pedido/);
+  await screen.findByText(/Pedido completamente cancelado:/);
   expect(
-    screen.queryByText("Pedido completamente cancelado"),
+    screen.queryByRole("button", { name: "Liquidar" }),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Liquidar" })).toBeDisabled();
-  failRead = false;
-  finish();
-  await user.click(
-    screen.getByRole("button", { name: "Actualizar Estado del Pedido" }),
-  );
-  await screen.findByText("Pedido completamente cancelado");
+  expect(
+    fetchMock.mock.calls.filter(
+      ([url]) => url === `/api/order-operations/orders/${reference}`,
+    ),
+  ).toHaveLength(1);
   expect(mutation).toHaveBeenCalledOnce();
 });
 

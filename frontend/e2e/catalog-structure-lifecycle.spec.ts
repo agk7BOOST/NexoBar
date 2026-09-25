@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+import { selectInitialContext } from "./helpers/select-initial-context.js";
 
 type Actor = {
   identifier: string;
@@ -52,9 +53,13 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
 
   await page.getByLabel("Nombre operacional del Grupo").fill(groupName);
   await page.getByRole("button", { name: "Crear Grupo" }).click();
-  await expect(page.getByRole("list", { name: "Grupos del Catálogo" })).toContainText(groupName);
+  await expect(
+    page.getByRole("list", { name: "Grupos del Catálogo" }),
+  ).toContainText(groupName);
 
-  await page.getByLabel("Nombre operacional", { exact: true }).fill(productName);
+  await page
+    .getByLabel("Nombre operacional", { exact: true })
+    .fill(productName);
   await page.getByLabel("Precio", { exact: true }).fill("10");
   const administrativeProductsResponsePromise = page.waitForResponse(
     (response) =>
@@ -63,11 +68,13 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
       response.ok(),
   );
   await page.getByRole("button", { name: "Crear producto" }).click();
-  const administrativeProductsResponse = await administrativeProductsResponsePromise;
-  const administrativeProducts = (await administrativeProductsResponse.json()) as {
-    id: string;
-    operationalName: string;
-  }[];
+  const administrativeProductsResponse =
+    await administrativeProductsResponsePromise;
+  const administrativeProducts =
+    (await administrativeProductsResponse.json()) as {
+      id: string;
+      operationalName: string;
+    }[];
   const administrativeProduct = administrativeProducts.find(
     (candidate) => candidate.operationalName === productName,
   );
@@ -80,14 +87,18 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
   await expect(product).toContainText("Disponible");
   await expect(product).toContainText("Sin Grupo");
 
-  await product.getByRole("button", { name: `Configurar Grupo de ${productName}` }).click();
+  await product
+    .getByRole("button", { name: `Configurar Grupo de ${productName}` })
+    .click();
   await page
     .getByLabel(`Grupo del Producto de ${productName}`)
     .selectOption({ label: groupName });
   await page.getByRole("button", { name: "Confirmar Grupo" }).click();
   await expect(product).toContainText(groupName);
 
-  await product.getByRole("button", { name: `Renombrar ${productName}` }).click();
+  await product
+    .getByRole("button", { name: `Renombrar ${productName}` })
+    .click();
   await page.getByLabel("Nuevo nombre operacional").fill(renamedProductName);
   await page.getByRole("button", { name: "Confirmar renombre" }).click();
   product = catalog.getByRole("row").filter({
@@ -99,21 +110,28 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
   await logout(page);
   await login(page, orderActor);
   const composition = page.getByRole("region", { name: "Composición inicial" });
-  await expect(composition.getByText(renamedProductName, { exact: true })).toBeVisible();
+  await expect(
+    composition.getByText(renamedProductName, { exact: true }),
+  ).toBeVisible();
   await composition
-    .getByRole("button", { name: `Agregar ${renamedProductName} a Composición inicial` })
+    .getByRole("button", {
+      name: `Agregar ${renamedProductName} a Composición inicial`,
+    })
     .click();
-  await composition.getByLabel("Contexto").fill("Mesa MVP-FC-CAT-I3");
+  await selectInitialContext(composition);
   const confirmationResponsePromise = page.waitForResponse(
     (response) =>
       response.url().endsWith("/api/order-operations/first-confirmations") &&
       response.request().method() === "POST",
   );
-  await composition.getByRole("button", { name: "Confirmar Primera Composición" }).click();
+  await composition
+    .getByRole("button", { name: "Confirmar Primera Composición" })
+    .click();
   const confirmationResponse = await confirmationResponsePromise;
   expect(confirmationResponse.ok()).toBeTruthy();
   const confirmation = (await confirmationResponse.json()) as {
     operationalReference: string;
+    contextId: string;
     firstIncorporation: { id: string; items: { productId: string }[] };
   };
   expect(confirmation.firstIncorporation.items).toHaveLength(1);
@@ -126,7 +144,9 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
   product = catalog.getByRole("row").filter({
     has: page.getByRole("cell", { name: renamedProductName, exact: true }),
   });
-  await product.getByRole("button", { name: `Retirar ${renamedProductName}` }).click();
+  await product
+    .getByRole("button", { name: `Retirar ${renamedProductName}` })
+    .click();
   await expect(product).toContainText("Retirado");
   await expect(product).toContainText("Disponible");
   await expect(product).toContainText(groupName);
@@ -135,12 +155,20 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
 
   await logout(page);
   await login(page, orderActor);
-  const retiredComposition = page.getByRole("region", { name: "Composición inicial" });
-  await expect(retiredComposition.getByText(renamedProductName, { exact: true })).toHaveCount(0);
+  const retiredComposition = page.getByRole("region", {
+    name: "Composición inicial",
+  });
+  await expect(
+    retiredComposition.getByText(renamedProductName, { exact: true }),
+  ).toHaveCount(0);
 
-  const antiforgeryResponse = await page.request.get("/api/security/antiforgery");
+  const antiforgeryResponse = await page.request.get(
+    "/api/security/antiforgery",
+  );
   expect(antiforgeryResponse.ok()).toBeTruthy();
-  const { requestToken } = (await antiforgeryResponse.json()) as { requestToken: string };
+  const { requestToken } = (await antiforgeryResponse.json()) as {
+    requestToken: string;
+  };
   const staleConfirmation = await page.request.post(
     "/api/order-operations/first-confirmations",
     {
@@ -149,7 +177,7 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
         "X-NexoBar-CSRF": requestToken,
       },
       data: {
-        context: "Mesa MVP-FC-CAT-I3 retirado",
+        contextId: confirmation.contextId,
         items: [{ productId, quantity: 1, instruction: null }],
       },
     },
@@ -169,7 +197,9 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
   product = catalog.getByRole("row").filter({
     has: page.getByRole("cell", { name: renamedProductName, exact: true }),
   });
-  await product.getByRole("button", { name: `Reactivar ${renamedProductName}` }).click();
+  await product
+    .getByRole("button", { name: `Reactivar ${renamedProductName}` })
+    .click();
   await expect(product).toContainText("Activo");
   await expect(product).toContainText("Disponible");
   await expect(product).toContainText(groupName);

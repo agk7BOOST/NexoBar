@@ -82,8 +82,10 @@ public sealed partial class OperationalInterventionTests(OrderOperationsApiFixtu
     }
 
     [Theory]
-    [InlineData(false, 1)] [InlineData(false, 2)]
-    [InlineData(true, 1)] [InlineData(true, 2)]
+    [InlineData(false, 1)]
+    [InlineData(false, 2)]
+    [InlineData(true, 1)]
+    [InlineData(true, 2)]
     public async Task Exact_partial_and_source_boundaries_preserve_real_history_and_economics(bool ready, int quantity)
     {
         var s = await Setup(); using var client = s.Client;
@@ -131,12 +133,26 @@ public sealed partial class OperationalInterventionTests(OrderOperationsApiFixtu
 
     private static string HistorySnapshot(IEnumerable<PreparationHistory> histories) => JsonSerializer.Serialize(histories.Select(h => new
     {
-        h.Id, h.WorkId, h.EventKind, h.Quantity, h.ActorIdentityId, h.OccurredAt,
-        h.ResultingTotalQuantity, h.ResultingPendingQuantity, h.ResultingInPreparationQuantity, h.ResultingReadyQuantity
+        h.Id,
+        h.WorkId,
+        h.EventKind,
+        h.Quantity,
+        h.ActorIdentityId,
+        h.OccurredAt,
+        h.ResultingTotalQuantity,
+        h.ResultingPendingQuantity,
+        h.ResultingInPreparationQuantity,
+        h.ResultingReadyQuantity
     }));
     [Theory]
-    [InlineData(false, 0)] [InlineData(false, -1)] [InlineData(false, 3)] [InlineData(false, int.MaxValue)]
-    [InlineData(true, 0)] [InlineData(true, -1)] [InlineData(true, 3)] [InlineData(true, int.MaxValue)]
+    [InlineData(false, 0)]
+    [InlineData(false, -1)]
+    [InlineData(false, 3)]
+    [InlineData(false, int.MaxValue)]
+    [InlineData(true, 0)]
+    [InlineData(true, -1)]
+    [InlineData(true, 3)]
+    [InlineData(true, int.MaxValue)]
     public async Task Invalid_or_excess_quantity_never_clips_or_consumes_delivered_ready(bool ready, int quantity)
     {
         var s = await Setup(); using var client = s.Client;
@@ -151,7 +167,8 @@ public sealed partial class OperationalInterventionTests(OrderOperationsApiFixtu
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Zero_obligation_preserves_pending_composition_and_does_not_liquidate(bool ready)
     {
         var s = await Setup(3, ready ? 3 : 0, 0, 3); using var client = s.Client;

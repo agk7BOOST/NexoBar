@@ -25,7 +25,10 @@ export type EventSourceFactory = (url: string) => EventSourceConnection;
 
 interface NotificationSseTransportOptions {
   eventSourceFactory?: EventSourceFactory;
-  setTimeout?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+  setTimeout?: (
+    callback: () => void,
+    delayMs: number,
+  ) => ReturnType<typeof setTimeout>;
   clearTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
   random?: () => number;
 }
@@ -95,7 +98,9 @@ export class NotificationSseTransport {
     callback: () => void,
     delayMs: number,
   ) => ReturnType<typeof setTimeout>;
-  private readonly cancelTimeout: (timer: ReturnType<typeof setTimeout>) => void;
+  private readonly cancelTimeout: (
+    timer: ReturnType<typeof setTimeout>,
+  ) => void;
   private readonly random: () => number;
   private source: EventSourceConnection | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -105,7 +110,8 @@ export class NotificationSseTransport {
   private connectedGeneration = 0;
 
   constructor(options: NotificationSseTransportOptions = {}) {
-    this.eventSourceFactory = options.eventSourceFactory ?? createBrowserEventSource;
+    this.eventSourceFactory =
+      options.eventSourceFactory ?? createBrowserEventSource;
     this.scheduleTimeout = options.setTimeout ?? globalThis.setTimeout;
     this.cancelTimeout = options.clearTimeout ?? globalThis.clearTimeout;
     this.random = options.random ?? Math.random;
@@ -258,11 +264,15 @@ export class NotificationSseTransport {
       maximumReconnectDelayMs,
     );
     this.reconnectAttempt += 1;
-    const jitter = 1 - reconnectJitterRatio + this.random() * reconnectJitterRatio * 2;
-    this.reconnectTimer = this.scheduleTimeout(() => {
-      this.reconnectTimer = null;
-      if (this.isCurrent(token)) this.openConnection(token);
-    }, Math.round(exponentialDelay * jitter));
+    const jitter =
+      1 - reconnectJitterRatio + this.random() * reconnectJitterRatio * 2;
+    this.reconnectTimer = this.scheduleTimeout(
+      () => {
+        this.reconnectTimer = null;
+        if (this.isCurrent(token)) this.openConnection(token);
+      },
+      Math.round(exponentialDelay * jitter),
+    );
   }
 
   private isCurrent(token: number): boolean {
@@ -273,7 +283,10 @@ export class NotificationSseTransport {
     );
   }
 
-  private isCurrentSource(token: number, source: EventSourceConnection): boolean {
+  private isCurrentSource(
+    token: number,
+    source: EventSourceConnection,
+  ): boolean {
     return this.isCurrent(token) && this.source === source;
   }
 

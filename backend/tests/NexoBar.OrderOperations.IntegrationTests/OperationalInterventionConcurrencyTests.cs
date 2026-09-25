@@ -6,16 +6,26 @@ namespace NexoBar.OrderOperations.IntegrationTests;
 public sealed partial class OperationalInterventionTests
 {
     [Theory]
-    [InlineData("start", false, false)] [InlineData("start", false, true)]
-    [InlineData("mark-ready", false, false)] [InlineData("mark-ready", false, true)]
-    [InlineData("correct-start", false, false)] [InlineData("correct-start", false, true)]
-    [InlineData("correct-ready", true, false)] [InlineData("correct-ready", true, true)]
-    [InlineData("cancel-content", false, false)] [InlineData("cancel-content", false, true)]
-    [InlineData("cancel-content", true, false)] [InlineData("cancel-content", true, true)]
-    [InlineData("correct-content", false, false)] [InlineData("correct-content", false, true)]
-    [InlineData("correct-content", true, false)] [InlineData("correct-content", true, true)]
-    [InlineData("delivery", true, false)] [InlineData("delivery", true, true)]
-    [InlineData("correct-delivery", true, false)] [InlineData("correct-delivery", true, true)]
+    [InlineData("start", false, false)]
+    [InlineData("start", false, true)]
+    [InlineData("mark-ready", false, false)]
+    [InlineData("mark-ready", false, true)]
+    [InlineData("correct-start", false, false)]
+    [InlineData("correct-start", false, true)]
+    [InlineData("correct-ready", true, false)]
+    [InlineData("correct-ready", true, true)]
+    [InlineData("cancel-content", false, false)]
+    [InlineData("cancel-content", false, true)]
+    [InlineData("cancel-content", true, false)]
+    [InlineData("cancel-content", true, true)]
+    [InlineData("correct-content", false, false)]
+    [InlineData("correct-content", false, true)]
+    [InlineData("correct-content", true, false)]
+    [InlineData("correct-content", true, true)]
+    [InlineData("delivery", true, false)]
+    [InlineData("delivery", true, true)]
+    [InlineData("correct-delivery", true, false)]
+    [InlineData("correct-delivery", true, true)]
     public async Task Races_revalidate_exact_source_under_same_order_lock(string competing, bool ready, bool interventionFirst)
     {
         var s = await Setup(delivered: competing == "correct-delivery" ? 3 : 1); using var client = s.Client;
@@ -84,8 +94,10 @@ public sealed partial class OperationalInterventionTests
     }
 
     [Theory]
-    [InlineData(false, false)] [InlineData(false, true)]
-    [InlineData(true, false)] [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
     public async Task Liquidation_revalidates_reduced_obligation_and_freeze_rejects_new_intervention(bool ready, bool interventionFirst)
     {
         var s = await Setup(3, ready ? 3 : 2, 2, 3); using var client = s.Client;
@@ -116,7 +128,8 @@ public sealed partial class OperationalInterventionTests
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Liquidation_wins_then_waiting_intervention_observes_freeze(bool ready)
     {
         var s = await Setup(3, 3, 3, 3); using var client = s.Client;
@@ -130,7 +143,8 @@ public sealed partial class OperationalInterventionTests
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Concurrent_identical_key_has_one_durable_effect(bool ready)
     {
         var s = await Setup(); using var client = s.Client; var key = Guid.NewGuid();

@@ -56,8 +56,18 @@ public sealed partial class CompleteCancellationTests(OrderOperationsApiFixture 
         return target;
     }
     private static string PreparationHistorySnapshot(IEnumerable<PreparationHistory> facts) => JsonSerializer.Serialize(facts.Select(x => new
-    { x.Id, x.WorkId, x.EventKind, x.Quantity, x.ActorIdentityId, x.OccurredAt, x.ResultingTotalQuantity,
-        x.ResultingPendingQuantity, x.ResultingInPreparationQuantity, x.ResultingReadyQuantity }));
+    {
+        x.Id,
+        x.WorkId,
+        x.EventKind,
+        x.Quantity,
+        x.ActorIdentityId,
+        x.OccurredAt,
+        x.ResultingTotalQuantity,
+        x.ResultingPendingQuantity,
+        x.ResultingInPreparationQuantity,
+        x.ResultingReadyQuantity
+    }));
     private async Task Counts(int count)
     {
         await using var scope = fixture.Services.CreateAsyncScope();
@@ -124,7 +134,8 @@ public sealed partial class CompleteCancellationTests(OrderOperationsApiFixture 
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Already_zero_open_order_has_only_terminal_fact(bool prepared)
     {
         var target = await Setup(prepared);
@@ -139,7 +150,8 @@ public sealed partial class CompleteCancellationTests(OrderOperationsApiFixture 
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Effective_delivery_blocks_but_corrected_historical_delivery_does_not(bool corrected)
     {
         var target = await Setup(true, 5, 3);
@@ -161,8 +173,11 @@ public sealed partial class CompleteCancellationTests(OrderOperationsApiFixture 
     }
 
     [Theory]
-    [InlineData(0, false, true)] [InlineData(0, true, false)]
-    [InlineData(2, false, true)] [InlineData(2, true, false)] [InlineData(2, true, true)]
+    [InlineData(0, false, true)]
+    [InlineData(0, true, false)]
+    [InlineData(2, false, true)]
+    [InlineData(2, true, false)]
+    [InlineData(2, true, true)]
     public async Task Authorization_is_based_on_current_plan_and_requires_both_scopes_for_real_work(int started, bool hasIntervention, bool hasOperations)
     {
         var target = await Setup(true, started);

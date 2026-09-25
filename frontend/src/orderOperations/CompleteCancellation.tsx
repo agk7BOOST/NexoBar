@@ -18,6 +18,10 @@ interface Props {
   evaluationError: string | null;
   canAct: boolean;
   onRefresh: () => Promise<boolean>;
+  onCancelled: (
+    occurredAt: string,
+    pendingCompositionDiscarded: boolean,
+  ) => void;
   onUnauthorized: () => void;
   onBusyChange: (busy: boolean) => void;
 }
@@ -27,6 +31,7 @@ export function CompleteCancellation({
   evaluationError,
   canAct,
   onRefresh,
+  onCancelled,
   onUnauthorized,
   onBusyChange,
 }: Props) {
@@ -81,11 +86,11 @@ export function CompleteCancellation({
     try {
       const result = await sendCompleteCancellationIntent(exact);
       if (!mounted.current) return;
-      setMessage(
-        result.pendingCompositionDiscarded
-          ? "Cancelación completa registrada. La Composición pendiente fue descartada."
-          : "Cancelación completa registrada. Consultando el Estado vigente.",
-      );
+      sending.current = false;
+      setIntent(null);
+      lock(false);
+      onCancelled(result.occurredAt, result.pendingCompositionDiscarded);
+      return;
     } catch (error) {
       if (!mounted.current) return;
       sending.current = false;
@@ -114,9 +119,6 @@ export function CompleteCancellation({
       await refresh();
       return;
     }
-    sending.current = false;
-    setIntent(null);
-    await refresh();
   }
   async function begin() {
     if (busy.current || !canAct || !confirming || !evaluation?.isEligible)

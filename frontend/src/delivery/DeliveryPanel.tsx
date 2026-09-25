@@ -102,6 +102,12 @@ export function DeliveryPanel({
   const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>(
     {},
   );
+  const editedQuantityKeys = useRef(new Set<string>());
+  const authoritativeDelivered = useRef(new Map<string, number>());
+  useEffect(() => {
+    editedQuantityKeys.current.clear();
+    authoritativeDelivered.current.clear();
+  }, [operationalReference]);
   const [correctionInputs, setCorrectionInputs] = useState<
     Record<string, string>
   >({});
@@ -191,20 +197,29 @@ export function DeliveryPanel({
   const setAuthoritativeDelivery = useCallback((loaded: OrderDelivery) => {
     setDelivery(loaded);
     setSynchronizing({});
-    setQuantityInputs(() => {
+    const previousDelivered = authoritativeDelivered.current;
+    const nextDelivered = new Map<string, number>();
+    setQuantityInputs((current) => {
       const next: Record<string, string> = {};
       for (const item of loaded.contents) {
         const key = contentKey(item);
+        nextDelivered.set(key, item.deliveredQuantity);
+        if (previousDelivered.get(key) !== item.deliveredQuantity)
+          editedQuantityKeys.current.delete(key);
         const intent = intentsRef.current[key];
         next[key] =
           intent !== undefined
             ? String(intent.quantity)
-            : item.deliverableQuantity > 0
-              ? String(item.deliverableQuantity)
-              : "";
+            : editedQuantityKeys.current.has(key) &&
+                item.deliverableQuantity > 0
+              ? (current[key] ?? "")
+              : item.deliverableQuantity > 0
+                ? String(item.deliverableQuantity)
+                : "";
       }
       return next;
     });
+    authoritativeDelivered.current = nextDelivered;
   }, []);
 
   const handleUnauthorized = useCallback(() => {
@@ -288,7 +303,10 @@ export function DeliveryPanel({
           options.terminalOnNotFound
         ) {
           onOrderRetired?.(reference);
-        } else if (error instanceof DeliveryProblemError && error.status === 403) {
+        } else if (
+          error instanceof DeliveryProblemError &&
+          error.status === 403
+        ) {
           setMessage(forbiddenMessage);
         } else if (
           error instanceof DeliveryProblemError &&
@@ -305,13 +323,15 @@ export function DeliveryPanel({
         }
         return false;
       } finally {
-        if (sequence === requestSequence.current && isCurrent()) setIsLoading(false);
+        if (sequence === requestSequence.current && isCurrent())
+          setIsLoading(false);
       }
     },
     [handleUnauthorized, onOrderRetired, setAuthoritativeDelivery],
   );
 
   useEffect(() => {
+    const coordinator = deliveryReadCoordinator.current;
     if (operationalReference === null) {
       cancelRequests();
       return;
@@ -323,14 +343,11 @@ export function DeliveryPanel({
     return () => {
       window.clearTimeout(scheduledRefresh);
       cancelRequests();
-      deliveryReadCoordinator.current.cancel();
+      coordinator.cancel();
     };
   }, [cancelRequests, operationalReference, refreshDelivery, refreshSequence]);
 
-  useEffect(
-    () => () => deliveryReadCoordinator.current.cancel(),
-    [],
-  );
+  useEffect(() => () => deliveryReadCoordinator.current.cancel(), []);
 
   const invalidateDelivery = useCallback(() => {
     if (operationalReference === null) return;
@@ -357,6 +374,7 @@ export function DeliveryPanel({
         }
 
         clearIntent(key);
+        if (intent.kind === "delivery") editedQuantityKeys.current.delete(key);
         setContentMessage(key, {
           kind: "error",
           text: "No se pudo obtener la protección de la solicitud.",
@@ -739,7 +757,10 @@ export function DeliveryPanel({
                   >
                     <div className="delivery-content-heading">
                       <div>
-                        <h3>{item.productOperationalName ?? "Nombre histórico no disponible"}</h3>
+                        <h3>
+                          {item.productOperationalName ??
+                            "Nombre histórico no disponible"}
+                        </h3>
                         <p>Incorporación {item.incorporationOrdinal}</p>
                       </div>
                       {isFullyDelivered && (
@@ -791,8 +812,10 @@ export function DeliveryPanel({
                         }}
                       >
                         <label htmlFor={fieldId}>
-                          Cantidad a entregar — {item.productOperationalName ?? "Nombre histórico no disponible"} —{" "}
-                          {item.instruction ?? "sin instrucción"} —
+                          Cantidad a entregar —{" "}
+                          {item.productOperationalName ??
+                            "Nombre histórico no disponible"}{" "}
+                          — {item.instruction ?? "sin instrucción"} —
                           incorporación {item.incorporationOrdinal}
                         </label>
                         <div className="delivery-action-controls">
@@ -807,12 +830,13 @@ export function DeliveryPanel({
                             aria-describedby={
                               itemMessage ? messageId : undefined
                             }
-                            onChange={(event) =>
+                            onChange={(event) => {
+                              editedQuantityKeys.current.add(key);
                               setQuantityInputs((current) => ({
                                 ...current,
                                 [key]: event.target.value,
-                              }))
-                            }
+                              }));
+                            }}
                           />
                           <button
                             type="submit"

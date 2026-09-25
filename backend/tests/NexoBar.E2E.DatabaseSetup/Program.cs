@@ -240,6 +240,23 @@ try
             {"Insumo SSE Inventario E2E"},
             {"unidades"})
         """);
+    var inventoryCorrectionItemId = Guid.CreateVersion7();
+    await inventory.Database.ExecuteSqlInterpolatedAsync($"""
+        INSERT INTO inventory.inventory_items (
+            id,
+            current_registered_quantity,
+            movement_revision,
+            normalized_operational_name,
+            operational_name,
+            operational_unit)
+        VALUES (
+            {inventoryCorrectionItemId},
+            {10m},
+            {0L},
+            {"INSUMO CORRECCION INVENTARIO E2E"},
+            {"Insumo corrección Inventario E2E"},
+            {"unidades"})
+        """);
 
     var authorizedProduct = new Product(
         Guid.CreateVersion7(),
@@ -341,6 +358,10 @@ try
         new ContentQuantityState(incorporation.Id, 1),
         new ContentQuantityState(incorporation.Id, 2),
         new ContentQuantityState(incorporation.Id, 3));
+    orderOperations.ContentAppliedPriceStates.AddRange(
+        new ContentAppliedPriceState(incorporation.Id, 1, 7m),
+        new ContentAppliedPriceState(incorporation.Id, 2, 9m),
+        new ContentAppliedPriceState(incorporation.Id, 3, 5m));
     orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
         Guid.CreateVersion7(),
         incorporation.Id,
@@ -370,6 +391,7 @@ try
         Guid.CreateVersion7(), interventionIncorporation.Id, 1, kitchen.Id, 2));
     orderOperations.DeliveryStates.Add(new DeliveryState(interventionIncorporation.Id, 1));
     orderOperations.ContentQuantityStates.Add(new ContentQuantityState(interventionIncorporation.Id, 1));
+    orderOperations.ContentAppliedPriceStates.Add(new ContentAppliedPriceState(interventionIncorporation.Id, 1, 7m));
     orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
         Guid.CreateVersion7(),
         interventionIncorporation.Id,
@@ -415,6 +437,7 @@ try
         Guid.CreateVersion7(), sseIncorporation.Id, 1, sseDestination.Id, 1));
     orderOperations.DeliveryStates.Add(new DeliveryState(sseIncorporation.Id, 1));
     orderOperations.ContentQuantityStates.Add(new ContentQuantityState(sseIncorporation.Id, 1));
+    orderOperations.ContentAppliedPriceStates.Add(new ContentAppliedPriceState(sseIncorporation.Id, 1, 7m));
     orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
         Guid.CreateVersion7(), sseIncorporation.Id,
         sseOrder.CurrentContextId,
@@ -427,6 +450,37 @@ try
         SET pending_quantity = 0, in_preparation_quantity = 1
         WHERE incorporation_id = {sseIncorporation.Id} AND content_ordinal = 1
         """);
+
+    // A separate pending Work lets the Preparation SSE scenario start independently.
+    var preparationSseProduct = new Product(Guid.CreateVersion7(), "Papas inicio SSE E2E", 7m);
+    catalog.Products.Add(preparationSseProduct);
+    await catalog.SaveChangesAsync();
+    await catalog.Database.ExecuteSqlInterpolatedAsync($"""
+        UPDATE catalog.products SET requires_preparation = TRUE,
+            preparation_responsibility_id = {sseDestination.Id}
+        WHERE id = {preparationSseProduct.Id}
+        """);
+    var preparationSseOrder = new Order(Guid.CreateVersion7(), baselineContextId, baselineContextName);
+    var preparationSseIncorporation = new Incorporation(
+        Guid.CreateVersion7(), preparationSseOrder.Id, 1);
+    orderOperations.Orders.Add(preparationSseOrder);
+    orderOperations.Incorporations.Add(preparationSseIncorporation);
+    orderOperations.IncorporationContents.Add(new IncorporationContent(
+        preparationSseIncorporation.Id, 1, preparationSseProduct.Id,
+        preparationSseProduct.OperationalName, 1, true, 7m, null));
+    orderOperations.PreparationWork.Add(new PreparationWork(
+        Guid.CreateVersion7(), preparationSseIncorporation.Id, 1, sseDestination.Id, 1));
+    orderOperations.DeliveryStates.Add(new DeliveryState(preparationSseIncorporation.Id, 1));
+    orderOperations.ContentQuantityStates.Add(new ContentQuantityState(
+        preparationSseIncorporation.Id, 1));
+    orderOperations.ContentAppliedPriceStates.Add(new ContentAppliedPriceState(
+        preparationSseIncorporation.Id, 1, 7m));
+    orderOperations.ConfirmationHistory.Add(new ConfirmationHistory(
+        Guid.CreateVersion7(), preparationSseIncorporation.Id,
+        preparationSseOrder.CurrentContextId,
+        preparationSseOrder.CurrentContextOperationalName,
+        deliverer.Id, DateTimeOffset.UtcNow));
+    await orderOperations.SaveChangesAsync();
 
     Console.WriteLine(
         $"E2E database migrations and security fixture applied; " +

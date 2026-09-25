@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { selectInitialContext } from "./helpers/select-initial-context.js";
 import {
   expect,
   test,
-  type Browser,
-  type BrowserContext,
   type Locator,
   type Page,
   type Response,
@@ -64,7 +63,10 @@ function waitForResponse(
   );
 }
 
-async function authenticateThroughCurrent(page: Page, actor: Actor): Promise<void> {
+async function authenticateThroughCurrent(
+  page: Page,
+  actor: Actor,
+): Promise<void> {
   await page.goto("/");
   await page.getByLabel("Identificador de acceso").fill(actor.identifier);
   await page.getByLabel("Secreto").fill(actor.secret);
@@ -75,7 +77,11 @@ async function authenticateThroughCurrent(page: Page, actor: Actor): Promise<voi
       .getByText(actor.operationalName, { exact: true }),
   ).toBeVisible();
 
-  const current = waitForResponse(page, "GET", "/api/identity-sessions/current");
+  const current = waitForResponse(
+    page,
+    "GET",
+    "/api/identity-sessions/current",
+  );
   await page.reload();
   const currentIdentity = (await (await current).json()) as {
     responsibilities: string[];
@@ -101,7 +107,11 @@ function identityRow(
   });
 }
 
-function productRow(products: Locator, page: Page, operationalName: string): Locator {
+function productRow(
+  products: Locator,
+  page: Page,
+  operationalName: string,
+): Locator {
   return products.getByRole("row").filter({
     has: page.getByRole("cell", { name: operationalName, exact: true }),
   });
@@ -115,7 +125,7 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
   const orderContext = await browser.newContext();
   const preparationContext = await browser.newContext();
   const preparationResponsibilityName = `Cocina configuración E2E ${Date.now()}-${randomUUID().slice(0, 8)}`;
-  const orderContextName = `Mesa configuración E2E ${randomUUID().slice(0, 8)}`;
+  const orderContextName = "Contexto base E2E";
 
   try {
     const generalPage = await generalContext.newPage();
@@ -134,10 +144,11 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
       .click();
     const createdResponsibilityResponse = await responsibilityCreation;
     expect(createdResponsibilityResponse.ok()).toBeTruthy();
-    const createdResponsibility = (await createdResponsibilityResponse.json()) as {
-      id: string;
-      operationalName: string;
-    };
+    const createdResponsibility =
+      (await createdResponsibilityResponse.json()) as {
+        id: string;
+        operationalName: string;
+      };
     expect(createdResponsibility.operationalName).toBe(
       preparationResponsibilityName,
     );
@@ -226,9 +237,7 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
     const preparationConfiguration = catalogPage.getByRole("form", {
       name: `Configurar preparación de ${configuredProductName}`,
     });
-    await preparationConfiguration
-      .getByLabel("Requiere preparación")
-      .check();
+    await preparationConfiguration.getByLabel("Requiere preparación").check();
     await preparationConfiguration
       .getByLabel("Responsabilidad de preparación de destino")
       .selectOption({ label: preparationResponsibilityName });
@@ -273,7 +282,7 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
         name: `Agregar ${configuredProductName} a Composición inicial`,
       })
       .click();
-    await composition.getByLabel("Contexto").fill(orderContextName);
+    await selectInitialContext(composition, orderContextName);
     const firstConfirmation = waitForResponse(
       orderPage,
       "POST",

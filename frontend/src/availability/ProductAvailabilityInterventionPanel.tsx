@@ -38,7 +38,9 @@ export function ProductAvailabilityInterventionPanel({
   onUnauthorized,
   onForbidden,
 }: Props) {
-  const [products, setProducts] = useState<AvailabilityAdministrationProduct[]>([]);
+  const [products, setProducts] = useState<AvailabilityAdministrationProduct[]>(
+    [],
+  );
   const [phase, setPhase] = useState<Phase>("loading");
   const [message, setMessage] = useState<string | null>(null);
   const [uncertainIntent, setUncertainIntent] =
@@ -61,12 +63,18 @@ export function ProductAvailabilityInterventionPanel({
       setPhase("idle");
     } catch (error) {
       if (!mounted.current) return;
-      if (error instanceof AvailabilityProblemError && error.problem.status === 401) {
+      if (
+        error instanceof AvailabilityProblemError &&
+        error.problem.status === 401
+      ) {
         discardAntiforgeryToken();
         onUnauthorized();
         return;
       }
-      if (error instanceof AvailabilityProblemError && error.problem.status === 403) {
+      if (
+        error instanceof AvailabilityProblemError &&
+        error.problem.status === 403
+      ) {
         onForbidden();
         return;
       }
@@ -76,7 +84,8 @@ export function ProductAvailabilityInterventionPanel({
   }, [onForbidden, onUnauthorized]);
 
   useEffect(() => {
-    void reload();
+    const scheduledRead = window.setTimeout(() => void reload(), 0);
+    return () => window.clearTimeout(scheduledRead);
   }, [reload]);
 
   async function submit(intent: ProductAvailabilityIntent) {
@@ -92,13 +101,17 @@ export function ProductAvailabilityInterventionPanel({
       if (!mounted.current) return;
       if (error instanceof AvailabilityNetworkError) {
         setUncertainIntent(intent);
-        setMessage("Resultado incierto. Reintentá exactamente la misma intención.");
+        setMessage(
+          "Resultado incierto. Reintentá exactamente la misma intención.",
+        );
         setPhase("uncertain");
         return;
       }
       if (!(error instanceof AvailabilityProblemError)) {
         setUncertainIntent(intent);
-        setMessage("Resultado incierto. Reintentá exactamente la misma intención.");
+        setMessage(
+          "Resultado incierto. Reintentá exactamente la misma intención.",
+        );
         setPhase("uncertain");
         return;
       }
@@ -116,7 +129,10 @@ export function ProductAvailabilityInterventionPanel({
       }
       const notice = problemMessage(error.problem.code);
       setUncertainIntent(null);
-      setMessage(notice ?? "La disponibilidad no pudo actualizarse. Se consultará el estado vigente.");
+      setMessage(
+        notice ??
+          "La disponibilidad no pudo actualizarse. Se consultará el estado vigente.",
+      );
       await reload();
     }
   }
@@ -132,7 +148,9 @@ export function ProductAvailabilityInterventionPanel({
         onUnauthorized();
         return;
       }
-      setMessage("No se pudo obtener la protección de la solicitud. Intentá nuevamente.");
+      setMessage(
+        "No se pudo obtener la protección de la solicitud. Intentá nuevamente.",
+      );
       return;
     }
     const intent = createProductAvailabilityIntent(
@@ -148,22 +166,41 @@ export function ProductAvailabilityInterventionPanel({
   }
 
   return (
-    <section className="panel product-availability-intervention" aria-label="Intervención de disponibilidad de Products">
+    <section
+      className="panel product-availability-intervention"
+      aria-label="Intervención de disponibilidad de Products"
+    >
       <h2>Intervención de disponibilidad de Products</h2>
-      <p>Esta superficie cambia únicamente la disponibilidad de Products vigentes.</p>
+      <p>
+        Esta superficie cambia únicamente la disponibilidad de Products
+        vigentes.
+      </p>
       {message && <p role="status">{message}</p>}
       {phase === "loading" && <p role="status">Cargando Products vigentes…</p>}
       {uncertainIntent && (
-        <div className="uncertain-intention" role="region" aria-label="Cambio de disponibilidad con resultado no confirmado">
+        <div
+          className="uncertain-intention"
+          role="region"
+          aria-label="Cambio de disponibilidad con resultado no confirmado"
+        >
           <h3>Cambio de disponibilidad pendiente de confirmación</h3>
           <p>Product: {uncertainIntent.productId}</p>
-          <p>La próxima tentativa conserva exactamente el Product, el estado esperado, el nuevo estado y la misma key.</p>
-          <button type="button" onClick={() => void submit(uncertainIntent)} disabled={phase === "sending"}>
+          <p>
+            La próxima tentativa conserva exactamente el Product, el estado
+            esperado, el nuevo estado y la misma key.
+          </p>
+          <button
+            type="button"
+            onClick={() => void submit(uncertainIntent)}
+            disabled={phase === "sending"}
+          >
             Reintentar misma intención
           </button>
         </div>
       )}
-      {phase !== "loading" && products.length === 0 && <p>No hay Products vigentes.</p>}
+      {phase !== "loading" && products.length === 0 && (
+        <p>No hay Products vigentes.</p>
+      )}
       {phase !== "loading" && products.length > 0 && (
         <ul aria-label="Products vigentes para intervención de disponibilidad">
           {products.map((product) => (
@@ -180,7 +217,9 @@ export function ProductAvailabilityInterventionPanel({
                 disabled={phase !== "idle" || uncertainIntent !== null}
                 aria-label={`${product.isAvailable ? "Marcar no disponible" : "Marcar disponible"} ${product.operationalName}`}
               >
-                {product.isAvailable ? "Marcar no disponible" : "Marcar disponible"}
+                {product.isAvailable
+                  ? "Marcar no disponible"
+                  : "Marcar disponible"}
               </button>
             </li>
           ))}

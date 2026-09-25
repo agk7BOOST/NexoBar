@@ -119,7 +119,7 @@ export async function evaluateCompleteCancellation(
 
 export async function sendCompleteCancellationIntent(
   intent: CompleteCancellationIntent,
-): Promise<{ pendingCompositionDiscarded: boolean }> {
+): Promise<{ occurredAt: string; pendingCompositionDiscarded: boolean }> {
   const response = await fetch(intent.endpoint, {
     method: "POST",
     credentials: "same-origin",

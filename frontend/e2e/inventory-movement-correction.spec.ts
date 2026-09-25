@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const itemName = "Insumo SSE Inventario E2E";
+const itemName = "Insumo corrección Inventario E2E";
 
 async function signIn(page: Page) {
   await page.goto("/");

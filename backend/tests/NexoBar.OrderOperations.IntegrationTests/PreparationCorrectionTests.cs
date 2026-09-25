@@ -87,8 +87,12 @@ public sealed class PreparationCorrectionTests(OrderOperationsApiFixture fixture
     }
 
     [Theory]
-    [InlineData(false, 0)] [InlineData(false, -1)] [InlineData(false, 3)]
-    [InlineData(true, 0)] [InlineData(true, -1)] [InlineData(true, 3)]
+    [InlineData(false, 0)]
+    [InlineData(false, -1)]
+    [InlineData(false, 3)]
+    [InlineData(true, 0)]
+    [InlineData(true, -1)]
+    [InlineData(true, 3)]
     public async Task Invalid_or_excess_quantity_has_no_effect(bool ready, int quantity)
     {
         var s = await Setup(); using var client = s.Client;
@@ -116,7 +120,8 @@ public sealed class PreparationCorrectionTests(OrderOperationsApiFixture fixture
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Replay_retains_original_result_after_later_change_and_revocation(bool ready)
     {
         var s = await Setup(); using var client = s.Client; var key = Guid.NewGuid();
@@ -136,7 +141,8 @@ public sealed class PreparationCorrectionTests(OrderOperationsApiFixture fixture
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Wrong_destination_cannot_correct(bool ready)
     {
         var s = await Setup(); using var client = s.Client;
@@ -148,8 +154,10 @@ public sealed class PreparationCorrectionTests(OrderOperationsApiFixture fixture
     }
 
     [Theory]
-    [InlineData(false, false)] [InlineData(false, true)]
-    [InlineData(true, false)] [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
     public async Task Persistence_failure_rolls_back_all_effects(bool ready, bool historyFailure)
     {
         var s = await Setup(); using var client = s.Client;
@@ -175,10 +183,14 @@ public sealed class PreparationCorrectionTests(OrderOperationsApiFixture fixture
     }
 
     [Theory]
-    [InlineData("start", false)] [InlineData("start", true)]
-    [InlineData("ready-start", false)] [InlineData("ready-start", true)]
-    [InlineData("ready", false)] [InlineData("ready", true)]
-    [InlineData("delivery", false)] [InlineData("delivery", true)]
+    [InlineData("start", false)]
+    [InlineData("start", true)]
+    [InlineData("ready-start", false)]
+    [InlineData("ready-start", true)]
+    [InlineData("ready", false)]
+    [InlineData("ready", true)]
+    [InlineData("delivery", false)]
+    [InlineData("delivery", true)]
     public async Task Races_revalidate_exact_quantities_after_order_lock(string competing, bool correctionFirst)
     {
         var s = await Setup(); using var client = s.Client;
@@ -214,8 +226,10 @@ public sealed class PreparationCorrectionTests(OrderOperationsApiFixture fixture
     }
 
     [Theory]
-    [InlineData(false, false)] [InlineData(false, true)]
-    [InlineData(true, false)] [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
     public async Task Liquidation_race_and_frozen_rejection(bool ready, bool correctionFirst)
     {
         var s = await Setup(5, 5); using var client = s.Client;

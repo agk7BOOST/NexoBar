@@ -149,7 +149,9 @@ async function renderPanel(
     />,
   );
   if (contents.length > 0)
-    await screen.findAllByText(contents[0].productOperationalName ?? "Nombre histórico no disponible");
+    await screen.findAllByText(
+      contents[0].productOperationalName ?? "Nombre histórico no disponible",
+    );
   return onUnauthorized;
 }
 
@@ -176,6 +178,24 @@ describe("DeliveryPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Actualizar" }));
     await waitFor(() => expect(getOrderDelivery).toHaveBeenCalledTimes(2));
+  });
+
+  it("preserves a partial Delivery draft when a concurrent authoritative refresh arrives", async () => {
+    vi.mocked(getOrderDelivery).mockResolvedValue(orderDelivery([direct]));
+    const user = userEvent.setup();
+    await renderPanel([direct]);
+    await user.clear(inputFor(direct));
+    await user.type(inputFor(direct), "1");
+    await user.click(screen.getByRole("button", { name: "Actualizar" }));
+    await waitFor(() => expect(getOrderDelivery).toHaveBeenCalledTimes(2));
+    expect(inputFor(direct)).toHaveValue(1);
+    vi.mocked(deliverQuantity).mockReturnValue(new Promise(() => undefined));
+    await user.click(buttonFor(direct));
+    await waitFor(() =>
+      expect(deliverQuantity).toHaveBeenCalledWith(
+        expect.objectContaining({ quantity: 1 }),
+      ),
+    );
   });
 
   it("presents direct quantities without fake Ready and sends a partial quantity", async () => {
@@ -211,11 +231,19 @@ describe("DeliveryPanel", () => {
     const legacyContent = { ...direct, productOperationalName: null };
     await renderPanel([legacyContent]);
 
-    expect(screen.getByRole("heading", { name: "Nombre histórico no disponible" })).toBeVisible();
-    expect(screen.getByRole("article", {
-      name: "Nombre histórico no disponible, sin instrucción, incorporación 1",
-    })).toBeVisible();
-    expect(screen.getByLabelText(/Cantidad a entregar — Nombre histórico no disponible/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Nombre histórico no disponible" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("article", {
+        name: "Nombre histórico no disponible, sin instrucción, incorporación 1",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByLabelText(
+        /Cantidad a entregar — Nombre histórico no disponible/,
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText(legacyContent.productId)).not.toBeInTheDocument();
   });
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import {
   useOrderConnectionGeneration,
   useOrderInvalidation,
-} from "./NotificationSseProvider.tsx";
+} from "./NotificationSseHooks.ts";
 
 /** Each mounted Order read keeps its own authoritative state and refresh policy. */
 export function ActiveOrderFreshnessSubscription({
@@ -13,7 +13,9 @@ export function ActiveOrderFreshnessSubscription({
   invalidate: () => void;
 }) {
   const invalidateRef = useRef(invalidate);
-  invalidateRef.current = invalidate;
+  useEffect(() => {
+    invalidateRef.current = invalidate;
+  }, [invalidate]);
   const invalidateCurrent = useCallback(() => invalidateRef.current(), []);
   useOrderInvalidation(orderId, invalidateCurrent);
   const generation = useOrderConnectionGeneration();

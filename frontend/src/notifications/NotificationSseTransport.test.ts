@@ -10,7 +10,8 @@ class FakeEventSource {
   closed = false;
   onopen: ((event: Event) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
-  private invalidationListener: ((event: MessageEvent<string>) => void) | null = null;
+  private invalidationListener: ((event: MessageEvent<string>) => void) | null =
+    null;
 
   close(): void {
     this.closed = true;
@@ -32,7 +33,9 @@ class FakeEventSource {
   }
 
   invalidate(payload: string): void {
-    this.invalidationListener?.(new MessageEvent("invalidation", { data: payload }));
+    this.invalidationListener?.(
+      new MessageEvent("invalidation", { data: payload }),
+    );
   }
 }
 
@@ -100,8 +103,12 @@ describe("NotificationSseTransport", () => {
     expect(urls[1]).toBe(
       `/api/notifications/stream?scope=preparation.destination%3A${destinationA}&scope=order.active%3A${orderA}`,
     );
-    sources[1].invalidate(JSON.stringify({ kind: "order.changed", scopeId: orderB }));
-    sources[1].invalidate(JSON.stringify({ kind: "order.changed", scopeId: orderA }));
+    sources[1].invalidate(
+      JSON.stringify({ kind: "order.changed", scopeId: orderB }),
+    );
+    sources[1].invalidate(
+      JSON.stringify({ kind: "order.changed", scopeId: orderA }),
+    );
 
     expect(orderChanged).toHaveBeenCalledTimes(1);
     expect(orderChanged).toHaveBeenLastCalledWith({ orderId: orderA });
@@ -115,18 +122,23 @@ describe("NotificationSseTransport", () => {
     const inventoryChanged = vi.fn();
     transport.subscribe(destinationA, preparationChanged);
     transport.subscribeOrder(orderA, orderChanged);
-    const unsubscribeInventory = transport.subscribeInventoryOperation(inventoryChanged);
+    const unsubscribeInventory =
+      transport.subscribeInventoryOperation(inventoryChanged);
     transport.subscribeInventoryOperation(vi.fn());
 
     expect(sources).toHaveLength(3);
     expect(urls[2]).toBe(
       `/api/notifications/stream?scope=preparation.destination%3A${destinationA}&scope=order.active%3A${orderA}&scope=inventory.operation`,
     );
-    sources[2].invalidate(JSON.stringify({ kind: "inventory.operation.changed" }));
-    sources[2].invalidate(JSON.stringify({
-      kind: "inventory.operation.changed",
-      scopeId: orderA,
-    }));
+    sources[2].invalidate(
+      JSON.stringify({ kind: "inventory.operation.changed" }),
+    );
+    sources[2].invalidate(
+      JSON.stringify({
+        kind: "inventory.operation.changed",
+        scopeId: orderA,
+      }),
+    );
 
     expect(inventoryChanged).toHaveBeenCalledTimes(1);
     expect(inventoryChanged).toHaveBeenLastCalledWith({
@@ -146,11 +158,28 @@ describe("NotificationSseTransport", () => {
     transport.subscribe(destinationB, changedB);
     const current = sources[1];
 
-    current.invalidate(JSON.stringify({ kind: "preparation.destination.changed", scopeId: destinationA }));
-    current.invalidate(JSON.stringify({ kind: "preparation.destination.changed", scopeId: destinationB }));
+    current.invalidate(
+      JSON.stringify({
+        kind: "preparation.destination.changed",
+        scopeId: destinationA,
+      }),
+    );
+    current.invalidate(
+      JSON.stringify({
+        kind: "preparation.destination.changed",
+        scopeId: destinationB,
+      }),
+    );
     current.invalidate("not json");
-    current.invalidate(JSON.stringify({ kind: "order.changed", scopeId: destinationA }));
-    current.invalidate(JSON.stringify({ kind: "preparation.destination.changed", scopeId: "not-a-uuid" }));
+    current.invalidate(
+      JSON.stringify({ kind: "order.changed", scopeId: destinationA }),
+    );
+    current.invalidate(
+      JSON.stringify({
+        kind: "preparation.destination.changed",
+        scopeId: "not-a-uuid",
+      }),
+    );
 
     expect(changedA).toHaveBeenCalledTimes(1);
     expect(changedA).toHaveBeenLastCalledWith({ destinationId: destinationA });
@@ -164,7 +193,12 @@ describe("NotificationSseTransport", () => {
     const oldSource = sources[0];
     transport.subscribe(destinationB, vi.fn());
 
-    oldSource.invalidate(JSON.stringify({ kind: "preparation.destination.changed", scopeId: destinationA }));
+    oldSource.invalidate(
+      JSON.stringify({
+        kind: "preparation.destination.changed",
+        scopeId: destinationA,
+      }),
+    );
     expect(changed).not.toHaveBeenCalled();
   });
 

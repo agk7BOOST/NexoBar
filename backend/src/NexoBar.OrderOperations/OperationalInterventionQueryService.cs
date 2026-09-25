@@ -19,19 +19,26 @@ internal sealed class OperationalInterventionQueryService(
             return new(PreparationProgressOutcome.Forbidden);
         // A single statement snapshots all fulfillment quantities and Freeze for this exact Content.
         var target = await (from content in dbContext.IncorporationContents.AsNoTracking()
-            join incorporation in dbContext.Incorporations.AsNoTracking() on content.IncorporationId equals incorporation.Id
-            join work in dbContext.PreparationWork.AsNoTracking()
-                on new { content.IncorporationId, content.ContentOrdinal } equals new { work.IncorporationId, work.ContentOrdinal } into works
-            from work in works.DefaultIfEmpty()
-            join delivery in dbContext.DeliveryStates.AsNoTracking()
-                on new { content.IncorporationId, content.ContentOrdinal } equals new { delivery.IncorporationId, delivery.ContentOrdinal } into deliveries
-            from delivery in deliveries.DefaultIfEmpty()
-            join quantities in dbContext.ContentQuantityStates.AsNoTracking()
-                on new { content.IncorporationId, content.ContentOrdinal } equals new { quantities.IncorporationId, quantities.ContentOrdinal } into quantityStates
-            from quantities in quantityStates.DefaultIfEmpty()
-            where content.IncorporationId == incorporationId && content.ContentOrdinal == ordinal
-            select new { incorporation.OrderId, Content = content, Work = work, Delivery = delivery, Quantities = quantities,
-                Frozen = dbContext.Liquidations.Any(x => x.OrderId == incorporation.OrderId) }).SingleOrDefaultAsync(token);
+                            join incorporation in dbContext.Incorporations.AsNoTracking() on content.IncorporationId equals incorporation.Id
+                            join work in dbContext.PreparationWork.AsNoTracking()
+                                on new { content.IncorporationId, content.ContentOrdinal } equals new { work.IncorporationId, work.ContentOrdinal } into works
+                            from work in works.DefaultIfEmpty()
+                            join delivery in dbContext.DeliveryStates.AsNoTracking()
+                                on new { content.IncorporationId, content.ContentOrdinal } equals new { delivery.IncorporationId, delivery.ContentOrdinal } into deliveries
+                            from delivery in deliveries.DefaultIfEmpty()
+                            join quantities in dbContext.ContentQuantityStates.AsNoTracking()
+                                on new { content.IncorporationId, content.ContentOrdinal } equals new { quantities.IncorporationId, quantities.ContentOrdinal } into quantityStates
+                            from quantities in quantityStates.DefaultIfEmpty()
+                            where content.IncorporationId == incorporationId && content.ContentOrdinal == ordinal
+                            select new
+                            {
+                                incorporation.OrderId,
+                                Content = content,
+                                Work = work,
+                                Delivery = delivery,
+                                Quantities = quantities,
+                                Frozen = dbContext.Liquidations.Any(x => x.OrderId == incorporation.OrderId)
+                            }).SingleOrDefaultAsync(token);
         if (target is null) return new(PreparationProgressOutcome.WorkNotFound);
         if (!OperationalInterventionState.IsCoherent(target.Content, target.Work, target.Delivery, target.Quantities))
             return new(PreparationProgressOutcome.StateInconsistent);

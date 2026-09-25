@@ -35,11 +35,20 @@ public sealed partial class CompleteCancellationTests
     };
 
     [Theory]
-    [InlineData("confirmation")] [InlineData("pending-start")] [InlineData("pending-discard")]
-    [InlineData("content-cancellation")] [InlineData("content-correction")]
-    [InlineData("start")] [InlineData("ready")] [InlineData("correct-start")] [InlineData("correct-ready")]
-    [InlineData("intervention")] [InlineData("delivery")] [InlineData("delivery-correction")]
-    [InlineData("liquidation")] [InlineData("closure")]
+    [InlineData("confirmation")]
+    [InlineData("pending-start")]
+    [InlineData("pending-discard")]
+    [InlineData("content-cancellation")]
+    [InlineData("content-correction")]
+    [InlineData("start")]
+    [InlineData("ready")]
+    [InlineData("correct-start")]
+    [InlineData("correct-ready")]
+    [InlineData("intervention")]
+    [InlineData("delivery")]
+    [InlineData("delivery-correction")]
+    [InlineData("liquidation")]
+    [InlineData("closure")]
     public async Task Cancellation_wins_Order_lock_and_every_ordinary_mutation_rejects_terminal(string kind)
     {
         var target = await Setup(true, 5, 3);
@@ -63,9 +72,15 @@ public sealed partial class CompleteCancellationTests
     }
 
     [Theory]
-    [InlineData("confirmation")] [InlineData("pending-start")] [InlineData("pending-discard")]
-    [InlineData("content-cancellation")] [InlineData("content-correction")]
-    [InlineData("start")] [InlineData("ready")] [InlineData("intervention")] [InlineData("delivery")]
+    [InlineData("confirmation")]
+    [InlineData("pending-start")]
+    [InlineData("pending-discard")]
+    [InlineData("content-cancellation")]
+    [InlineData("content-correction")]
+    [InlineData("start")]
+    [InlineData("ready")]
+    [InlineData("intervention")]
+    [InlineData("delivery")]
     public async Task Earlier_mutation_is_included_in_stabilized_complete_plan(string kind)
     {
         var target = await Setup(true, 5, 3);

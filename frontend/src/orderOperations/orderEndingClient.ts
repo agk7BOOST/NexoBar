@@ -35,7 +35,7 @@ export function createOrderEndingIntent(
 export async function sendOrderEndingIntent(
   intent: OrderEndingIntent,
   antiforgeryToken: string,
-): Promise<string | null> {
+): Promise<string> {
   let response: Response;
   try {
     response = await fetch(intent.endpoint, {
@@ -74,15 +74,12 @@ export async function sendOrderEndingIntent(
       status: response.status,
     });
   }
-  if (intent.kind === "close") return null;
   const result: unknown = await response.json();
-  if (
-    typeof result !== "object" ||
-    result === null ||
-    !("occurredAt" in result) ||
-    typeof result.occurredAt !== "string"
-  ) {
+  const timestampField = intent.kind === "close" ? "closedAt" : "occurredAt";
+  if (typeof result !== "object" || result === null) {
     throw new OrderOperationsNetworkError();
   }
-  return result.occurredAt;
+  const timestamp = (result as Record<string, unknown>)[timestampField];
+  if (typeof timestamp !== "string") throw new OrderOperationsNetworkError();
+  return timestamp;
 }

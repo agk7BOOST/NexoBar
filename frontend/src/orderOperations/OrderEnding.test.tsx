@@ -101,6 +101,21 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
       if (url === "/api/security/antiforgery")
         return json({ requestToken: "csrf-ending" });
       if (init?.method === "POST") return mutation(url, init);
+      if (url === `/api/orders/${reference}/complete-cancellation`)
+        return json({
+          orderId: reference,
+          isTerminal: current.isClosed,
+          isCompletelyCancelled: false,
+          cancellationId: null,
+          cancelledAt: null,
+          hasEffectiveDelivery: true,
+          hasPendingComposition: false,
+          remainingFulfillmentQuantity: 0,
+          requiresOperationalIntervention: false,
+          isEligible: false,
+          blockers: ["effective_delivery"],
+          consequences: [],
+        });
       reads++;
       if (failRead) throw new TypeError("offline");
       return json(current);
@@ -279,7 +294,11 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
                   closedAt: "2026-09-05T18:00:00Z",
                 }
               : liquidated("ExternalCollection");
-          return json({ occurredAt: "2026-09-05T17:59:00Z" });
+          return json(
+            kind === "close"
+              ? { closedAt: "2026-09-05T18:00:00Z" }
+              : { occurredAt: "2026-09-05T17:59:00Z" },
+          );
         });
       const user = await open();
       await user.click(
@@ -305,7 +324,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
       );
       if (kind === "close") {
         expect(url).toBe(`/api/orders/${reference}/close`);
-        expect(await screen.findByText("Pedido cerrado")).toBeVisible();
+        expect(await screen.findByText(/Pedido cerrado:/)).toBeVisible();
         expect(screen.getByText("2026-09-05T18:00:00Z")).toHaveAttribute(
           "datetime",
           "2026-09-05T18:00:00Z",
@@ -424,21 +443,27 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
     },
   );
 
-  it("no muestra Cierre optimista y conserva bloqueos si falla el refresco", async () => {
+  it("muestra Cierre solo tras el resultado autoritativo y retira el read activo", async () => {
     current = liquidated();
-    mutation.mockImplementation(async () => {
-      failRead = true;
-      return json({ isClosed: true });
-    });
+    let confirm!: (response: Response) => void;
+    mutation.mockReturnValue(
+      new Promise<Response>((resolve) => {
+        confirm = resolve;
+      }),
+    );
     const user = await open();
     await user.click(screen.getByRole("button", { name: "Cerrar Pedido" }));
-    await screen.findByText(/No se pudo actualizar el Pedido/);
-    expect(screen.queryByText("Pedido cerrado")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pedido cerrado:/)).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Cerrar Pedido" }),
     ).toBeDisabled();
+    await act(async () =>
+      confirm(json({ closedAt: "2026-09-05T18:00:00Z", isClosed: true })),
+    );
+    expect(await screen.findByText(/Pedido cerrado:/)).toBeVisible();
+    expect(reads).toBe(1);
     expect(
-      screen.queryByRole("button", { name: "Reintentar misma operación" }),
+      screen.queryByRole("button", { name: "Cerrar Pedido" }),
     ).not.toBeInTheDocument();
   });
 

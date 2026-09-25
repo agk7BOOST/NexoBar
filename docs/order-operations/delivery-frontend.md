@@ -6,6 +6,7 @@
 - Todos los Contents permanecen visibles y no se mezclan por Product. Direct presenta Total, Delivered, Deliverable, Remaining y “Preparación no requerida”; Prepared presenta Total, Ready, Delivered, Deliverable y Remaining.
 - Un Content completamente entregado muestra la presentación derivada “Entregado”. No significa Closed, Liquidated ni Paid.
 - Cuando `deliverable > 0`, el Content ofrece un input integer con `min = 1`, `max = deliverable` observado y valor inicial igual a ese máximo, más el botón “Entregar”. Permite la cantidad elegible completa o una parcial; “todo” es el número exacto observado, no una intención dinámica.
+- Un refresh autoritativo conserva la cantidad parcial editada mientras `DeliveredQuantity` no cambie; si cambia la entrega efectiva, el input vuelve al máximo entregable actualizado. El comando valida otra vez la cantidad contra el máximo vigente.
 - Cada Content admite como máximo una mutación activa y los demás Contents siguen operables. El intent congela `incorporationId`, `contentOrdinal`, quantity e idempotency key, con fases `submitting` y `uncertain`; no existe loading global de Delivery.
 - En `200`, resuelve el intent, no calcula Delivered de forma optimista, refresca el GET de Delivery y renderiza Estado autoritativo. No decrementa Ready localmente.
 - Un `409` es una falla conocida: limpia el intent, informa cambio de Estado o conflicto de idempotencia, refresca y reserva una key nueva para una intención futura. No se trata como éxito.

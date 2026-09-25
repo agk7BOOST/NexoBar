@@ -18,19 +18,46 @@ import {
 const fetchMock = vi.fn<typeof fetch>();
 
 describe("operational Context selector and Context Change client", () => {
-  beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
   it("uses the narrow operational lookup and maps only id/name", async () => {
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([{ id: "ctx-a", operationalName: "Mesa A", ignored: true }]), { status: 200 }));
-    await expect(listOrderContexts()).resolves.toEqual([{ id: "ctx-a", operationalName: "Mesa A" }]);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/operational-configuration/order-contexts");
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          { id: "ctx-a", operationalName: "Mesa A", ignored: true },
+        ]),
+        { status: 200 },
+      ),
+    );
+    await expect(listOrderContexts()).resolves.toEqual([
+      { id: "ctx-a", operationalName: "Mesa A" },
+    ]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/operational-configuration/order-contexts",
+    );
   });
   it("posts exact A to B intent, idempotency key and antiforgery to the backend route", async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
-    await changeOrderContext("order-1", { expectedCurrentContextId: "ctx-a", newContextId: "ctx-b" }, "key-1", "csrf");
+    await changeOrderContext(
+      "order-1",
+      { expectedCurrentContextId: "ctx-a", newContextId: "ctx-b" },
+      "key-1",
+      "csrf",
+    );
     const [path, init] = fetchMock.mock.calls[0]!;
     expect(path).toBe("/api/order-operations/orders/order-1/context-changes");
-    expect(init?.headers).toEqual(expect.objectContaining({ "Idempotency-Key": "key-1", "X-NexoBar-CSRF": "csrf" }));
-    expect(JSON.parse(String(init?.body))).toEqual({ expectedCurrentContextId: "ctx-a", newContextId: "ctx-b" });
+    expect(init?.headers).toEqual(
+      expect.objectContaining({
+        "Idempotency-Key": "key-1",
+        "X-NexoBar-CSRF": "csrf",
+      }),
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      expectedCurrentContextId: "ctx-a",
+      newContextId: "ctx-b",
+    });
   });
 });
 
@@ -184,7 +211,14 @@ describe("confirmFirst", () => {
     const error = await confirmFirst(
       {
         contextId: "ctx-mesa-7",
-        items: [{ productId: "product-1", quantity: 1, instruction: null, unavailableProductExceptionRequested: false }],
+        items: [
+          {
+            productId: "product-1",
+            quantity: 1,
+            instruction: null,
+            unavailableProductExceptionRequested: false,
+          },
+        ],
       },
       "key",
       "csrf-token",
@@ -205,7 +239,14 @@ describe("confirmFirst", () => {
     const error = await confirmFirst(
       {
         contextId: "ctx-mesa-7",
-        items: [{ productId: "product-1", quantity: 1, instruction: null, unavailableProductExceptionRequested: false }],
+        items: [
+          {
+            productId: "product-1",
+            quantity: 1,
+            instruction: null,
+            unavailableProductExceptionRequested: false,
+          },
+        ],
       },
       "key",
       "csrf-token",
@@ -385,9 +426,18 @@ describe("getOrder", () => {
 
     for (const productOperationalNameSnapshot of [undefined, 42, {}]) {
       const invalid = structuredClone(response);
-      (invalid.incorporations[0]!.items[0] as unknown as Record<string, unknown>).productOperationalNameSnapshot = productOperationalNameSnapshot;
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(invalid), { status: 200 }));
-      await expect(getOrder("order-1")).rejects.toThrow("uninterpretable Product name snapshot");
+      (
+        invalid.incorporations[0]!.items[0] as unknown as Record<
+          string,
+          unknown
+        >
+      ).productOperationalNameSnapshot = productOperationalNameSnapshot;
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify(invalid), { status: 200 }),
+      );
+      await expect(getOrder("order-1")).rejects.toThrow(
+        "uninterpretable Product name snapshot",
+      );
     }
   });
 });

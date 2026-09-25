@@ -135,12 +135,18 @@ public sealed class ActiveOrderSseTests(OrderOperationsApiFixture fixture)
     }
 
     [Theory]
-    [InlineData("revoked", false)] [InlineData("revoked", true)]
-    [InlineData("inactive", false)] [InlineData("inactive", true)]
-    [InlineData("no-responsibility", false)] [InlineData("no-responsibility", true)]
-    [InlineData("replaced", false)] [InlineData("replaced", true)]
-    [InlineData("closed", false)] [InlineData("closed", true)]
-    [InlineData("cancelled", false)] [InlineData("cancelled", true)]
+    [InlineData("revoked", false)]
+    [InlineData("revoked", true)]
+    [InlineData("inactive", false)]
+    [InlineData("inactive", true)]
+    [InlineData("no-responsibility", false)]
+    [InlineData("no-responsibility", true)]
+    [InlineData("replaced", false)]
+    [InlineData("replaced", true)]
+    [InlineData("closed", false)]
+    [InlineData("closed", true)]
+    [InlineData("cancelled", false)]
+    [InlineData("cancelled", true)]
     public async Task Normal_delivery_and_idle_revalidation_fail_closed(string loss, bool idle)
     {
         var actor = await ArrangeAsync();
@@ -195,9 +201,12 @@ public sealed class ActiveOrderSseTests(OrderOperationsApiFixture fixture)
     }
 
     [Theory]
-    [InlineData("revoked", false)] [InlineData("revoked", true)]
-    [InlineData("inactive", false)] [InlineData("inactive", true)]
-    [InlineData("no-responsibility", false)] [InlineData("no-responsibility", true)]
+    [InlineData("revoked", false)]
+    [InlineData("revoked", true)]
+    [InlineData("inactive", false)]
+    [InlineData("inactive", true)]
+    [InlineData("no-responsibility", false)]
+    [InlineData("no-responsibility", true)]
     public async Task Retired_Order_keeps_heartbeat_but_actor_loss_ends_entire_connection(string loss, bool mixed)
     {
         var actor = await ArrangeAsync("mixed");

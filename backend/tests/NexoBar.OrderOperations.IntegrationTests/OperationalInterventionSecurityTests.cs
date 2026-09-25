@@ -11,7 +11,8 @@ namespace NexoBar.OrderOperations.IntegrationTests;
 public sealed partial class OperationalInterventionTests
 {
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Intervention_authority_is_independent_and_read_is_exact(bool ready)
     {
         var s = await Setup(); using var client = s.Client;
@@ -54,7 +55,8 @@ public sealed partial class OperationalInterventionTests
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Replay_is_durable_and_survives_capability_revocation_but_requires_usable_identity_and_session(bool ready)
     {
         var s = await Setup(); using var client = s.Client;
@@ -88,11 +90,16 @@ public sealed partial class OperationalInterventionTests
     }
 
     [Theory]
-    [InlineData(false, "quantity")] [InlineData(true, "quantity")]
-    [InlineData(false, "stage")] [InlineData(true, "stage")]
-    [InlineData(false, "target")] [InlineData(true, "target")]
-    [InlineData(false, "actor")] [InlineData(true, "actor")]
-    [InlineData(false, "preparation")] [InlineData(true, "preparation")]
+    [InlineData(false, "quantity")]
+    [InlineData(true, "quantity")]
+    [InlineData(false, "stage")]
+    [InlineData(true, "stage")]
+    [InlineData(false, "target")]
+    [InlineData(true, "target")]
+    [InlineData(false, "actor")]
+    [InlineData(true, "actor")]
+    [InlineData(false, "preparation")]
+    [InlineData(true, "preparation")]
     public async Task Mismatched_key_rejects_every_intent_dimension(bool ready, string mismatch)
     {
         var s = await Setup(); using var client = s.Client; var key = Guid.NewGuid();
@@ -111,13 +118,22 @@ public sealed partial class OperationalInterventionTests
     }
 
     [Theory]
-    [InlineData("missing-key")] [InlineData("v7-key")] [InlineData("antiforgery")]
-    [InlineData("actor")] [InlineData("fraction")] [InlineData("malformed")]
+    [InlineData("missing-key")]
+    [InlineData("v7-key")]
+    [InlineData("antiforgery")]
+    [InlineData("actor")]
+    [InlineData("fraction")]
+    [InlineData("malformed")]
     public async Task Http_contract_rejects_invalid_intents(string invalid)
     {
         var s = await Setup(); using var client = s.Client;
-        var body = invalid switch { "actor" => "{\"quantity\":1,\"actorIdentityId\":\"" + Guid.NewGuid() + "\"}",
-            "fraction" => "{\"quantity\":1.5}", "malformed" => "{", _ => "{\"quantity\":1}" };
+        var body = invalid switch
+        {
+            "actor" => "{\"quantity\":1,\"actorIdentityId\":\"" + Guid.NewGuid() + "\"}",
+            "fraction" => "{\"quantity\":1.5}",
+            "malformed" => "{",
+            _ => "{\"quantity\":1}"
+        };
         using var request = new HttpRequestMessage(HttpMethod.Post, Path(s.Target, false)) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
         if (invalid != "missing-key") request.Headers.Add("Idempotency-Key", (invalid == "v7-key" ? Guid.CreateVersion7() : Guid.NewGuid()).ToString());
         using var response = invalid == "antiforgery" ? await client.SendAsync(request, Token)

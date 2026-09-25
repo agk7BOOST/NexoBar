@@ -127,8 +127,8 @@ describe("sessionClient", () => {
     };
 
     expect(hasResponsibility(identity, "CatalogConfiguration")).toBe(true);
-    expect(
-      hasResponsibility(identity, "OrderOperationsAndBasicClosure"),
-    ).toBe(false);
+    expect(hasResponsibility(identity, "OrderOperationsAndBasicClosure")).toBe(
+      false,
+    );
   });
 });

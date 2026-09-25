@@ -32,11 +32,19 @@ describe("preparationClient", () => {
 
   it("accepts string/null historical names and rejects missing or invalid values", async () => {
     const work = { workId: "w", productOperationalName: null };
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([work]), { status: 200 }));
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify([work]), { status: 200 }),
+    );
     await expect(listPreparationWork("destination-1")).resolves.toEqual([work]);
     for (const productOperationalName of [undefined, 42, {}]) {
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([{ ...work, productOperationalName }]), { status: 200 }));
-      await expect(listPreparationWork("destination-1")).rejects.toThrow("Preparation read model had an uninterpretable Product name");
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify([{ ...work, productOperationalName }]), {
+          status: 200,
+        }),
+      );
+      await expect(listPreparationWork("destination-1")).rejects.toThrow(
+        "Preparation read model had an uninterpretable Product name",
+      );
     }
   });
 

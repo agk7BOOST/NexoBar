@@ -11,8 +11,8 @@ Este documento conserva las estructuras de Historia, matching durable y contrato
 - La query de Preparation usa el Context vigente guardado por Order (`CurrentContextId` y `CurrentContextOperationalName`); no debe confundirse con `ConfirmationHistory.confirmedContext`.
 - El progreso humano materializa Historia separada con los eventos `PreparationQuantityStarted` y `PreparationQuantityReady`. Preparation Correction materializa su propia Historia semántica, distinta de progreso, Content Correction, Content Cancellation, Delivery Correction y OperationalIntervention. Cada registro conserva `HistoryId` UUID v7, `WorkId`, `Quantity`, `ActorIdentityId`, `OccurredAt` UTC y el resultado de las cuatro cantidades: `TotalQuantity`, `PendingQuantity`, `InPreparationQuantity` y `ReadyQuantity`. Una Preparation Correction no requiere referencia a un evento Start o Ready anterior.
 - No existen eventos `WorkCreated`, `Progress` genérico ni `WorkCompleted`. La Historia de Preparation no conserva `SessionId`, snapshot de nombre del Product ni duplicación de instruction.
-- No existe todavía query, API ni UI de Historia de Preparation.
-- No existe todavía query ni UI de Historia de Delivery.
+- No existe todavía una query, API ni UI independiente de Historia de Preparation; sus hechos sí aparecen en la consulta terminal de Order History.
+- No existe todavía una query ni UI independiente de Historia de Delivery; sus hechos sí aparecen en la consulta terminal de Order History.
 - Esta separación no constituye Event Sourcing.
 
 ## Terminal Order History — MVP-FC-TOH: CLOSED

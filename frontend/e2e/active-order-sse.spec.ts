@@ -6,9 +6,16 @@ async function signIn(page: Page, login: string, secret: string, name: string) {
   await page.goto("/");
   await page.getByLabel("Identificador de acceso").fill(login);
   await page.getByLabel("Secreto").fill(secret);
+  const loginResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/identity-sessions" &&
+      response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "Ingresar" }).click();
-  await expect(page.getByRole("region", { name: "Identity actual" }))
-    .toContainText(name);
+  expect((await loginResponse).ok()).toBeTruthy();
+  await expect(
+    page.getByRole("region", { name: "Identity actual" }),
+  ).toContainText(name);
 }
 
 test("Delivery abierto recibe por SSE la cantidad marcada lista por Preparation", async ({
@@ -45,10 +52,12 @@ test("Delivery abierto recibe por SSE la cantidad marcada lista por Preparation"
       "Delivery E2E",
     );
     await deliveryPage
-      .getByLabel("Referencia operacional")
+      .getByRole("textbox", { name: "Referencia operacional", exact: true })
       .fill(operationalReference);
     await deliveryPage.getByRole("button", { name: "Buscar Pedido" }).click();
-    const order = deliveryPage.getByRole("region", { name: "Pedido consultado" });
+    const order = deliveryPage.getByRole("region", {
+      name: "Pedido consultado",
+    });
     await expect(order).toBeVisible();
 
     const activeOrderStream = deliveryPage.waitForResponse((response) => {
@@ -56,14 +65,15 @@ test("Delivery abierto recibe por SSE la cantidad marcada lista por Preparation"
       return (
         url.pathname === "/api/notifications/stream" &&
         response.status() === 200 &&
-        url.searchParams.getAll("scope").some((scope) =>
-          scope.startsWith("order.active:"),
-        )
+        url.searchParams
+          .getAll("scope")
+          .some((scope) => scope.startsWith("order.active:"))
       );
     });
     await order.getByRole("button", { name: "Continuar este Pedido" }).click();
-    await expect(deliveryPage.getByRole("region", { name: "Pedido activo" }))
-      .toBeVisible();
+    await expect(
+      deliveryPage.getByRole("region", { name: "Pedido activo" }),
+    ).toBeVisible();
     await activeOrderStream;
 
     await deliveryPage
@@ -72,7 +82,9 @@ test("Delivery abierto recibe por SSE la cantidad marcada lista por Preparation"
     const delivery = deliveryPage.getByRole("region", {
       name: `Entrega del Pedido ${operationalReference}`,
     });
-    const content = delivery.getByRole("article", { name: new RegExp(productName) });
+    const content = delivery.getByRole("article", {
+      name: new RegExp(productName),
+    });
     await expect(content).toContainText("Ready0");
     await expect(content).toContainText("Delivered0");
     await expect(content).toContainText("Deliverable0");
@@ -81,9 +93,11 @@ test("Delivery abierto recibe por SSE la cantidad marcada lista por Preparation"
       /Cantidad a marcar lista de Papas SSE E2E/,
     );
     await expect(readyQuantity).toHaveValue("1");
-    await preparation.getByRole("button", {
-      name: /Marcar listo Papas SSE E2E/,
-    }).click();
+    await preparation
+      .getByRole("button", {
+        name: /Marcar listo Papas SSE E2E/,
+      })
+      .click();
     await expect(work).toContainText("Pendiente0");
     await expect(work).toContainText(/En prepar.*0/);
     await expect(work).toContainText("Listo1");
@@ -93,7 +107,9 @@ test("Delivery abierto recibe por SSE la cantidad marcada lista por Preparation"
     await expect(content).toContainText("Deliverable1");
     const quantity = content.getByLabel(/^Cantidad a entregar.*Papas SSE E2E/);
     await expect(quantity).toHaveValue("1");
-    await content.getByRole("button", { name: /Entregar Papas SSE E2E/ }).click();
+    await content
+      .getByRole("button", { name: /Entregar Papas SSE E2E/ })
+      .click();
     await expect(content).toContainText("Delivered1");
     await expect(content).toContainText("Deliverable0");
   } finally {

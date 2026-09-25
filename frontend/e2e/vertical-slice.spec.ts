@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { selectPreparationDestination } from "./helpers/select-preparation-destination.js";
 
 function rowForProduct(
   container: Locator,
@@ -22,6 +23,28 @@ function compositionRowForProduct(
       exact: true,
     }),
   });
+}
+
+async function signIn(
+  page: Page,
+  loginIdentifier: string,
+  secret: string,
+  operationalName: string,
+) {
+  await page.getByLabel("Identificador de acceso").fill(loginIdentifier);
+  await page.getByLabel("Secreto").fill(secret);
+  const loginResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/identity-sessions" &&
+      response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Ingresar" }).click();
+  expect((await loginResponse).ok()).toBeTruthy();
+  await expect(
+    page
+      .getByRole("region", { name: "Identity actual" })
+      .getByText(operationalName, { exact: true }),
+  ).toBeVisible();
 }
 
 async function readActiveOperationalReference(
@@ -59,17 +82,21 @@ async function createConfirmedOrder(page: Page): Promise<{
   const productName = `E2E-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill("delivery-e2e");
-  await page.getByLabel("Secreto").fill("delivery-e2e-secret");
-  await page.getByRole("button", { name: "Ingresar" }).click();
-  await expect(
-    page
-      .getByRole("region", { name: "Identity actual" })
-      .getByText("Delivery E2E", { exact: true }),
-  ).toBeVisible();
-  await page.getByLabel("Nombre operacional").fill(productName);
-  await page.getByLabel("Precio", { exact: true }).fill("10");
-  await page.getByRole("button", { name: "Crear producto" }).click();
+  await signIn(
+    page,
+    "price-catalog-e2e",
+    "price-catalog-e2e-secret",
+    "Catálogo precios E2E",
+  );
+  const catalogCreation = page.getByRole("region", { name: "Crear producto" });
+  await expect(catalogCreation).toBeVisible();
+  await catalogCreation
+    .getByRole("textbox", { name: "Nombre operacional", exact: true })
+    .fill(productName);
+  await catalogCreation
+    .getByRole("textbox", { name: "Precio", exact: true })
+    .fill("10");
+  await catalogCreation.getByRole("button", { name: "Crear producto" }).click();
 
   const products = page.getByRole("region", { name: "Productos vigentes" });
   const productRow = rowForProduct(products, page, productName);
@@ -77,10 +104,17 @@ async function createConfirmedOrder(page: Page): Promise<{
   await expect(
     productRow.getByRole("cell", { name: "10", exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole("region", { name: "Identity actual" })
+    .getByRole("button", { name: "Cambiar persona / salir" })
+    .click();
+  await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
 
+  await signIn(page, "delivery-e2e", "delivery-e2e-secret", "Delivery E2E");
   const initialComposition = page.getByRole("region", {
     name: "Composición inicial",
   });
+  await expect(initialComposition).toBeVisible();
   const addButton = initialComposition.getByRole("button", {
     name: `Agregar ${productName} a Composición inicial`,
   });
@@ -98,7 +132,9 @@ async function createConfirmedOrder(page: Page): Promise<{
       exact: true,
     }),
   ).toHaveText("2");
-  await initialComposition.getByLabel("Contexto").fill("Mesa 7");
+  await initialComposition
+    .getByRole("combobox", { name: "Contexto para Primera Confirmacion" })
+    .selectOption({ label: "Contexto base E2E" });
   await initialComposition
     .getByRole("button", { name: "Confirmar Primera Composición" })
     .click();
@@ -122,7 +158,9 @@ async function createConfirmedOrder(page: Page): Promise<{
   await expect(
     activeOrder.getByText(operationalReference, { exact: true }),
   ).toBeVisible();
-  await expect(activeOrder.getByText("Mesa 7", { exact: true })).toBeVisible();
+  await expect(
+    activeOrder.getByText("Contexto base E2E", { exact: true }),
+  ).toBeVisible();
 
   const firstItem = rowForProduct(incorporation1, page, productName);
   await expect(firstItem).toBeVisible();
@@ -140,18 +178,25 @@ async function createConfirmedOrder(page: Page): Promise<{
   return { productName, operationalReference };
 }
 
-async function lookupActiveOrder(page: Page, operationalReference: string) {
-  await page.getByLabel("Referencia operacional").fill(operationalReference);
-  await page.getByRole("button", { name: "Buscar Pedido" }).click();
-  return page.getByRole("region", { name: "Pedido activo" });
-}
-
 test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Pedido", async ({
   page,
 }) => {
   const { productName, operationalReference } =
     await createConfirmedOrder(page);
 
+  await page
+    .getByRole("region", { name: "Identity actual" })
+    .getByRole("button", { name: "Cambiar persona / salir" })
+    .click();
+  await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
+  await page.getByLabel("Identificador de acceso").fill("price-catalog-e2e");
+  await page.getByLabel("Secreto").fill("price-catalog-e2e-secret");
+  await page.getByRole("button", { name: "Ingresar" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "Identity actual" })
+      .getByText("Catálogo precios E2E", { exact: true }),
+  ).toBeVisible();
   const products = page.getByRole("region", { name: "Productos vigentes" });
   const productRow = rowForProduct(products, page, productName);
   await productRow
@@ -169,6 +214,28 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
   await expect(
     productRow.getByRole("cell", { name: "12", exact: true }),
   ).toBeVisible();
+
+  await page
+    .getByRole("region", { name: "Identity actual" })
+    .getByRole("button", { name: "Cambiar persona / salir" })
+    .click();
+  await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
+  await page.getByLabel("Identificador de acceso").fill("delivery-e2e");
+  await page.getByLabel("Secreto").fill("delivery-e2e-secret");
+  await page.getByRole("button", { name: "Ingresar" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "Identity actual" })
+      .getByText("Delivery E2E", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Referencia operacional", exact: true })
+    .fill(operationalReference);
+  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  await page
+    .getByRole("region", { name: "Pedido consultado" })
+    .getByRole("button", { name: "Continuar este Pedido" })
+    .click();
 
   const subsequentComposition = page.getByRole("region", {
     name: "Nueva Composición",
@@ -289,7 +356,7 @@ test("otro contexto autorizado ve el marcador remoto y no puede iniciar un segun
         .getByText("Delivery E2E", { exact: true }),
     ).toBeVisible();
     await otherPage
-      .getByLabel("Referencia operacional")
+      .getByRole("textbox", { name: "Referencia operacional", exact: true })
       .fill(operationalReference);
     await otherPage.getByRole("button", { name: "Buscar Pedido" }).click();
     const consultedOrder = otherPage.getByRole("region", {
@@ -350,14 +417,19 @@ test("informa un Pedido inexistente sin conservar el resultado previo", async ({
   page,
 }) => {
   const { operationalReference } = await createConfirmedOrder(page);
-  const priorResult = await lookupActiveOrder(page, operationalReference);
+  const referenceInput = page.getByRole("textbox", {
+    name: "Referencia operacional",
+    exact: true,
+  });
+  await referenceInput.fill(operationalReference);
+  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  const priorResult = page.getByRole("region", { name: "Pedido activo" });
   await expect(priorResult).toBeVisible();
   await expect(
     priorResult.getByText(operationalReference, { exact: true }),
   ).toBeVisible();
 
   const missingReference = "00000000-0000-0000-0000-000000000001";
-  const referenceInput = page.getByLabel("Referencia operacional");
   await referenceInput.fill(missingReference);
   await page.getByRole("button", { name: "Buscar Pedido" }).click();
 
@@ -396,26 +468,27 @@ test("Preparation y Delivery operan cantidades parciales con Identities reales",
     identity.getByText("Preparador E2E", { exact: true }),
   ).toBeVisible();
   const preparation = page.getByRole("region", { name: "Preparación" });
-  await expect(
-    preparation.getByText("Cocina E2E", { exact: true }),
-  ).toBeVisible();
+  await selectPreparationDestination(preparation, "Cocina E2E");
   const preparationRow = preparation
     .getByRole("row")
-    .filter({ hasText: "Papas E2E autorizadas" });
+    .filter({ hasText: "Papas E2E autorizadas" })
+    .filter({ has: page.getByRole("cell", { name: "Sin sal", exact: true }) });
   await expect(preparationRow).toBeVisible();
-  await expect(preparation.getByText("Sin sal", { exact: true })).toBeVisible();
+  await expect(
+    preparationRow.getByRole("cell", { name: "Sin sal", exact: true }),
+  ).toBeVisible();
   await expect(
     preparation.getByText("Trago E2E no autorizado", { exact: true }),
   ).toHaveCount(0);
 
   const startQuantity = preparation.getByLabel(
-    "Cantidad a iniciar de Papas E2E autorizadas, incorporación 1, Mesa seguridad E2E, Sin sal",
+    "Cantidad a iniciar de Papas E2E autorizadas, incorporación 1, Contexto base E2E, Sin sal",
   );
   await expect(startQuantity).toHaveValue("2");
   await startQuantity.fill("1");
   await preparation
     .getByRole("button", {
-      name: "Iniciar Papas E2E autorizadas, incorporación 1, Mesa seguridad E2E, Sin sal",
+      name: "Iniciar Papas E2E autorizadas, incorporación 1, Contexto base E2E, Sin sal",
     })
     .click();
   await expect(preparationRow).toContainText("Pendiente1");
@@ -439,18 +512,20 @@ test("Preparation y Delivery operan cantidades parciales con Identities reales",
     secondIdentity.getByText("Preparadora E2E B", { exact: true }),
   ).toBeVisible();
   const secondPreparation = page.getByRole("region", { name: "Preparación" });
+  await selectPreparationDestination(secondPreparation, "Cocina E2E");
   const secondPreparationRow = secondPreparation
     .getByRole("row")
-    .filter({ hasText: "Papas E2E autorizadas" });
+    .filter({ hasText: "Papas E2E autorizadas" })
+    .filter({ has: page.getByRole("cell", { name: "Sin sal", exact: true }) });
   await expect(secondPreparationRow).toContainText("Pendiente1");
   await expect(secondPreparationRow).toContainText("En preparación1");
   const readyQuantity = secondPreparation.getByLabel(
-    "Cantidad a marcar lista de Papas E2E autorizadas, incorporación 1, Mesa seguridad E2E, Sin sal",
+    "Cantidad a marcar lista de Papas E2E autorizadas, incorporación 1, Contexto base E2E, Sin sal",
   );
   await expect(readyQuantity).toHaveValue("1");
   await secondPreparation
     .getByRole("button", {
-      name: "Marcar listo Papas E2E autorizadas, incorporación 1, Mesa seguridad E2E, Sin sal",
+      name: "Marcar listo Papas E2E autorizadas, incorporación 1, Contexto base E2E, Sin sal",
     })
     .click();
 
@@ -477,7 +552,9 @@ test("Preparation y Delivery operan cantidades parciales con Identities reales",
   await expect(
     deliveryIdentity.getByText("Delivery E2E", { exact: true }),
   ).toBeVisible();
-  await page.getByLabel("Referencia operacional").fill(operationalReference);
+  await page
+    .getByRole("textbox", { name: "Referencia operacional", exact: true })
+    .fill(operationalReference);
   await page.getByRole("button", { name: "Buscar Pedido" }).click();
   await page
     .getByRole("button", { name: "Abrir entrega de este Pedido" })
@@ -602,25 +679,32 @@ for (const mode of ["simple", "external"] as const) {
       }),
     ).toBeDisabled();
     await ending.getByRole("button", { name: "Cerrar Pedido" }).click();
-    await expect(
-      ending.getByText("Pedido cerrado", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      ending.getByText("Cerrado el").getByRole("time"),
-    ).toHaveAttribute("datetime", /\S+/);
-    await lookupActiveOrder(page, operationalReference);
-    await expect(
-      ending.getByText("Pedido cerrado", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("article", { name: "Incorporación 1", exact: true }),
-    ).toBeVisible();
-    await expect(
-      ending.getByRole("button", { name: /Liquidar|Cerrar Pedido|reabrir/i }),
-    ).toHaveCount(0);
+    const closed = page
+      .getByRole("status")
+      .filter({ hasText: "Pedido cerrado:" });
+    await expect(closed).toContainText(operationalReference);
+    await expect(closed.getByRole("time")).toHaveAttribute("datetime", /\S+/);
+    await expect(ending).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Continuar este Pedido" }),
     ).toHaveCount(0);
+    await page
+      .getByLabel("Referencia operacional exacta")
+      .fill(operationalReference);
+    await page.getByRole("button", { name: "Ver historial" }).click();
+    const history = page.getByRole("region", { name: "Historial del pedido" });
+    await expect(
+      history.getByText(operationalReference, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      history.getByRole("heading", { name: "Liquidación" }),
+    ).toBeVisible();
+    await expect(
+      history.getByRole("heading", { name: "Cierre" }),
+    ).toBeVisible();
+    await expect(
+      history.getByRole("heading", { name: "Incorporación 1" }),
+    ).toBeVisible();
   });
 }
 
@@ -645,7 +729,9 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
     name: "Configuración de Inventario",
   });
   await configuration.getByLabel("Nombre operacional").fill(itemName);
-  await configuration.getByLabel("Unidad operacional").fill("kg");
+  await configuration
+    .getByRole("textbox", { name: "Unidad operacional", exact: true })
+    .fill("kg");
   await configuration.getByRole("button", { name: "Crear elemento" }).click();
   await expect(
     configuration.getByText(itemName, { exact: true }),
@@ -683,7 +769,7 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
     name: "Estado actual de Inventario",
   });
   const item = operation.getByRole("article", { name: itemName });
-  await expect(item).toContainText("Existencia no establecida");
+  await expect(item).toContainText("Existencia física no establecida");
   await item.getByLabel(`Cantidad observada para ${itemName}`).fill("5.5");
   await item.getByRole("button", { name: "Registrar conteo" }).click();
   await expect(item).toContainText("Conteo registrado: 5.5 kg");

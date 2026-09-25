@@ -1,8 +1,6 @@
 import {
   expect,
   test,
-  type Browser,
-  type BrowserContext,
   type Locator,
   type Page,
   type Response,
@@ -58,7 +56,9 @@ async function authenticateThroughCurrent(
   administrator: Administrator,
 ): Promise<void> {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(administrator.identifier);
+  await page
+    .getByLabel("Identificador de acceso")
+    .fill(administrator.identifier);
   await page.getByLabel("Secreto").fill(administrator.secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
@@ -123,12 +123,16 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     await authenticateThroughCurrent(adminBPage, adminB);
 
     let configuration = generalConfiguration(adminAPage);
-    await configuration.getByLabel("Nombre operacional").fill(targetInitialName);
+    await configuration
+      .getByRole("textbox", { name: "Nombre operacional", exact: true })
+      .fill(targetInitialName);
     const created = waitForResponse(adminAPage, "POST", "/api/identities");
     await configuration.getByRole("button", { name: "Crear Identity" }).click();
     expect((await created).ok()).toBeTruthy();
     await expect(
-      configuration.getByText("Identity creada correctamente.", { exact: true }),
+      configuration.getByText("Identity creada correctamente.", {
+        exact: true,
+      }),
     ).toBeVisible();
 
     let target = identityRow(configuration, adminAPage, targetInitialName);
@@ -198,8 +202,10 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     const assignedTarget = await assignPreparation;
     expect(assignedTarget.ok()).toBeTruthy();
     expect(
-      [...((await assignedTarget.json()) as { responsibilities: string[] })
-        .responsibilities].sort(),
+      [
+        ...((await assignedTarget.json()) as { responsibilities: string[] })
+          .responsibilities,
+      ].sort(),
     ).toEqual(["Preparation"]);
     await expect(
       target.getByRole("list", {
@@ -253,14 +259,18 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     const credential = configuration.getByRole("form", {
       name: "Configurar credencial local",
     });
-    await credential.getByLabel("Identificador de acceso").fill(targetLoginIdentifier);
+    await credential
+      .getByLabel("Identificador de acceso")
+      .fill(targetLoginIdentifier);
     await credential.getByLabel("Nueva clave secreta").fill(targetSecret);
     const credentialSet = waitForResponse(
       adminAPage,
       "POST",
       /\/api\/identities\/[^/]+\/credential/,
     );
-    await credential.getByRole("button", { name: "Guardar credencial" }).click();
+    await credential
+      .getByRole("button", { name: "Guardar credencial" })
+      .click();
     const credentialResponse = await credentialSet;
     expect(credentialResponse.ok()).toBeTruthy();
     expect(await credentialResponse.json()).toMatchObject({
@@ -288,7 +298,9 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       .getByRole("button", { name: `Activar ${targetRenamedName}` })
       .click();
     expect((await activatedForLifecycle).ok()).toBeTruthy();
-    await expect(target.getByRole("cell", { name: "Activa", exact: true })).toBeVisible();
+    await expect(
+      target.getByRole("cell", { name: "Activa", exact: true }),
+    ).toBeVisible();
 
     const deactivated = waitForResponse(
       adminAPage,
@@ -299,10 +311,14 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       .getByRole("button", { name: `Desactivar ${targetRenamedName}` })
       .click();
     expect((await deactivated).ok()).toBeTruthy();
-    await expect(target.getByRole("cell", { name: "Inactiva", exact: true })).toBeVisible();
+    await expect(
+      target.getByRole("cell", { name: "Inactiva", exact: true }),
+    ).toBeVisible();
     await refreshAdministrativeState(adminAPage, configuration);
     target = identityRow(configuration, adminAPage, targetRenamedName);
-    await expect(target.getByRole("cell", { name: "Inactiva", exact: true })).toBeVisible();
+    await expect(
+      target.getByRole("cell", { name: "Inactiva", exact: true }),
+    ).toBeVisible();
 
     const activated = waitForResponse(
       adminAPage,
@@ -313,12 +329,20 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       .getByRole("button", { name: `Activar ${targetRenamedName}` })
       .click();
     expect((await activated).ok()).toBeTruthy();
-    await expect(target.getByRole("cell", { name: "Activa", exact: true })).toBeVisible();
+    await expect(
+      target.getByRole("cell", { name: "Activa", exact: true }),
+    ).toBeVisible();
     await refreshAdministrativeState(adminAPage, configuration);
     target = identityRow(configuration, adminAPage, targetRenamedName);
-    await expect(target.getByRole("cell", { name: "Activa", exact: true })).toBeVisible();
+    await expect(
+      target.getByRole("cell", { name: "Activa", exact: true }),
+    ).toBeVisible();
 
-    const adminBRow = identityRow(configuration, adminAPage, adminB.operationalName);
+    const adminBRow = identityRow(
+      configuration,
+      adminAPage,
+      adminB.operationalName,
+    );
     const revokeAdminB = waitForResponse(
       adminAPage,
       "POST",
@@ -339,8 +363,11 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await adminBPage.reload();
     expect(
-      [...((await (await adminBCurrent).json()) as { responsibilities: string[] })
-        .responsibilities].sort(),
+      [
+        ...(
+          (await (await adminBCurrent).json()) as { responsibilities: string[] }
+        ).responsibilities,
+      ].sort(),
     ).toEqual([]);
     await expect(
       adminBPage
@@ -354,7 +381,11 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       }),
     ).toHaveCount(0);
 
-    const adminARow = identityRow(configuration, adminAPage, adminA.operationalName);
+    const adminARow = identityRow(
+      configuration,
+      adminAPage,
+      adminA.operationalName,
+    );
     const lastPathRejection = waitForResponse(
       adminAPage,
       "POST",
@@ -382,6 +413,19 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       }),
     ).toContainText("GeneralConfiguration: Asignada");
 
+    // Restore the shared fixture authority after proving the last-path guard.
+    const restoreAdminB = waitForResponse(
+      adminAPage,
+      "POST",
+      /\/api\/identities\/[^/]+\/responsibilities\/GeneralConfiguration\/assign/,
+    );
+    await identityRow(configuration, adminAPage, adminB.operationalName)
+      .getByRole("button", {
+        name: `Asignar GeneralConfiguration a ${adminB.operationalName}`,
+      })
+      .click();
+    expect((await restoreAdminB).ok()).toBeTruthy();
+
     const adminACurrent = adminAPage.waitForResponse(
       (response) =>
         pathOf(response.url()) === "/api/identity-sessions/current" &&
@@ -390,13 +434,20 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await adminAPage.reload();
     expect(
-      [...((await (await adminACurrent).json()) as { responsibilities: string[] })
-        .responsibilities].sort(),
+      [
+        ...(
+          (await (await adminACurrent).json()) as { responsibilities: string[] }
+        ).responsibilities,
+      ].sort(),
     ).toEqual(["GeneralConfiguration"]);
     configuration = generalConfiguration(adminAPage);
     await expect(configuration).toBeVisible();
 
-    const currentAdminA = identityRow(configuration, adminAPage, adminA.operationalName);
+    const currentAdminA = identityRow(
+      configuration,
+      adminAPage,
+      adminA.operationalName,
+    );
     await currentAdminA
       .getByRole("button", {
         name: `Configurar credencial de ${adminA.operationalName}`,
@@ -415,7 +466,9 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       .getByRole("button", { name: "Guardar credencial" })
       .click();
     expect((await selfCredentialReplacement).ok()).toBeTruthy();
-    await expect(adminAPage.getByRole("heading", { name: "Ingresar" })).toBeVisible();
+    await expect(
+      adminAPage.getByRole("heading", { name: "Ingresar" }),
+    ).toBeVisible();
     await expect(
       adminAPage.getByRole("heading", {
         name: "Configuraci\u00f3n general",
@@ -427,6 +480,28 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       ...adminA,
       secret: adminANewSecret,
     });
+
+    const restoredConfiguration = generalConfiguration(adminAPage);
+    await identityRow(restoredConfiguration, adminAPage, adminA.operationalName)
+      .getByRole("button", {
+        name: `Configurar credencial de ${adminA.operationalName}`,
+      })
+      .click();
+    const restoreCredential = waitForResponse(
+      adminAPage,
+      "POST",
+      /\/api\/identities\/[^/]+\/credential/,
+    );
+    await restoredConfiguration
+      .getByRole("form", { name: "Configurar credencial local" })
+      .getByLabel("Nueva clave secreta")
+      .fill(adminA.secret);
+    await restoredConfiguration
+      .getByRole("form", { name: "Configurar credencial local" })
+      .getByRole("button", { name: "Guardar credencial" })
+      .click();
+    expect((await restoreCredential).ok()).toBeTruthy();
+    await authenticateThroughCurrent(adminAPage, adminA);
   } finally {
     await Promise.all([adminAContext.close(), adminBContext.close()]);
   }

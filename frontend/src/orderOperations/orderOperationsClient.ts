@@ -108,17 +108,26 @@ export interface OrderResponse {
   closedAt: string | null;
 }
 
-export interface OperationalContextOption { id: string; operationalName: string }
-export interface OrderContextChangeRequest { expectedCurrentContextId: string; newContextId: string }
+export interface OperationalContextOption {
+  id: string;
+  operationalName: string;
+}
+export interface OrderContextChangeRequest {
+  expectedCurrentContextId: string;
+  newContextId: string;
+}
 
 function validateProductNameSnapshots(items: unknown): void {
   if (!Array.isArray(items)) return;
   for (const item of items) {
-    const snapshot = typeof item === "object" && item !== null
-      ? (item as Record<string, unknown>).productOperationalNameSnapshot
-      : undefined;
+    const snapshot =
+      typeof item === "object" && item !== null
+        ? (item as Record<string, unknown>).productOperationalNameSnapshot
+        : undefined;
     if (!(typeof snapshot === "string" || snapshot === null)) {
-      throw new Error("The Order Operations response had an uninterpretable Product name snapshot.");
+      throw new Error(
+        "The Order Operations response had an uninterpretable Product name snapshot.",
+      );
     }
   }
 }
@@ -135,17 +144,39 @@ function validateOrderProductNameSnapshots(payload: unknown): void {
 }
 
 export async function listOrderContexts(): Promise<OperationalContextOption[]> {
-  const response = await fetch("/api/operational-configuration/order-contexts", { credentials: "same-origin" });
+  const response = await fetch(
+    "/api/operational-configuration/order-contexts",
+    { credentials: "same-origin" },
+  );
   await requireOrderOperationsSuccess(response);
-  const options = await response.json() as OperationalContextOption[];
+  const options = (await response.json()) as OperationalContextOption[];
   return options.map(({ id, operationalName }) => ({ id, operationalName }));
 }
 
-export async function changeOrderContext(orderId: string, request: OrderContextChangeRequest, idempotencyKey: string, antiforgeryToken: string): Promise<void> {
+export async function changeOrderContext(
+  orderId: string,
+  request: OrderContextChangeRequest,
+  idempotencyKey: string,
+  antiforgeryToken: string,
+): Promise<void> {
   let response: Response;
   try {
-    response = await fetch(`/api/order-operations/orders/${encodeURIComponent(orderId)}/context-changes`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey, "X-NexoBar-CSRF": antiforgeryToken }, body: JSON.stringify(request) });
-  } catch (error) { throw new OrderOperationsNetworkError({ cause: error }); }
+    response = await fetch(
+      `/api/order-operations/orders/${encodeURIComponent(orderId)}/context-changes`,
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+          "X-NexoBar-CSRF": antiforgeryToken,
+        },
+        body: JSON.stringify(request),
+      },
+    );
+  } catch (error) {
+    throw new OrderOperationsNetworkError({ cause: error });
+  }
   await requireOrderOperationsSuccess(response);
 }
 

@@ -8,8 +8,10 @@ namespace NexoBar.OrderOperations.IntegrationTests;
 public sealed partial class OperationalInterventionTests
 {
     [Theory]
-    [InlineData(false, true)] [InlineData(false, false)]
-    [InlineData(true, true)] [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
     public async Task Persistence_failure_rolls_back_C_Work_history_and_command(bool ready, bool historyFailure)
     {
         var s = await Setup(); using var client = s.Client;
@@ -39,8 +41,12 @@ public sealed partial class OperationalInterventionTests
     }
 
     [Theory]
-    [InlineData("delivery")] [InlineData("quantities")] [InlineData("work")]
-    [InlineData("fulfillment")] [InlineData("delivered-boundary")] [InlineData("classification")]
+    [InlineData("delivery")]
+    [InlineData("quantities")]
+    [InlineData("work")]
+    [InlineData("fulfillment")]
+    [InlineData("delivered-boundary")]
+    [InlineData("classification")]
     public async Task Missing_or_incoherent_required_state_is_never_a_zero_fallback(string corruption)
     {
         var s = await Setup(0, 0, 0); using var client = s.Client;
@@ -70,7 +76,8 @@ public sealed partial class OperationalInterventionTests
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Existing_R_and_ordinary_C_remain_separate_from_intervention_provenance(bool ready)
     {
         var s = await Setup(); using var client = s.Client;
@@ -90,7 +97,8 @@ public sealed partial class OperationalInterventionTests
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Same_product_contents_and_incorporations_are_isolated_by_exact_identity(bool ready)
     {
         await fixture.ResetAsync(Token);

@@ -7,8 +7,9 @@ async function signIn(page: Page, login: string, secret: string, name: string) {
   await page.getByLabel("Identificador de acceso").fill(login);
   await page.getByLabel("Secreto").fill(secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
-  await expect(page.getByRole("region", { name: "Identity actual" }))
-    .toContainText(name);
+  await expect(
+    page.getByRole("region", { name: "Identity actual" }),
+  ).toContainText(name);
 }
 
 test("Inventario abierto se actualiza por SSE tras una entrada de otro operador", async ({
@@ -34,7 +35,9 @@ test("Inventario abierto se actualiza por SSE tras una entrada de otro operador"
       "inventory-operation-sse-a-e2e-secret",
       "Operador Inventario SSE A E2E",
     );
-    const operatorAItem = operatorAPage.getByRole("article", { name: itemName });
+    const operatorAItem = operatorAPage.getByRole("article", {
+      name: itemName,
+    });
     await expect(operatorAItem).toContainText("Existencia registrada");
     await expect(operatorAItem).toContainText("10 unidades");
     await operationStream;
@@ -45,13 +48,17 @@ test("Inventario abierto se actualiza por SSE tras una entrada de otro operador"
       "inventory-operation-sse-b-e2e-secret",
       "Operador Inventario SSE B E2E",
     );
-    const operatorBItem = operatorBPage.getByRole("article", { name: itemName });
+    const operatorBItem = operatorBPage.getByRole("article", {
+      name: itemName,
+    });
     await expect(operatorBItem).toContainText("10 unidades");
 
-    const operatorARefresh = operatorAPage.waitForResponse((response) =>
-      response.frame() === operatorAPage.mainFrame() &&
-      new URL(response.url()).pathname === "/api/inventory/operations/items" &&
-      response.status() === 200,
+    const operatorARefresh = operatorAPage.waitForResponse(
+      (response) =>
+        response.frame() === operatorAPage.mainFrame() &&
+        new URL(response.url()).pathname ===
+          "/api/inventory/operations/items" &&
+        response.status() === 200,
     );
     await operatorBItem
       .getByLabel(`Cantidad de entrada para ${itemName}`)
@@ -64,7 +71,9 @@ test("Inventario abierto se actualiza por SSE tras una entrada de otro operador"
     );
 
     await operatorARefresh;
-    await expect(operatorAItem).toContainText("15 unidades", { timeout: 10_000 });
+    await expect(operatorAItem).toContainText("15 unidades", {
+      timeout: 10_000,
+    });
   } finally {
     await operatorAContext.close();
     await operatorBContext.close();

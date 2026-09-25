@@ -37,12 +37,21 @@ describe("Catalog reads", () => {
   });
 
   it("retains lifecycle, availability, preparation and Group fields", async () => {
-    const products: Product[] = [{
-      id: "product-1", operationalName: "Agua", price: "10.00",
-      isActive: false, isAvailable: true, requiresPreparation: true,
-      preparationResponsibilityId: "kitchen", groupId: "group-1",
-    }];
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(products), { status: 200 }));
+    const products: Product[] = [
+      {
+        id: "product-1",
+        operationalName: "Agua",
+        price: "10.00",
+        isActive: false,
+        isAvailable: true,
+        requiresPreparation: true,
+        preparationResponsibilityId: "kitchen",
+        groupId: "group-1",
+      },
+    ];
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(products), { status: 200 }),
+    );
     await expect(listProducts()).resolves.toEqual(products);
   });
 
@@ -85,9 +94,13 @@ describe("Catalog reads", () => {
 
   it("lists Groups with the Catalog route", async () => {
     const groups = [{ id: "group-1", operationalName: "Bebidas" }];
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(groups), { status: 200 }));
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(groups), { status: 200 }),
+    );
     await expect(listGroups()).resolves.toEqual(groups);
-    expect(fetchMock).toHaveBeenCalledWith("/api/catalog/groups", { credentials: "same-origin" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/catalog/groups", {
+      credentials: "same-origin",
+    });
   });
 });
 
@@ -98,8 +111,12 @@ describe("Catalog group and lifecycle commands", () => {
   });
 
   it("sends definitive Delete with the durable command key and antiforgery", async () => {
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ productId: "product-1" }), { status: 200 }));
-    await expect(deleteProduct("product-1", "delete-key", "csrf")).resolves.toEqual({ productId: "product-1" });
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ productId: "product-1" }), { status: 200 }),
+    );
+    await expect(
+      deleteProduct("product-1", "delete-key", "csrf"),
+    ).resolves.toEqual({ productId: "product-1" });
     expect(fetchMock).toHaveBeenCalledWith("/api/catalog/products/product-1", {
       method: "DELETE",
       headers: { "Idempotency-Key": "delete-key", "X-NexoBar-CSRF": "csrf" },
@@ -109,25 +126,84 @@ describe("Catalog group and lifecycle commands", () => {
 
   it("sends Group creation and nullable Group change exactly", async () => {
     fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "group-1", operationalName: "Bebidas" }), { status: 201 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ productId: "product-1", groupId: null }), { status: 200 }));
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: "group-1", operationalName: "Bebidas" }),
+          { status: 201 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ productId: "product-1", groupId: null }),
+          { status: 200 },
+        ),
+      );
     await createGroup({ operationalName: "Bebidas" }, "group-key", "csrf");
-    await changeProductGroup("product-1", { expectedCurrentGroupId: "group-1", newGroupId: null }, "change-key", "csrf");
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ operationalName: "Bebidas" });
-    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({ expectedCurrentGroupId: "group-1", newGroupId: null });
+    await changeProductGroup(
+      "product-1",
+      { expectedCurrentGroupId: "group-1", newGroupId: null },
+      "change-key",
+      "csrf",
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      operationalName: "Bebidas",
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      expectedCurrentGroupId: "group-1",
+      newGroupId: null,
+    });
   });
 
   it("sends rename and bodyless lifecycle commands with durable headers", async () => {
     fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({ productId: "product-1", operationalName: "Agua mineral" }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ productId: "product-1", isActive: false, isAvailable: false }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ productId: "product-1", isActive: true, isAvailable: true }), { status: 200 }));
-    await changeProductOperationalName("product-1", { expectedCurrentOperationalName: "Agua", newOperationalName: "Agua mineral" }, "rename-key", "csrf");
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            productId: "product-1",
+            operationalName: "Agua mineral",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            productId: "product-1",
+            isActive: false,
+            isAvailable: false,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            productId: "product-1",
+            isActive: true,
+            isAvailable: true,
+          }),
+          { status: 200 },
+        ),
+      );
+    await changeProductOperationalName(
+      "product-1",
+      {
+        expectedCurrentOperationalName: "Agua",
+        newOperationalName: "Agua mineral",
+      },
+      "rename-key",
+      "csrf",
+    );
     await retireProduct("product-1", "retire-key", "csrf");
     await reactivateProduct("product-1", "reactivate-key", "csrf");
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ expectedCurrentOperationalName: "Agua", newOperationalName: "Agua mineral" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      expectedCurrentOperationalName: "Agua",
+      newOperationalName: "Agua mineral",
+    });
     expect(fetchMock.mock.calls[1]?.[1]?.body).toBeUndefined();
-    expect(new Headers(fetchMock.mock.calls[2]?.[1]?.headers).get("Idempotency-Key")).toBe("reactivate-key");
+    expect(
+      new Headers(fetchMock.mock.calls[2]?.[1]?.headers).get("Idempotency-Key"),
+    ).toBe("reactivate-key");
   });
 });
 
@@ -342,9 +418,7 @@ describe("changeProductPreparationConfiguration", () => {
     expect(new Headers(init?.headers).get("Idempotency-Key")).toBe(
       "preparation-key",
     );
-    expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe(
-      "csrf-token",
-    );
+    expect(new Headers(init?.headers).get("X-NexoBar-CSRF")).toBe("csrf-token");
     expect(JSON.parse(String(init?.body))).toEqual({
       expectedCurrentPreparationResponsibilityId: "preparation-old",
       newPreparationResponsibilityId: "preparation-new",

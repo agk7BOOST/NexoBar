@@ -16,6 +16,7 @@ import type { OrderResponse } from "../orderOperations/orderOperationsClient.ts"
 import type { OrderDeliveryContent } from "./deliveryClient.ts";
 import type { PreparationWork } from "../preparation/preparationClient.ts";
 import { maximumContentCancellation } from "./contentCancellation.ts";
+import { renderWithNotificationSseProvider } from "../test/renderWithNotificationSseProvider.tsx";
 
 const fetchMock = vi.fn<typeof fetch>();
 const mutation = vi.fn<typeof fetch>();
@@ -124,7 +125,7 @@ function submit() {
   });
 }
 async function open() {
-  render(<Harness />);
+  renderWithNotificationSseProvider(<Harness />);
   await screen.findByRole("article", {
     name: "Agua, sin instrucción, incorporación 1",
   });
@@ -166,7 +167,7 @@ beforeEach(() => {
   order = {
     operationalReference: "ref",
     context: "Mesa",
-      contextId: "ctx-test",
+    contextId: "ctx-test",
     incorporations: [],
     functionalAmount: "10.00",
     isLiquidationEligible: false,

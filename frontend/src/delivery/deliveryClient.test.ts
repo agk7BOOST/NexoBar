@@ -77,9 +77,13 @@ describe("deliveryClient", () => {
   it("accepts a null legacy Product name and rejects missing or invalid names", async () => {
     const legacyPayload = {
       ...deliveryPayload,
-      contents: [{ ...deliveryPayload.contents[0], productOperationalName: null }],
+      contents: [
+        { ...deliveryPayload.contents[0], productOperationalName: null },
+      ],
     };
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(legacyPayload), { status: 200 }));
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(legacyPayload), { status: 200 }),
+    );
     await expect(getOrderDelivery("order-1")).resolves.toMatchObject({
       contents: [{ productOperationalName: null }],
     });
@@ -89,8 +93,12 @@ describe("deliveryClient", () => {
         ...deliveryPayload,
         contents: [{ ...deliveryPayload.contents[0], productOperationalName }],
       };
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(invalid), { status: 200 }));
-      await expect(getOrderDelivery("order-1")).rejects.toThrow("Delivery read model was not interpretable");
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify(invalid), { status: 200 }),
+      );
+      await expect(getOrderDelivery("order-1")).rejects.toThrow(
+        "Delivery read model was not interpretable",
+      );
     }
   });
 

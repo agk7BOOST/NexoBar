@@ -24,30 +24,50 @@ class Stream {
     this.closed = true;
   }
 
-  addEventListener(type: string, listener: (event: MessageEvent<string>) => void) {
+  addEventListener(
+    type: string,
+    listener: (event: MessageEvent<string>) => void,
+  ) {
     if (type === "invalidation") this.listener = listener;
   }
 
   invalidate(orderId: string) {
-    this.listener?.(new MessageEvent("invalidation", {
-      data: JSON.stringify({ kind: "order.changed", scopeId: orderId }),
-    }));
+    this.listener?.(
+      new MessageEvent("invalidation", {
+        data: JSON.stringify({ kind: "order.changed", scopeId: orderId }),
+      }),
+    );
   }
 }
 
-function Probe({ orderId, invalidate }: { orderId: string | null; invalidate: () => void }) {
-  return <ActiveOrderFreshnessSubscription orderId={orderId} invalidate={invalidate} />;
+function Probe({
+  orderId,
+  invalidate,
+}: {
+  orderId: string | null;
+  invalidate: () => void;
+}) {
+  return (
+    <ActiveOrderFreshnessSubscription
+      orderId={orderId}
+      invalidate={invalidate}
+    />
+  );
 }
 
 function tree(orderId: string | null, invalidate = vi.fn()) {
-  return <NotificationSseProvider identityId="identity-a">
-    <Probe orderId={orderId} invalidate={invalidate} />
-  </NotificationSseProvider>;
+  return (
+    <NotificationSseProvider identityId="identity-a">
+      <Probe orderId={orderId} invalidate={invalidate} />
+    </NotificationSseProvider>
+  );
 }
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 }
 

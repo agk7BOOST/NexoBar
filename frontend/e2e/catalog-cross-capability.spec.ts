@@ -6,6 +6,7 @@ import {
   type Page,
   type Response,
 } from "@playwright/test";
+import { selectInitialContext } from "./helpers/select-initial-context.js";
 import { randomUUID } from "node:crypto";
 
 const availableProduct = "Producto disponible S9 E2E";
@@ -100,7 +101,9 @@ async function readOperationalProducts(context: BrowserContext): Promise<
     isAvailable: boolean;
   }[]
 > {
-  const response = await context.request.get("/api/catalog/operational-products");
+  const response = await context.request.get(
+    "/api/catalog/operational-products",
+  );
   expect(response.ok()).toBeTruthy();
   return (await response.json()) as {
     id: string;
@@ -270,9 +273,8 @@ test("S10 unavailable Product intervention requires dual authority and preserves
 
     const interventionPage = await interventionContext.newPage();
     await authenticateThroughCurrent(interventionPage, interventionOperator);
-    const interventionProducts = await readOperationalProducts(
-      interventionContext,
-    );
+    const interventionProducts =
+      await readOperationalProducts(interventionContext);
     const available = interventionProducts.find(
       (product) => product.operationalName === availableProduct,
     );
@@ -342,13 +344,15 @@ test("S10 unavailable Product intervention requires dual authority and preserves
     });
     await expect(interventionAdd).toBeEnabled();
     await interventionAdd.click();
-    await expect(composition.getByText("Intervención solicitada")).toBeVisible();
+    await expect(
+      composition.getByText("Intervención solicitada"),
+    ).toBeVisible();
     await composition
       .getByRole("button", {
         name: `Agregar ${availableProduct} a Composición inicial`,
       })
       .click();
-    await composition.getByLabel("Contexto").fill("Mesa intervención E2E");
+    await selectInitialContext(composition);
     await expect(
       composition.getByText(
         "Esta Confirmación incluye Productos actualmente marcados como no disponibles.",
@@ -356,7 +360,8 @@ test("S10 unavailable Product intervention requires dual authority and preserves
     ).toBeVisible();
     const confirmation = interventionPage.waitForResponse(
       (response) =>
-        pathOf(response.url()) === "/api/order-operations/first-confirmations" &&
+        pathOf(response.url()) ===
+          "/api/order-operations/first-confirmations" &&
         response.request().method() === "POST",
     );
     await composition
@@ -416,9 +421,8 @@ test("S10 unavailable Product intervention requires dual authority and preserves
       interventionPage.getByText("Incorporado mediante intervención"),
     ).toBeVisible();
 
-    const productsAfterConfirmation = await readOperationalProducts(
-      interventionContext,
-    );
+    const productsAfterConfirmation =
+      await readOperationalProducts(interventionContext);
     expect(productsAfterConfirmation).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

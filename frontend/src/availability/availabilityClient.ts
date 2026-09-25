@@ -37,7 +37,10 @@ export class AvailabilityProblemError extends Error {
 
 export class AvailabilityNetworkError extends Error {
   constructor(options?: ErrorOptions) {
-    super("The Product availability request did not receive a response.", options);
+    super(
+      "The Product availability request did not receive a response.",
+      options,
+    );
     this.name = "AvailabilityNetworkError";
   }
 }
@@ -51,10 +54,14 @@ export interface ProductAvailabilityIntent {
   readonly antiforgeryToken: string;
 }
 
-async function readProblem(response: Response): Promise<AvailabilityProblemDetails> {
+async function readProblem(
+  response: Response,
+): Promise<AvailabilityProblemDetails> {
   let problem: AvailabilityProblemDetails = {};
   try {
-    if (response.headers.get("content-type")?.includes("application/problem+json")) {
+    if (
+      response.headers.get("content-type")?.includes("application/problem+json")
+    ) {
       problem = (await response.json()) as AvailabilityProblemDetails;
     }
   } catch {
@@ -86,10 +93,14 @@ function mapProduct(value: unknown): AvailabilityAdministrationProduct {
 export async function listAvailabilityAdministrationProducts(): Promise<
   AvailabilityAdministrationProduct[]
 > {
-  const response = await send("/api/catalog/availability-administration-products", {
-    credentials: "same-origin",
-  });
-  if (!response.ok) throw new AvailabilityProblemError(await readProblem(response));
+  const response = await send(
+    "/api/catalog/availability-administration-products",
+    {
+      credentials: "same-origin",
+    },
+  );
+  if (!response.ok)
+    throw new AvailabilityProblemError(await readProblem(response));
   const products = (await response.json()) as unknown[];
   return products.map(mapProduct);
 }

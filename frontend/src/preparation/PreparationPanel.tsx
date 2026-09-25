@@ -289,7 +289,8 @@ export function PreparationPanel({
               ? loadedDestinations[0].preparationResponsibilityId
               : "";
 
-          if (nextSelectedId !== selectedIdRef.current) setAuthoritativeWork([]);
+          if (nextSelectedId !== selectedIdRef.current)
+            setAuthoritativeWork([]);
           setDestinations(loadedDestinations);
           selectedIdRef.current = nextSelectedId;
           setSelectedId(nextSelectedId);
@@ -766,7 +767,10 @@ export function PreparationPanel({
                     aria-busy={intent?.phase === "submitting"}
                   >
                     <td>
-                      <strong>{item.productOperationalName ?? "Nombre histórico no disponible"}</strong>
+                      <strong>
+                        {item.productOperationalName ??
+                          "Nombre histórico no disponible"}
+                      </strong>
                       <br />
                       Incorporación {item.incorporationOrdinal}
                     </td>

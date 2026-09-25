@@ -1,7 +1,17 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import App from "../App.tsx";
+
+class SilentEventSource {
+  onopen: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+
+  addEventListener() {}
+  close() {}
+}
+
+afterEach(() => vi.unstubAllGlobals());
 
 const reference = "01991e32-2a00-7000-8000-000000000001";
 const probes = vi.hoisted(() => ({
@@ -12,6 +22,7 @@ const probes = vi.hoisted(() => ({
 vi.mock("../catalog/CatalogPanel.tsx", () => ({ CatalogPanel: () => null }));
 vi.mock("../catalog/catalogClient.ts", () => ({
   listProducts: async () => [],
+  listOperationalProducts: async () => [],
 }));
 vi.mock("../inventory/InventoryPanel.tsx", () => ({
   InventoryPanel: () => null,
@@ -35,7 +46,7 @@ vi.mock("./OperationalInterventionPanel.tsx", () => ({
   },
 }));
 
-it("coordinates cancellation uncertainty and authoritative terminal refresh across existing operational panels and PendingComposition", async () => {
+it("coordinates cancellation uncertainty and confirmed terminal retirement across operational panels and PendingComposition", async () => {
   let cancelled = false;
   let posts = 0;
   let pendingReads = 0;
@@ -45,7 +56,11 @@ it("coordinates cancellation uncertainty and authoritative terminal refresh acro
     });
   const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
     if (url === "/api/identity-sessions/current")
-      return json({ identityId: "base", operationalName: "Actor" });
+      return json({
+        identityId: "base",
+        operationalName: "Actor",
+        responsibilities: ["OrderOperationsAndBasicClosure"],
+      });
     if (url === "/api/security/antiforgery")
       return json({ requestToken: "csrf" });
     if (url === `/api/orders/${reference}/pending-composition`) {
@@ -112,6 +127,7 @@ it("coordinates cancellation uncertainty and authoritative terminal refresh acro
     throw new Error(`Unexpected request ${String(url)}`);
   });
   vi.stubGlobal("fetch", fetchMock);
+  vi.stubGlobal("EventSource", SilentEventSource);
   const user = userEvent.setup();
   render(<App />);
   await screen.findByText("Actor");
@@ -144,32 +160,29 @@ it("coordinates cancellation uncertainty and authoritative terminal refresh acro
     screen.getByRole("button", { name: "Descartar Composición pendiente" }),
   ).toBeDisabled();
   const before = pendingReads;
-  const prepSequence = probes.preparation.mock.lastCall![0].refreshSequence;
-  const deliverySequence = probes.delivery.mock.lastCall![0].refreshSequence;
   await user.click(
     screen.getByRole("button", {
       name: "Reintentar misma cancelación completa",
     }),
   );
-  await screen.findByText("Pedido completamente cancelado");
-  await waitFor(() => expect(pendingReads).toBeGreaterThan(before));
+  await screen.findByText(/Pedido completamente cancelado:/);
   await waitFor(() =>
     expect(
       screen.queryByText(/Existe una Composición pendiente autoritativa/),
     ).not.toBeInTheDocument(),
   );
+  expect(pendingReads).toBeGreaterThanOrEqual(before);
   expect(probes.preparation.mock.lastCall![0].isOrderBlocked(reference)).toBe(
-    true,
+    false,
   );
-  expect(probes.delivery.mock.lastCall![0].ordinaryMutationsBlocked).toBe(true);
+  expect(probes.delivery.mock.lastCall![0].ordinaryMutationsBlocked).toBe(
+    false,
+  );
   expect(probes.intervention.mock.lastCall![0].isOrderBlocked(reference)).toBe(
-    true,
+    false,
   );
-  expect(probes.preparation.mock.lastCall![0].refreshSequence).toBeGreaterThan(
-    prepSequence,
-  );
-  expect(probes.delivery.mock.lastCall![0].refreshSequence).toBeGreaterThan(
-    deliverySequence,
-  );
+  expect(
+    screen.queryByRole("region", { name: "Pedido consultado" }),
+  ).not.toBeInTheDocument();
   expect(posts).toBe(2);
 });

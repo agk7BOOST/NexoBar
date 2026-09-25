@@ -143,13 +143,19 @@ export async function listPreparationWork(
   }
 
   const payload: unknown = await response.json();
-  if (Array.isArray(payload) && payload.some((item) => {
-    const name = typeof item === "object" && item !== null
-      ? (item as Record<string, unknown>).productOperationalName
-      : undefined;
-    return !(typeof name === "string" || name === null);
-  })) {
-    throw new Error("The Preparation read model had an uninterpretable Product name.");
+  if (
+    Array.isArray(payload) &&
+    payload.some((item) => {
+      const name =
+        typeof item === "object" && item !== null
+          ? (item as Record<string, unknown>).productOperationalName
+          : undefined;
+      return !(typeof name === "string" || name === null);
+    })
+  ) {
+    throw new Error(
+      "The Preparation read model had an uninterpretable Product name.",
+    );
   }
   return payload as PreparationWork[];
 }

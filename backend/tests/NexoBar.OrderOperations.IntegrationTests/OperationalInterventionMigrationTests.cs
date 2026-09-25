@@ -8,7 +8,8 @@ namespace NexoBar.OrderOperations.IntegrationTests;
 public sealed partial class OperationalInterventionTests
 {
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Migration_accepts_balanced_zero_results_and_down_preserves_history(bool ready)
     {
         const string previous = "20260907054805_AddContentCancellation";

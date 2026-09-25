@@ -19,7 +19,9 @@ export class FreshnessReadCoordinator {
   private schedule(): void {
     if (this.running) return;
     this.running = true;
-    queueMicrotask(() => { void this.drain(); });
+    queueMicrotask(() => {
+      void this.drain();
+    });
   }
 
   private async drain(): Promise<void> {

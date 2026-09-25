@@ -5,6 +5,7 @@ import {
   type BrowserContext,
   type Page,
 } from "@playwright/test";
+import { selectInitialContext } from "./helpers/select-initial-context.js";
 
 const productName = "Producto disponible S9 E2E";
 
@@ -43,7 +44,10 @@ function pathOf(url: string): string {
   return new URL(url).pathname;
 }
 
-async function authenticateThroughCurrent(page: Page, actor: Actor): Promise<void> {
+async function authenticateThroughCurrent(
+  page: Page,
+  actor: Actor,
+): Promise<void> {
   await page.goto("/");
   await page.getByLabel("Identificador de acceso").fill(actor.identifier);
   await page.getByLabel("Secreto").fill(actor.secret);
@@ -87,7 +91,9 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
       name: "Intervenci\u00f3n de disponibilidad de Products",
     });
     await expect(availability).toBeVisible();
-    await expect(availability.getByText(productName, { exact: true })).toBeVisible();
+    await expect(
+      availability.getByText(productName, { exact: true }),
+    ).toBeVisible();
     await expect(
       availability.getByLabel(`Disponibilidad de ${productName}`),
     ).toHaveText("Disponible");
@@ -95,7 +101,9 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
       interventionPage.getByRole("region", { name: "Productos vigentes" }),
     ).toHaveCount(0);
     await expect(
-      interventionPage.getByRole("region", { name: "Composici\u00f3n inicial" }),
+      interventionPage.getByRole("region", {
+        name: "Composici\u00f3n inicial",
+      }),
     ).toHaveCount(0);
 
     const ordinaryPage = await ordinaryContext.newPage();
@@ -104,7 +112,9 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
       name: "Composici\u00f3n inicial",
     });
     await expect(composition).toBeVisible();
-    await expect(composition.getByText(productName, { exact: true })).toBeVisible();
+    await expect(
+      composition.getByText(productName, { exact: true }),
+    ).toBeVisible();
     await composition
       .getByRole("button", {
         name: `Agregar ${productName} a Composici\u00f3n inicial`,
@@ -116,7 +126,7 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
         exact: true,
       }),
     ).toHaveText("1");
-    await composition.getByLabel("Contexto").fill("Mesa disponibilidad E2E");
+    await selectInitialContext(composition);
 
     await availability
       .getByRole("button", {
@@ -133,7 +143,9 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
       name: "Composici\u00f3n inicial",
     });
     await expect(ordinaryBrowse).toBeVisible();
-    await expect(ordinaryBrowse.getByText(productName, { exact: true })).toHaveCount(0);
+    await expect(
+      ordinaryBrowse.getByText(productName, { exact: true }),
+    ).toHaveCount(0);
 
     const rejectedConfirmation = ordinaryPage.waitForResponse(
       (response) =>
@@ -154,7 +166,9 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
       "order_operations.first_confirmation.product_unavailable",
     );
     expect(rejectedBody.operationalReference).toBeUndefined();
-    await expect(ordinaryPage.getByRole("region", { name: "Pedido activo" })).toHaveCount(0);
+    await expect(
+      ordinaryPage.getByRole("region", { name: "Pedido activo" }),
+    ).toHaveCount(0);
     await expect(composition).toContainText("ya no est\u00e1 disponible");
 
     const dualPage = await dualContext.newPage();
@@ -177,8 +191,10 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
     });
     await expect(interventionAdd).toBeEnabled();
     await interventionAdd.click();
-    await expect(dualComposition.getByText("Intervenci\u00f3n solicitada")).toBeVisible();
-    await dualComposition.getByLabel("Contexto").fill("Mesa disponibilidad E2E dual");
+    await expect(
+      dualComposition.getByText("Intervenci\u00f3n solicitada"),
+    ).toBeVisible();
+    await selectInitialContext(dualComposition);
 
     const confirmedResponse = dualPage.waitForResponse(
       (response) =>
@@ -195,7 +211,10 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
       operationalReference: string;
       firstIncorporation: {
         id?: string;
-        items: { productId: string; unavailableProductExceptionApplied: boolean }[];
+        items: {
+          productId: string;
+          unavailableProductExceptionApplied: boolean;
+        }[];
       };
     };
     const committedItem = confirmation.firstIncorporation.items.find(
@@ -212,8 +231,14 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
     expect(orderResponse.ok()).toBeTruthy();
     const order = (await orderResponse.json()) as {
       incorporations: {
-        contents?: { productId: string; unavailableProductExceptionApplied: boolean }[];
-        items?: { productId: string; unavailableProductExceptionApplied: boolean }[];
+        contents?: {
+          productId: string;
+          unavailableProductExceptionApplied: boolean;
+        }[];
+        items?: {
+          productId: string;
+          unavailableProductExceptionApplied: boolean;
+        }[];
       }[];
     };
     const historicalItems = order.incorporations.flatMap(
@@ -255,10 +280,12 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
       `/api/order-operations/orders/${encodeURIComponent(confirmation.operationalReference)}`,
     );
     expect(historicalAfterAvailability.ok()).toBeTruthy();
-    const orderAfterAvailability = (await historicalAfterAvailability.json()) as typeof order;
-    const historicalItemsAfterAvailability = orderAfterAvailability.incorporations.flatMap(
-      (incorporation) => incorporation.items ?? incorporation.contents ?? [],
-    );
+    const orderAfterAvailability =
+      (await historicalAfterAvailability.json()) as typeof order;
+    const historicalItemsAfterAvailability =
+      orderAfterAvailability.incorporations.flatMap(
+        (incorporation) => incorporation.items ?? incorporation.contents ?? [],
+      );
     expect(historicalItemsAfterAvailability).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
