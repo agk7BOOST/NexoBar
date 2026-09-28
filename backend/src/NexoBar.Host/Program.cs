@@ -55,6 +55,8 @@ app.UseExceptionHandler(new ExceptionHandlerOptions
 });
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.MapOpenApi();
 app.MapIdentitySessionEndpoints();
 app.MapIdentityAdministrationEndpoints();
@@ -64,6 +66,25 @@ app.MapOperationalConfigurationEndpoints();
 app.MapCatalogEndpoints();
 app.MapOrderOperationsEndpoints();
 app.MapSseTransport();
+app.MapFallback("{*path:nonfile}", async context =>
+{
+    if (context.Request.Path.StartsWithSegments("/api") ||
+        context.Request.Path.StartsWithSegments("/openapi"))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    var indexPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "index.html");
+    if (!File.Exists(indexPath))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    context.Response.ContentType = "text/html; charset=utf-8";
+    await context.Response.SendFileAsync(indexPath);
+});
 
 app.Run();
 
