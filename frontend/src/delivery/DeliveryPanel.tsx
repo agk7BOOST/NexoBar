@@ -26,6 +26,7 @@ import {
 } from "./deliveryClient.ts";
 
 interface DeliveryPanelProps {
+  onIntervene?: (incorporationId: string, contentOrdinal: number) => void;
   refreshSequence?: number;
   operationalReference: string | null;
   onUnauthorized: () => void;
@@ -92,6 +93,7 @@ function unavailableQuantityMessage(
 }
 
 export function DeliveryPanel({
+  onIntervene,
   operationalReference,
   refreshSequence,
   onUnauthorized,
@@ -693,7 +695,9 @@ export function DeliveryPanel({
         invalidate={invalidateDelivery}
       />
       <div className="section-heading">
-        <h2 id="delivery-heading">Entrega</h2>
+        <h2 id="delivery-heading" tabIndex={-1}>
+          Entrega
+        </h2>
         <button
           type="button"
           className="secondary-button"
@@ -1139,6 +1143,25 @@ export function DeliveryPanel({
                         )}
                       </div>
                     )}
+
+                    {onIntervene &&
+                      item.requiresPreparationAtConfirmation &&
+                      !isFullyDelivered &&
+                      !mutationsBlocked && (
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          disabled={isBlocked}
+                          onClick={() =>
+                            onIntervene(
+                              item.incorporationId,
+                              item.contentOrdinal,
+                            )
+                          }
+                        >
+                          Intervenir en este contenido
+                        </button>
+                      )}
 
                     {intent?.phase === "submitting" && (
                       <p role="status">

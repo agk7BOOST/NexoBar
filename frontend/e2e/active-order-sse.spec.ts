@@ -70,7 +70,9 @@ test("Delivery abierto recibe por SSE la cantidad marcada lista por Preparation"
           .some((scope) => scope.startsWith("order.active:"))
       );
     });
-    await order.getByRole("button", { name: "Continuar este Pedido" }).click();
+    await order
+      .getByRole("button", { name: "Agregar productos a este Pedido" })
+      .click();
     await expect(
       deliveryPage.getByRole("region", { name: "Pedido activo" }),
     ).toBeVisible();

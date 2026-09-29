@@ -247,6 +247,7 @@ export function CatalogPanel({
 }: CatalogPanelProps) {
   const [loadedProducts, setLoadedProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [catalogReady, setCatalogReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isForbidden, setIsForbidden] = useState(false);
   const readGeneration = useRef(0);
@@ -319,6 +320,38 @@ export function CatalogPanel({
   const [isRenaming, setIsRenaming] = useState(false);
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
   const groupsReadGeneration = useRef(0);
+  const editorOpener = useRef<HTMLElement | null>(null);
+  const [editorRequest, setEditorRequest] = useState<{
+    kind: "price" | "preparation" | "group" | "rename" | "delete";
+    sequence: number;
+  }>();
+
+  useEffect(() => {
+    if (!editorRequest) return;
+    const editor = document.getElementById(
+      `catalog-${editorRequest.kind}-editor`,
+    );
+    editor?.focus();
+    editor?.scrollIntoView?.({ block: "start" });
+  }, [editorRequest]);
+
+  function focusOpenedEditor(
+    kind: "price" | "preparation" | "group" | "rename" | "delete",
+  ) {
+    editorOpener.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setEditorRequest((current) => ({
+      kind,
+      sequence: (current?.sequence ?? 0) + 1,
+    }));
+  }
+
+  function returnToProduct() {
+    editorOpener.current?.focus();
+    editorOpener.current?.scrollIntoView?.({ block: "nearest" });
+  }
 
   const loadCatalog = useCallback(
     async (generation: number) => {
@@ -344,6 +377,7 @@ export function CatalogPanel({
       } finally {
         if (generation === readGeneration.current) {
           setIsLoading(false);
+          setCatalogReady(true);
         }
       }
     },
@@ -451,6 +485,8 @@ export function CatalogPanel({
   const displayedIsLoading = providedIsLoading ?? isLoading;
   const displayedLoadError = providedLoadError ?? loadError;
   const reloadProducts = providedReloadProducts ?? reloadCatalog;
+  const showSetup =
+    providedProducts !== undefined ? providedIsLoading !== true : catalogReady;
 
   function clearSettledNotices() {
     const keepPending = (notice: Notice | null, isPending: boolean) =>
@@ -596,6 +632,7 @@ export function CatalogPanel({
       newPrice: "",
     });
     setPriceNotice(null);
+    focusOpenedEditor("price");
   }
 
   async function submitPriceChange(intention: ProductPriceChangeIntention) {
@@ -698,6 +735,7 @@ export function CatalogPanel({
       selectedPreparationResponsibilityId: product.preparationResponsibilityId,
     });
     setPreparationNotice(null);
+    focusOpenedEditor("preparation");
   }
 
   async function submitPreparationChange(
@@ -882,6 +920,7 @@ export function CatalogPanel({
       observedGroupId: product.groupId ?? null,
       selectedGroupId: product.groupId ?? null,
     });
+    focusOpenedEditor("group");
     setGroupNoticeForProduct(null);
   }
 
@@ -970,6 +1009,7 @@ export function CatalogPanel({
       observedName: product.operationalName,
       newName: product.operationalName,
     });
+    focusOpenedEditor("rename");
     setRenameNotice(null);
   }
 
@@ -1214,10 +1254,12 @@ export function CatalogPanel({
     (operationalName !== uncertainCreation.request.operationalName ||
       price !== uncertainCreation.request.price);
 
-  return (
+  const setupSections = (
     <>
       <section className="panel" aria-labelledby="groups-title">
-        <h2 id="groups-title">Grupos</h2>
+        <h2 id="groups-title" tabIndex={-1}>
+          Grupos
+        </h2>
         <form onSubmit={(event) => void handleGroupCreation(event)}>
           <label htmlFor="group-operational-name">
             Nombre operacional del Grupo
@@ -1290,7 +1332,9 @@ export function CatalogPanel({
         )}
       </section>
       <section className="panel" aria-labelledby="create-title">
-        <h2 id="create-title">Crear producto</h2>
+        <h2 id="create-title" tabIndex={-1}>
+          Crear producto
+        </h2>
         <form
           className="paired-fields-form"
           onSubmit={(event) => void handleCreate(event)}
@@ -1381,10 +1425,41 @@ export function CatalogPanel({
           </div>
         )}
       </section>
+    </>
+  );
 
+  return (
+    <>
+      {showSetup && products.length === 0 && setupSections}
       <section className="panel" aria-labelledby="products-title">
         <div className="section-heading">
           <h2 id="products-title">Productos</h2>
+          {products.length > 0 && (
+            <div className="catalog-section-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  const heading = document.getElementById("create-title");
+                  heading?.focus();
+                  heading?.scrollIntoView?.({ block: "start" });
+                }}
+              >
+                Nuevo producto
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  const heading = document.getElementById("groups-title");
+                  heading?.focus();
+                  heading?.scrollIntoView?.({ block: "start" });
+                }}
+              >
+                Administrar grupos
+              </button>
+            </div>
+          )}
           <button
             className="secondary-button"
             type="button"
@@ -1699,7 +1774,10 @@ export function CatalogPanel({
                       <button
                         type="button"
                         className="secondary-button"
-                        onClick={() => setDeleteCandidate(product)}
+                        onClick={() => {
+                          setDeleteCandidate(product);
+                          focusOpenedEditor("delete");
+                        }}
                         disabled={isDeleting || uncertainDelete !== null}
                         aria-label={`Eliminar definitivamente ${product.operationalName}`}
                       >
@@ -1716,6 +1794,8 @@ export function CatalogPanel({
         {priceEditor && uncertainPriceChange === null && (
           <form
             className="price-change-form"
+            id="catalog-price-editor"
+            tabIndex={-1}
             onSubmit={(event) => void handlePriceChange(event)}
             aria-label={`Cambiar precio de ${priceEditor.operationalName}`}
           >
@@ -1750,7 +1830,10 @@ export function CatalogPanel({
               <button
                 className="secondary-button"
                 type="button"
-                onClick={() => setPriceEditor(null)}
+                onClick={() => {
+                  setPriceEditor(null);
+                  returnToProduct();
+                }}
                 disabled={isChangingPrice}
               >
                 Cancelar
@@ -1762,6 +1845,8 @@ export function CatalogPanel({
         {preparationEditor && uncertainPreparationChange === null && (
           <form
             className="price-change-form"
+            id="catalog-preparation-editor"
+            tabIndex={-1}
             onSubmit={(event) => void handlePreparationChange(event)}
             aria-label={`Configurar preparación de ${preparationEditor.operationalName}`}
           >
@@ -1856,7 +1941,10 @@ export function CatalogPanel({
               <button
                 className="secondary-button"
                 type="button"
-                onClick={() => setPreparationEditor(null)}
+                onClick={() => {
+                  setPreparationEditor(null);
+                  returnToProduct();
+                }}
                 disabled={isChangingPreparation}
               >
                 Cancelar
@@ -1904,6 +1992,8 @@ export function CatalogPanel({
         {groupEditor && uncertainGroupChange === null && (
           <form
             className="price-change-form"
+            id="catalog-group-editor"
+            tabIndex={-1}
             onSubmit={(event) => void handleGroupChange(event)}
             aria-label={`Configurar Grupo de ${groupEditor.operationalName}`}
           >
@@ -1948,7 +2038,10 @@ export function CatalogPanel({
               <button
                 className="secondary-button"
                 type="button"
-                onClick={() => setGroupEditor(null)}
+                onClick={() => {
+                  setGroupEditor(null);
+                  returnToProduct();
+                }}
                 disabled={isChangingGroup}
               >
                 Cancelar
@@ -1993,6 +2086,8 @@ export function CatalogPanel({
         {renameEditor && uncertainRename === null && (
           <form
             className="price-change-form"
+            id="catalog-rename-editor"
+            tabIndex={-1}
             onSubmit={(event) => void handleRename(event)}
             aria-label={`Renombrar ${renameEditor.observedName}`}
           >
@@ -2029,7 +2124,10 @@ export function CatalogPanel({
               <button
                 className="secondary-button"
                 type="button"
-                onClick={() => setRenameEditor(null)}
+                onClick={() => {
+                  setRenameEditor(null);
+                  returnToProduct();
+                }}
                 disabled={isRenaming}
               >
                 Cancelar
@@ -2078,6 +2176,8 @@ export function CatalogPanel({
           <div
             role="alertdialog"
             aria-label="Confirmar eliminación definitiva de Producto"
+            id="catalog-delete-editor"
+            tabIndex={-1}
           >
             <p>
               Eliminar definitivamente {deleteCandidate.operationalName} quita
@@ -2095,7 +2195,10 @@ export function CatalogPanel({
               type="button"
               className="secondary-button"
               disabled={isDeleting}
-              onClick={() => setDeleteCandidate(null)}
+              onClick={() => {
+                setDeleteCandidate(null);
+                returnToProduct();
+              }}
             >
               Cancelar
             </button>
@@ -2133,6 +2236,7 @@ export function CatalogPanel({
           </div>
         )}
       </section>
+      {showSetup && products.length > 0 && setupSections}
     </>
   );
 }

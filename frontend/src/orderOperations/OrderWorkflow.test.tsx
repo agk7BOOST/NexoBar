@@ -105,6 +105,28 @@ const water: Product = {
   preparationResponsibilityId: null,
 };
 
+it("muestra la revisión de Composición antes de Contexto y creación", async () => {
+  render(
+    <OrderWorkflow
+      products={[water]}
+      activeOperationalReference={null}
+      onActivateOrder={vi.fn()}
+      onStartNewOrder={vi.fn()}
+      onOrderChanged={vi.fn()}
+      onUnauthorized={vi.fn()}
+    />,
+  );
+  const review = screen.getByText("La Composición está vacía.");
+  const context = await screen.findByLabelText("Contexto de coordinación");
+  const creation = screen.getByRole("button", { name: "Crear Pedido" });
+  expect(review.compareDocumentPosition(context)).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  expect(context.compareDocumentPosition(creation)).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+});
+
 const soda: Product = {
   ...water,
   id: "product-soda",
@@ -137,7 +159,7 @@ it("bloquea la Composición del Pedido congelado y permite iniciar otro Pedido",
     screen.getByRole("button", { name: "Agregar Agua a Nueva Composición" }),
   ).toBeDisabled();
   expect(
-    screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
+    screen.getByRole("button", { name: "Agregar al Pedido" }),
   ).toBeDisabled();
   await userEvent
     .setup()
@@ -287,9 +309,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
         "Se requiere configurar un Contexto antes de confirmar un Pedido.",
       ),
     ).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: /Confirmar Primera Composición/ }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Crear Pedido/ })).toBeDisabled();
   });
   beforeEach(() => {
     confirmFirstMock.mockReset();
@@ -328,7 +348,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
 
     expect(screen.getByText("Intervención solicitada")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Confirmar con intervención" }),
+      screen.getByRole("button", { name: "Crear Pedido con intervención" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -443,7 +463,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Confirmar con intervención" }),
+      screen.getByRole("button", { name: "Crear Pedido con intervención" }),
     );
 
     expect(confirmFirstMock.mock.calls[0]?.[0]).toEqual({
@@ -470,7 +490,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Intervención solicitada")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Confirmar con intervención" }),
+      screen.getByRole("button", { name: "Crear Pedido con intervención" }),
     ).toBeEnabled();
   });
 
@@ -519,9 +539,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       "Instrucción para Hamburguesa, línea 2",
     );
     expect(secondInstruction).toHaveFocus();
-    expect(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Crear Pedido" })).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(/líneas duplicadas/);
 
     await user.type(secondInstruction, "sin cebolla");
@@ -599,9 +617,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent(/líneas duplicadas/);
-    expect(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Crear Pedido" })).toBeDisabled();
     expect(confirmFirstMock).not.toHaveBeenCalled();
   });
 
@@ -631,7 +647,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const user = userEvent.setup();
     render(<Harness />);
     const confirm = screen.getByRole("button", {
-      name: "Confirmar Primera Composición",
+      name: "Crear Pedido",
     });
 
     expect(confirm).toBeDisabled();
@@ -713,9 +729,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       await screen.findByLabelText("Contexto para Primera Confirmacion"),
       "ctx-mesa-7",
     );
-    expect(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Crear Pedido" })).toBeEnabled();
   });
 
   it("blocks ordinary Confirmation if a drafted Product becomes unavailable", async () => {
@@ -740,9 +754,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       await screen.findByLabelText("Contexto para Primera Confirmacion"),
       "ctx-mesa-7",
     );
-    expect(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Crear Pedido" })).toBeEnabled();
 
     rerender(
       <OrderWorkflow
@@ -750,9 +762,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
         {...workflowProps}
       />,
     );
-    expect(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Crear Pedido" })).toBeDisabled();
   });
 
   it("envía Primera Confirmación exacta, activa el Pedido y solicita lookup", async () => {
@@ -767,9 +777,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     );
     await addProduct(user, water, "Composición inicial", 2);
 
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
     await screen.findByRole("region", { name: "Nueva Composición" });
 
     const [request, key] = confirmFirstMock.mock.calls[0]!;
@@ -816,9 +824,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       "  SIN  cebolla!  ",
     );
 
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
 
     const [request] = confirmFirstMock.mock.calls[0]!;
     expect(request).toEqual({
@@ -870,17 +876,13 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       );
       await user.type(instruction, "sin cebolla");
 
-      await user.click(
-        screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-      );
+      await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
       expect(await screen.findByText(expectedMessage)).toBeInTheDocument();
       expect(instruction).toBeEnabled();
       expect(instruction).toHaveValue("sin cebolla");
       const firstKey = confirmFirstMock.mock.calls[0]?.[1];
 
-      await user.click(
-        screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-      );
+      await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
       await vi.waitFor(() => expect(confirmFirstMock).toHaveBeenCalledTimes(2));
       expect(confirmFirstMock.mock.calls[1]?.[1]).not.toBe(firstKey);
     },
@@ -895,9 +897,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       "ctx-mesa-7",
     );
     await addProduct(user, water, "Composición inicial", 2);
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
 
     const uncertain = await screen.findByRole("region", {
       name: "Primera Confirmación con resultado no confirmado",
@@ -925,9 +925,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       "ctx-mesa-7",
     );
     await addProduct(user, water, "Composición inicial", 2);
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
     await screen.findByRole("region", {
       name: "Primera Confirmación con resultado no confirmado",
     });
@@ -968,7 +966,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Confirmar con intervención" }),
+      screen.getByRole("button", { name: "Crear Pedido con intervención" }),
     );
     await screen.findByRole("region", {
       name: "Primera Confirmación con resultado no confirmado",
@@ -1001,9 +999,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       "Instrucción para Hamburguesa, línea 1",
     );
     await user.type(instruction, "  sin cebolla  ");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
 
     const uncertain = await screen.findByRole("region", {
       name: "Primera Confirmación con resultado no confirmado",
@@ -1032,9 +1028,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       "ctx-mesa-7",
     );
     await addProduct(user, water, "Composición inicial");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
     await screen.findByRole("region", {
       name: "Primera Confirmación con resultado no confirmado",
     });
@@ -1069,9 +1063,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       "Instrucción para Hamburguesa, línea 1",
     );
     await user.type(instruction, "sin cebolla");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
     await screen.findByRole("region", {
       name: "Primera Confirmación con resultado no confirmado",
     });
@@ -1094,9 +1086,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       "ctx-mesa-7",
     );
     await addProduct(user, water, "Composición inicial");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
 
     expect(await screen.findByText(/ya no está disponible/)).toHaveTextContent(
       "Agua",
@@ -1187,9 +1177,7 @@ describe("OrderWorkflow - lectura operacional de Products", () => {
       await screen.findByLabelText("Contexto para Primera Confirmacion"),
       "ctx-mesa-7",
     );
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar Primera Composición" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
 
     expect(
       await screen.findByText(/ya no está disponible/),
@@ -1285,9 +1273,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     await addProduct(user, soda, "Nueva Composición");
     await addProduct(user, water, "Nueva Composición", 2);
 
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Agregar al Pedido" }));
     await screen.findByText("Nueva Incorporación confirmada correctamente.");
 
     const [reference, request, key] = confirmSubsequentMock.mock.calls[0]!;
@@ -1335,9 +1321,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
       "  sin tomate  ",
     );
 
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Agregar al Pedido" }));
     await screen.findByText("Nueva Incorporación confirmada correctamente.");
 
     expect(confirmSubsequentMock.mock.calls[0]?.[0]).toBe("order-active");
@@ -1376,9 +1360,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     await addProduct(user, water, "Nueva Composición");
     const instruction = screen.getByLabelText("Instrucción para Agua, línea 1");
     await user.type(instruction, "con hielo");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Agregar al Pedido" }));
 
     expect(
       await screen.findByText(/solo puede confirmarse para un Producto/),
@@ -1403,9 +1385,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
       "Instrucción para Hamburguesa, línea 1",
     );
     await user.type(instruction, "  sin cebolla  ");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Agregar al Pedido" }));
 
     const uncertain = await screen.findByRole("region", {
       name: "Confirmación posterior con resultado no confirmado",
@@ -1460,7 +1440,9 @@ describe("OrderWorkflow - Confirmación posterior", () => {
       }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Confirmar con intervención" }),
+      screen.getByRole("button", {
+        name: "Agregar al Pedido con intervención",
+      }),
     );
     await screen.findByRole("region", {
       name: "Confirmación posterior con resultado no confirmado",
@@ -1491,9 +1473,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
       "Instrucción para Hamburguesa, línea 1",
     );
     await user.type(instruction, "sin cebolla");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Agregar al Pedido" }));
     await screen.findByRole("region", {
       name: "Confirmación posterior con resultado no confirmado",
     });
@@ -1709,9 +1689,7 @@ describe("OrderWorkflow - autoridad de Composición pendiente", () => {
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" />);
     await addProduct(user, water, "Nueva Composición");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar nueva Incorporación" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Agregar al Pedido" }));
 
     expect(
       await screen.findByText(/no se enviarán automáticamente/),

@@ -74,9 +74,7 @@ test("Applied Price Correction adopta Catálogo explícitamente y Liquida al pre
       response.url().endsWith("/api/order-operations/first-confirmations") &&
       response.request().method() === "POST",
   );
-  await composition
-    .getByRole("button", { name: "Confirmar Primera Composición" })
-    .click();
+  await composition.getByRole("button", { name: "Crear Pedido" }).click();
   const confirmationResponse = await confirmed;
   expect(confirmationResponse.ok()).toBeTruthy();
   const { operationalReference, firstIncorporation } =

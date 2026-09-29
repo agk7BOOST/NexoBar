@@ -274,6 +274,34 @@ describe("GeneralConfigurationPanel", () => {
     expect(screen.getByText("Nueva")).toBeInTheDocument();
   });
 
+  it("orients the new Identity from its returned state without assigning access or enablements", async () => {
+    createIdentityMock.mockResolvedValueOnce(
+      identity({
+        identityId: "identity-2",
+        operationalName: "Nueva",
+        isActive: false,
+        hasLocalCredential: false,
+        responsibilities: ["Preparation"],
+        preparationEnablements: [],
+      }),
+    );
+    const { user } = renderPanel();
+    await screen.findByText("No hay identidades.");
+    await createWithName(user);
+
+    const summary = await screen.findByRole("region", {
+      name: "Estado de Nueva",
+    });
+    expect(summary).toHaveTextContent(
+      "Inactiva · Acceso todavía sin configurar",
+    );
+    expect(summary).toHaveTextContent("Preparación");
+    expect(summary).toHaveTextContent("habilitación en un destino concreto");
+    expect(assignResponsibilityMock).not.toHaveBeenCalled();
+    expect(grantPreparationEnablementMock).not.toHaveBeenCalled();
+    expect(setLocalCredentialMock).not.toHaveBeenCalled();
+  });
+
   it("lists Preparation Responsibilities separately, creates one, and refreshes the enablement choices", async () => {
     const kitchen = { id: "preparation-1", operationalName: "Cocina" };
     const bar = { id: "preparation-2", operationalName: "Barra" };

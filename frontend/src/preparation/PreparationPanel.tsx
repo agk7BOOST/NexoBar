@@ -20,6 +20,7 @@ import {
 } from "./preparationClient.ts";
 
 interface PreparationPanelProps {
+  onIntervene?: (incorporationId: string, contentOrdinal: number) => void;
   refreshSequence?: number;
   onBusyOrdersChange?: (references: string[]) => void;
   onWorkChanged?: () => void;
@@ -137,6 +138,7 @@ function updatedWork(
 }
 
 export function PreparationPanel({
+  onIntervene,
   onUnauthorized,
   isOrderBlocked,
   refreshSequence,
@@ -816,6 +818,27 @@ export function PreparationPanel({
                       <div className="preparation-actions">
                         {renderAction(item, "start")}
                         {renderAction(item, "ready")}
+                        {onIntervene &&
+                          item.contentOrdinal !== undefined &&
+                          (item.inPreparationQuantity > 0 ||
+                            (item.deliveredQuantity !== undefined &&
+                              item.readyQuantity > item.deliveredQuantity)) &&
+                          isOrderBlocked?.(item.operationalReference) !==
+                            true && (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => {
+                                if (item.contentOrdinal !== undefined)
+                                  onIntervene(
+                                    item.incorporationId,
+                                    item.contentOrdinal,
+                                  );
+                              }}
+                            >
+                              Intervenir en este contenido
+                            </button>
+                          )}
                         {(sourceQuantity(item, "correct-start") > 0 ||
                           sourceQuantity(item, "correct-ready") > 0) &&
                           isOrderBlocked?.(item.operationalReference) !==

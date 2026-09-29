@@ -207,7 +207,12 @@ export function OrderEnding({
   const disabled = !canAct || phase !== "idle";
   return (
     <section aria-label="Liquidación y Cierre" className="order-ending">
-      <h3>Liquidación y Cierre</h3>
+      <h3 id="order-ending-heading" tabIndex={-1}>
+        Liquidación y Cierre
+      </h3>
+      <p>
+        Pedido {order.context} · Referencia {order.operationalReference}
+      </p>
       {order.isLiquidated && !order.isClosed && (
         <p role="status">Liquidado · pendiente de cierre</p>
       )}

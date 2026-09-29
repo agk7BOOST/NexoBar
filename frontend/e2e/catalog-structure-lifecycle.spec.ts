@@ -124,9 +124,7 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
       response.url().endsWith("/api/order-operations/first-confirmations") &&
       response.request().method() === "POST",
   );
-  await composition
-    .getByRole("button", { name: "Confirmar Primera Composición" })
-    .click();
+  await composition.getByRole("button", { name: "Crear Pedido" }).click();
   const confirmationResponse = await confirmationResponsePromise;
   expect(confirmationResponse.ok()).toBeTruthy();
   const confirmation = (await confirmationResponse.json()) as {

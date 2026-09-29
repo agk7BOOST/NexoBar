@@ -333,7 +333,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
         );
         expect(
           screen.queryByRole("button", {
-            name: /reabrir|reopen|Cerrar Pedido|Continuar este Pedido/i,
+            name: /reabrir|reopen|Cerrar Pedido|Agregar productos a este Pedido/i,
           }),
         ).not.toBeInTheDocument();
         expect(
@@ -526,7 +526,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", {
-        name: /reabrir|reopen|Continuar este Pedido/i,
+        name: /reabrir|reopen|Agregar productos a este Pedido/i,
       }),
     ).not.toBeInTheDocument();
   });

@@ -69,9 +69,7 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
       response.url().endsWith("/api/order-operations/first-confirmations") &&
       response.request().method() === "POST",
   );
-  await composition
-    .getByRole("button", { name: "Confirmar Primera Composición" })
-    .click();
+  await composition.getByRole("button", { name: "Crear Pedido" }).click();
   const confirmationResponse = await confirmed;
   expect(confirmationResponse.ok()).toBeTruthy();
   const { operationalReference, firstIncorporation } =
@@ -123,7 +121,9 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
       response.request().method() === "GET" &&
       response.ok(),
   );
-  await page.getByRole("button", { name: "Continuar este Pedido" }).click();
+  await page
+    .getByRole("button", { name: "Agregar productos a este Pedido" })
+    .click();
   expect(await (await pendingLoaded).json()).toMatchObject({
     orderId: operationalReference,
     pendingComposition: null,
@@ -274,7 +274,7 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   ).toHaveCount(0);
   await expect(pendingComposition).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Continuar este Pedido" }),
+    page.getByRole("button", { name: "Agregar productos a este Pedido" }),
   ).toHaveCount(0);
   await expect(cancellation).toHaveCount(0);
   await expect(ending).toHaveCount(0);
@@ -331,7 +331,7 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   ).toContainText(productName);
   await expect(
     page.getByRole("button", {
-      name: /^(Continuar este Pedido|Liquidar|Cerrar Pedido|Cancelar pedido completo)$/,
+      name: /^(Agregar productos a este Pedido|Liquidar|Cerrar Pedido|Cancelar pedido completo)$/,
     }),
   ).toHaveCount(0);
 });

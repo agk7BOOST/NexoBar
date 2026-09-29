@@ -260,6 +260,9 @@ export function GeneralConfigurationPanel({
   const [creationName, setCreationName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [creationNotice, setCreationNotice] = useState<Notice | null>(null);
+  const [createdIdentityId, setCreatedIdentityId] = useState<string | null>(
+    null,
+  );
   const [uncertainCreation, setUncertainCreation] =
     useState<CreateIdentityIntention | null>(null);
   const [renameEditor, setRenameEditor] = useState<RenameEditor | null>(null);
@@ -413,6 +416,7 @@ export function GeneralConfigurationPanel({
         intention.antiforgeryToken,
       );
       setIdentities((current) => reconcileIdentity(current, created));
+      setCreatedIdentityId(created.identityId);
       setUncertainCreation(null);
       if (formMatchesIntention) setCreationName("");
       setCreationNotice({
@@ -452,6 +456,7 @@ export function GeneralConfigurationPanel({
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (uncertainCreation !== null) return;
+    setCreatedIdentityId(null);
     const antiforgeryToken = await prepareMutation(setCreationNotice);
     if (antiforgeryToken === null) return;
     await submitCreation({
@@ -877,6 +882,10 @@ export function GeneralConfigurationPanel({
 
   if (isForbidden) return null;
 
+  const createdIdentity =
+    identities.find((identity) => identity.identityId === createdIdentityId) ??
+    null;
+
   return (
     <section
       className="panel general-configuration-panel"
@@ -909,6 +918,46 @@ export function GeneralConfigurationPanel({
         <p className={`notice notice--${creationNotice.kind}`} role="status">
           {creationNotice.message}
         </p>
+      )}
+      {createdIdentity && (
+        <section
+          className="created-identity-summary"
+          aria-label={`Estado de ${createdIdentity.operationalName}`}
+        >
+          <h3>Identidad creada: {createdIdentity.operationalName}</h3>
+          <p>
+            {createdIdentity.isActive ? "Activa" : "Inactiva"} · Acceso{" "}
+            {createdIdentity.hasLocalCredential
+              ? "configurado"
+              : "todavía sin configurar"}
+            .
+          </p>
+          <p>
+            {createdIdentity.responsibilities.length === 0
+              ? "Todavía no tiene responsabilidades asignadas."
+              : `Responsabilidades asignadas: ${createdIdentity.responsibilities.map((code) => responsibilityLabels[code as FunctionalResponsibility] ?? code).join(", ")}.`}
+          </p>
+          {createdIdentity.responsibilities.includes("Preparation") &&
+            createdIdentity.preparationEnablements.length === 0 && (
+              <p>
+                Para trabajar en Preparación también necesita habilitación en un
+                destino concreto.
+              </p>
+            )}
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              const row = document.getElementById(
+                `identity-${createdIdentity.identityId}`,
+              );
+              row?.focus();
+              row?.scrollIntoView?.({ block: "start" });
+            }}
+          >
+            Ver esta identidad en el listado
+          </button>
+        </section>
       )}
       {uncertainCreation && (
         <div
@@ -1116,7 +1165,11 @@ export function GeneralConfigurationPanel({
                           ),
                       );
                 return (
-                  <tr key={identity.identityId}>
+                  <tr
+                    key={identity.identityId}
+                    id={`identity-${identity.identityId}`}
+                    tabIndex={-1}
+                  >
                     <td>{identity.operationalName}</td>
                     <td>{identity.isActive ? "Activa" : "Inactiva"}</td>
                     <td>

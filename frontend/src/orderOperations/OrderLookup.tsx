@@ -414,6 +414,62 @@ export function OrderLookup({
               </div>
             </dl>
 
+            <p className="order-task-status" role="status">
+              {order.isClosed
+                ? "Pedido cerrado"
+                : order.isLiquidated
+                  ? "Liquidado · pendiente de cierre"
+                  : order.isLiquidationEligible
+                    ? "Liquidación disponible"
+                    : "Liquidación todavía no disponible"}
+            </p>
+
+            <div
+              className="order-task-actions"
+              aria-label="Acciones de este Pedido"
+            >
+              {!order.isFrozen &&
+                !order.isClosed &&
+                !isOrderCompletelyCancelled(order) &&
+                !evaluation?.isTerminal && (
+                  <button
+                    type="button"
+                    onClick={() => onContinueOrder(order.operationalReference)}
+                    disabled={
+                      endingBusy ||
+                      cancellationBusy ||
+                      priceBusy ||
+                      isOrderMutationBusy?.(order.operationalReference)
+                    }
+                  >
+                    Agregar productos a este Pedido
+                  </button>
+                )}
+              {onOpenDelivery && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => onOpenDelivery(order.operationalReference)}
+                  disabled={priceBusy}
+                >
+                  Abrir entrega de este Pedido
+                </button>
+              )}
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  const heading = document.getElementById(
+                    "order-ending-heading",
+                  );
+                  heading?.focus();
+                  heading?.scrollIntoView?.({ block: "start" });
+                }}
+              >
+                Liquidación y cierre
+              </button>
+            </div>
+
             {canChangeOrderContext &&
               isDisplayedOrderActive &&
               !order.isFrozen &&
@@ -472,28 +528,11 @@ export function OrderLookup({
                 </section>
               )}
 
-            {!order.isFrozen &&
-              !order.isClosed &&
-              !isOrderCompletelyCancelled(order) &&
-              !evaluation?.isTerminal &&
-              (isDisplayedOrderActive ? (
-                <p className="active-order-indicator" role="status">
-                  Este Pedido está activo para una nueva Incorporación.
-                </p>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onContinueOrder(order.operationalReference)}
-                  disabled={
-                    endingBusy ||
-                    cancellationBusy ||
-                    priceBusy ||
-                    isOrderMutationBusy?.(order.operationalReference)
-                  }
-                >
-                  Continuar este Pedido
-                </button>
-              ))}
+            {isDisplayedOrderActive && (
+              <p className="active-order-indicator" role="status">
+                Este Pedido está activo para agregar productos.
+              </p>
+            )}
 
             <OrderEnding
               key={`${identityId ?? "anonymous"}:${order.operationalReference}`}
@@ -586,17 +625,6 @@ export function OrderLookup({
                   onEndingBusy?.(order.operationalReference, busy);
                 }}
               />
-            )}
-
-            {onOpenDelivery && (
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => onOpenDelivery(order.operationalReference)}
-                disabled={priceBusy}
-              >
-                Abrir entrega de este Pedido
-              </button>
             )}
 
             <p className="current-catalog-name-note">

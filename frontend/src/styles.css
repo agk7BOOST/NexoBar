@@ -1208,6 +1208,47 @@ a {
   scroll-margin-top: 1rem;
 }
 
+#composition-title,
+#delivery-heading,
+#order-ending-heading,
+#intervention-heading,
+#create-title,
+#groups-title,
+.price-change-form,
+#catalog-delete-editor,
+.created-identity-summary,
+.general-configuration-panel tr[tabindex="-1"] {
+  scroll-margin-top: 1rem;
+}
+
+.order-task-actions,
+.catalog-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.order-task-actions {
+  margin-block: 1.25rem;
+}
+
+.created-identity-summary {
+  margin-block: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.price-change-form {
+  max-width: 34rem;
+}
+
+.price-change-form > input {
+  max-width: 28rem;
+}
+
 .workspace-content {
   overflow-wrap: anywhere;
 }

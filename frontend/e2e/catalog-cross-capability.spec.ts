@@ -366,7 +366,7 @@ test("S10 unavailable Product intervention requires dual authority and preserves
         response.request().method() === "POST",
     );
     await composition
-      .getByRole("button", { name: "Confirmar con intervención" })
+      .getByRole("button", { name: "Crear Pedido con intervención" })
       .click();
     const confirmed = await confirmation;
     expect(confirmed.ok()).toBeTruthy();

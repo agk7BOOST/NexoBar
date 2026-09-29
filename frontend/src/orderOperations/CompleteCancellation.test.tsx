@@ -274,7 +274,7 @@ it("uses the confirmed terminal response and retires the active Order without a 
   ).toBeVisible();
   expect(
     screen.queryByRole("button", {
-      name: /Liquidar|Cerrar Pedido|Continuar este Pedido|Cancelar pedido completo/,
+      name: /Liquidar|Cerrar Pedido|Agregar productos a este Pedido|Cancelar pedido completo/,
     }),
   ).not.toBeInTheDocument();
   expect(
@@ -356,7 +356,7 @@ it.each(["network", "408", "500", "malformed"])(
       screen.getByRole("button", { name: "Buscar Pedido" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Continuar este Pedido" }),
+      screen.getByRole("button", { name: "Agregar productos a este Pedido" }),
     ).toBeDisabled();
     discardAntiforgeryToken();
     await user.click(

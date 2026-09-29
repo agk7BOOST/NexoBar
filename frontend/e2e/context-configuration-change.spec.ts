@@ -152,9 +152,7 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
       o,
       /\/api\/order-operations\/first-confirmations$/,
     );
-    await composition
-      .getByRole("button", { name: "Confirmar Primera Composición" })
-      .click();
+    await composition.getByRole("button", { name: "Crear Pedido" }).click();
     const request = await firstRequest;
     const firstIntent = request.postDataJSON() as {
       items: Array<{ productId: string; quantity: number }>;
@@ -302,7 +300,7 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
       /\/api\/order-operations\/first-confirmations$/,
     );
     await secondComposition
-      .getByRole("button", { name: "Confirmar Primera Composición" })
+      .getByRole("button", { name: "Crear Pedido" })
       .click();
     const secondResponse = await secondConfirmation;
     expect(secondResponse.status()).toBe(201);

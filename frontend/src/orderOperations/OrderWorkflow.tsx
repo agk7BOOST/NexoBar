@@ -84,6 +84,7 @@ interface OrderWorkflowProps {
   /** Test seam only; the mounted workflow owns the production operational read. */
   products?: OperationalProduct[];
   activeOperationalReference: string | null;
+  activeOrderContext?: string;
   activeOrderId?: string | null;
   requestedTarget?: OrderTargetRequest;
   onActivateOrder: (operationalReference: string) => void;
@@ -146,6 +147,7 @@ function confirmationErrorMessage(
 export function OrderWorkflow({
   products,
   activeOperationalReference,
+  activeOrderContext,
   activeOrderId = null,
   requestedTarget,
   onActivateOrder,
@@ -1040,7 +1042,9 @@ export function OrderWorkflow({
           <p className="eyebrow">
             {isSubsequent ? "Pedido activo" : "Nuevo Pedido"}
           </p>
-          <h2 id="composition-title">{modeLabel}</h2>
+          <h2 id="composition-title" tabIndex={-1}>
+            {modeLabel}
+          </h2>
         </div>
         <p className="ephemeral-label">Productos por confirmar</p>
       </div>
@@ -1049,6 +1053,9 @@ export function OrderWorkflow({
         <div className="active-order-summary" role="status">
           <span>Referencia del Pedido activo</span>
           <strong>{activeOperationalReference}</strong>
+          {activeOrderContext && (
+            <span>Contexto actual: {activeOrderContext}</span>
+          )}
           <button
             className="secondary-button"
             type="button"
@@ -1202,61 +1209,6 @@ export function OrderWorkflow({
           </div>
         )}
       </div>
-
-      <form
-        className={`confirmation-form${isSubsequent ? " confirmation-form--subsequent" : ""}`}
-        onSubmit={(event) => void handleConfirmation(event)}
-      >
-        {!isSubsequent && (
-          <>
-            <label htmlFor="order-context">Contexto de coordinación</label>
-            <select
-              id="order-context"
-              aria-label="Contexto para Primera Confirmacion"
-              value={contextId}
-              onChange={(event) => setContextId(event.target.value)}
-              disabled={isCompositionLocked || contexts.length === 0}
-            >
-              <option value="">Seleccionar Contexto</option>
-              {contexts.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.operationalName}
-                </option>
-              ))}
-            </select>
-            <p>
-              El Contexto ayuda a ubicar y coordinar el pedido, por ejemplo una
-              mesa. No cambia precios, disponibilidad ni destino de preparación.
-            </p>
-            {contextLoadFailed && (
-              <p role="alert">
-                No se pudo cargar la selección de Contextos. Actualizá e intentá
-                nuevamente.
-              </p>
-            )}
-            {contextsLoaded && contexts.length === 0 && !contextLoadFailed && (
-              <p role="status">
-                Se requiere configurar un Contexto antes de confirmar un Pedido.
-              </p>
-            )}
-          </>
-        )}
-        <button type="submit" disabled={!canConfirm}>
-          {isConfirming
-            ? "Confirmando…"
-            : hasUnavailableProductExceptionRequested
-              ? "Confirmar con intervención"
-              : isSubsequent
-                ? "Confirmar nueva Incorporación"
-                : "Confirmar Primera Composición"}
-        </button>
-        {hasUnavailableProductExceptionRequested && (
-          <p className="notice notice--functional-error" role="status">
-            Esta Confirmación incluye Productos actualmente marcados como no
-            disponibles.
-          </p>
-        )}
-      </form>
 
       {confirmationNotice && (
         <p
@@ -1438,6 +1390,68 @@ export function OrderWorkflow({
           </div>
         </>
       )}
+      <form
+        className={`confirmation-form${isSubsequent ? " confirmation-form--subsequent" : ""}`}
+        onSubmit={(event) => void handleConfirmation(event)}
+      >
+        <h3>{isSubsequent ? "Agregar al Pedido" : "Crear Pedido"}</h3>
+        {isSubsequent ? (
+          <p>
+            Se agregarán estos productos al Pedido {activeOperationalReference}
+            {activeOrderContext ? ` · ${activeOrderContext}` : ""}.
+          </p>
+        ) : (
+          <>
+            <label htmlFor="order-context">Contexto de coordinación</label>
+            <select
+              id="order-context"
+              aria-label="Contexto para Primera Confirmacion"
+              value={contextId}
+              onChange={(event) => setContextId(event.target.value)}
+              disabled={isCompositionLocked || contexts.length === 0}
+            >
+              <option value="">Seleccionar Contexto</option>
+              {contexts.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.operationalName}
+                </option>
+              ))}
+            </select>
+            <p>
+              El Contexto ayuda a ubicar y coordinar el pedido, por ejemplo una
+              mesa. No cambia precios, disponibilidad ni destino de preparación.
+            </p>
+            {contextLoadFailed && (
+              <p role="alert">
+                No se pudo cargar la selección de Contextos. Actualizá e intentá
+                nuevamente.
+              </p>
+            )}
+            {contextsLoaded && contexts.length === 0 && !contextLoadFailed && (
+              <p role="status">
+                Se requiere configurar un Contexto antes de confirmar un Pedido.
+              </p>
+            )}
+          </>
+        )}
+        <button type="submit" disabled={!canConfirm}>
+          {isConfirming
+            ? "Confirmando…"
+            : hasUnavailableProductExceptionRequested
+              ? isSubsequent
+                ? "Agregar al Pedido con intervención"
+                : "Crear Pedido con intervención"
+              : isSubsequent
+                ? "Agregar al Pedido"
+                : "Crear Pedido"}
+        </button>
+        {hasUnavailableProductExceptionRequested && (
+          <p className="notice notice--functional-error" role="status">
+            Esta Confirmación incluye Productos actualmente marcados como no
+            disponibles.
+          </p>
+        )}
+      </form>
     </section>
   );
 }

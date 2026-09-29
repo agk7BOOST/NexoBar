@@ -163,6 +163,39 @@ describe("DeliveryPanel", () => {
     vi.mocked(deliverQuantity).mockReset();
   });
 
+  it("offers intervention only for prepared content when the actor has the action", async () => {
+    const onIntervene = vi.fn();
+    vi.mocked(getOrderDelivery).mockResolvedValueOnce(
+      orderDelivery([
+        direct,
+        { ...prepared, readyQuantity: 2, deliverableQuantity: 2 },
+      ]),
+    );
+    render(
+      <DeliveryPanel
+        operationalReference="order-reference"
+        onUnauthorized={vi.fn()}
+        onIntervene={onIntervene}
+      />,
+    );
+    const directArticle = await screen.findByRole("article", {
+      name: description(direct),
+    });
+    const preparedArticle = articleFor(prepared);
+    expect(
+      within(directArticle).queryByRole("button", {
+        name: "Intervenir en este contenido",
+      }),
+    ).not.toBeInTheDocument();
+    within(preparedArticle)
+      .getByRole("button", { name: "Intervenir en este contenido" })
+      .click();
+    expect(onIntervene).toHaveBeenCalledExactlyOnceWith(
+      prepared.incorporationId,
+      prepared.contentOrdinal,
+    );
+  });
+
   it("reuses the opened Order reference and supports manual refresh", async () => {
     vi.mocked(getOrderDelivery).mockResolvedValue(orderDelivery([direct]));
     const user = userEvent.setup();

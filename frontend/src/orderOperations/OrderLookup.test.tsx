@@ -456,7 +456,7 @@ describe("OrderLookup", () => {
     expect(onContinueOrder).not.toHaveBeenCalled();
 
     await within(result)
-      .getByRole("button", { name: "Continuar este Pedido" })
+      .getByRole("button", { name: "Agregar productos a este Pedido" })
       .click();
     expect(onContinueOrder).toHaveBeenCalledWith(order.operationalReference);
   });
@@ -505,10 +505,12 @@ describe("OrderLookup", () => {
     expect(onOpenDelivery).toHaveBeenCalledWith(order.operationalReference);
   });
 
-  it("marca el Pedido activo y omite la acción redundante", async () => {
+  it("mantiene disponible agregar productos para el Pedido activo", async () => {
     getOrderMock.mockResolvedValueOnce(order);
+    const onContinueOrder = vi.fn();
     renderLookup([], {
       activeOperationalReference: order.operationalReference,
+      onContinueOrder,
       requestedLookup: {
         operationalReference: order.operationalReference,
         sequence: 1,
@@ -517,11 +519,12 @@ describe("OrderLookup", () => {
 
     const result = await screen.findByRole("region", { name: "Pedido activo" });
     expect(result).toHaveTextContent(
-      "Este Pedido está activo para una nueva Incorporación.",
+      "Este Pedido está activo para agregar productos.",
     );
-    expect(
-      within(result).queryByRole("button", { name: "Continuar este Pedido" }),
-    ).not.toBeInTheDocument();
+    within(result)
+      .getByRole("button", { name: "Agregar productos a este Pedido" })
+      .click();
+    expect(onContinueOrder).toHaveBeenCalledWith(order.operationalReference);
   });
 
   it("changes A to B with exact expected Context, reloads the same Order, and hides the UUID", async () => {

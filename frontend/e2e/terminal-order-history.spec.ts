@@ -65,9 +65,7 @@ test("MVP-FC-TOH-CLOSE OABC consults closed Order History by exact reference", a
         "/api/order-operations/first-confirmations" &&
       response.request().method() === "POST",
   );
-  await composition
-    .getByRole("button", { name: "Confirmar Primera Composición" })
-    .click();
+  await composition.getByRole("button", { name: "Crear Pedido" }).click();
   const confirmedResponse = await confirmation;
   expect(confirmedResponse.status()).toBe(201);
   const confirmed = (await confirmedResponse.json()) as {
@@ -200,9 +198,7 @@ test("MVP-FC-TOH-CLOSE Complete Cancellation History stays distinct from Closure
         "/api/order-operations/first-confirmations" &&
       response.request().method() === "POST",
   );
-  await composition
-    .getByRole("button", { name: "Confirmar Primera Composición" })
-    .click();
+  await composition.getByRole("button", { name: "Crear Pedido" }).click();
   const confirmed = await confirmation;
   expect(confirmed.status()).toBe(201);
   const { operationalReference: reference } = (await confirmed.json()) as {

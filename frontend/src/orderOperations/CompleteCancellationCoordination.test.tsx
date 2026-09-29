@@ -139,7 +139,7 @@ it("coordinates cancellation uncertainty and confirmed terminal retirement acros
   await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
   await screen.findByRole("button", { name: "Cancelar pedido completo" });
   await user.click(
-    screen.getByRole("button", { name: "Continuar este Pedido" }),
+    screen.getByRole("button", { name: "Agregar productos a este Pedido" }),
   );
   await waitFor(() => expect(pendingReads).toBeGreaterThan(0));
   await screen.findByText(

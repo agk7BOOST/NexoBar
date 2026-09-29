@@ -235,6 +235,35 @@ describe("CatalogPanel - alta y listado", () => {
     listGroupsMock.mockResolvedValue([]);
   });
 
+  it("prioriza productos existentes y deja alta y grupos como acciones secundarias", async () => {
+    const { user } = renderPanel([product()]);
+    const products = screen.getByRole("heading", { name: "Productos" });
+    const creation = screen.getByRole("heading", { name: "Crear producto" });
+    const groups = screen.getByRole("heading", { name: "Grupos" });
+    expect(products.compareDocumentPosition(creation)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(products.compareDocumentPosition(groups)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Nuevo producto" }));
+    expect(creation).toHaveFocus();
+    await user.click(
+      screen.getByRole("button", { name: "Administrar grupos" }),
+    );
+    expect(groups).toHaveFocus();
+  });
+
+  it("ofrece el alta al inicio cuando el catálogo está vacío", () => {
+    renderPanel();
+    const creation = screen.getByRole("heading", { name: "Crear producto" });
+    const products = screen.getByRole("heading", { name: "Productos" });
+    expect(creation.compareDocumentPosition(products)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
   it("presenta el listado vigente sin una acción de Composición", () => {
     const listedProduct = product();
     renderPanel([listedProduct]);

@@ -125,9 +125,7 @@ test("eligible Identity is removed and functional Order History preserves anothe
           "/api/order-operations/first-confirmations" &&
         response.request().method() === "POST",
     );
-    await composition
-      .getByRole("button", { name: "Confirmar Primera Composición" })
-      .click();
+    await composition.getByRole("button", { name: "Crear Pedido" }).click();
     expect((await confirmation).ok()).toBeTruthy();
 
     await target

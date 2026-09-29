@@ -127,7 +127,9 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       .getByRole("textbox", { name: "Nombre operacional", exact: true })
       .fill(targetInitialName);
     const created = waitForResponse(adminAPage, "POST", "/api/identities");
-    await configuration.getByRole("button", { name: "Crear identidad" }).click();
+    await configuration
+      .getByRole("button", { name: "Crear identidad" })
+      .click();
     expect((await created).ok()).toBeTruthy();
     await expect(
       configuration.getByText("Identidad creada correctamente.", {
@@ -257,7 +259,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       })
       .click();
     const credential = configuration.getByRole("form", {
-      name: "Configurar credencial local",
+      name: /acceso de /,
     });
     await credential
       .getByLabel("Identificador de acceso")
@@ -454,7 +456,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       })
       .click();
     const replacement = configuration.getByRole("form", {
-      name: "Configurar credencial local",
+      name: /acceso de /,
     });
     await replacement.getByLabel("Nueva clave secreta").fill(adminANewSecret);
     const selfCredentialReplacement = waitForResponse(
@@ -493,11 +495,11 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       /\/api\/identities\/[^/]+\/credential/,
     );
     await restoredConfiguration
-      .getByRole("form", { name: "Configurar credencial local" })
+      .getByRole("form", { name: /acceso de / })
       .getByLabel("Nueva clave secreta")
       .fill(adminA.secret);
     await restoredConfiguration
-      .getByRole("form", { name: "Configurar credencial local" })
+      .getByRole("form", { name: /acceso de / })
       .getByRole("button", { name: "Guardar credencial" })
       .click();
     expect((await restoreCredential).ok()).toBeTruthy();

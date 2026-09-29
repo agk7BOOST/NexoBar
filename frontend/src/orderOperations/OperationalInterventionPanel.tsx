@@ -54,9 +54,15 @@ function quantities(target: InterventionTarget) {
 export function OperationalInterventionPanel({
   onUnauthorized,
   isOrderBlocked,
+  requestedTarget,
 }: {
   onUnauthorized: () => void;
   isOrderBlocked?: (reference: string) => boolean;
+  requestedTarget?: {
+    incorporationId: string;
+    contentOrdinal: number;
+    sequence: number;
+  };
 }) {
   const [incorporation, setIncorporation] = useState("");
   const [ordinal, setOrdinal] = useState("");
@@ -69,12 +75,34 @@ export function OperationalInterventionPanel({
   const busy = useRef(false);
   const sending = useRef(false);
   const mounted = useRef(true);
+  const handledRequest = useRef(0);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
+  useEffect(() => {
+    if (!requestedTarget || handledRequest.current === requestedTarget.sequence)
+      return;
+    let current = true;
+    queueMicrotask(() => {
+      if (!current || handledRequest.current === requestedTarget.sequence)
+        return;
+      handledRequest.current = requestedTarget.sequence;
+      if (phase !== "idle" || intent !== null) return;
+      setIncorporation(requestedTarget.incorporationId);
+      setOrdinal(String(requestedTarget.contentOrdinal));
+      setLookup(null);
+      setTarget(null);
+      setMessage(
+        "Contenido seleccionado. Consultá su estado antes de intervenir.",
+      );
+    });
+    return () => {
+      current = false;
+    };
+  }, [requestedTarget, phase, intent]);
 
   function unauthorized() {
     discardAntiforgeryToken();
@@ -254,7 +282,9 @@ export function OperationalInterventionPanel({
       className="panel operational-intervention"
       aria-label="Intervención operacional"
     >
-      <h2>Intervención operacional</h2>
+      <h2 id="intervention-heading" tabIndex={-1}>
+        Intervención operacional
+      </h2>
       <p>
         El trabajo de preparación se realizó. Esta intervención cancela una
         cantidad que posteriormente dejó de ser requerida.

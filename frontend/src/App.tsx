@@ -37,6 +37,12 @@ type AuthState =
 type Workspace =
   "orders" | "preparation" | "products" | "inventory" | "configuration";
 
+interface InterventionTargetRequest {
+  incorporationId: string;
+  contentOrdinal: number;
+  sequence: number;
+}
+
 const workspaceLabels: Record<Workspace, string> = {
   orders: "Pedidos",
   preparation: "Preparación",
@@ -64,6 +70,15 @@ function App() {
   const [requestedLookup, setRequestedLookup] =
     useState<RequestedOrderLookup>();
   const [requestedTarget, setRequestedTarget] = useState<OrderTargetRequest>();
+  const [requestedIntervention, setRequestedIntervention] =
+    useState<InterventionTargetRequest>();
+  const [orderNavigation, setOrderNavigation] = useState<{
+    section: "composition" | "delivery";
+    sequence: number;
+  }>();
+  const [orderContexts, setOrderContexts] = useState<Record<string, string>>(
+    {},
+  );
   const [deliveryOperationalReference, setDeliveryOperationalReference] =
     useState<string | null>(null);
   const [authState, setAuthState] = useState<AuthState>({ status: "loading" });
@@ -89,6 +104,10 @@ function App() {
   );
   const [endingOrders, setEndingOrders] = useState<Record<string, boolean>>({});
   const rememberOrderState = useCallback((order: OrderResponse) => {
+    setOrderContexts((current) => ({
+      ...current,
+      [order.operationalReference]: order.context,
+    }));
     setTerminalOrders((current) => ({
       ...current,
       [order.operationalReference]:
@@ -135,6 +154,9 @@ function App() {
     setActiveOrderId(null);
     setDeliveryOperationalReference(null);
     setRequestedTarget(undefined);
+    setRequestedIntervention(undefined);
+    setOrderNavigation(undefined);
+    setOrderContexts({});
     setEndingOrders({});
     setDeliveryBusy({});
     setPreparationBusy([]);
@@ -207,6 +229,31 @@ function App() {
       operationalReference,
       sequence: (current?.sequence ?? 0) + 1,
     }));
+    setOrderNavigation((current) => ({
+      section: "composition",
+      sequence: (current?.sequence ?? 0) + 1,
+    }));
+  }
+
+  function requestDelivery(operationalReference: string) {
+    setDeliveryOperationalReference(operationalReference);
+    setOrderNavigation((current) => ({
+      section: "delivery",
+      sequence: (current?.sequence ?? 0) + 1,
+    }));
+  }
+
+  function requestIntervention(
+    incorporationId: string,
+    contentOrdinal: number,
+  ) {
+    if (!canInterveneAvailability) return;
+    setRequestedIntervention((current) => ({
+      incorporationId,
+      contentOrdinal,
+      sequence: (current?.sequence ?? 0) + 1,
+    }));
+    setSelectedWorkspace("preparation");
   }
 
   const identity =
@@ -238,9 +285,7 @@ function App() {
     ...(canConfigureCatalog || canInterveneAvailability
       ? (["products"] as const)
       : []),
-    ...(interventionOnly
-      ? (["preparation"] as const)
-      : []),
+    ...(interventionOnly ? (["preparation"] as const) : []),
     ...(canOperateInventory || canConfigureInventory
       ? (["inventory"] as const)
       : []),
@@ -262,6 +307,22 @@ function App() {
     }
     previousWorkspace.current = activeWorkspace;
   }, [activeWorkspace]);
+  useEffect(() => {
+    if (activeWorkspace !== "orders" || !orderNavigation) return;
+    const target = document.getElementById(
+      orderNavigation.section === "composition"
+        ? "composition-title"
+        : "delivery-heading",
+    );
+    target?.focus();
+    target?.scrollIntoView?.({ block: "start" });
+  }, [activeWorkspace, orderNavigation]);
+  useEffect(() => {
+    if (activeWorkspace !== "preparation" || !requestedIntervention) return;
+    const target = document.getElementById("intervention-heading");
+    target?.focus();
+    target?.scrollIntoView?.({ block: "start" });
+  }, [activeWorkspace, requestedIntervention]);
   const canRequestUnavailableProductException =
     canComposeOrders &&
     identity !== null &&
@@ -353,9 +414,10 @@ function App() {
                     <p>
                       {activeWorkspace === "preparation" && interventionOnly
                         ? "Intervenciones puntuales sobre trabajo de preparación."
-                        : activeWorkspace === "preparation" && canInterveneAvailability
+                        : activeWorkspace === "preparation" &&
+                            canInterveneAvailability
                           ? "Trabajo por destino e intervenciones operacionales."
-                        : workspaceDescriptions[activeWorkspace]}
+                          : workspaceDescriptions[activeWorkspace]}
                     </p>
                   </header>
                   <div
@@ -365,6 +427,7 @@ function App() {
                     {canInterveneAvailability && (
                       <OperationalInterventionPanel
                         key={authState.identity.identityId}
+                        requestedTarget={requestedIntervention}
                         onUnauthorized={returnToLogin}
                         isOrderBlocked={(reference) =>
                           terminalOrders[reference] === true ||
@@ -374,6 +437,11 @@ function App() {
                     )}
                     {canPrepare && (
                       <PreparationPanel
+                        onIntervene={
+                          canInterveneAvailability
+                            ? requestIntervention
+                            : undefined
+                        }
                         refreshSequence={preparationRefresh}
                         onBusyOrdersChange={setPreparationBusy}
                         onWorkChanged={refreshAfterPreparation}
@@ -425,6 +493,11 @@ function App() {
                         key={`operational-products:${identity.identityId}:${identityLifecycle}`}
                         endingRefreshSequence={endingRefresh}
                         activeOperationalReference={activeOperationalReference}
+                        activeOrderContext={
+                          activeOperationalReference === null
+                            ? undefined
+                            : orderContexts[activeOperationalReference]
+                        }
                         activeOrderId={activeOrderId}
                         requestedTarget={requestedTarget}
                         onActivateOrder={activateOrder}
@@ -457,7 +530,7 @@ function App() {
                         activeOperationalReference={activeOperationalReference}
                         activeOrderId={activeOrderId}
                         onContinueOrder={requestContinueOrder}
-                        onOpenDelivery={setDeliveryOperationalReference}
+                        onOpenDelivery={requestDelivery}
                         identityId={identity.identityId}
                         onUnauthorized={returnToLogin}
                         onOrderState={rememberOrderState}
@@ -471,6 +544,11 @@ function App() {
                     )}
                     {canComposeOrders && (
                       <DeliveryPanel
+                        onIntervene={
+                          canInterveneAvailability
+                            ? requestIntervention
+                            : undefined
+                        }
                         refreshSequence={deliveryRefresh}
                         onBusyChange={rememberDeliveryBusy}
                         operationalReference={deliveryOperationalReference}

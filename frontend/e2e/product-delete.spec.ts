@@ -92,9 +92,7 @@ test("confirmed Product rejects Delete and Retire remains separate", async ({
       candidate.url().endsWith("/api/order-operations/first-confirmations") &&
       candidate.request().method() === "POST",
   );
-  await composition
-    .getByRole("button", { name: "Confirmar Primera Composición" })
-    .click();
+  await composition.getByRole("button", { name: "Crear Pedido" }).click();
   expect((await response).ok()).toBeTruthy();
   await logout(page);
   await login(

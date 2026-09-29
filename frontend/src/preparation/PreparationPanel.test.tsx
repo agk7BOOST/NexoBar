@@ -178,14 +178,30 @@ describe("PreparationPanel", () => {
     vi.mocked(startPreparationQuantity).mockReset();
   });
 
+  it("passes the exact prepared content to a contextual intervention", async () => {
+    const onIntervene = vi.fn();
+    vi.mocked(listPreparationWork).mockResolvedValueOnce([
+      { ...mixedWork, contentOrdinal: 2 },
+    ]);
+    render(
+      <PreparationPanel onUnauthorized={vi.fn()} onIntervene={onIntervene} />,
+    );
+    (
+      await screen.findByRole("button", {
+        name: "Intervenir en este contenido",
+      })
+    ).click();
+    expect(onIntervene).toHaveBeenCalledExactlyOnceWith("incorporation-1", 2);
+    expect(startPreparationQuantity).not.toHaveBeenCalled();
+    expect(markPreparationQuantityReady).not.toHaveBeenCalled();
+  });
+
   it("shows zero enabled destinations without querying Work", async () => {
     vi.mocked(listPreparationDestinations).mockResolvedValueOnce([]);
     render(<PreparationPanel onUnauthorized={vi.fn()} />);
 
     expect(
-      await screen.findByText(
-        "No tenés destinos de preparación habilitados.",
-      ),
+      await screen.findByText("No tenés destinos de preparación habilitados."),
     ).toBeInTheDocument();
     expect(listPreparationWork).not.toHaveBeenCalled();
   });

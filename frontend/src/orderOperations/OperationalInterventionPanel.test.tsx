@@ -112,6 +112,33 @@ beforeEach(() => {
 });
 
 describe("OperationalIntervention target and actions", () => {
+  it("prefills an exact contextual target without consulting or sending automatically", async () => {
+    render(
+      <OperationalInterventionPanel
+        onUnauthorized={onUnauthorized}
+        requestedTarget={{ incorporationId, contentOrdinal: 2, sequence: 1 }}
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText("Identificador de Incorporación"),
+      ).toHaveValue(incorporationId),
+    );
+    expect(screen.getByLabelText("Número de contenido")).toHaveValue(2);
+    expect(
+      screen.getByText(/Consultá su estado antes de intervenir/),
+    ).toBeVisible();
+    expect(read).not.toHaveBeenCalled();
+    expect(mutation).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Consultar para intervenir" }),
+    );
+    await screen.findByText("Hamburguesa");
+    expect(read).toHaveBeenCalledOnce();
+    expect(mutation).not.toHaveBeenCalled();
+  });
+
   it("shows the legacy Product-name fallback without exposing ProductId as its label", async () => {
     current = { ...current, productOperationalName: null };
     await open("Nombre histórico no disponible");

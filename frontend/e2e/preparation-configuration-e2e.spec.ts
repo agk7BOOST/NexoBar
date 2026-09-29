@@ -289,9 +289,7 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
       "POST",
       "/api/order-operations/first-confirmations",
     );
-    await composition
-      .getByRole("button", { name: "Confirmar Primera Composición" })
-      .click();
+    await composition.getByRole("button", { name: "Crear Pedido" }).click();
     const confirmationResponse = await firstConfirmation;
     expect(confirmationResponse.ok()).toBeTruthy();
     const confirmedOrder = (await confirmationResponse.json()) as {

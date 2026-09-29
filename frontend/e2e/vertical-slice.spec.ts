@@ -51,7 +51,6 @@ async function readActiveOperationalReference(
   composition: Locator,
 ): Promise<string> {
   const label = "Referencia del Pedido activo";
-  const action = "Iniciar nuevo Pedido";
   const activeOrderSummary = composition.getByRole("status").filter({
     hasText: label,
   });
@@ -63,11 +62,7 @@ async function readActiveOperationalReference(
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   const labelIndex = summaryLines.indexOf(label);
-  const actionIndex = summaryLines.indexOf(action);
-  const operationalReference = summaryLines
-    .slice(labelIndex + 1, actionIndex === -1 ? undefined : actionIndex)
-    .join("\n")
-    .trim();
+  const operationalReference = summaryLines[labelIndex + 1] ?? "";
 
   expect(labelIndex).toBeGreaterThanOrEqual(0);
   expect(operationalReference).not.toBe("");
@@ -136,7 +131,7 @@ async function createConfirmedOrder(page: Page): Promise<{
     .getByRole("combobox", { name: "Contexto para Primera Confirmacion" })
     .selectOption({ label: "Contexto base E2E" });
   await initialComposition
-    .getByRole("button", { name: "Confirmar Primera Composición" })
+    .getByRole("button", { name: "Crear Pedido" })
     .click();
 
   const subsequentComposition = page.getByRole("region", {
@@ -234,7 +229,7 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
   await page.getByRole("button", { name: "Buscar Pedido" }).click();
   await page
     .getByRole("region", { name: "Pedido consultado" })
-    .getByRole("button", { name: "Continuar este Pedido" })
+    .getByRole("button", { name: "Agregar productos a este Pedido" })
     .click();
 
   const subsequentComposition = page.getByRole("region", {
@@ -287,7 +282,7 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
   ).toBeVisible();
 
   await subsequentComposition
-    .getByRole("button", { name: "Confirmar nueva Incorporación" })
+    .getByRole("button", { name: "Agregar al Pedido" })
     .click();
   await expect(
     subsequentComposition.getByText(
@@ -364,7 +359,7 @@ test("otro contexto autorizado ve el marcador remoto y no puede iniciar un segun
     });
     await expect(consultedOrder).toBeVisible();
     await consultedOrder
-      .getByRole("button", { name: "Continuar este Pedido" })
+      .getByRole("button", { name: "Agregar productos a este Pedido" })
       .click();
 
     const otherComposition = otherPage.getByRole("region", {
@@ -372,7 +367,7 @@ test("otro contexto autorizado ve el marcador remoto y no puede iniciar un segun
     });
     await expect(
       otherComposition.getByText(
-        /líneas no están disponibles en esta memoria local/,
+        /líneas no están disponibles en esta sesión del navegador/,
       ),
     ).toBeVisible();
     await otherComposition
@@ -688,7 +683,7 @@ for (const mode of ["simple", "external"] as const) {
     await expect(closed.getByRole("time")).toHaveAttribute("datetime", /\S+/);
     await expect(ending).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "Continuar este Pedido" }),
+      page.getByRole("button", { name: "Agregar productos a este Pedido" }),
     ).toHaveCount(0);
     await page
       .getByLabel("Referencia operacional exacta")
