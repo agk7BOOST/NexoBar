@@ -1,0 +1,33 @@
+name: Migrate Build 1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrate-build1
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Run Build 1 migrations
+        run: dotnet run --project backend/src/NexoBar.Migrations/NexoBar.Migrations.csproj --configuration Release
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+          ConnectionStrings__Catalog: ${{ secrets.NEXOBAR_BUILD1_CONNECTION_STRING }}
+          ConnectionStrings__IdentitiesAndCapabilities: ${{ secrets.NEXOBAR_BUILD1_CONNECTION_STRING }}
+          ConnectionStrings__Inventory: ${{ secrets.NEXOBAR_BUILD1_CONNECTION_STRING }}
+          ConnectionStrings__OperationalConfiguration: ${{ secrets.NEXOBAR_BUILD1_CONNECTION_STRING }}
+          ConnectionStrings__OrderOperations: ${{ secrets.NEXOBAR_BUILD1_CONNECTION_STRING }}
