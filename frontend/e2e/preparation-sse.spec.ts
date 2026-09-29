@@ -23,7 +23,7 @@ async function openPreparation(page: Page, operator: "a" | "b") {
   void streamOpened.catch(() => {});
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
-    page.getByRole("region", { name: "Identity actual" }),
+    page.getByRole("region", { name: "Usuario actual" }),
   ).toContainText(`Preparador SSE ${operator.toUpperCase()} E2E`);
   const preparation = page.getByRole("region", {
     name: "Preparación",

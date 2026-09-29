@@ -24,14 +24,14 @@ async function login(page: Page, actor: typeof oabc | typeof general) {
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
-      .getByRole("region", { name: "Identity actual" })
+      .getByRole("region", { name: "Usuario actual" })
       .getByText(actor.name, { exact: true }),
   ).toBeVisible();
 }
 
 async function logout(page: Page) {
   await page
-    .getByRole("region", { name: "Identity actual" })
+    .getByRole("region", { name: "Usuario actual" })
     .getByRole("button", { name: "Cambiar persona / salir" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
@@ -91,7 +91,7 @@ test("MVP-FC-TOH-CLOSE OABC consults closed Order History by exact reference", a
   });
   const item = delivery.getByRole("article", { name: new RegExp(productName) });
   await item.getByRole("button", { name: /^Entregar / }).click();
-  await expect(item).toContainText("Delivered1");
+  await expect(item).toContainText("Entregado1");
   await expect(item).toHaveAttribute("aria-busy", "false");
 
   const ending = page.getByRole("region", { name: "Liquidación y Cierre" });

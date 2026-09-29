@@ -27,9 +27,9 @@ function problemMessage(code: string | undefined): string | null {
     case "catalog.product.availability_concurrency_conflict":
       return "La disponibilidad cambió en otra operación. Se actualizará la lista.";
     case "catalog.product.not_current":
-      return "El Product ya no es vigente. Se actualizará la lista.";
+      return "El producto ya no está vigente. Se actualizará la lista.";
     case "catalog.product.not_found":
-      return "El Product ya no existe. Se actualizará la lista.";
+      return "El producto ya no existe. Se actualizará la lista.";
     default:
       return null;
   }
@@ -77,13 +77,13 @@ export function ProductAvailabilityInterventionPanel({
         error.problem.status === 403
       ) {
         setMessage(
-          "Esta Identity no tiene autorización para cambiar disponibilidad.",
+          "Tu usuario no tiene autorización para cambiar la disponibilidad.",
         );
         setPhase("forbidden");
         onForbidden();
         return;
       }
-      setMessage("No se pudo consultar la disponibilidad de los Products.");
+      setMessage("No se pudo consultar la disponibilidad de los productos.");
       setPhase("error");
     }
   }, [onForbidden, onUnauthorized]);
@@ -128,7 +128,7 @@ export function ProductAvailabilityInterventionPanel({
       if (error.problem.status === 403) {
         setUncertainIntent(null);
         setMessage(
-          "Esta Identity no tiene autorización para cambiar disponibilidad.",
+          "Tu usuario no tiene autorización para cambiar la disponibilidad.",
         );
         setPhase("forbidden");
         onForbidden();
@@ -178,11 +178,11 @@ export function ProductAvailabilityInterventionPanel({
   return (
     <section
       className="panel product-availability-intervention"
-      aria-label="Intervención de disponibilidad de Products"
+      aria-label="Intervención de disponibilidad de productos"
     >
-      <h2>Intervención de disponibilidad de Products</h2>
+      <h2>Intervención de disponibilidad de productos</h2>
       <p>
-        Esta superficie cambia únicamente la disponibilidad de Products
+        Esta sección cambia únicamente la disponibilidad de productos
         vigentes.
       </p>
       {message && (
@@ -193,7 +193,7 @@ export function ProductAvailabilityInterventionPanel({
           {message}
         </p>
       )}
-      {phase === "loading" && <p role="status">Cargando Products vigentes…</p>}
+      {phase === "loading" && <p role="status">Cargando productos vigentes…</p>}
       {phase === "error" && (
         <button
           type="button"
@@ -213,10 +213,10 @@ export function ProductAvailabilityInterventionPanel({
           aria-label="Cambio de disponibilidad con resultado no confirmado"
         >
           <h3>Cambio de disponibilidad pendiente de confirmación</h3>
-          <p>Product: {uncertainIntent.productId}</p>
+          <p>Producto: {uncertainIntent.productId}</p>
           <p>
-            La próxima tentativa conserva exactamente el Product, el estado
-            esperado, el nuevo estado y la misma key.
+            El reintento conserva exactamente el producto, el estado esperado,
+            el nuevo estado y la misma clave de operación.
           </p>
           <button
             type="button"
@@ -228,13 +228,13 @@ export function ProductAvailabilityInterventionPanel({
         </div>
       )}
       {phase === "idle" && products.length === 0 && (
-        <p>No hay Products vigentes.</p>
+        <p>No hay productos vigentes.</p>
       )}
       {phase !== "loading" && products.length > 0 && (
-        <ul aria-label="Products vigentes para intervención de disponibilidad">
+        <ul aria-label="Productos vigentes para intervención de disponibilidad">
           {products.map((product) => (
             <li key={product.id}>
-              <span aria-label={`Product ${product.operationalName}`}>
+              <span aria-label={`Producto ${product.operationalName}`}>
                 {product.operationalName}
               </span>{" "}
               <span aria-label={`Disponibilidad de ${product.operationalName}`}>

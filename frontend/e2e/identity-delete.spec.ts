@@ -7,7 +7,7 @@ async function login(page: Page, identifier: string, secret: string) {
   await page.getByLabel("Secreto").fill(secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
-    page.getByRole("region", { name: "Identity actual" }),
+    page.getByRole("region", { name: "Usuario actual" }),
   ).toBeVisible();
 }
 
@@ -41,9 +41,9 @@ test("eligible Identity is removed and functional Order History preserves anothe
       await general
         .getByLabel("Nombre operacional", { exact: true })
         .fill(name);
-      await general.getByRole("button", { name: "Crear Identity" }).click();
+      await general.getByRole("button", { name: "Crear identidad" }).click();
       await expect(
-        general.getByText("Identity creada correctamente."),
+        general.getByText("Identidad creada correctamente."),
       ).toBeVisible();
       await general.getByRole("button", { name: "Actualizar" }).click();
       return general
@@ -70,12 +70,12 @@ test("eligible Identity is removed and functional Order History preserves anothe
     await expect(target).toBeVisible();
     await target
       .getByRole("button", {
-        name: `Asignar OrderOperationsAndBasicClosure a ${actorName}`,
+        name: `Asignar Pedidos y cierre básico a ${actorName}`,
       })
       .click();
     await expect(
       target.getByRole("list", { name: `Responsabilidades de ${actorName}` }),
-    ).toContainText("OrderOperationsAndBasicClosure: Asignada");
+    ).toContainText("Pedidos y cierre básico: Asignada");
     await target
       .getByRole("button", { name: `Configurar credencial de ${actorName}` })
       .click();
@@ -138,7 +138,7 @@ test("eligible Identity is removed and functional Order History preserves anothe
       .click();
     await expect(
       general.getByText(
-        /debe conservarse porque tiene Historia funcional atribuible/,
+        /debe conservarse porque tiene operaciones registradas a su nombre/,
       ),
     ).toBeVisible();
     await expect(target).toBeVisible();

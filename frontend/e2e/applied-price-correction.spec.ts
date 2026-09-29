@@ -14,14 +14,14 @@ async function login(
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
-      .getByRole("region", { name: "Identity actual" })
+      .getByRole("region", { name: "Usuario actual" })
       .getByText(name, { exact: true }),
   ).toBeVisible();
 }
 
 async function logout(page: Page) {
   await page
-    .getByRole("region", { name: "Identity actual" })
+    .getByRole("region", { name: "Usuario actual" })
     .getByRole("button", { name: "Cambiar persona / salir" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
@@ -125,7 +125,7 @@ test("Applied Price Correction adopta Catálogo explícitamente y Liquida al pre
     deliveredContent.getByLabel(/^Cantidad a entregar —/),
   ).toHaveValue("1");
   await deliveredContent.getByRole("button", { name: /^Entregar / }).click();
-  await expect(deliveredContent).toContainText("Delivered1");
+  await expect(deliveredContent).toContainText("Entregado1");
   const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
   const amount = value(ending, "Importe funcional actual");
   await expect(amount).toHaveText(/^10(?:\.0+)?$/);

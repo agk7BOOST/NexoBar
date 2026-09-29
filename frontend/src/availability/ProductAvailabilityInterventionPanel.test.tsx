@@ -77,7 +77,7 @@ describe("ProductAvailabilityInterventionPanel", () => {
     renderPanel();
     expect(await screen.findByText(/No se pudo consultar/)).toBeInTheDocument();
     expect(
-      screen.queryByText("No hay Products vigentes."),
+      screen.queryByText("No hay productos vigentes."),
     ).not.toBeInTheDocument();
     await user.click(
       screen.getByRole("button", {
@@ -99,9 +99,9 @@ describe("ProductAvailabilityInterventionPanel", () => {
       await screen.findByText(/no tiene autorización/),
     ).toBeInTheDocument();
     expect(onForbidden).toHaveBeenCalledOnce();
-    expect(screen.queryByText(/Cargando Products/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cargando productos/)).not.toBeInTheDocument();
     expect(
-      screen.queryByText("No hay Products vigentes."),
+      screen.queryByText("No hay productos vigentes."),
     ).not.toBeInTheDocument();
   });
 
@@ -178,7 +178,7 @@ describe("ProductAvailabilityInterventionPanel", () => {
   });
 
   it.each([
-    ["catalog.product.not_current", "ya no es vigente"],
+    ["catalog.product.not_current", "ya no está vigente"],
     ["catalog.product.not_found", "ya no existe"],
   ])("reloads after %s and removes the stale Product", async (code, text) => {
     listMock.mockResolvedValueOnce([available]).mockResolvedValueOnce([]);

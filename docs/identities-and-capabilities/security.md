@@ -71,7 +71,7 @@ En configuración production-like, la cookie de sesión es `__Host-nexobar-sessi
 Los contratos materializados son:
 
 - `POST /api/identity-sessions`: recibe `loginIdentifier` y `secret`, requiere antiforgery, responde un `401` genérico `invalid_credentials` cuando las credenciales no pueden usarse, revoca solo la sesión actual que ya estuviera representada por el cookie jar al reemplazarla, crea una sesión nueva y no afecta otras sesiones;
-- `GET /api/identity-sessions/current`: autenticado; devuelve solo `identityId` y `operationalName`, sin `sessionId`, capabilities ni token;
+- `GET /api/identity-sessions/current`: autenticado; devuelve `identityId`, `operationalName` y `responsibilities` vigentes. La lista representa asignaciones actuales, no claims de sesión; no incluye `sessionId`, habilitaciones de Preparation ni token;
 - `DELETE /api/identity-sessions/current`: requiere antiforgery, revoca la sesión actual, limpia la cookie y devuelve `204`; es idempotente según la implementación actual;
 - `GET /api/security/antiforgery`: anónimo y puramente técnico.
 

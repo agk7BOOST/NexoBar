@@ -71,7 +71,7 @@ async function authenticateThroughCurrent(
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
-      .getByRole("region", { name: "Identity actual" })
+      .getByRole("region", { name: "Usuario actual" })
       .getByText(actor.operationalName, { exact: true }),
   ).toBeVisible();
 

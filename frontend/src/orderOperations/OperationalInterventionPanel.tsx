@@ -111,7 +111,7 @@ export function OperationalInterventionPanel({
           setTarget(null);
           setMessage(
             error.problem.status === 403
-              ? "Esta Identity no tiene autorización de Intervención operacional."
+              ? "Tu usuario no tiene autorización de Intervención operacional."
               : "No se encontró ese contenido como destino de intervención.",
           );
           setPhase("idle");
@@ -140,7 +140,7 @@ export function OperationalInterventionPanel({
       contentOrdinal > 2147483647
     ) {
       setMessage(
-        "Ingresá el identificador UUID de Incorporación y un ordinal de Content entero positivo.",
+        "Ingresá el identificador de incorporación y un número de contenido entero positivo.",
       );
       return;
     }
@@ -175,7 +175,7 @@ export function OperationalInterventionPanel({
       if (error.problem.status === 403) {
         setTarget(null);
         setMessage(
-          "Esta Identity no tiene autorización de Intervención operacional.",
+          "Tu usuario no tiene autorización de Intervención operacional.",
         );
         setPhase("idle");
         busy.current = false;
@@ -267,7 +267,7 @@ export function OperationalInterventionPanel({
         <label htmlFor="intervention-incorporation">
           Identificador de Incorporación
         </label>
-        <label htmlFor="intervention-ordinal">Ordinal de Content</label>
+        <label htmlFor="intervention-ordinal">Número de contenido</label>
         <input
           id="intervention-incorporation"
           value={incorporation}
@@ -323,11 +323,11 @@ export function OperationalInterventionPanel({
               <dd>{target.incorporationId}</dd>
             </div>
             <div>
-              <dt>Content</dt>
+              <dt>Contenido</dt>
               <dd>{target.contentOrdinal}</dd>
             </div>
             <div>
-              <dt>Work</dt>
+              <dt>Trabajo de preparación</dt>
               <dd>{target.workId}</dd>
             </div>
           </dl>
@@ -448,7 +448,7 @@ export function OperationalInterventionPanel({
             pendiente de resolución.
           </p>
           <p>
-            Work: {intent.workId}. Content: {intent.incorporationId} /{" "}
+            Trabajo: {intent.workId}. Contenido: {intent.incorporationId} /{" "}
             {intent.contentOrdinal}.
           </p>
           <p>Reintentá exactamente esta intervención antes de iniciar otra.</p>

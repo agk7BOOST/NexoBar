@@ -198,7 +198,7 @@ describe("InventoryPanel", () => {
       } else {
         expect(
           await screen.findByText(
-            "Esta Identity no tiene autorización para configurar Inventario.",
+            "Tu usuario no tiene autorización para configurar Inventario.",
           ),
         ).toBeInTheDocument();
         expect(
@@ -218,7 +218,7 @@ describe("InventoryPanel", () => {
       } else {
         expect(
           await screen.findByText(
-            "Esta Identity no tiene autorización para operar Inventario.",
+            "Tu usuario no tiene autorización para operar Inventario.",
           ),
         ).toBeInTheDocument();
         expect(
@@ -732,7 +732,7 @@ describe("InventoryPanel", () => {
 
     expect(
       await screen.findAllByText(
-        "Esta Identity no tiene autorización para configurar Inventario.",
+        "Tu usuario no tiene autorización para configurar Inventario.",
       ),
     ).not.toHaveLength(0);
     expect(onUnauthorized).not.toHaveBeenCalled();

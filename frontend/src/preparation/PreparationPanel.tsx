@@ -60,7 +60,7 @@ interface RefreshOptions {
 }
 
 const forbiddenMessage =
-  "Esta Identity no tiene autorización para esa preparación.";
+  "Tu usuario no tiene autorización para esa preparación.";
 
 function sourceQuantity(
   item: PreparationWork,
@@ -693,7 +693,7 @@ export function PreparationPanel({
         <p>Cargando destinos…</p>
       )}
       {!isLoadingDestinations && destinations.length === 0 && !message && (
-        <p>No hay destinos de preparación habilitados para esta Identity.</p>
+        <p>No tenés destinos de preparación habilitados.</p>
       )}
       {destinations.length > 1 && (
         <label className="preparation-destination-selector">
@@ -821,10 +821,8 @@ export function PreparationPanel({
                             true && (
                             <div className="preparation-corrections">
                               <p>
-                                Correcciones de progreso registrado por error.
-                                No son Cancellation, Content Correction,
-                                Delivery Correction, OperationalIntervention ni
-                                un deshacer genérico.
+                                Estas correcciones ajustan el progreso de
+                                preparación registrado por error.
                               </p>
                               {renderAction(item, "correct-start")}
                               {renderAction(item, "correct-ready")}

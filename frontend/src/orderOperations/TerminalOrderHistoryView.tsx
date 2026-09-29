@@ -52,7 +52,7 @@ function Content({ content: c }: { content: TerminalHistoryContent }) {
         <p>Responsabilidad de preparación: {c.preparationResponsibilityId}</p>
       )}
       {c.unavailableProductExceptionApplied && (
-        <p>Incorporado mediante excepción de Product no disponible</p>
+        <p>Incorporado mediante excepción por producto no disponible</p>
       )}
       {c.priceCorrections.length > 0 && (
         <section>

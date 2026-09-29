@@ -212,8 +212,8 @@ it.each([1, 3])(
       quantity,
     });
 
-    expect(content()).toHaveTextContent("Delivered3");
-    expect(content()).not.toHaveTextContent("Delivered99");
+    expect(content()).toHaveTextContent("Entregado3");
+    expect(content()).not.toHaveTextContent("Entregado99");
     delivered = 3 - quantity;
     order = { ...order, functionalAmount: quantity === 3 ? "0.00" : "20.00" };
     await act(async () => {
@@ -221,13 +221,13 @@ it.each([1, 3])(
       release();
     });
     await waitFor(() =>
-      expect(content()).toHaveTextContent(`Delivered${3 - quantity}`),
+      expect(content()).toHaveTextContent(`Entregado${3 - quantity}`),
     );
     await waitFor(() =>
       expect(amount()).toHaveTextContent(order.functionalAmount),
     );
-    expect(content()).toHaveTextContent(`Deliverable${2 + quantity}`);
-    expect(content()).toHaveTextContent("Ready5");
+    expect(content()).toHaveTextContent(`Disponible para entregar${2 + quantity}`);
+    expect(content()).toHaveTextContent("Listo5");
     expect(content()).toHaveTextContent("Total5");
     if (quantity === 3)
       expect(
@@ -249,7 +249,7 @@ it.each([1, 3])(
     });
     fireEvent.click(screen.getByRole("button", { name: /^Entregar Agua/ }));
     await waitFor(() => expect(amount()).toHaveTextContent("30.00"));
-    expect(content()).toHaveTextContent("Ready5");
+    expect(content()).toHaveTextContent("Listo5");
     expect(content()).toHaveTextContent("Total5");
     expect(mutation.mock.calls.map(([url]) => url)).toEqual([
       target,
@@ -313,7 +313,7 @@ it.each([401, 403])(
     else {
       expect(
         await screen.findByText(
-          /Esta Identity no tiene autorización para realizar entregas/,
+          /Tu usuario no tiene autorización para realizar entregas/,
         ),
       ).toBeVisible();
       expect(unauthorized).not.toHaveBeenCalled();
@@ -340,7 +340,7 @@ it.each([
   await screen.findByRole("button", { name: "Reintentar" });
   fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
   await waitFor(() => expect(amount()).toHaveTextContent("0.00"));
-  expect(content()).toHaveTextContent("Delivered0");
+  expect(content()).toHaveTextContent("Entregado0");
   expect(
     screen.queryByRole("button", { name: "Reintentar" }),
   ).not.toBeInTheDocument();

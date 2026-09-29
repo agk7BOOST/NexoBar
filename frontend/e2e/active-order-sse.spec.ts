@@ -14,7 +14,7 @@ async function signIn(page: Page, login: string, secret: string, name: string) {
   await page.getByRole("button", { name: "Ingresar" }).click();
   expect((await loginResponse).ok()).toBeTruthy();
   await expect(
-    page.getByRole("region", { name: "Identity actual" }),
+    page.getByRole("region", { name: "Usuario actual" }),
   ).toContainText(name);
 }
 
@@ -85,9 +85,9 @@ test("Delivery abierto recibe por SSE la cantidad marcada lista por Preparation"
     const content = delivery.getByRole("article", {
       name: new RegExp(productName),
     });
-    await expect(content).toContainText("Ready0");
-    await expect(content).toContainText("Delivered0");
-    await expect(content).toContainText("Deliverable0");
+    await expect(content).toContainText("Listo0");
+    await expect(content).toContainText("Entregado0");
+    await expect(content).toContainText("Disponible para entregar0");
 
     const readyQuantity = preparation.getByLabel(
       /Cantidad a marcar lista de Papas SSE E2E/,
@@ -103,15 +103,15 @@ test("Delivery abierto recibe por SSE la cantidad marcada lista por Preparation"
     await expect(work).toContainText("Listo1");
 
     // A remains on the already-open Delivery view: no reload, refresh, or re-selection.
-    await expect(content).toContainText("Ready1", { timeout: 10_000 });
-    await expect(content).toContainText("Deliverable1");
+    await expect(content).toContainText("Listo1", { timeout: 10_000 });
+    await expect(content).toContainText("Disponible para entregar1");
     const quantity = content.getByLabel(/^Cantidad a entregar.*Papas SSE E2E/);
     await expect(quantity).toHaveValue("1");
     await content
       .getByRole("button", { name: /Entregar Papas SSE E2E/ })
       .click();
-    await expect(content).toContainText("Delivered1");
-    await expect(content).toContainText("Deliverable0");
+    await expect(content).toContainText("Entregado1");
+    await expect(content).toContainText("Disponible para entregar0");
   } finally {
     await deliveryContext.close();
     await preparationContext.close();

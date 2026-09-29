@@ -47,7 +47,7 @@ const workspaceLabels: Record<Workspace, string> = {
 
 const workspaceDescriptions: Record<Workspace, string> = {
   orders: "Composición, consulta, entrega y finalización de pedidos.",
-  preparation: "Trabajo por destino e intervenciones operacionales.",
+  preparation: "Trabajo por destino habilitado.",
   products: "Catálogo y disponibilidad de productos.",
   inventory: "Estado, movimientos y configuración de inventario.",
   configuration: "Identidades, contextos y destinos de preparación.",
@@ -226,13 +226,19 @@ function App() {
     identity !== null && hasResponsibility(identity, "InventoryOperation");
   const canConfigureInventory =
     identity !== null && hasResponsibility(identity, "InventoryConfiguration");
+  const interventionOnly = canInterveneAvailability && !canPrepare;
+  const preparationLabel = interventionOnly
+    ? "Intervención en preparación"
+    : workspaceLabels.preparation;
+  const labelForWorkspace = (workspace: Workspace) =>
+    workspace === "preparation" ? preparationLabel : workspaceLabels[workspace];
   const workspaces: Workspace[] = [
     ...(canComposeOrders ? (["orders"] as const) : []),
     ...(canPrepare ? (["preparation"] as const) : []),
     ...(canConfigureCatalog || canInterveneAvailability
       ? (["products"] as const)
       : []),
-    ...(canInterveneAvailability && !canPrepare
+    ...(interventionOnly
       ? (["preparation"] as const)
       : []),
     ...(canOperateInventory || canConfigureInventory
@@ -317,7 +323,7 @@ function App() {
                     }
                     onClick={() => setSelectedWorkspace(workspace)}
                   >
-                    {workspaceLabels[workspace]}
+                    {labelForWorkspace(workspace)}
                   </button>
                 ))}
               </nav>
@@ -335,16 +341,22 @@ function App() {
                 <div className="workspace-content">
                   <header className="workspace-header">
                     <p className="eyebrow">
-                      Operación · {workspaceLabels[activeWorkspace]}
+                      Operación · {labelForWorkspace(activeWorkspace)}
                     </p>
                     <h1
                       id="workspace-title"
                       ref={workspaceHeading}
                       tabIndex={-1}
                     >
-                      {workspaceLabels[activeWorkspace]}
+                      {labelForWorkspace(activeWorkspace)}
                     </h1>
-                    <p>{workspaceDescriptions[activeWorkspace]}</p>
+                    <p>
+                      {activeWorkspace === "preparation" && interventionOnly
+                        ? "Intervenciones puntuales sobre trabajo de preparación."
+                        : activeWorkspace === "preparation" && canInterveneAvailability
+                          ? "Trabajo por destino e intervenciones operacionales."
+                        : workspaceDescriptions[activeWorkspace]}
+                    </p>
                   </header>
                   <div
                     className="workspace"
@@ -499,7 +511,7 @@ function App() {
                     Sin espacios asignados
                   </h1>
                   <p className="notice">
-                    Esta Identity no tiene responsabilidades operacionales
+                    Tu usuario no tiene responsabilidades operacionales
                     asignadas.
                   </p>
                 </div>

@@ -416,7 +416,7 @@ it.each([401, 403])(
       await waitFor(() => expect(unauthorized).toHaveBeenCalledOnce());
     else {
       await screen.findByText(
-        /Esta Identity no tiene autorización para corregir la cantidad confirmada/,
+        /Tu usuario no tiene autorización para corregir la cantidad confirmada/,
       );
       expect(unauthorized).not.toHaveBeenCalled();
     }
@@ -471,9 +471,7 @@ it("supports direct F=0 without presenting a delivery fact", async () => {
     expect(article()).toHaveTextContent("Sin obligación vigente"),
   );
   expect(article()).toHaveTextContent("Q · Cantidad confirmada original5");
-  expect(
-    within(article()).queryByText("Entregado", { exact: true }),
-  ).toBeNull();
+  expect(article().querySelector(".fully-delivered")).toBeNull();
 });
 it("keeps the uncertain correction lock attached to its original Order across navigation", async () => {
   const busy = vi.fn();
@@ -546,7 +544,7 @@ it("keeps correction unavailable when the authoritative Order refresh fails", as
     throw new TypeError("read unavailable");
   });
   fireEvent.click(
-    within(screen.getByRole("region", { name: "Delivery" })).getByRole(
+    within(screen.getByRole("region", { name: "Entrega" })).getByRole(
       "button",
       { name: "Actualizar" },
     ),

@@ -6,7 +6,7 @@ async function signIn(page: Page, login: string, secret = `${login}-secret`) {
   await page.getByLabel("Secreto").fill(secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
-    page.getByRole("region", { name: "Identity actual" }),
+    page.getByRole("region", { name: "Usuario actual" }),
   ).toBeVisible();
 }
 
@@ -47,7 +47,7 @@ test("workspace navigation preserves uncertain availability and moves keyboard f
   await expect(navigation.getByRole("button")).toHaveText([
     "Pedidos",
     "Productos",
-    "Preparación",
+    "Intervención en preparación",
   ]);
   await navigation
     .getByRole("button", { name: "Productos", exact: true })

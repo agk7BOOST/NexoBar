@@ -449,7 +449,7 @@ describe("InventoryItemOperations", () => {
 
     expect(
       await screen.findByText(
-        "Esta Identity no tiene autorización para operar Inventario.",
+        "Tu usuario no tiene autorización para operar Inventario.",
       ),
     ).toBeInTheDocument();
     expect(onUnauthorized).not.toHaveBeenCalled();

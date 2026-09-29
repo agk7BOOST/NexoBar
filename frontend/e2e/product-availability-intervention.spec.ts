@@ -54,7 +54,7 @@ async function authenticateThroughCurrent(
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
-      .getByRole("region", { name: "Identity actual" })
+      .getByRole("region", { name: "Usuario actual" })
       .getByText(actor.operationalName, { exact: true }),
   ).toBeVisible();
 
@@ -88,7 +88,7 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
     const interventionPage = await interventionContext.newPage();
     await authenticateThroughCurrent(interventionPage, interventionOnly);
     const availability = interventionPage.getByRole("region", {
-      name: "Intervenci\u00f3n de disponibilidad de Products",
+      name: "Intervenci\u00f3n de disponibilidad de productos",
     });
     await expect(availability).toBeVisible();
     await expect(
@@ -255,7 +255,7 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
 
     await interventionPage.reload();
     const reloadedAvailability = interventionPage.getByRole("region", {
-      name: "Intervenci\u00f3n de disponibilidad de Products",
+      name: "Intervenci\u00f3n de disponibilidad de productos",
     });
     await expect(
       reloadedAvailability.getByLabel(`Disponibilidad de ${productName}`),

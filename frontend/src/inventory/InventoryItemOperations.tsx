@@ -243,7 +243,7 @@ export function InventoryItemOperations({
             setNotice({
               kind: "functional-error",
               message:
-                "Esta Identity no tiene autorización para operar Inventario.",
+                "Tu usuario no tiene autorización para operar Inventario.",
             });
             return;
           }

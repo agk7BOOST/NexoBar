@@ -159,7 +159,7 @@ export function OrderEnding({
       if (code === "antiforgery_invalid") discardAntiforgeryToken();
       setMessage(
         error.problem.status === 403
-          ? "Esta Identity no tiene autorización para realizar esta operación."
+          ? "Tu usuario no tiene autorización para realizar esta operación."
           : "La operación fue rechazada. Revisá los datos e intentá nuevamente.",
       );
       setPhase("idle");

@@ -10,7 +10,7 @@ async function signIn(page: Page) {
   await page.getByLabel("Secreto").fill("inventory-operation-sse-a-e2e-secret");
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
-    page.getByRole("region", { name: "Identity actual" }),
+    page.getByRole("region", { name: "Usuario actual" }),
   ).toContainText("Operador Inventario SSE A E2E");
 }
 

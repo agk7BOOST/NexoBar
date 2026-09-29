@@ -112,6 +112,16 @@ interface GeneralConfigurationPanelProps {
   onForbidden: () => void;
 }
 
+const responsibilityLabels: Record<FunctionalResponsibility, string> = {
+  OrderOperationsAndBasicClosure: "Pedidos y cierre básico",
+  OperationalIntervention: "Intervención operacional",
+  Preparation: "Preparación",
+  CatalogConfiguration: "Configuración de productos",
+  InventoryOperation: "Operación de inventario",
+  InventoryConfiguration: "Configuración de inventario",
+  GeneralConfiguration: "Configuración general",
+};
+
 function messageForProblem(
   problem: IdentityAdministrationProblemDetails,
   action: "create" | "rename" | IdentityMutationKind,
@@ -123,19 +133,19 @@ function messageForProblem(
     return "Ingresá un nombre operacional válido.";
   }
   if (problem.code === "identities_and_capabilities.identity_not_found") {
-    return "La Identity ya no existe. Actualizá el listado.";
+    return "La identidad ya no existe. Actualizá el listado.";
   }
   if (
     problem.code === "identities_and_capabilities.functional_history_exists"
   ) {
-    return "Esta Identity debe conservarse porque tiene Historia funcional atribuible. Podés desactivarla si ya no debe operar; no se desactivó automáticamente.";
+    return "Esta identidad debe conservarse porque tiene operaciones registradas a su nombre. Podés desactivarla si ya no debe operar; no se desactivó automáticamente.";
   }
   if (
     problem.code ===
     "identities_and_capabilities.last_general_configuration_path"
   ) {
     return action === "delete"
-      ? "Debe permanecer otra vía ordinaria utilizable de Configuración general antes de eliminar esta Identity."
+      ? "Debe permanecer otra vía ordinaria utilizable de Configuración general antes de eliminar esta identidad."
       : "Debe permanecer al menos una vía administrativa utilizable.";
   }
   if (
@@ -144,10 +154,10 @@ function messageForProblem(
     return "La responsabilidad indicada no es válida.";
   }
   return action === "create"
-    ? "No se pudo crear la Identity. Revisá los datos e intentá nuevamente."
+    ? "No se pudo crear la identidad. Revisá los datos e intentá nuevamente."
     : action === "rename"
       ? "No se pudo cambiar el nombre operacional. Revisá los datos e intentá nuevamente."
-      : "No se pudo actualizar la Identity. Revisá los datos e intentá nuevamente.";
+      : "No se pudo actualizar la identidad. Revisá los datos e intentá nuevamente.";
 }
 
 function preparationResponsibilityCreationMessage(
@@ -171,9 +181,9 @@ function mutationLabel(intention: IdentityMutationIntention): string {
     case "delete":
       return `Eliminación definitiva de ${intention.operationalName}`;
     case "assign":
-      return `Asignación de ${intention.responsibility} a ${intention.operationalName}`;
+      return `Asignación de ${responsibilityLabels[intention.responsibility!]} a ${intention.operationalName}`;
     case "revoke":
-      return `Revocación de ${intention.responsibility} a ${intention.operationalName}`;
+      return `Revocación de ${responsibilityLabels[intention.responsibility!]} a ${intention.operationalName}`;
   }
 }
 
@@ -300,7 +310,7 @@ export function GeneralConfigurationPanel({
             return;
           }
         }
-        setLoadError("No se pudo cargar el listado de Identities.");
+        setLoadError("No se pudo cargar el listado de identidades.");
       } finally {
         if (generation === readGeneration.current) {
           setIsLoading(false);
@@ -405,7 +415,7 @@ export function GeneralConfigurationPanel({
       if (formMatchesIntention) setCreationName("");
       setCreationNotice({
         kind: "success",
-        message: "Identity creada correctamente.",
+        message: "Identidad creada correctamente.",
       });
     } catch (error) {
       if (error instanceof IdentityAdministrationProblemError) {
@@ -429,7 +439,7 @@ export function GeneralConfigurationPanel({
         kind: "uncertain",
         message:
           error instanceof IdentityAdministrationNetworkError
-            ? "Resultado no confirmado: se perdió la comunicación y no sabemos si la Identity fue creada."
+            ? "Resultado no confirmado: se perdió la comunicación y no sabemos si la identidad fue creada."
             : "Resultado no confirmado: no fue posible confirmar la respuesta del servidor.",
       });
     } finally {
@@ -652,7 +662,7 @@ export function GeneralConfigurationPanel({
         kind: "uncertain",
         message:
           error instanceof IdentityAdministrationNetworkError
-            ? "Resultado no confirmado: se perdió la comunicación y no sabemos si se actualizó la Identity."
+            ? "Resultado no confirmado: se perdió la comunicación y no sabemos si se actualizó la identidad."
             : "Resultado no confirmado: no fue posible confirmar la respuesta del servidor.",
       });
     } finally {
@@ -889,7 +899,7 @@ export function GeneralConfigurationPanel({
             ? "Creando…"
             : uncertainCreation
               ? "Hay una intención pendiente"
-              : "Crear Identity"}
+              : "Crear identidad"}
         </button>
       </form>
 
@@ -902,7 +912,7 @@ export function GeneralConfigurationPanel({
         <div
           className="uncertain-intention"
           role="region"
-          aria-label="Creación de Identity con resultado no confirmado"
+          aria-label="Creación de identidad con resultado no confirmado"
         >
           <h3>Creación pendiente de confirmación</h3>
           <p>{uncertainCreation.request.operationalName}</p>
@@ -1045,7 +1055,7 @@ export function GeneralConfigurationPanel({
       />
 
       <div className="section-heading">
-        <h3>Identities</h3>
+        <h3>Identidades</h3>
         <button
           className="secondary-button"
           type="button"
@@ -1070,10 +1080,10 @@ export function GeneralConfigurationPanel({
           {enablementNotice.message}
         </p>
       )}
-      {isLoading && <p>Cargando Identities…</p>}
+      {isLoading && <p>Cargando identidades…</p>}
       {!isLoading && loadError && <p role="alert">{loadError}</p>}
       {!isLoading && !loadError && identities.length === 0 && (
-        <p>No hay Identities.</p>
+        <p>No hay identidades.</p>
       )}
       {!isLoading && !loadError && identities.length > 0 && (
         <div className="table-scroll">
@@ -1122,7 +1132,7 @@ export function GeneralConfigurationPanel({
                           return (
                             <li key={responsibility}>
                               <span>
-                                {responsibility}:{" "}
+                                {responsibilityLabels[responsibility]}:{" "}
                                 {isAssigned ? "Asignada" : "No asignada"}
                               </span>{" "}
                               <button
@@ -1139,7 +1149,7 @@ export function GeneralConfigurationPanel({
                                   isMutatingIdentity ||
                                   uncertainMutation !== null
                                 }
-                                aria-label={`${isAssigned ? "Revocar" : "Asignar"} ${responsibility} ${isAssigned ? "a" : "a"} ${identity.operationalName}`}
+                                aria-label={`${isAssigned ? "Revocar" : "Asignar"} ${responsibilityLabels[responsibility]} a ${identity.operationalName}`}
                               >
                                 {isAssigned ? "Revocar" : "Asignar"}
                               </button>
@@ -1478,7 +1488,7 @@ export function GeneralConfigurationPanel({
         <div
           className="uncertain-intention"
           role="region"
-          aria-label="Actualización de Identity con resultado no confirmado"
+          aria-label="Actualización de identidad con resultado no confirmado"
         >
           <h3>Actualización pendiente de confirmación</h3>
           <p>{mutationLabel(uncertainMutation)}</p>

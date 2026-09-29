@@ -51,9 +51,9 @@ type Notice =
   | { kind: "uncertain"; message: string };
 
 const configurationForbiddenMessage =
-  "Esta Identity no tiene autorización para configurar Inventario.";
+  "Tu usuario no tiene autorización para configurar Inventario.";
 const operationForbiddenMessage =
-  "Esta Identity no tiene autorización para operar Inventario.";
+  "Tu usuario no tiene autorización para operar Inventario.";
 
 function creationFailureMessage(error: InventoryProblemError): string {
   switch (error.problem.code) {
@@ -489,8 +489,8 @@ export function InventoryPanel({
                   <thead>
                     <tr>
                       <th scope="col">Nombre operacional</th>
-                      <th scope="col">Lifecycle</th>
-                      <th scope="col">Readiness</th>
+                      <th scope="col">Estado</th>
+                      <th scope="col">Listo para operar</th>
                       <th scope="col">Unidad operacional</th>
                       <th scope="col">Acciones</th>
                     </tr>
@@ -501,7 +501,7 @@ export function InventoryPanel({
                         <td>{item.operationalName}</td>
                         <td>
                           <span
-                            aria-label={`Lifecycle de ${item.operationalName}`}
+                            aria-label={`Estado de ${item.operationalName}`}
                           >
                             {item.isActive ? "Activo" : "Retirado"}
                           </span>
@@ -599,7 +599,7 @@ export function InventoryPanel({
                 <h4>{item.operationalName}</h4>
                 {!item.quantityEstablished || item.requiresReconciliation ? (
                   <div className="inventory-unestablished">
-                    <p aria-label={`Readiness de ${item.operationalName}`}>
+                    <p aria-label={`Preparación para operar de ${item.operationalName}`}>
                       Existencia física no establecida
                     </p>
                     <p>Unidad operacional: {item.operationalUnit}</p>

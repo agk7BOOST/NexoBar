@@ -552,7 +552,7 @@ describe("InventoryHistory", () => {
     const forbiddenRender = renderHistory();
     expect(
       await screen.findByText(
-        "Esta Identity no tiene autorización para consultar movimientos de Inventario.",
+        "Tu usuario no tiene autorización para consultar movimientos de Inventario.",
       ),
     ).toBeInTheDocument();
     expect(forbiddenRender.onUnauthorized).not.toHaveBeenCalled();

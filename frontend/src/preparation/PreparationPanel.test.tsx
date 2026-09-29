@@ -184,7 +184,7 @@ describe("PreparationPanel", () => {
 
     expect(
       await screen.findByText(
-        "No hay destinos de preparación habilitados para esta Identity.",
+        "No tenés destinos de preparación habilitados.",
       ),
     ).toBeInTheDocument();
     expect(listPreparationWork).not.toHaveBeenCalled();
@@ -368,7 +368,7 @@ describe("PreparationPanel", () => {
 
   it.each([
     { kind: "Start", item: work },
-    { kind: "Ready", item: mixedWork },
+    { kind: "Listo", item: mixedWork },
   ])(
     "keeps the exact $kind key/body after uncertainty and clears it after successful retry",
     async ({ kind, item }) => {
@@ -518,7 +518,7 @@ describe("PreparationPanel", () => {
     await user.click(startButton());
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Esta Identity no tiene autorización para esa preparación.",
+      "Tu usuario no tiene autorización para esa preparación.",
     );
     expect(onUnauthorized).not.toHaveBeenCalled();
     expect(startInput()).toBeEnabled();
@@ -602,7 +602,7 @@ describe("PreparationPanel", () => {
     const stillAuthenticated = vi.fn();
     render(<PreparationPanel onUnauthorized={stillAuthenticated} />);
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Esta Identity no tiene autorización para esa preparación.",
+      "Tu usuario no tiene autorización para esa preparación.",
     );
     expect(stillAuthenticated).not.toHaveBeenCalled();
   });

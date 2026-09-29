@@ -208,13 +208,8 @@ describe("Preparation progress correction", () => {
     const row = screen.getByRole("row", { name: /Papas/ });
 
     expect(row).toHaveTextContent(
-      "Correcciones de progreso registrado por error",
+      "Estas correcciones ajustan el progreso de preparación registrado por error.",
     );
-    expect(row).toHaveTextContent("Cancellation, Content Correction");
-    expect(row).toHaveTextContent(
-      "Delivery Correction, OperationalIntervention",
-    );
-    expect(row).toHaveTextContent("deshacer genérico");
     expect(
       within(row).queryByText(/Ready.*Pending|Listo.*Pendiente/),
     ).not.toBeInTheDocument();
@@ -282,7 +277,7 @@ describe("Preparation progress correction", () => {
         expect(discardAntiforgeryToken).toHaveBeenCalled();
       } else if (status === 403) {
         expect(await screen.findByRole("alert")).toHaveTextContent(
-          "Esta Identity no tiene autorización para esa preparación.",
+          "Tu usuario no tiene autorización para esa preparación.",
         );
         expect(onUnauthorized).not.toHaveBeenCalled();
       } else {

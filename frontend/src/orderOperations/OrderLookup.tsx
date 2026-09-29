@@ -53,7 +53,7 @@ interface OrderLookupProps {
 
 function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
   if (problem.status === 403) {
-    return "Esta Identity no tiene autorización para consultar el Pedido.";
+    return "Tu usuario no tiene autorización para consultar el pedido.";
   }
   if (problem.code === "order_operations.order.operational_reference_invalid") {
     return "La Referencia operacional no es válida.";
@@ -183,7 +183,7 @@ export function OrderLookup({
             setEvaluationError(
               error instanceof OrderOperationsProblemError &&
                 error.problem.status === 403
-                ? "Esta Identity no tiene autorización para evaluar la cancelación completa."
+                ? "Tu usuario no tiene autorización para evaluar la cancelación completa."
                 : "No se pudo evaluar la cancelación completa. Actualizá el Pedido antes de cancelar.",
             );
             return !requireEvaluation;

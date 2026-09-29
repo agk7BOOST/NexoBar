@@ -123,7 +123,7 @@ export function AppliedPriceCorrection({
       }
       setMessage(
         status(error) === 403
-          ? "Esta Identity no tiene autorización para corregir precios aplicados. Se requiere OrderOperationsAndBasicClosure."
+          ? "Tu usuario no tiene autorización para corregir precios aplicados en pedidos."
           : "No se pudieron consultar los precios aplicados. Intentá actualizar.",
       );
     } finally {
@@ -173,7 +173,7 @@ export function AppliedPriceCorrection({
       setRows([]);
       setMessage(
         status(error) === 403
-          ? "Esta Identity no tiene autorización para consultar los precios aplicados. Se requiere OrderOperationsAndBasicClosure. Actualizá precios y Pedido antes de continuar."
+          ? "Tu usuario no tiene autorización para consultar los precios aplicados. Actualizá precios y pedido antes de continuar."
           : "No se pudo actualizar el Estado autoritativo. Actualizá precios y Pedido antes de continuar.",
       );
     }
@@ -206,7 +206,7 @@ export function AppliedPriceCorrection({
         discardAntiforgeryToken();
       setMessage(
         status(error) === 403
-          ? "Esta Identity no tiene autorización para corregir precios aplicados. Se requiere OrderOperationsAndBasicClosure."
+          ? "Tu usuario no tiene autorización para corregir precios aplicados en pedidos."
           : "El Estado del Pedido cambió o la corrección fue rechazada. Se consultará el Estado vigente.",
       );
     } finally {

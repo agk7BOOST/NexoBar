@@ -44,7 +44,11 @@ it("mounts the exact intervention lookup for an authenticated Identity without P
   render(<App />);
   await userEvent
     .setup()
-    .click(await screen.findByRole("button", { name: "Preparación" }));
+    .click(
+      await screen.findByRole("button", {
+        name: "Intervención en preparación",
+      }),
+    );
   expect(
     await screen.findByRole("region", { name: "Intervención operacional" }),
   ).toBeInTheDocument();

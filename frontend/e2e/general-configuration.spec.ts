@@ -63,7 +63,7 @@ async function authenticateThroughCurrent(
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
-      .getByRole("region", { name: "Identity actual" })
+      .getByRole("region", { name: "Usuario actual" })
       .getByText(administrator.operationalName, { exact: true }),
   ).toBeVisible();
 
@@ -127,10 +127,10 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       .getByRole("textbox", { name: "Nombre operacional", exact: true })
       .fill(targetInitialName);
     const created = waitForResponse(adminAPage, "POST", "/api/identities");
-    await configuration.getByRole("button", { name: "Crear Identity" }).click();
+    await configuration.getByRole("button", { name: "Crear identidad" }).click();
     expect((await created).ok()).toBeTruthy();
     await expect(
-      configuration.getByText("Identity creada correctamente.", {
+      configuration.getByText("Identidad creada correctamente.", {
         exact: true,
       }),
     ).toBeVisible();
@@ -196,7 +196,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await target
       .getByRole("button", {
-        name: `Asignar Preparation a ${targetRenamedName}`,
+        name: `Asignar Preparación a ${targetRenamedName}`,
       })
       .click();
     const assignedTarget = await assignPreparation;
@@ -211,7 +211,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       target.getByRole("list", {
         name: `Responsabilidades de ${targetRenamedName}`,
       }),
-    ).toContainText("Preparation: Asignada");
+    ).toContainText("Preparación: Asignada");
 
     const grantPreparationEnablement = waitForResponse(
       adminAPage,
@@ -244,7 +244,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       target.getByRole("list", {
         name: `Responsabilidades de ${targetRenamedName}`,
       }),
-    ).toContainText("Preparation: Asignada");
+    ).toContainText("Preparación: Asignada");
     await expect(
       target.getByRole("list", {
         name: `Habilitaciones de preparaci\u00f3n de ${targetRenamedName}`,
@@ -350,7 +350,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await adminBRow
       .getByRole("button", {
-        name: `Revocar GeneralConfiguration a ${adminB.operationalName}`,
+        name: `Revocar Configuración general a ${adminB.operationalName}`,
       })
       .click();
     expect((await revokeAdminB).ok()).toBeTruthy();
@@ -371,7 +371,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     ).toEqual([]);
     await expect(
       adminBPage
-        .getByRole("region", { name: "Identity actual" })
+        .getByRole("region", { name: "Usuario actual" })
         .getByText(adminB.operationalName, { exact: true }),
     ).toBeVisible();
     await expect(
@@ -393,7 +393,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await adminARow
       .getByRole("button", {
-        name: `Revocar GeneralConfiguration a ${adminA.operationalName}`,
+        name: `Revocar Configuración general a ${adminA.operationalName}`,
       })
       .click();
     const lastPathResponse = await lastPathRejection;
@@ -411,7 +411,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       adminARow.getByRole("list", {
         name: `Responsabilidades de ${adminA.operationalName}`,
       }),
-    ).toContainText("GeneralConfiguration: Asignada");
+    ).toContainText("Configuración general: Asignada");
 
     // Restore the shared fixture authority after proving the last-path guard.
     const restoreAdminB = waitForResponse(
@@ -421,7 +421,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await identityRow(configuration, adminAPage, adminB.operationalName)
       .getByRole("button", {
-        name: `Asignar GeneralConfiguration a ${adminB.operationalName}`,
+        name: `Asignar Configuración general a ${adminB.operationalName}`,
       })
       .click();
     expect((await restoreAdminB).ok()).toBeTruthy();

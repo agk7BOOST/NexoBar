@@ -43,7 +43,7 @@ async function open(productName = "Hamburguesa") {
   fireEvent.change(screen.getByLabelText("Identificador de Incorporación"), {
     target: { value: incorporationId },
   });
-  fireEvent.change(screen.getByLabelText("Ordinal de Content"), {
+  fireEvent.change(screen.getByLabelText("Número de contenido"), {
     target: { value: "2" },
   });
   fireEvent.click(
@@ -316,7 +316,7 @@ describe("OperationalIntervention target and actions", () => {
         screen.getByLabelText("Identificador de Incorporación"),
         { target: { value: incorporationId } },
       );
-      fireEvent.change(screen.getByLabelText("Ordinal de Content"), {
+      fireEvent.change(screen.getByLabelText("Número de contenido"), {
         target: { value: "2" },
       });
       fireEvent.click(
@@ -480,7 +480,7 @@ describe("OperationalIntervention target and actions", () => {
     fireEvent.change(screen.getByLabelText("Identificador de Incorporación"), {
       target: { value: incorporationId },
     });
-    fireEvent.change(screen.getByLabelText("Ordinal de Content"), {
+    fireEvent.change(screen.getByLabelText("Número de contenido"), {
       target: { value: "2" },
     });
     fireEvent.click(

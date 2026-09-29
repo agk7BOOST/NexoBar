@@ -414,7 +414,7 @@ export function InventoryHistory({
       {state.status === "loading" && <p role="status">Cargando movimientos…</p>}
       {state.status === "forbidden" && (
         <p className="notice notice--functional-error" role="alert">
-          Esta Identity no tiene autorización para consultar movimientos de
+          Tu usuario no tiene autorización para consultar movimientos de
           Inventario.
         </p>
       )}

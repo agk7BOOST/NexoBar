@@ -27,14 +27,14 @@ async function login(page: Page, actor: Actor) {
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
-      .getByRole("region", { name: "Identity actual" })
+      .getByRole("region", { name: "Usuario actual" })
       .getByText(actor.operationalName, { exact: true }),
   ).toBeVisible();
 }
 
 async function logout(page: Page) {
   await page
-    .getByRole("region", { name: "Identity actual" })
+    .getByRole("region", { name: "Usuario actual" })
     .getByRole("button", { name: "Cambiar persona / salir" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();

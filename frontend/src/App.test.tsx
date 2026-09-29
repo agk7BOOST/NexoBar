@@ -68,7 +68,7 @@ vi.mock("./orderOperations/OperationalInterventionPanel.tsx", () => ({
 }));
 vi.mock("./availability/ProductAvailabilityInterventionPanel.tsx", () => ({
   ProductAvailabilityInterventionPanel: () => (
-    <section aria-label="Intervencion de disponibilidad de Products" />
+    <section aria-label="Intervencion de disponibilidad de productos" />
   ),
 }));
 vi.mock("./preparation/PreparationPanel.tsx", () => ({
@@ -230,7 +230,7 @@ describe("App capability-aware administrative mounting", () => {
 
     expect(
       await screen.findByLabelText(
-        "Intervencion de disponibilidad de Products",
+        "Intervencion de disponibilidad de productos",
       ),
     ).toBeInTheDocument();
     expect(
@@ -252,7 +252,7 @@ describe("App capability-aware administrative mounting", () => {
 
       await screen.findByRole("button", { name: "Salir" });
       expect(
-        screen.queryByLabelText("Intervencion de disponibilidad de Products"),
+        screen.queryByLabelText("Intervencion de disponibilidad de productos"),
       ).not.toBeInTheDocument();
     },
   );
@@ -265,7 +265,7 @@ describe("App capability-aware administrative mounting", () => {
 
     expect(
       await screen.findByLabelText(
-        "Intervencion de disponibilidad de Products",
+        "Intervencion de disponibilidad de productos",
       ),
     ).toBeInTheDocument();
     expect(

@@ -24,9 +24,9 @@ export function SessionBar({ identity, onLoggedOut }: SessionBarProps) {
   }
 
   return (
-    <section className="session-bar" aria-label="Identity actual">
+    <section className="session-bar" aria-label="Usuario actual">
       <p>
-        Identity actual: <strong>{identity.operationalName}</strong>
+        Usuario actual: <strong>{identity.operationalName}</strong>
       </p>
       <button
         className="secondary-button"

@@ -397,7 +397,7 @@ it.each([403, 404, 409])(
     expect(unauthorized).not.toHaveBeenCalled();
     if (status === 403)
       expect(
-        screen.getByText(/Identity necesita además autorización/),
+        screen.getByText(/usuario necesita además autorización/),
       ).toBeVisible();
   },
 );

@@ -17,14 +17,14 @@ async function login(
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
-      .getByRole("region", { name: "Identity actual" })
+      .getByRole("region", { name: "Usuario actual" })
       .getByText(name, { exact: true }),
   ).toBeVisible();
 }
 
 async function logout(page: Page) {
   await page
-    .getByRole("region", { name: "Identity actual" })
+    .getByRole("region", { name: "Usuario actual" })
     .getByRole("button", { name: "Cambiar persona / salir" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
@@ -144,14 +144,14 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   ).toBeVisible();
 
   // Supported narrow read exposes Q/R/C/F and current Work without Preparation authority.
-  await page.getByRole("button", { name: "Preparación", exact: true }).click();
+  await page.getByRole("button", { name: "Intervención en preparación" }).click();
   const intervention = page.getByRole("region", {
     name: "Intervención operacional",
   });
   await intervention
     .getByLabel("Identificador de Incorporación")
     .fill(incorporationId);
-  await intervention.getByLabel("Ordinal de Content").fill("1");
+  await intervention.getByLabel("Número de contenido").fill("1");
   await intervention
     .getByRole("button", { name: "Consultar para intervenir" })
     .click();
@@ -275,7 +275,7 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   ]);
   page.off("request", recordCommand);
 
-  await page.getByRole("button", { name: "Preparación", exact: true }).click();
+  await page.getByRole("button", { name: "Intervención en preparación" }).click();
   await intervention
     .getByRole("button", { name: "Actualizar contenido", exact: true })
     .click();
@@ -310,7 +310,7 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   });
   await page.reload();
   await expect(
-    page.getByRole("region", { name: "Identity actual" }),
+    page.getByRole("region", { name: "Usuario actual" }),
   ).toBeVisible();
   await page
     .getByLabel("Referencia operacional exacta")

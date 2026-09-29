@@ -41,7 +41,7 @@ async function login(page: Page, actor: Actor) {
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
-      .getByRole("region", { name: "Identity actual" })
+      .getByRole("region", { name: "Usuario actual" })
       .getByText(actor.name, { exact: true }),
   ).toBeVisible();
   const response = await loginResponse;
@@ -342,11 +342,11 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
     const deliveryItem = delivery
       .getByRole("article")
       .filter({ hasText: preparedProduct });
-    await expect(deliveryItem).toContainText("Deliverable1");
+    await expect(deliveryItem).toContainText("Disponible para entregar1");
     await deliveryItem
       .getByRole("button", { name: /^Entregar Papas E2E autorizadas/ })
       .click();
-    await expect(deliveryItem).toContainText("Delivered1");
+    await expect(deliveryItem).toContainText("Entregado1");
 
     const ending = o.getByRole("region", { name: "Liquidación y Cierre" });
     await ending

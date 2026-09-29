@@ -16,14 +16,14 @@ async function login(
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
-      .getByRole("region", { name: "Identity actual" })
+      .getByRole("region", { name: "Usuario actual" })
       .getByText(identityName, { exact: true }),
   ).toBeVisible();
 }
 
 async function logout(page: Page) {
   await page
-    .getByRole("region", { name: "Identity actual" })
+    .getByRole("region", { name: "Usuario actual" })
     .getByRole("button", { name: "Cambiar persona / salir" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
@@ -125,8 +125,8 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
   const prepared = delivery.getByRole("article", {
     name: productName + ", Sin sal, incorporación 1",
   });
-  await expect(prepared).toContainText("Ready2");
-  await expect(prepared).toContainText("Delivered0");
+  await expect(prepared).toContainText("Listo2");
+  await expect(prepared).toContainText("Entregado0");
   const deliveryQuantity = prepared.getByLabel(
     "Cantidad a entregar — " + productName + " — Sin sal — incorporación 1",
   );
@@ -136,9 +136,9 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
       name: "Entregar " + productName + ", Sin sal, incorporación 1",
     })
     .click();
-  await expect(prepared).toContainText("Ready2");
-  await expect(prepared).toContainText("Delivered1");
-  await expect(prepared).toContainText("Deliverable1");
+  await expect(prepared).toContainText("Listo2");
+  await expect(prepared).toContainText("Entregado1");
+  await expect(prepared).toContainText("Disponible para entregar1");
   await logout(page);
 
   await login(
@@ -147,14 +147,14 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
     "intervention-e2e-secret",
     "Intervención E2E",
   );
-  await page.getByRole("button", { name: "Preparación", exact: true }).click();
+  await page.getByRole("button", { name: "Intervención en preparación" }).click();
   const intervention = page.getByRole("region", {
     name: "Intervención operacional",
   });
   await intervention
     .getByLabel("Identificador de Incorporación")
     .fill(incorporationId);
-  await intervention.getByLabel("Ordinal de Content").fill("1");
+  await intervention.getByLabel("Número de contenido").fill("1");
   await intervention
     .getByRole("button", { name: "Consultar para intervenir" })
     .click();
@@ -212,9 +212,9 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
   const finalPrepared = finalDelivery.getByRole("article", {
     name: productName + ", Sin sal, incorporación 1",
   });
-  await expect(finalPrepared).toContainText("Ready1");
-  await expect(finalPrepared).toContainText("Delivered1");
-  await expect(finalPrepared).toContainText("Deliverable0");
+  await expect(finalPrepared).toContainText("Listo1");
+  await expect(finalPrepared).toContainText("Entregado1");
+  await expect(finalPrepared).toContainText("Disponible para entregar0");
   const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
   await expect(
     ending.getByText("Importe funcional actual").locator("..").locator("dd"),

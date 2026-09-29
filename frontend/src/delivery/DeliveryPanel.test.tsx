@@ -206,11 +206,11 @@ describe("DeliveryPanel", () => {
 
     const article = articleFor(direct);
     expect(article).toHaveTextContent("Total5");
-    expect(article).toHaveTextContent("Delivered0");
-    expect(article).toHaveTextContent("Deliverable5");
-    expect(article).toHaveTextContent("Remaining5");
+    expect(article).toHaveTextContent("Entregado0");
+    expect(article).toHaveTextContent("Disponible para entregar5");
+    expect(article).toHaveTextContent("Pendiente de entrega5");
     expect(article).toHaveTextContent("Preparación no requerida");
-    expect(within(article).queryByText("Ready")).not.toBeInTheDocument();
+    expect(within(article).queryByText("Listo")).not.toBeInTheDocument();
     expect(article).not.toHaveTextContent("product-direct-id");
     expect(inputFor(direct)).toHaveValue(5);
 
@@ -285,8 +285,8 @@ describe("DeliveryPanel", () => {
     await renderPanel([prepared, partialReady, partialDelivered]);
 
     const unavailable = articleFor(prepared);
-    expect(unavailable).toHaveTextContent("Ready0");
-    expect(unavailable).toHaveTextContent("Deliverable0");
+    expect(unavailable).toHaveTextContent("Listo0");
+    expect(unavailable).toHaveTextContent("Disponible para entregar0");
     expect(
       within(unavailable).queryByRole("spinbutton"),
     ).not.toBeInTheDocument();
@@ -346,14 +346,14 @@ describe("DeliveryPanel", () => {
 
     post.resolve({ ...commandResult(direct), deliveredQuantity: 5 });
     await waitFor(() => expect(getOrderDelivery).toHaveBeenCalledTimes(2));
-    expect(articleFor(direct)).toHaveTextContent("Delivered0");
-    expect(articleFor(direct)).not.toHaveTextContent("Delivered5");
+    expect(articleFor(direct)).toHaveTextContent("Entregado0");
+    expect(articleFor(direct)).not.toHaveTextContent("Entregado5");
 
     refresh.resolve(orderDelivery([updated]));
     await waitFor(() =>
-      expect(articleFor(updated)).toHaveTextContent("Delivered2"),
+      expect(articleFor(updated)).toHaveTextContent("Entregado2"),
     );
-    expect(articleFor(updated)).toHaveTextContent("Deliverable3");
+    expect(articleFor(updated)).toHaveTextContent("Disponible para entregar3");
     expect(inputFor(updated)).toHaveValue(3);
   });
 
@@ -662,10 +662,10 @@ describe("DeliveryPanel", () => {
 
     await waitFor(() => expect(getOrderDelivery).toHaveBeenCalledTimes(2));
     expect(
-      await screen.findByText("El Pedido no contiene Contents para entregar."),
+      await screen.findByText("El pedido no contiene productos para entregar."),
     ).toBeInTheDocument();
   });
 });
 
 const forbiddenMessage =
-  "Esta Identity no tiene autorización para realizar entregas.";
+  "Tu usuario no tiene autorización para realizar entregas.";

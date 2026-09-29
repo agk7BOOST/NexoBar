@@ -208,7 +208,7 @@ export function InventoryConfigurationItemControls({
             setNotice({
               kind: "functional-error",
               message:
-                "Esta Identity no tiene autorización para configurar Inventario.",
+                "Tu usuario no tiene autorización para configurar Inventario.",
             });
             return;
           }
@@ -311,10 +311,10 @@ export function InventoryConfigurationItemControls({
   return (
     <div className="inventory-configuration-controls">
       <p aria-label={`Estado del ciclo de vida de ${item.operationalName}`}>
-        Lifecycle: <strong>{item.isActive ? "Activo" : "Retirado"}</strong>
+        Estado: <strong>{item.isActive ? "Activo" : "Retirado"}</strong>
       </p>
       {item.isActive && (
-        <p aria-label={`Estado de readiness de ${item.operationalName}`}>
+        <p aria-label={`Preparación para operar de ${item.operationalName}`}>
           {item.ordinaryOperationReady
             ? "Listo para movimientos"
             : "Requiere conteo/reconciliación"}

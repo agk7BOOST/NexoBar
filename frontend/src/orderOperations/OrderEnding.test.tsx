@@ -359,7 +359,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
     const user = await open();
     await simple(user);
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Identity no tiene autorización",
+      "usuario no tiene autorización",
     );
     expect(onUnauthorized).not.toHaveBeenCalled();
     expect(
@@ -434,7 +434,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
         await waitFor(() => expect(onUnauthorized).toHaveBeenCalledOnce());
       } else {
         expect(await screen.findByRole("alert")).toHaveTextContent(
-          status === 403 ? "Identity no tiene autorización" : "debe liquidarse",
+          status === 403 ? "usuario no tiene autorización" : "debe liquidarse",
         );
         expect(onUnauthorized).not.toHaveBeenCalled();
       }

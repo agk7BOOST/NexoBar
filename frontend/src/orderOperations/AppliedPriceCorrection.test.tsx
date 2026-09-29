@@ -527,7 +527,7 @@ it.each([401, 403, 409])(
     } else {
       await screen.findByText(
         status === 403
-          ? /Esta Identity no tiene autorización para corregir precios aplicados/
+          ? /Tu usuario no tiene autorización para corregir precios aplicados/
           : /El Estado del Pedido cambió o la corrección fue rechazada/,
       );
       await waitFor(() =>
@@ -559,7 +559,7 @@ it.each([401, 403])(
     else
       expect(
         screen.getByText(
-          /Esta Identity no tiene autorización para corregir precios aplicados/,
+          /Tu usuario no tiene autorización para corregir precios aplicados/,
         ),
       ).toBeInTheDocument();
     expect(

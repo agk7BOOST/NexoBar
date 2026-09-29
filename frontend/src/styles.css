@@ -82,10 +82,6 @@ button:disabled {
   opacity: 0.58;
 }
 
-.catalog-add-button:disabled {
-  cursor: not-allowed;
-}
-
 .auth-shell {
   width: min(28rem, calc(100% - 2rem));
   margin: clamp(3rem, 12vh, 8rem) auto;
@@ -298,10 +294,6 @@ button:disabled {
   border-radius: var(--radius);
 }
 
-.workspace > .panel + .panel {
-  margin-top: 0;
-}
-
 .operational-intervention > section {
   margin-top: 1.5rem;
   padding-top: 1rem;
@@ -375,19 +367,16 @@ form select,
   gap: 0.75rem 1rem;
   align-items: center;
   justify-content: space-between;
-  margin-top: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 0.65rem;
-  padding: 1rem 1.25rem;
-  background: var(--info-bg);
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .session-bar p {
   margin: 0;
-}
-
-.inventory-family {
-  margin-top: 2rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 
 .inventory-family-heading h2 {
@@ -785,8 +774,7 @@ form select,
   width: 8rem;
 }
 
-.delivery-action input:disabled,
-.delivery-action button:disabled {
+.delivery-action input:disabled {
   cursor: not-allowed;
 }
 
@@ -800,18 +788,12 @@ form select,
   font-size: 0.85rem;
 }
 
-form input:focus-visible,
-textarea:focus-visible,
-button:focus-visible {
-  outline: 3px solid #a9c7e8;
-  outline-offset: 2px;
-}
-
 .notice {
   margin: 1rem 0 0;
   border-left: 4px solid;
   padding: 0.75rem 0.9rem;
-  border-radius: 0.25rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text);
 }
 
 .notice--success {
@@ -1391,18 +1373,6 @@ form label {
   background: var(--brand-soft);
 }
 
-.session-bar {
-  margin: 0;
-  border: 0;
-  padding: 0;
-  background: transparent;
-}
-
-.session-bar p {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-}
-
 .session-bar strong {
   display: block;
   color: var(--text);
@@ -1455,10 +1425,6 @@ form label {
   border-color: var(--border);
 }
 
-.inventory-family {
-  margin-top: 0;
-}
-
 .inventory-family-heading {
   margin-bottom: 1rem;
 }
@@ -1493,26 +1459,6 @@ form label {
 .inventory-movement-values div {
   border: 1px solid var(--border);
   background: var(--surface-muted);
-}
-
-.notice {
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  color: var(--text);
-}
-
-.notice--success {
-  border-color: var(--success);
-  background: var(--success-bg);
-}
-
-.notice--functional-error {
-  border-color: var(--error);
-  background: var(--error-bg);
-}
-
-.notice--uncertain {
-  border-color: var(--warning);
-  background: var(--warning-bg);
 }
 
 .table-scroll {
@@ -1574,9 +1520,8 @@ tbody tr:hover {
 
 @media (max-width: 640px) {
   .workspace-nav {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    overflow: visible;
+    display: flex;
+    overflow-x: auto;
     padding-bottom: 0.5rem;
   }
 
@@ -1590,9 +1535,9 @@ tbody tr:hover {
   }
 
   .workspace-nav-item {
-    width: 100%;
-    padding-inline: 0.25rem;
-    text-align: center;
+    width: auto;
+    padding-inline: 0.8rem;
+    text-align: left;
     font-size: 0.84rem;
   }
 

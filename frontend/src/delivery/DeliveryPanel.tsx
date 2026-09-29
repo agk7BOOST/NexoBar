@@ -62,7 +62,7 @@ interface RefreshOptions {
 }
 
 const forbiddenMessage =
-  "Esta Identity no tiene autorización para realizar entregas.";
+  "Tu usuario no tiene autorización para realizar entregas.";
 
 function contentKey(
   target: Pick<OrderDeliveryContent, "incorporationId" | "contentOrdinal">,
@@ -317,7 +317,7 @@ export function DeliveryPanel({
           error instanceof DeliveryProblemError &&
           error.status >= 500
         ) {
-          setMessage("No se pudo consultar Delivery por un problema técnico.");
+          setMessage("No se pudo consultar la entrega por un problema técnico.");
         } else {
           setMessage("No se pudo consultar la entrega del Pedido.");
         }
@@ -485,9 +485,9 @@ export function DeliveryPanel({
               kind: "error",
               text:
                 intent.kind === "cancellation"
-                  ? "Esta Identity no tiene autorización para cancelar la cantidad pendiente."
+                  ? "Tu usuario no tiene autorización para cancelar la cantidad pendiente."
                   : intent.kind === "contentCorrection"
-                    ? "Esta Identity no tiene autorización para corregir la cantidad confirmada."
+                    ? "Tu usuario no tiene autorización para corregir la cantidad confirmada."
                     : forbiddenMessage,
             });
             return;
@@ -496,7 +496,7 @@ export function DeliveryPanel({
           if (error.status === 404) {
             setContentMessage(key, {
               kind: "error",
-              text: "El Content de entrega ya no está disponible. Se actualizó la información.",
+              text: "El contenido de entrega ya no está disponible. Se actualizó la información.",
             });
             setSynchronizingKey(key, true);
             const refreshed = await refreshDelivery(reference, {
@@ -664,7 +664,7 @@ export function DeliveryPanel({
         invalidate={invalidateDelivery}
       />
       <div className="section-heading">
-        <h2 id="delivery-heading">Delivery</h2>
+        <h2 id="delivery-heading">Entrega</h2>
         <button
           type="button"
           className="secondary-button"
@@ -708,7 +708,7 @@ export function DeliveryPanel({
           </dl>
 
           {delivery.contents.length === 0 ? (
-            <p>El Pedido no contiene Contents para entregar.</p>
+            <p>El pedido no contiene productos para entregar.</p>
           ) : (
             <div className="delivery-contents">
               {delivery.contents.map((item) => {
@@ -779,7 +779,7 @@ export function DeliveryPanel({
                       </div>
                       {item.requiresPreparationAtConfirmation ? (
                         <div>
-                          <dt>Ready</dt>
+                          <dt>Listo</dt>
                           <dd>{item.readyQuantity}</dd>
                         </div>
                       ) : (
@@ -789,15 +789,15 @@ export function DeliveryPanel({
                         </div>
                       )}
                       <div>
-                        <dt>Delivered</dt>
+                        <dt>Entregado</dt>
                         <dd>{item.deliveredQuantity}</dd>
                       </div>
                       <div>
-                        <dt>Deliverable</dt>
+                        <dt>Disponible para entregar</dt>
                         <dd>{item.deliverableQuantity}</dd>
                       </div>
                       <div>
-                        <dt>Remaining</dt>
+                        <dt>Pendiente de entrega</dt>
                         <dd>{item.remainingQuantity}</dd>
                       </div>
                     </dl>

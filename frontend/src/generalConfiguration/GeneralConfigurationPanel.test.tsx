@@ -109,7 +109,7 @@ async function createWithName(
   name = "Nueva",
 ) {
   await user.type(screen.getByLabelText("Nombre operacional"), name);
-  await user.click(screen.getByRole("button", { name: "Crear Identity" }));
+  await user.click(screen.getByRole("button", { name: "Crear identidad" }));
 }
 
 describe("GeneralConfigurationPanel", () => {
@@ -215,7 +215,7 @@ describe("GeneralConfigurationPanel", () => {
       );
     const { user } = renderPanel();
     for (const expected of [
-      /Historia funcional atribuible/,
+      /operaciones registradas a su nombre/,
       /otra vía ordinaria utilizable/,
     ]) {
       await user.click(
@@ -259,11 +259,11 @@ describe("GeneralConfigurationPanel", () => {
       }),
     );
     const { user } = renderPanel();
-    await screen.findByText("No hay Identities.");
+    await screen.findByText("No hay identidades.");
     await createWithName(user);
 
     expect(
-      await screen.findByText("Identity creada correctamente."),
+      await screen.findByText("Identidad creada correctamente."),
     ).toBeInTheDocument();
     const [request, key, token] = createIdentityMock.mock.calls[0]!;
     expect(request).toEqual({ operationalName: "Nueva" });
@@ -402,10 +402,10 @@ describe("GeneralConfigurationPanel", () => {
       new IdentityAdministrationNetworkError(),
     );
     const { user } = renderPanel();
-    await screen.findByText("No hay Identities.");
+    await screen.findByText("No hay identidades.");
     await createWithName(user, "Primera");
     await screen.findByRole("region", {
-      name: "Creación de Identity con resultado no confirmado",
+      name: "Creación de identidad con resultado no confirmado",
     });
     const firstCall = createIdentityMock.mock.calls[0];
 
@@ -415,7 +415,7 @@ describe("GeneralConfigurationPanel", () => {
     await user.click(
       screen.getByRole("button", { name: "Reintentar misma intención" }),
     );
-    await screen.findByText("Identity creada correctamente.");
+    await screen.findByText("Identidad creada correctamente.");
     expect(createIdentityMock.mock.calls[1]).toEqual(firstCall);
 
     createIdentityMock.mockRejectedValueOnce(
@@ -423,9 +423,9 @@ describe("GeneralConfigurationPanel", () => {
     );
     await user.clear(screen.getByLabelText("Nombre operacional"));
     await user.type(screen.getByLabelText("Nombre operacional"), "Segunda");
-    await user.click(screen.getByRole("button", { name: "Crear Identity" }));
+    await user.click(screen.getByRole("button", { name: "Crear identidad" }));
     await screen.findByRole("region", {
-      name: "Creación de Identity con resultado no confirmado",
+      name: "Creación de identidad con resultado no confirmado",
     });
     await user.click(
       screen.getByRole("button", { name: "Descartar e iniciar nueva" }),
@@ -435,8 +435,8 @@ describe("GeneralConfigurationPanel", () => {
     );
     await user.clear(screen.getByLabelText("Nombre operacional"));
     await user.type(screen.getByLabelText("Nombre operacional"), "Tercera");
-    await user.click(screen.getByRole("button", { name: "Crear Identity" }));
-    await screen.findByText("Identity creada correctamente.");
+    await user.click(screen.getByRole("button", { name: "Crear identidad" }));
+    await screen.findByText("Identidad creada correctamente.");
     expect(createIdentityMock.mock.calls[3]?.[1]).not.toBe(
       createIdentityMock.mock.calls[2]?.[1],
     );
@@ -511,7 +511,7 @@ describe("GeneralConfigurationPanel", () => {
     expect(await screen.findByText("Cocina: Habilitada")).toBeInTheDocument();
     expect(screen.queryByText(kitchen.id)).not.toBeInTheDocument();
     expect(listPreparationResponsibilitiesMock).toHaveBeenCalledOnce();
-    expect(screen.getByText("Preparation: No asignada")).toBeInTheDocument();
+    expect(screen.getByText("Preparación: No asignada")).toBeInTheDocument();
   });
 
   it("keeps enablements independent from the Preparation Functional Responsibility and exposes unresolved IDs", async () => {
@@ -525,7 +525,7 @@ describe("GeneralConfigurationPanel", () => {
     renderPanel();
 
     expect(
-      await screen.findByText("Preparation: No asignada"),
+      await screen.findByText("Preparación: No asignada"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("Responsabilidad de preparación desconocida"),
@@ -625,7 +625,7 @@ describe("GeneralConfigurationPanel", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
     expect(token).toBe("csrf-token");
-    expect(screen.getByText("Preparation: No asignada")).toBeInTheDocument();
+    expect(screen.getByText("Preparación: No asignada")).toBeInTheDocument();
     expect(onCurrentIdentityChanged).not.toHaveBeenCalled();
   });
 
@@ -735,18 +735,18 @@ describe("GeneralConfigurationPanel", () => {
 
     await screen.findByText("Cocina: Habilitada");
     await user.click(
-      screen.getByRole("button", { name: "Revocar Preparation a Ana" }),
+      screen.getByRole("button", { name: "Revocar Preparación a Ana" }),
     );
     expect(
-      await screen.findByText("Preparation: No asignada"),
+      await screen.findByText("Preparación: No asignada"),
     ).toBeInTheDocument();
     expect(screen.getByText("Cocina: Habilitada")).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("button", { name: "Asignar Preparation a Ana" }),
+      screen.getByRole("button", { name: "Asignar Preparación a Ana" }),
     );
     expect(
-      await screen.findByText("Preparation: Asignada"),
+      await screen.findByText("Preparación: Asignada"),
     ).toBeInTheDocument();
     expect(screen.getByText("Cocina: Habilitada")).toBeInTheDocument();
   });
@@ -785,15 +785,15 @@ describe("GeneralConfigurationPanel", () => {
     activateIdentityMock.mockResolvedValueOnce(identity({ isActive: true }));
     const { user } = renderPanel();
 
-    await screen.findByText("OrderOperationsAndBasicClosure: No asignada");
+    await screen.findByText("Pedidos y cierre básico: No asignada");
     for (const responsibility of [
-      "OrderOperationsAndBasicClosure",
-      "OperationalIntervention",
-      "Preparation",
-      "CatalogConfiguration",
-      "InventoryOperation",
-      "InventoryConfiguration",
-      "GeneralConfiguration",
+      "Pedidos y cierre básico",
+      "Intervención operacional",
+      "Preparación",
+      "Configuración de productos",
+      "Operación de inventario",
+      "Configuración de inventario",
+      "Configuración general",
     ]) {
       expect(
         screen.getByText(`${responsibility}: No asignada`),
@@ -822,12 +822,12 @@ describe("GeneralConfigurationPanel", () => {
     );
     const { user } = renderPanel();
 
-    await screen.findByText("Preparation: No asignada");
+    await screen.findByText("Preparación: No asignada");
     await user.click(
-      screen.getByRole("button", { name: "Asignar Preparation a Ana" }),
+      screen.getByRole("button", { name: "Asignar Preparación a Ana" }),
     );
     expect(
-      await screen.findByText("Preparation: Asignada"),
+      await screen.findByText("Preparación: Asignada"),
     ).toBeInTheDocument();
     expect(assignResponsibilityMock.mock.calls[0]?.slice(0, 2)).toEqual([
       "identity-1",
@@ -835,10 +835,10 @@ describe("GeneralConfigurationPanel", () => {
     ]);
 
     await user.click(
-      screen.getByRole("button", { name: "Revocar Preparation a Ana" }),
+      screen.getByRole("button", { name: "Revocar Preparación a Ana" }),
     );
     expect(
-      await screen.findByText("Preparation: No asignada"),
+      await screen.findByText("Preparación: No asignada"),
     ).toBeInTheDocument();
     expect(revokeResponsibilityMock.mock.calls[0]?.slice(0, 2)).toEqual([
       "identity-1",
@@ -858,10 +858,10 @@ describe("GeneralConfigurationPanel", () => {
     );
     const { onCurrentIdentityChanged, user } = renderPanel();
 
-    await screen.findByText("GeneralConfiguration: Asignada");
+    await screen.findByText("Configuración general: Asignada");
     await user.click(
       screen.getByRole("button", {
-        name: "Revocar GeneralConfiguration a Ana",
+        name: "Revocar Configuración general a Ana",
       }),
     );
 
@@ -871,7 +871,7 @@ describe("GeneralConfigurationPanel", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("GeneralConfiguration: Asignada"),
+      screen.getByText("Configuración general: Asignada"),
     ).toBeInTheDocument();
     expect(onCurrentIdentityChanged).not.toHaveBeenCalled();
   });
@@ -913,7 +913,7 @@ describe("GeneralConfigurationPanel", () => {
     await screen.findByText("Ana");
     await user.click(screen.getByRole("button", { name: "Activar Ana" }));
     await screen.findByRole("region", {
-      name: "Actualización de Identity con resultado no confirmado",
+      name: "Actualización de identidad con resultado no confirmado",
     });
     const firstCall = activateIdentityMock.mock.calls[0];
     activateIdentityMock.mockResolvedValueOnce(identity({ isActive: true }));
@@ -939,7 +939,7 @@ describe("GeneralConfigurationPanel", () => {
 
     expect(
       await screen.findByText(
-        "No se pudo actualizar la Identity. Revisá los datos e intentá nuevamente.",
+        "No se pudo actualizar la identidad. Revisá los datos e intentá nuevamente.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Inactiva")).toBeInTheDocument();
@@ -970,29 +970,29 @@ describe("GeneralConfigurationPanel", () => {
 
     await screen.findByText("Beto");
     await user.click(
-      screen.getByRole("button", { name: "Asignar Preparation a Beto" }),
+      screen.getByRole("button", { name: "Asignar Preparación a Beto" }),
     );
     await screen.findByRole("region", {
-      name: "Actualización de Identity con resultado no confirmado",
+      name: "Actualización de identidad con resultado no confirmado",
     });
     await user.click(
       screen.getByRole("button", { name: "Descartar e iniciar nueva" }),
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Asignar CatalogConfiguration a Beto",
+        name: "Asignar Configuración de productos a Beto",
       }),
     );
 
     expect(
-      await screen.findByText("CatalogConfiguration: Asignada"),
+      await screen.findByText("Configuración de productos: Asignada"),
     ).toBeInTheDocument();
     expect(assignResponsibilityMock.mock.calls[0]?.[2]).not.toBe(
       assignResponsibilityMock.mock.calls[1]?.[2],
     );
     expect(onCurrentIdentityChanged).not.toHaveBeenCalled();
     expect(
-      screen.getByText("GeneralConfiguration: Asignada"),
+      screen.getByText("Configuración general: Asignada"),
     ).toBeInTheDocument();
   });
 
@@ -1007,10 +1007,10 @@ describe("GeneralConfigurationPanel", () => {
     );
     const { onCurrentIdentityChanged, user } = renderPanel();
 
-    await screen.findByText("GeneralConfiguration: Asignada");
+    await screen.findByText("Configuración general: Asignada");
     await user.click(
       screen.getByRole("button", {
-        name: "Revocar GeneralConfiguration a Ana",
+        name: "Revocar Configuración general a Ana",
       }),
     );
 
@@ -1018,7 +1018,7 @@ describe("GeneralConfigurationPanel", () => {
       expect(onCurrentIdentityChanged).toHaveBeenCalledOnce(),
     );
     expect(
-      screen.getByText("GeneralConfiguration: No asignada"),
+      screen.getByText("Configuración general: No asignada"),
     ).toBeInTheDocument();
   });
 

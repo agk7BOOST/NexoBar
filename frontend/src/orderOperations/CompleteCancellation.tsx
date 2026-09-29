@@ -111,8 +111,8 @@ export function CompleteCancellation({
       setMessage(
         error.problem.status === 403
           ? code === "operational_intervention_required"
-            ? "Esta Identity necesita además autorización de Intervención operacional para cancelar este pedido completo."
-            : "Esta Identity no tiene autorización para cancelar el pedido completo."
+            ? "Tu usuario necesita además autorización de Intervención operacional para cancelar este pedido completo."
+            : "Tu usuario no tiene autorización para cancelar el pedido completo."
           : (cancellationBlockers[code] ??
               "El Estado del Pedido cambió o la cancelación fue rechazada. Se consultará el Estado vigente."),
       );
