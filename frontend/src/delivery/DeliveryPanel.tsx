@@ -74,6 +74,23 @@ function contentDescription(item: OrderDeliveryContent): string {
   return `${item.productOperationalName ?? "Nombre histórico no disponible"}, ${item.instruction ?? "sin instrucción"}, incorporación ${item.incorporationOrdinal}`;
 }
 
+function unavailableQuantityMessage(
+  action: "corregir" | "cancelar",
+  state:
+    | "loading"
+    | "available"
+    | "auxiliary-read-failed"
+    | "insufficient"
+    | "inconsistent",
+): string {
+  if (state === "loading") return `Consultando cuánto se puede ${action}…`;
+  if (state === "auxiliary-read-failed")
+    return `No se pudo consultar la información necesaria para ${action}. Actualizá la información e intentá nuevamente.`;
+  if (state === "inconsistent")
+    return `El pedido presenta una inconsistencia de estado confirmada. No se puede determinar cuánto se puede ${action}.`;
+  return `No se pudo determinar cuánto se puede ${action}. Actualizá la información e intentá nuevamente.`;
+}
+
 export function DeliveryPanel({
   operationalReference,
   refreshSequence,
@@ -90,8 +107,13 @@ export function DeliveryPanel({
     Record<string, boolean>
   >({});
   const [works, setWorks] = useState<PreparationWork[]>([]);
-  const [correctionStateAvailable, setCorrectionStateAvailable] =
-    useState(false);
+  const [correctionState, setCorrectionState] = useState<
+    | "loading"
+    | "available"
+    | "auxiliary-read-failed"
+    | "insufficient"
+    | "inconsistent"
+  >("loading");
   const [contentCorrectionInputs, setContentCorrectionInputs] = useState<
     Record<string, string>
   >({});
@@ -240,14 +262,14 @@ export function DeliveryPanel({
     ): Promise<boolean> => {
       const sequence = ++requestSequence.current;
       setIsLoading(true);
-      setCorrectionStateAvailable(false);
+      setCorrectionState("loading");
       if (!options.preserveMessage) setMessage(null);
       if (options.clearDelivery) setDelivery(null);
 
       try {
         const loaded = await getOrderDelivery(reference);
         if (sequence !== requestSequence.current || !isCurrent()) return false;
-        let available = false;
+        let nextCorrectionState: typeof correctionState = "insufficient";
         let preparation: PreparationWork[] = [];
         if (
           loaded.contents.every((item) => item.confirmedQuantity !== undefined)
@@ -256,8 +278,11 @@ export function DeliveryPanel({
             const order = await getOrder(reference);
             if (order.isFrozen || order.isClosed)
               setFrozenOrders((current) => ({ ...current, [reference]: true }));
-            available =
-              !order.liquidationBlockers.includes("state_inconsistent");
+            nextCorrectionState = order.liquidationBlockers.includes(
+              "state_inconsistent",
+            )
+              ? "inconsistent"
+              : "available";
             if (
               loaded.contents.some(
                 (item) => item.requiresPreparationAtConfirmation,
@@ -282,11 +307,13 @@ export function DeliveryPanel({
               handleUnauthorized();
               return false;
             }
+            if (nextCorrectionState !== "inconsistent")
+              nextCorrectionState = "auxiliary-read-failed";
           }
         }
         if (sequence !== requestSequence.current || !isCurrent()) return false;
         setWorks(preparation);
-        setCorrectionStateAvailable(available);
+        setCorrectionState(nextCorrectionState);
         setAuthoritativeDelivery(loaded);
         return true;
       } catch (error) {
@@ -317,7 +344,9 @@ export function DeliveryPanel({
           error instanceof DeliveryProblemError &&
           error.status >= 500
         ) {
-          setMessage("No se pudo consultar la entrega por un problema técnico.");
+          setMessage(
+            "No se pudo consultar la entrega por un problema técnico.",
+          );
         } else {
           setMessage("No se pudo consultar la entrega del Pedido.");
         }
@@ -569,11 +598,11 @@ export function DeliveryPanel({
 
       const maximum =
         kind === "cancellation"
-          ? correctionStateAvailable
+          ? correctionState === "available"
             ? (maximumContentCancellation(item, works) ?? 0)
             : 0
           : kind === "contentCorrection"
-            ? correctionStateAvailable
+            ? correctionState === "available"
               ? (maximumContentCorrection(item, works) ?? 0)
               : 0
             : kind === "correction"
@@ -623,7 +652,7 @@ export function DeliveryPanel({
       correctionInputs,
       contentCorrectionInputs,
       cancellationInputs,
-      correctionStateAvailable,
+      correctionState,
       works,
       delivery,
       setContentMessage,
@@ -698,12 +727,14 @@ export function DeliveryPanel({
         >
           <dl className="confirmation-summary">
             <div>
-              <dt>Referencia operacional</dt>
-              <dd>{delivery.operationalReference}</dd>
-            </div>
-            <div>
               <dt>Contexto actual</dt>
               <dd>{delivery.currentContext}</dd>
+            </div>
+            <div>
+              <dt>Referencia operacional</dt>
+              <dd className="technical-reference">
+                {delivery.operationalReference}
+              </dd>
             </div>
           </dl>
 
@@ -721,12 +752,14 @@ export function DeliveryPanel({
                   synchronizing[key] !== undefined;
                 const isFullyDelivered =
                   item.totalQuantity > 0 && item.remainingQuantity === 0;
-                const correctionMaximum = correctionStateAvailable
-                  ? maximumContentCorrection(item, works)
-                  : null;
-                const cancellationMaximum = correctionStateAvailable
-                  ? maximumContentCancellation(item, works)
-                  : null;
+                const correctionMaximum =
+                  correctionState === "available"
+                    ? maximumContentCorrection(item, works)
+                    : null;
+                const cancellationMaximum =
+                  correctionState === "available"
+                    ? maximumContentCancellation(item, works)
+                    : null;
                 const cancellationRequested = cancellationInputs[key] ?? "";
                 const validCancellation =
                   /^\d+$/.test(cancellationRequested) &&
@@ -878,8 +911,10 @@ export function DeliveryPanel({
                       )}
                       {correctionMaximum === null ? (
                         <p>
-                          Corrección de cantidad confirmada: Estado no
-                          disponible o inconsistente.
+                          {unavailableQuantityMessage(
+                            "corregir",
+                            correctionState,
+                          )}
                         </p>
                       ) : (
                         <p>
@@ -892,6 +927,7 @@ export function DeliveryPanel({
                           <>
                             <button
                               type="button"
+                              className="secondary-button"
                               disabled={isBlocked}
                               onClick={() =>
                                 setContentCorrectionOpen((current) => ({
@@ -960,8 +996,10 @@ export function DeliveryPanel({
                       </p>
                       {cancellationMaximum === null ? (
                         <p>
-                          Cancelación de cantidad pendiente: Estado no
-                          disponible o inconsistente.
+                          {unavailableQuantityMessage(
+                            "cancelar",
+                            correctionState,
+                          )}
                         </p>
                       ) : (
                         <p>
@@ -974,6 +1012,7 @@ export function DeliveryPanel({
                           <>
                             <button
                               type="button"
+                              className="secondary-button"
                               disabled={isBlocked}
                               onClick={() =>
                                 setCancellationOpen((current) => ({
@@ -1034,6 +1073,7 @@ export function DeliveryPanel({
                       <div className="delivery-action">
                         <button
                           type="button"
+                          className="secondary-button"
                           disabled={isBlocked}
                           aria-label={`Corregir entrega ${description}`}
                           onClick={() =>

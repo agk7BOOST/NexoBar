@@ -253,7 +253,9 @@ it.each(["missing", "total", "ready", "buckets", "qrf"])(
         name: "Cancelar cantidad pendiente",
       }),
     ).toBeNull();
-    expect(article()).toHaveTextContent("Estado no disponible o inconsistente");
+    expect(article()).toHaveTextContent(
+      "No se pudo determinar cuánto se puede cancelar",
+    );
   },
 );
 it.each(["", "0", "-1", "1.5", "5"])(
@@ -526,7 +528,9 @@ it("keeps cancellation unavailable when the authoritative Order refresh fails", 
     ),
   );
   await waitFor(() =>
-    expect(article()).toHaveTextContent("Estado no disponible o inconsistente"),
+    expect(article()).toHaveTextContent(
+      "No se pudo consultar la información necesaria para cancelar",
+    ),
   );
   expect(
     screen.queryByRole("button", { name: "Cancelar cantidad pendiente" }),

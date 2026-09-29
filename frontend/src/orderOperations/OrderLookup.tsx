@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { OrderEnding } from "./OrderEnding.tsx";
+import { formatOperationalDate } from "../formatOperationalDate.ts";
 import { AppliedPriceCorrection } from "./AppliedPriceCorrection.tsx";
 import { CompleteCancellation } from "./CompleteCancellation.tsx";
 import { ActiveOrderFreshnessSubscription } from "../notifications/ActiveOrderFreshnessSubscription.tsx";
@@ -367,8 +368,11 @@ export function OrderLookup({
         {closureConfirmation && (
           <p role="status">
             Pedido cerrado: {closureConfirmation.reference}. Cerrado el{" "}
-            <time dateTime={closureConfirmation.closedAt}>
-              {closureConfirmation.closedAt}
+            <time
+              dateTime={closureConfirmation.closedAt}
+              title={closureConfirmation.closedAt}
+            >
+              {formatOperationalDate(closureConfirmation.closedAt)}
             </time>
           </p>
         )}
@@ -379,8 +383,11 @@ export function OrderLookup({
             {cancellationConfirmation.pendingCompositionDiscarded &&
               " La Composición pendiente fue descartada."}{" "}
             Cancelado el{" "}
-            <time dateTime={cancellationConfirmation.occurredAt}>
-              {cancellationConfirmation.occurredAt}
+            <time
+              dateTime={cancellationConfirmation.occurredAt}
+              title={cancellationConfirmation.occurredAt}
+            >
+              {formatOperationalDate(cancellationConfirmation.occurredAt)}
             </time>
             . La consulta histórica permanece disponible.
           </p>
@@ -396,12 +403,14 @@ export function OrderLookup({
           >
             <dl className="confirmation-summary">
               <div>
-                <dt>Referencia operacional</dt>
-                <dd>{order.operationalReference}</dd>
-              </div>
-              <div>
                 <dt>Contexto actual</dt>
                 <dd aria-label="Contexto actual del Pedido">{order.context}</dd>
+              </div>
+              <div>
+                <dt>Referencia operacional</dt>
+                <dd className="technical-reference">
+                  {order.operationalReference}
+                </dd>
               </div>
             </dl>
 
@@ -591,13 +600,12 @@ export function OrderLookup({
             )}
 
             <p className="current-catalog-name-note">
-              El nombre de Producto es una etiqueta del Catálogo actual y no
-              constituye Historia del Pedido.
+              El nombre mostrado proviene del Catálogo actual; puede diferir del
+              que tenía el producto cuando se confirmó este Pedido.
             </p>
             <p className="applied-price-note">
-              El Precio aplicado es la condición histórica confirmada por
-              OrderOperations; no se sustituye por el precio vigente del
-              Catálogo.
+              El precio aplicado se registró al confirmar el producto en este
+              Pedido. No cambia automáticamente con el precio del Catálogo.
             </p>
 
             {order.incorporations.map((incorporation) => (
@@ -614,13 +622,16 @@ export function OrderLookup({
                   </div>
                   <div>
                     <dt>Identificador</dt>
-                    <dd>{incorporation.id}</dd>
+                    <dd className="technical-reference">{incorporation.id}</dd>
                   </div>
                   <div>
                     <dt>Momento de Confirmación</dt>
                     <dd>
-                      <time dateTime={incorporation.confirmedAt}>
-                        {incorporation.confirmedAt}
+                      <time
+                        dateTime={incorporation.confirmedAt}
+                        title={incorporation.confirmedAt}
+                      >
+                        {formatOperationalDate(incorporation.confirmedAt)}
                       </time>
                     </dd>
                   </div>

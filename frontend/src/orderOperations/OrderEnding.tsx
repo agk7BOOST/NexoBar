@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { formatOperationalDate } from "../formatOperationalDate.ts";
 import {
   discardAntiforgeryToken,
   getAntiforgeryToken,
@@ -207,6 +208,9 @@ export function OrderEnding({
   return (
     <section aria-label="Liquidación y Cierre" className="order-ending">
       <h3>Liquidación y Cierre</h3>
+      {order.isLiquidated && !order.isClosed && (
+        <p role="status">Liquidado · pendiente de cierre</p>
+      )}
       <dl className="confirmation-summary">
         <div>
           <dt>Importe funcional actual</dt>
@@ -258,7 +262,9 @@ export function OrderEnding({
               {occurredAt === null ? (
                 "Fecha de Liquidación no disponible en esta consulta."
               ) : (
-                <time dateTime={occurredAt}>{occurredAt}</time>
+                <time dateTime={occurredAt} title={occurredAt}>
+                  {formatOperationalDate(occurredAt)}
+                </time>
               )}
             </dd>
           </div>
@@ -289,7 +295,10 @@ export function OrderEnding({
         !order.isFrozen &&
         !isOrderCompletelyCancelled(order) && (
           <>
-            <p>Después de Liquidar, el Pedido quedará congelado.</p>
+            <p>
+              Después de liquidar ya no podrán realizarse modificaciones
+              ordinarias en este pedido. El cierre se realiza posteriormente.
+            </p>
             <form
               aria-label="Liquidación simple"
               noValidate
@@ -351,7 +360,10 @@ export function OrderEnding({
           <strong>Pedido cerrado</strong>
           {order.closedAt && (
             <p>
-              Cerrado el <time dateTime={order.closedAt}>{order.closedAt}</time>
+              Cerrado el{" "}
+              <time dateTime={order.closedAt} title={order.closedAt}>
+                {formatOperationalDate(order.closedAt)}
+              </time>
             </p>
           )}
         </div>
@@ -366,7 +378,7 @@ export function OrderEnding({
               : intent.kind === "simple"
                 ? `Liquidación simple: ${JSON.parse(intent.body!).declaredPaymentMedium}`
                 : "Cobro gestionado externamente"}
-            . Se conserva la misma intención.
+            . Podés reintentar esta operación sin duplicarla.
           </p>
           <button
             type="button"

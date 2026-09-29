@@ -135,7 +135,7 @@ function confirmationErrorMessage(
       return "El Pedido activo ya no existe.";
     case "order_operations.first_confirmation.idempotency_key_conflict":
     case "order_operations.subsequent_confirmation.idempotency_key_conflict":
-      return "La identidad de esta Confirmación ya fue usada para otra intención.";
+      return "Esta confirmación ya está asociada a otros datos. Revisá los productos antes de volver a intentarla.";
     default:
       return isSubsequent
         ? "No se pudo confirmar la nueva Incorporación. Revisá los datos e intentá nuevamente."
@@ -290,7 +290,7 @@ export function OrderWorkflow({
             setConfirmationNotice({
               kind: "functional-error",
               message:
-                "La Composición autoritativa cambió. El borrador local se conserva sólo para revisión y no se reenviará con otro identificador.",
+                "La composición pendiente del pedido cambió. Estos productos se conservan para revisión y no se enviarán como una operación nueva.",
             });
           }
         }
@@ -318,7 +318,7 @@ export function OrderWorkflow({
           setConfirmationNotice({
             kind: "uncertain",
             message:
-              "No se pudo consultar el Estado autoritativo de la Composición pendiente.",
+              "No se pudo consultar la composición pendiente del pedido.",
           });
         }
         return null;
@@ -616,7 +616,7 @@ export function OrderWorkflow({
         setConfirmationNotice({
           kind: "functional-error",
           message:
-            "La Composición pendiente ya no está vigente. Se actualizó el Estado autoritativo sin iniciar el borrador local.",
+            "La composición pendiente ya no está disponible. Se actualizó el pedido sin iniciar otra composición.",
         });
       }
     } catch (error) {
@@ -627,7 +627,7 @@ export function OrderWorkflow({
             kind: "functional-error",
             message:
               error.problem.code === "order.pending_composition_already_exists"
-                ? "El Pedido ya tiene una Composición pendiente. Se actualizó el Estado autoritativo; no se inició otro borrador."
+                ? "El pedido ya tiene productos pendientes de confirmar. Se actualizó su estado sin iniciar otra composición."
                 : "No se pudo iniciar la Composición pendiente.",
           });
           await reconcilePending(intention.command.orderId);
@@ -637,7 +637,7 @@ export function OrderWorkflow({
         setConfirmationNotice({
           kind: "uncertain",
           message:
-            "Resultado incierto al iniciar la Composición. Reintentá exactamente la misma intención.",
+            "No pudimos confirmar si se inició la composición. Podés reintentar esta operación sin duplicarla.",
         });
       }
     } finally {
@@ -710,7 +710,7 @@ export function OrderWorkflow({
             kind: "functional-error",
             message:
               error.problem.code === "order.pending_composition_stale"
-                ? "La Composición pendiente cambió antes del descarte. Se actualizó el Estado autoritativo."
+                ? "La composición pendiente cambió antes del descarte. Se actualizó el pedido."
                 : "No se pudo descartar la Composición pendiente.",
           });
           await reconcilePending(intention.command.orderId);
@@ -828,7 +828,7 @@ export function OrderWorkflow({
           setConfirmationNotice({
             kind: "functional-error",
             message: isStale
-              ? "La Composición autoritativa cambió. Este borrador no se reenviará automáticamente con otro identificador."
+              ? "La composición pendiente del pedido cambió. Estos productos no se enviarán automáticamente como una operación nueva."
               : confirmationErrorMessage(
                   error.problem,
                   operationalProducts,
@@ -914,7 +914,7 @@ export function OrderWorkflow({
       setConfirmationNotice({
         kind: "functional-error",
         message:
-          "No existe una Composición pendiente autoritativa asociada a este borrador.",
+          "Ya no hay una composición pendiente del pedido asociada a estos productos.",
       });
       await reconcilePending(activeOperationalReference);
       return;
@@ -1042,7 +1042,7 @@ export function OrderWorkflow({
           </p>
           <h2 id="composition-title">{modeLabel}</h2>
         </div>
-        <p className="ephemeral-label">Estado efímero</p>
+        <p className="ephemeral-label">Productos por confirmar</p>
       </div>
 
       {isSubsequent && (
@@ -1081,9 +1081,9 @@ export function OrderWorkflow({
           currentPendingAuthority.pendingCompositionId && (
           <div className="destination-change" role="alert">
             <p>
-              Existe una Composición pendiente autoritativa, pero sus líneas no
-              están disponibles en esta memoria local. No se recuperarán ni se
-              descartarán automáticamente.
+              Hay productos pendientes de confirmar en este pedido, pero sus
+              líneas no están disponibles en esta sesión del navegador. No se
+              recuperarán ni descartarán automáticamente.
             </p>
             <dl>
               <div>
@@ -1113,7 +1113,7 @@ export function OrderWorkflow({
         currentPendingAuthority?.pendingCompositionId ===
           localPending.marker.pendingCompositionId && (
           <div className="active-order-summary" role="status">
-            <span>Composición pendiente autoritativa activa</span>
+            <span>Productos pendientes de confirmar en este pedido</span>
             <strong>{localPending.marker.pendingCompositionId}</strong>
             <button
               className="secondary-button"
@@ -1225,8 +1225,8 @@ export function OrderWorkflow({
               ))}
             </select>
             <p>
-              El Contexto organiza la coordinación; no cambia precios,
-              disponibilidad ni destino de preparación.
+              El Contexto ayuda a ubicar y coordinar el pedido, por ejemplo una
+              mesa. No cambia precios, disponibilidad ni destino de preparación.
             </p>
             {contextLoadFailed && (
               <p role="alert">
@@ -1486,8 +1486,8 @@ function ConfirmationSnapshot({
         })}
       </dl>
       <p>
-        El reintento usa exactamente este snapshot y la misma identidad. No se
-        reintentará automáticamente.
+        El reintento conserva estos productos y sus condiciones sin duplicar la
+        confirmación. No se hará automáticamente.
       </p>
     </>
   );

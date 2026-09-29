@@ -374,7 +374,9 @@ describe("InventoryItemOperations", () => {
         "csrf-1",
       );
       expect(
-        await screen.findByText(new RegExp(`resultante: ${result} kg`)),
+        await screen.findByText(
+          new RegExp(`Existencia registrada: ${result} kg`),
+        ),
       ).toBeInTheDocument();
       expect(onAuthoritativeMutation).toHaveBeenCalledWith("item-1");
     },

@@ -8,12 +8,19 @@ import {
   OrderLookupNetworkError,
   OrderOperationsProblemError,
 } from "./orderOperationsClient.ts";
+import { formatOperationalDate } from "../formatOperationalDate.ts";
 
 function actor(id: string | null) {
-  return `Actor: ${id ?? "No disponible"}`;
+  return (
+    <span className="technical-reference">Actor: {id ?? "No disponible"}</span>
+  );
 }
 function when(value: string) {
-  return new Date(value).toLocaleString();
+  return (
+    <time dateTime={value} title={value}>
+      {formatOperationalDate(value)}
+    </time>
+  );
 }
 function unavailable(error: unknown) {
   if (error instanceof OrderOperationsProblemError) {
@@ -49,7 +56,10 @@ function Content({ content: c }: { content: TerminalHistoryContent }) {
         {c.requiresPreparation ? "Requerida" : "No requerida"}
       </p>
       {c.preparationResponsibilityId && (
-        <p>Responsabilidad de preparación: {c.preparationResponsibilityId}</p>
+        <p className="technical-reference">
+          Identificador del destino de preparación:{" "}
+          {c.preparationResponsibilityId}
+        </p>
       )}
       {c.unavailableProductExceptionApplied && (
         <p>Incorporado mediante excepción por producto no disponible</p>
@@ -122,9 +132,9 @@ function Content({ content: c }: { content: TerminalHistoryContent }) {
           <ol>
             {c.deliveries.map((x, i) => (
               <li key={i}>
-                {x.type}: {x.quantity} · acumulado{" "}
-                {x.resultingDeliveredQuantity}; {actor(x.actorIdentityId)} ·{" "}
-                {when(x.occurredAtUtc)}
+                {x.type === "QuantityDelivered" ? "Entrega registrada" : x.type}
+                : {x.quantity} · acumulado {x.resultingDeliveredQuantity};{" "}
+                {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
               </li>
             ))}
           </ol>
@@ -209,10 +219,6 @@ function TerminalHistoryResult({
       <p role="status">Solo lectura</p>
       <dl className="confirmation-summary">
         <div>
-          <dt>Referencia operacional</dt>
-          <dd>{h.operationalReference}</dd>
-        </div>
-        <div>
           <dt>Terminación</dt>
           <dd>{cancellation ? "Cancelación completa" : "Cierre"}</dd>
         </div>
@@ -223,6 +229,10 @@ function TerminalHistoryResult({
         <div>
           <dt>Contexto final</dt>
           <dd>{h.finalContextOperationalName}</dd>
+        </div>
+        <div>
+          <dt>Referencia operacional</dt>
+          <dd className="technical-reference">{h.operationalReference}</dd>
         </div>
       </dl>
       {h.contextChanges.length > 0 && (
@@ -259,13 +269,14 @@ function TerminalHistoryResult({
           <h3>Liquidación</h3>
           <p>
             Importe funcional: {h.liquidation.functionalAmount} · Modo:{" "}
-            {h.liquidation.mode}
+            {h.liquidation.mode === "Simple"
+              ? "Liquidación simple"
+              : h.liquidation.mode === "ExternalCollection"
+                ? "Cobro gestionado externamente"
+                : h.liquidation.mode}
           </p>
           {h.liquidation.declaredPaymentMedium && (
             <p>Medio declarado: {h.liquidation.declaredPaymentMedium}</p>
-          )}
-          {h.liquidation.mode === "ExternalCollection" && (
-            <p>Cobro gestionado externamente</p>
           )}
           <p>
             {actor(h.liquidation.actorIdentityId)} ·{" "}

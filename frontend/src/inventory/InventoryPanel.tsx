@@ -454,7 +454,8 @@ export function InventoryPanel({
                     : "Crear elemento"}
               </button>
               <p className="inventory-count-help">
-                La existencia se establecerá después mediante un conteo.
+                Primero registrá el conteo físico; después reconciliá para
+                establecer la existencia registrada.
               </p>
             </form>
 
@@ -510,7 +511,7 @@ export function InventoryPanel({
                           {item.isActive
                             ? item.ordinaryOperationReady
                               ? "Listo para movimientos"
-                              : "Requiere conteo/reconciliación"
+                              : "Requiere conteo y reconciliación"
                             : "No aplica: Retirado"}
                         </td>
                         <td>{item.operationalUnit}</td>
@@ -599,7 +600,9 @@ export function InventoryPanel({
                 <h4>{item.operationalName}</h4>
                 {!item.quantityEstablished || item.requiresReconciliation ? (
                   <div className="inventory-unestablished">
-                    <p aria-label={`Preparación para operar de ${item.operationalName}`}>
+                    <p
+                      aria-label={`Preparación para operar de ${item.operationalName}`}
+                    >
                       Existencia física no establecida
                     </p>
                     <p>Unidad operacional: {item.operationalUnit}</p>

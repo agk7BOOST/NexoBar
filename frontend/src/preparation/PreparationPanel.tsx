@@ -635,6 +635,7 @@ export function PreparationPanel({
         />
         <button
           type="submit"
+          className={isCorrection ? "secondary-button" : undefined}
           disabled={isWorkBlocked}
           aria-label={buttonLabel(item, kind)}
         >

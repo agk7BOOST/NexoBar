@@ -574,7 +574,7 @@ it("keeps new commands blocked after a failed authoritative refresh and retries 
   await read(user);
   failOrderRefresh = true;
   await confirm(user);
-  await screen.findByText(/No se pudo actualizar el Estado autoritativo/);
+  await screen.findByText(/No se pudo consultar el estado actual/);
   expect(
     screen.getByRole("button", { name: "Consultar precios aplicados" }),
   ).toBeDisabled();

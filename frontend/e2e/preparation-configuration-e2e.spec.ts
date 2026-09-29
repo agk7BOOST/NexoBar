@@ -202,7 +202,8 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
     const catalogPage = await catalogContext.newPage();
     await authenticateThroughCurrent(catalogPage, catalogConfigurationActor);
     const catalog = catalogPage.getByRole("region", {
-      name: "Productos vigentes",
+      name: "Productos",
+      exact: true,
     });
     await expect(catalog).toBeVisible();
     const initialProducts = waitForResponse(

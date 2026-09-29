@@ -138,13 +138,18 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
     .getByRole("button", { name: `Agregar ${productName} a Nueva Composición` })
     .click();
   await expect(
-    pendingComposition.getByText("Composición pendiente autoritativa activa", {
-      exact: true,
-    }),
+    pendingComposition.getByText(
+      "Productos pendientes de confirmar en este pedido",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
 
   // Supported narrow read exposes Q/R/C/F and current Work without Preparation authority.
-  await page.getByRole("button", { name: "Intervención en preparación" }).click();
+  await page
+    .getByRole("button", { name: "Intervención en preparación" })
+    .click();
   const intervention = page.getByRole("region", {
     name: "Intervención operacional",
   });
@@ -260,9 +265,12 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
       .filter({ hasText: "Pedido completamente cancelado:" }),
   ).toContainText("La Composición pendiente fue descartada");
   await expect(
-    pendingComposition.getByText("Composición pendiente autoritativa activa", {
-      exact: true,
-    }),
+    pendingComposition.getByText(
+      "Productos pendientes de confirmar en este pedido",
+      {
+        exact: true,
+      },
+    ),
   ).toHaveCount(0);
   await expect(pendingComposition).toHaveCount(0);
   await expect(
@@ -275,7 +283,9 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   ]);
   page.off("request", recordCommand);
 
-  await page.getByRole("button", { name: "Intervención en preparación" }).click();
+  await page
+    .getByRole("button", { name: "Intervención en preparación" })
+    .click();
   await intervention
     .getByRole("button", { name: "Actualizar contenido", exact: true })
     .click();

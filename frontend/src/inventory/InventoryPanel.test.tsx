@@ -241,7 +241,7 @@ describe("InventoryPanel", () => {
     );
     expect(
       screen.getByText(
-        "La existencia se establecerá después mediante un conteo.",
+        "Primero registrá el conteo físico; después reconciliá para establecer la existencia registrada.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -411,7 +411,7 @@ describe("InventoryPanel", () => {
 
     expect(
       await screen.findByText(
-        /La Unidad ya no puede cambiarse porque este elemento tiene History/,
+        /La unidad ya no puede cambiarse porque este elemento tiene historial/,
       ),
     ).toBeInTheDocument();
     expect(

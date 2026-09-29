@@ -384,7 +384,7 @@ describe("GeneralConfigurationPanel", () => {
     });
     const firstCall = createPreparationResponsibilityMock.mock.calls[0];
     await user.click(
-      screen.getByRole("button", { name: "Reintentar misma intención" }),
+      screen.getByRole("button", { name: "Reintentar esta operación" }),
     );
     await screen.findByText(
       "Responsabilidad de preparación creada correctamente.",
@@ -413,7 +413,7 @@ describe("GeneralConfigurationPanel", () => {
       identity({ operationalName: "Primera" }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Reintentar misma intención" }),
+      screen.getByRole("button", { name: "Reintentar esta operación" }),
     );
     await screen.findByText("Identidad creada correctamente.");
     expect(createIdentityMock.mock.calls[1]).toEqual(firstCall);
@@ -655,7 +655,7 @@ describe("GeneralConfigurationPanel", () => {
     });
     const firstCall = grantPreparationEnablementMock.mock.calls[0];
     await user.click(
-      screen.getByRole("button", { name: "Reintentar misma intención" }),
+      screen.getByRole("button", { name: "Reintentar esta operación" }),
     );
     await screen.findByText("Cocina: Habilitada");
     expect(grantPreparationEnablementMock.mock.calls[1]).toEqual(firstCall);
@@ -771,7 +771,7 @@ describe("GeneralConfigurationPanel", () => {
     });
     const firstCall = revokePreparationEnablementMock.mock.calls[0];
     await user.click(
-      screen.getByRole("button", { name: "Reintentar misma intención" }),
+      screen.getByRole("button", { name: "Reintentar esta operación" }),
     );
 
     await screen.findByText("Cocina: No habilitada");
@@ -918,7 +918,7 @@ describe("GeneralConfigurationPanel", () => {
     const firstCall = activateIdentityMock.mock.calls[0];
     activateIdentityMock.mockResolvedValueOnce(identity({ isActive: true }));
     await user.click(
-      screen.getByRole("button", { name: "Reintentar misma intención" }),
+      screen.getByRole("button", { name: "Reintentar esta operación" }),
     );
 
     await screen.findByText("Activa");
@@ -1057,6 +1057,12 @@ describe("GeneralConfigurationPanel", () => {
     await user.click(
       screen.getByRole("button", { name: "Configurar credencial de Beto" }),
     );
+    expect(
+      screen.getByRole("form", { name: "Reemplazar acceso de Beto" }),
+    ).toHaveTextContent("Identificador vigente: beto");
+    expect(
+      screen.getByText(/se revocarán todas las sesiones de esta persona/),
+    ).toBeVisible();
     await user.type(screen.getByLabelText("Nueva clave secreta"), "secret-new");
     await user.click(
       screen.getByRole("button", { name: "Guardar credencial" }),
@@ -1081,6 +1087,9 @@ describe("GeneralConfigurationPanel", () => {
     await user.click(
       screen.getByRole("button", { name: "Configurar credencial de Ana" }),
     );
+    expect(
+      screen.getByRole("form", { name: "Configurar acceso de Ana" }),
+    ).toBeVisible();
     await user.type(screen.getByLabelText("Nueva clave secreta"), "secret-new");
     await user.click(
       screen.getByRole("button", { name: "Guardar credencial" }),

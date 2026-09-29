@@ -128,7 +128,8 @@ test("S9 Catalog separates administration, ordinary composition, and unavailable
     );
     await authenticateThroughCurrent(adminPage, catalogAdministrator);
     const adminCatalog = adminPage.getByRole("region", {
-      name: "Productos vigentes",
+      name: "Productos",
+      exact: true,
     });
     await expect(adminCatalog).toBeVisible();
     await expect(
@@ -168,7 +169,7 @@ test("S9 Catalog separates administration, ordinary composition, and unavailable
     });
     await expect(ordinaryComposition).toBeVisible();
     await expect(
-      ordinaryPage.getByRole("region", { name: "Productos vigentes" }),
+      ordinaryPage.getByRole("region", { name: "Productos", exact: true }),
     ).toHaveCount(0);
     await expect(
       ordinaryComposition.getByText(availableProduct, { exact: true }),
@@ -205,7 +206,7 @@ test("S9 Catalog separates administration, ordinary composition, and unavailable
     });
     await expect(interventionComposition).toBeVisible();
     await expect(
-      interventionPage.getByRole("region", { name: "Productos vigentes" }),
+      interventionPage.getByRole("region", { name: "Productos", exact: true }),
     ).toHaveCount(0);
     await expect(
       interventionComposition.getByText(availableProduct, { exact: true }),

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { formatOperationalDate } from "../formatOperationalDate.ts";
 import {
   discardAntiforgeryToken,
   getAntiforgeryToken,
@@ -162,16 +163,18 @@ export function CompleteCancellation({
                 permanece disponible.
               </p>
               {evaluation.cancelledAt && (
-                <time dateTime={evaluation.cancelledAt}>
-                  {evaluation.cancelledAt}
+                <time
+                  dateTime={evaluation.cancelledAt}
+                  title={evaluation.cancelledAt}
+                >
+                  {formatOperationalDate(evaluation.cancelledAt)}
                 </time>
               )}
             </div>
           ) : (
             evaluation.isTerminal && (
               <p>
-                El pedido ya es terminal. La cancelación completa no está
-                disponible.
+                La cancelación completa ya no está disponible para este pedido.
               </p>
             )
           )}
@@ -191,9 +194,7 @@ export function CompleteCancellation({
             )}
           {!evaluation.isTerminal && (
             <>
-              <p>
-                Requiere la responsabilidad Pedidos y cierre básico.
-              </p>
+              <p>Requiere la responsabilidad Pedidos y cierre básico.</p>
               {evaluation.requiresOperationalIntervention === true && (
                 <p>
                   Además requiere la responsabilidad Intervención operacional
@@ -285,7 +286,12 @@ export function CompleteCancellation({
       )}
       {phase === "uncertain" && intent && (
         <div>
-          <p>Pedido: {intent.orderId}. Se conserva la misma intención.</p>
+          <p>
+            Cancelación del pedido{" "}
+            <span className="technical-reference">{intent.orderId}</span>{" "}
+            pendiente de confirmar. Podés reintentar esta cancelación sin
+            duplicarla.
+          </p>
           <button type="button" onClick={() => void execute(intent)}>
             Reintentar misma cancelación completa
           </button>

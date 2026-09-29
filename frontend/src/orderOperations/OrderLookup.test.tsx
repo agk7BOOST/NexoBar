@@ -263,7 +263,9 @@ describe("OrderLookup", () => {
       "datetime",
       "2026-08-29T14:30:00Z",
     );
-    expect(incorporation).toHaveTextContent("2026-08-29T14:30:00Z");
+    expect(within(incorporation).getByRole("time")).not.toHaveTextContent(
+      "2026-08-29T14:30:00Z",
+    );
     expect(incorporation).toHaveTextContent("2");
     expect(incorporation).toHaveTextContent("10.50");
     expect(incorporation).toHaveTextContent("sin hielo");

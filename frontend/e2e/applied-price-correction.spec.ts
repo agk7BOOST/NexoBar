@@ -50,7 +50,7 @@ test("Applied Price Correction adopta Catálogo explícitamente y Liquida al pre
   await page.getByLabel("Precio", { exact: true }).fill("10");
   await page.getByRole("button", { name: "Crear producto" }).click();
   const product = page
-    .getByRole("region", { name: "Productos vigentes" })
+    .getByRole("region", { name: "Productos", exact: true })
     .getByRole("row")
     .filter({
       has: page.getByRole("cell", { name: productName, exact: true }),
@@ -105,7 +105,7 @@ test("Applied Price Correction adopta Catálogo explícitamente y Liquida al pre
   }
   await originalContent();
   await expect(
-    page.getByText("Composición pendiente autoritativa activa", {
+    page.getByText("Productos pendientes de confirmar en este pedido", {
       exact: true,
     }),
   ).toHaveCount(0);

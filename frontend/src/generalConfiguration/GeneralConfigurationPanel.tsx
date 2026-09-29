@@ -92,8 +92,10 @@ interface EnablementMutationIntention {
 
 interface CredentialEditor {
   identityId: string;
+  operationalName: string;
   hasLocalCredential: boolean;
   changeLoginIdentifier: boolean;
+  currentLoginIdentifier: string;
   loginIdentifier: string;
   secret: string;
 }
@@ -127,7 +129,7 @@ function messageForProblem(
   action: "create" | "rename" | IdentityMutationKind,
 ): string {
   if (problem.code === "identities_and_capabilities.idempotency_conflict") {
-    return "Este intento ya está asociado a otra operación. Descartá la intención pendiente e iniciá una nueva.";
+    return "Esta operación ya está asociada a otros datos. Revisá la operación pendiente antes de iniciar una nueva.";
   }
   if (problem.code === "identities_and_capabilities.invalid_request") {
     return "Ingresá un nombre operacional válido.";
@@ -898,7 +900,7 @@ export function GeneralConfigurationPanel({
           {isCreating
             ? "Creando…"
             : uncertainCreation
-              ? "Hay una intención pendiente"
+              ? "Hay una operación pendiente de confirmar"
               : "Crear identidad"}
         </button>
       </form>
@@ -916,14 +918,16 @@ export function GeneralConfigurationPanel({
         >
           <h3>Creación pendiente de confirmación</h3>
           <p>{uncertainCreation.request.operationalName}</p>
-          <p>El reintento usa exactamente estos datos y la misma intención.</p>
+          <p>
+            El reintento conserva los mismos datos sin duplicar la operación.
+          </p>
           <div className="intention-actions">
             <button
               type="button"
               onClick={() => void submitCreation(uncertainCreation)}
               disabled={isCreating}
             >
-              Reintentar misma intención
+              Reintentar esta operación
             </button>
             <button
               className="secondary-button"
@@ -969,7 +973,7 @@ export function GeneralConfigurationPanel({
             {isCreatingPreparationResponsibility
               ? "Creando…"
               : uncertainPreparationResponsibilityCreation
-                ? "Hay una intención pendiente"
+                ? "Hay una operación pendiente de confirmar"
                 : "Crear responsabilidad de preparación"}
           </button>
         </form>
@@ -996,7 +1000,7 @@ export function GeneralConfigurationPanel({
               }
             </p>
             <p>
-              El reintento usa exactamente estos datos y la misma intención.
+              El reintento conserva los mismos datos sin duplicar la operación.
             </p>
             <div className="intention-actions">
               <button
@@ -1008,7 +1012,7 @@ export function GeneralConfigurationPanel({
                 }
                 disabled={isCreatingPreparationResponsibility}
               >
-                Reintentar misma intención
+                Reintentar esta operación
               </button>
               <button
                 className="secondary-button"
@@ -1234,9 +1238,12 @@ export function GeneralConfigurationPanel({
                           ) {
                             setCredentialEditor({
                               identityId: identity.identityId,
+                              operationalName: identity.operationalName,
                               hasLocalCredential: identity.hasLocalCredential,
                               changeLoginIdentifier:
                                 !identity.hasLocalCredential,
+                              currentLoginIdentifier:
+                                identity.loginIdentifier ?? "",
                               loginIdentifier: "",
                               secret: "",
                             });
@@ -1271,6 +1278,7 @@ export function GeneralConfigurationPanel({
                       </button>
                       <button
                         type="button"
+                        className="secondary-button"
                         onClick={() => setDeleteTarget(identity)}
                         disabled={
                           isMutatingIdentity || uncertainMutation !== null
@@ -1296,8 +1304,8 @@ export function GeneralConfigurationPanel({
           <h3>Eliminar definitivamente {deleteTarget.operationalName}</h3>
           <p>
             Se quitará la identidad de la configuración actual. Solo puede
-            eliminarse si no existen operaciones registradas que deban
-            conservar su atribución. El servidor comprobará la elegibilidad.
+            eliminarse si no existen operaciones registradas que deban conservar
+            su atribución. El servidor comprobará la elegibilidad.
           </p>
           <button
             type="button"
@@ -1360,9 +1368,23 @@ export function GeneralConfigurationPanel({
       {credentialEditor && uncertainCredential === null && (
         <form
           onSubmit={(event) => void handleCredential(event)}
-          aria-label="Configurar credencial local"
+          aria-label={`${credentialEditor.hasLocalCredential ? "Reemplazar" : "Configurar"} acceso de ${credentialEditor.operationalName}`}
         >
-          <h3>Credencial local</h3>
+          <h3>
+            {credentialEditor.hasLocalCredential ? "Reemplazar" : "Configurar"}{" "}
+            acceso de {credentialEditor.operationalName}
+          </h3>
+          {credentialEditor.hasLocalCredential && (
+            <p>
+              Identificador vigente:{" "}
+              {credentialEditor.currentLoginIdentifier || "no disponible"}
+            </p>
+          )}
+          <p>
+            {credentialEditor.hasLocalCredential
+              ? "Al guardar, se revocarán todas las sesiones de esta persona. Tendrá que volver a ingresar."
+              : "Esta persona necesitará este identificador y la nueva clave para ingresar."}
+          </p>
           {(!credentialEditor.hasLocalCredential ||
             credentialEditor.changeLoginIdentifier) && (
             <>
@@ -1433,13 +1455,24 @@ export function GeneralConfigurationPanel({
           role="region"
           aria-label="Credencial con resultado no confirmado"
         >
-          <h3>Credencial pendiente de confirmación</h3>
+          <h3>Acceso pendiente de confirmación</h3>
+          <p>
+            Persona:{" "}
+            {identities.find(
+              (identity) =>
+                identity.identityId === uncertainCredential.identityId,
+            )?.operationalName ?? "nombre no disponible"}
+          </p>
+          <p>
+            No pudimos confirmar si se guardó el acceso. Podés reintentar esta
+            operación sin duplicarla.
+          </p>
           <button
             type="button"
             onClick={() => void submitCredential(uncertainCredential)}
             disabled={isSettingCredential}
           >
-            Reintentar misma intención
+            Reintentar esta operación
           </button>
           <button
             type="button"
@@ -1460,7 +1493,9 @@ export function GeneralConfigurationPanel({
         >
           <h3>Cambio de nombre pendiente de confirmación</h3>
           <p>{uncertainRename.request.operationalName}</p>
-          <p>El reintento usa exactamente estos datos y la misma intención.</p>
+          <p>
+            El reintento conserva los mismos datos sin duplicar la operación.
+          </p>
           <div className="intention-actions">
             <button
               type="button"
@@ -1492,14 +1527,16 @@ export function GeneralConfigurationPanel({
         >
           <h3>Actualización pendiente de confirmación</h3>
           <p>{mutationLabel(uncertainMutation)}</p>
-          <p>El reintento usa exactamente estos datos y la misma intención.</p>
+          <p>
+            El reintento conserva los mismos datos sin duplicar la operación.
+          </p>
           <div className="intention-actions">
             <button
               type="button"
               onClick={() => void submitIdentityMutation(uncertainMutation)}
               disabled={isMutatingIdentity}
             >
-              Reintentar misma intención
+              Reintentar esta operación
             </button>
             <button
               className="secondary-button"
@@ -1521,7 +1558,9 @@ export function GeneralConfigurationPanel({
         >
           <h3>Habilitación de preparación pendiente de confirmación</h3>
           <p>{enablementMutationLabel(uncertainEnablementMutation)}</p>
-          <p>El reintento usa exactamente estos datos y la misma intención.</p>
+          <p>
+            El reintento conserva los mismos datos sin duplicar la operación.
+          </p>
           <div className="intention-actions">
             <button
               type="button"
@@ -1530,7 +1569,7 @@ export function GeneralConfigurationPanel({
               }
               disabled={isMutatingEnablement}
             >
-              Reintentar misma intención
+              Reintentar esta operación
             </button>
             <button
               className="secondary-button"

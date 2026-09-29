@@ -127,7 +127,9 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
     await open();
     expect(screen.getByText("9007199254740993.25")).toBeVisible();
     expect(
-      screen.getByText("Después de Liquidar, el Pedido quedará congelado."),
+      screen.getByText(
+        "Después de liquidar ya no podrán realizarse modificaciones ordinarias en este pedido. El cierre se realiza posteriormente.",
+      ),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Liquidar" })).toBeEnabled();
     expect(
@@ -179,14 +181,14 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
     expect(init!.credentials).toBe("same-origin");
     expect(reads).toBe(2);
     expect(screen.getByText("Bono vecinal")).toBeVisible();
-    expect(screen.getByText("2026-09-05T17:59:00Z")).toHaveAttribute(
+    expect(screen.getByTitle("2026-09-05T17:59:00Z")).toHaveAttribute(
       "datetime",
       "2026-09-05T17:59:00Z",
     );
     expect(screen.getByRole("button", { name: "Cerrar Pedido" })).toBeEnabled();
     expect(mutation).toHaveBeenCalledTimes(1); // No automatic Closure.
     await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
-    expect(await screen.findByText("2026-09-05T17:59:00Z")).toBeVisible();
+    expect(await screen.findByTitle("2026-09-05T17:59:00Z")).toBeVisible();
   });
 
   it.each(["", "   ", "x".repeat(201)])(
@@ -325,7 +327,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
       if (kind === "close") {
         expect(url).toBe(`/api/orders/${reference}/close`);
         expect(await screen.findByText(/Pedido cerrado:/)).toBeVisible();
-        expect(screen.getByText("2026-09-05T18:00:00Z")).toHaveAttribute(
+        expect(screen.getByTitle("2026-09-05T18:00:00Z")).toHaveAttribute(
           "datetime",
           "2026-09-05T18:00:00Z",
         );

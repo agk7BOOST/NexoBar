@@ -215,7 +215,7 @@ export function InventoryItemOperations({
         if (current.kind === "waste") setWasteQuantity("");
         setNotice({
           kind: "success",
-          message: `${operationLabel(current.kind)[0]!.toUpperCase()}${operationLabel(current.kind).slice(1)} registrada. Saldo autoritativo resultante: ${result.resultingRegisteredQuantity} ${item.operationalUnit}.`,
+          message: `${operationLabel(current.kind)[0]!.toUpperCase()}${operationLabel(current.kind).slice(1)} registrada. Existencia registrada: ${result.resultingRegisteredQuantity} ${item.operationalUnit}.`,
         });
         await onAuthoritativeMutation(current.itemId);
       } catch (error) {

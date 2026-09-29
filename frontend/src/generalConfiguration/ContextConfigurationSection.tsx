@@ -80,7 +80,7 @@ export function ContextConfigurationSection({
       } else {
         setPending(intent);
         setNotice(
-          "Resultado no confirmado. Reintentá la misma intención para verificarla.",
+          "No pudimos confirmar si se creó el Contexto. Podés reintentar esta operación sin duplicarla.",
         );
       }
     } finally {
@@ -135,7 +135,7 @@ export function ContextConfigurationSection({
             disabled={busy}
             onClick={() => void submit(pending)}
           >
-            Reintentar misma intención
+            Reintentar esta operación
           </button>
         </div>
       )}

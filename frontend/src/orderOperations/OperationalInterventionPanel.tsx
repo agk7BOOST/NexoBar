@@ -302,7 +302,7 @@ export function OperationalInterventionPanel({
       )}
       {message && <p role="status">{message}</p>}
       {phase === "reading" && (
-        <p role="status">Consultando Estado autoritativo…</p>
+        <p role="status">Consultando el estado actual…</p>
       )}
       {target && (
         <>

@@ -98,7 +98,7 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
       availability.getByLabel(`Disponibilidad de ${productName}`),
     ).toHaveText("Disponible");
     await expect(
-      interventionPage.getByRole("region", { name: "Productos vigentes" }),
+      interventionPage.getByRole("region", { name: "Productos", exact: true }),
     ).toHaveCount(0);
     await expect(
       interventionPage.getByRole("region", {

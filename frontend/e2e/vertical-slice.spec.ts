@@ -98,7 +98,7 @@ async function createConfirmedOrder(page: Page): Promise<{
     .fill("10");
   await catalogCreation.getByRole("button", { name: "Crear producto" }).click();
 
-  const products = page.getByRole("region", { name: "Productos vigentes" });
+  const products = page.getByRole("region", { name: "Productos", exact: true });
   const productRow = rowForProduct(products, page, productName);
   await expect(productRow).toBeVisible();
   await expect(
@@ -197,7 +197,7 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
       .getByRole("region", { name: "Usuario actual" })
       .getByText("Catálogo precios E2E", { exact: true }),
   ).toBeVisible();
-  const products = page.getByRole("region", { name: "Productos vigentes" });
+  const products = page.getByRole("region", { name: "Productos", exact: true });
   const productRow = rowForProduct(products, page, productName);
   await productRow
     .getByRole("button", { name: `Cambiar precio de ${productName}` })
@@ -263,7 +263,7 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
     .click();
   await expect(
     subsequentComposition.getByText(
-      "Composición pendiente autoritativa activa",
+      "Productos pendientes de confirmar en este pedido",
       { exact: true },
     ),
   ).toBeVisible();
@@ -291,7 +291,7 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
     .click();
   await expect(
     subsequentComposition.getByText(
-      "Composición pendiente autoritativa activa",
+      "Productos pendientes de confirmar en este pedido",
       { exact: true },
     ),
   ).toHaveCount(0);
@@ -342,7 +342,7 @@ test("otro contexto autorizado ve el marcador remoto y no puede iniciar un segun
     })
     .click();
   await expect(
-    composition.getByText("Composición pendiente autoritativa activa", {
+    composition.getByText("Productos pendientes de confirmar en este pedido", {
       exact: true,
     }),
   ).toBeVisible();
@@ -637,7 +637,9 @@ for (const mode of ["simple", "external"] as const) {
       ending.getByRole("button", { name: "Cerrar Pedido" }),
     ).toHaveCount(0);
     await expect(
-      ending.getByText("Después de Liquidar, el Pedido quedará congelado."),
+      ending.getByText(
+        "Después de liquidar ya no podrán realizarse modificaciones ordinarias en este pedido. El cierre se realiza posteriormente.",
+      ),
     ).toBeVisible();
     if (mode === "simple") {
       await ending

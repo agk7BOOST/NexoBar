@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatOperationalDate } from "../formatOperationalDate.ts";
 import {
   discardAntiforgeryToken,
   getAntiforgeryToken,
@@ -42,6 +43,24 @@ function inventoryMovementNatureLabel(nature: InventoryMovementNature): string {
       return "Merma";
     case "reconciliation":
       return "Reconciliación";
+  }
+}
+
+function correctionNatureLabel(nature: string): string {
+  switch (nature) {
+    case "Entry":
+    case "entry":
+      return "Entrada";
+    case "ManualExit":
+    case "manual_exit":
+      return "Salida manual";
+    case "Waste":
+    case "waste":
+      return "Merma";
+    case "reconciliation":
+      return "Reconciliación";
+    default:
+      return nature;
   }
 }
 
@@ -173,7 +192,9 @@ function MovementCard({
     <li className="inventory-movement">
       <div className="inventory-movement-heading">
         <h5>{inventoryMovementNatureLabel(movement.nature)}</h5>
-        <time dateTime={movement.occurredAt}>{movement.occurredAt}</time>
+        <time dateTime={movement.occurredAt} title={movement.occurredAt}>
+          {formatOperationalDate(movement.occurredAt)}
+        </time>
       </div>
       <MovementDetails movement={movement} unit={unit} />
       {(movement.corrections?.length ?? 0) > 0 && (
@@ -182,15 +203,22 @@ function MovementCard({
           <ol>
             {movement.corrections?.map((c) => (
               <li key={c.sequence}>
-                {c.previousNature} {c.previousQuantity} → {c.correctedNature}{" "}
-                {c.correctedQuantity}; delta aplicado {c.deltaApplied}; saldo{" "}
+                {correctionNatureLabel(c.previousNature)} {c.previousQuantity} →{" "}
+                {correctionNatureLabel(c.correctedNature)} {c.correctedQuantity}
+                ; delta aplicado {c.deltaApplied}; saldo{" "}
                 {c.resultingRegisteredQuantity ?? "no establecido"};{" "}
-                {c.actorOperationalName} · {c.occurredAtUtc}
+                {c.actorOperationalName} ·{" "}
+                <time dateTime={c.occurredAtUtc} title={c.occurredAtUtc}>
+                  {formatOperationalDate(c.occurredAtUtc)}
+                </time>
               </li>
             ))}
           </ol>
           <p>
-            Significado efectivo actual: {movement.effectiveNature}{" "}
+            Significado efectivo actual:{" "}
+            {movement.effectiveNature
+              ? correctionNatureLabel(movement.effectiveNature)
+              : "No disponible"}{" "}
             {movement.effectiveQuantity}
           </p>
         </section>
@@ -198,6 +226,7 @@ function MovementCard({
       {movement.nature !== "reconciliation" && (
         <button
           type="button"
+          className="secondary-button"
           disabled={busy}
           onClick={() => onCorrect(movement)}
         >
@@ -486,7 +515,7 @@ export function InventoryHistory({
             />
           </label>
           {/^0+(?:\.0+)?$/.test(quantity) && (
-            <p>Este movimiento queda sin efecto. La History permanece.</p>
+            <p>Este movimiento queda sin efecto. Su historial permanece.</p>
           )}
           {pending !== null && (
             <p role="status">

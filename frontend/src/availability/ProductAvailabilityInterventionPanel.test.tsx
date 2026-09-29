@@ -149,6 +149,16 @@ describe("ProductAvailabilityInterventionPanel", () => {
         antiforgeryToken: "csrf",
       });
       await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
+      expect(
+        await screen.findByText(
+          `Disponibilidad de ${product.operationalName} actualizada.`,
+        ),
+      ).toBeVisible();
+      expect(
+        screen.queryByText(
+          "Cambio confirmado. Actualizando la lista de productos…",
+        ),
+      ).not.toBeInTheDocument();
     },
   );
 
@@ -211,7 +221,7 @@ describe("ProductAvailabilityInterventionPanel", () => {
       await screen.findByRole("button", { name: "Marcar no disponible Agua" }),
     );
     await user.click(
-      await screen.findByRole("button", { name: "Reintentar misma intención" }),
+      await screen.findByRole("button", { name: "Reintentar esta operación" }),
     );
 
     await waitFor(() => expect(sendMock).toHaveBeenCalledTimes(2));

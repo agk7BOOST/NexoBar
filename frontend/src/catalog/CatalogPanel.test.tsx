@@ -112,6 +112,33 @@ describe("CatalogPanel - eliminación definitiva", () => {
     ).toBeInTheDocument();
   });
 
+  it("prioritizes Retirado and does not suggest retiring it again", async () => {
+    deleteProductMock.mockRejectedValue(
+      new CatalogProblemError({
+        status: 409,
+        code: "catalog.product.delete.confirmed_participation",
+      }),
+    );
+    const { user } = renderPanel([
+      product({ isActive: false, isAvailable: true }),
+    ]);
+    const row = screen.getByRole("row", { name: /Agua tónica/ });
+    expect(within(row).getByText("Retirado").tagName).toBe("STRONG");
+    expect(row).toHaveTextContent("Disponibilidad conservada: Disponible");
+    expect(row).toHaveTextContent("No puede agregarse a pedidos");
+
+    await user.click(
+      within(row).getByRole("button", {
+        name: "Eliminar definitivamente Agua tónica",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+    );
+    expect(await screen.findByText(/Ya está retirado/)).toBeVisible();
+    expect(screen.queryByText(/Podés retirarlo/)).not.toBeInTheDocument();
+  });
+
   it("keeps the same intent for an uncertain Delete retry", async () => {
     deleteProductMock
       .mockRejectedValueOnce(new CatalogNetworkError())
@@ -213,7 +240,7 @@ describe("CatalogPanel - alta y listado", () => {
     renderPanel([listedProduct]);
 
     const products = screen.getByRole("region", {
-      name: "Productos vigentes",
+      name: "Productos",
     });
     expect(products).toHaveTextContent(listedProduct.operationalName);
     expect(products).toHaveTextContent("10.00");
@@ -246,6 +273,33 @@ describe("CatalogPanel - alta y listado", () => {
     expect(reloadProducts).toHaveBeenCalledOnce();
     expect(screen.getByLabelText("Nombre operacional")).toHaveValue("");
     expect(screen.getByLabelText("Precio")).toHaveValue("");
+  });
+
+  it("retira un éxito anterior al actualizar productos", async () => {
+    createProductMock.mockResolvedValueOnce(product());
+    const { user } = renderPanel();
+    await fillCreation(user);
+    await user.click(screen.getByRole("button", { name: "Crear producto" }));
+    expect(
+      await screen.findByText("Producto creado correctamente."),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Crear producto" }),
+      ).toBeEnabled(),
+    );
+
+    await user.click(
+      within(screen.getByRole("region", { name: "Productos" })).getByRole(
+        "button",
+        { name: "Actualizar" },
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Producto creado correctamente."),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it("traduce Problem Details y conserva los datos", async () => {
@@ -281,9 +335,17 @@ describe("CatalogPanel - alta y listado", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(createProductMock).toHaveBeenCalledOnce();
 
+    await user.click(
+      within(screen.getByRole("region", { name: "Productos" })).getByRole(
+        "button",
+        { name: "Actualizar" },
+      ),
+    );
+    expect(uncertain).toBeInTheDocument();
+
     createProductMock.mockResolvedValueOnce(product());
     await user.click(
-      screen.getByRole("button", { name: "Reintentar misma intención" }),
+      screen.getByRole("button", { name: "Reintentar esta operación" }),
     );
     await screen.findByText("Producto creado correctamente.");
     expect(createProductMock.mock.calls[1]).toEqual(firstCall);

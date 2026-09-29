@@ -55,22 +55,23 @@ export function ProductAvailabilityInterventionPanel({
     };
   }, []);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (): Promise<boolean> => {
     setPhase("loading");
     try {
       const current = await listAvailabilityAdministrationProducts();
-      if (!mounted.current) return;
+      if (!mounted.current) return false;
       setProducts(current);
       setPhase("idle");
+      return true;
     } catch (error) {
-      if (!mounted.current) return;
+      if (!mounted.current) return false;
       if (
         error instanceof AvailabilityProblemError &&
         error.problem.status === 401
       ) {
         discardAntiforgeryToken();
         onUnauthorized();
-        return;
+        return false;
       }
       if (
         error instanceof AvailabilityProblemError &&
@@ -81,10 +82,11 @@ export function ProductAvailabilityInterventionPanel({
         );
         setPhase("forbidden");
         onForbidden();
-        return;
+        return false;
       }
       setMessage("No se pudo consultar la disponibilidad de los productos.");
       setPhase("error");
+      return false;
     }
   }, [onForbidden, onUnauthorized]);
 
@@ -96,18 +98,24 @@ export function ProductAvailabilityInterventionPanel({
   async function submit(intent: ProductAvailabilityIntent) {
     setPhase("sending");
     setMessage(null);
+    const productName = products.find(
+      (product) => product.id === intent.productId,
+    )?.operationalName;
     try {
       await sendProductAvailabilityIntent(intent);
       if (!mounted.current) return;
       setUncertainIntent(null);
-      setMessage("Disponibilidad actualizada. Consultando el estado vigente.");
-      await reload();
+      setMessage("Cambio confirmado. Actualizando la lista de productos…");
+      if ((await reload()) && mounted.current)
+        setMessage(
+          `Disponibilidad de ${productName ?? "este producto"} actualizada.`,
+        );
     } catch (error) {
       if (!mounted.current) return;
       if (error instanceof AvailabilityNetworkError) {
         setUncertainIntent(intent);
         setMessage(
-          "Resultado incierto. Reintentá exactamente la misma intención.",
+          "No pudimos confirmar si se cambió la disponibilidad. Podés reintentar esta operación sin duplicarla.",
         );
         setPhase("uncertain");
         return;
@@ -115,7 +123,7 @@ export function ProductAvailabilityInterventionPanel({
       if (!(error instanceof AvailabilityProblemError)) {
         setUncertainIntent(intent);
         setMessage(
-          "Resultado incierto. Reintentá exactamente la misma intención.",
+          "No pudimos confirmar si se cambió la disponibilidad. Podés reintentar esta operación sin duplicarla.",
         );
         setPhase("uncertain");
         return;
@@ -182,8 +190,7 @@ export function ProductAvailabilityInterventionPanel({
     >
       <h2>Intervención de disponibilidad de productos</h2>
       <p>
-        Esta sección cambia únicamente la disponibilidad de productos
-        vigentes.
+        Esta sección cambia únicamente la disponibilidad de productos vigentes.
       </p>
       {message && (
         <p
@@ -213,17 +220,25 @@ export function ProductAvailabilityInterventionPanel({
           aria-label="Cambio de disponibilidad con resultado no confirmado"
         >
           <h3>Cambio de disponibilidad pendiente de confirmación</h3>
-          <p>Producto: {uncertainIntent.productId}</p>
           <p>
-            El reintento conserva exactamente el producto, el estado esperado,
-            el nuevo estado y la misma clave de operación.
+            Producto:{" "}
+            {products.find(
+              (product) => product.id === uncertainIntent.productId,
+            )?.operationalName ?? "nombre no disponible"}
+          </p>
+          <p className="technical-reference">
+            Identificador: {uncertainIntent.productId}
+          </p>
+          <p>
+            El reintento conserva el mismo producto y el mismo cambio
+            solicitado.
           </p>
           <button
             type="button"
             onClick={() => void submit(uncertainIntent)}
             disabled={phase === "sending"}
           >
-            Reintentar misma intención
+            Reintentar esta operación
           </button>
         </div>
       )}

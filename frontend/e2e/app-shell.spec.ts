@@ -54,7 +54,7 @@ test("workspace navigation preserves uncertain availability and moves keyboard f
     .focus();
   await page.keyboard.press("Enter");
   await expect(
-    page.getByRole("heading", { level: 1, name: "Productos" }),
+    page.getByRole("heading", { level: 1, name: "Productos", exact: true }),
   ).toBeFocused();
   await page
     .getByRole("button", { name: "Marcar no disponible Agua de prueba" })
@@ -71,7 +71,7 @@ test("workspace navigation preserves uncertain availability and moves keyboard f
     page.getByRole("heading", { level: 1, name: "Pedidos" }),
   ).toBeFocused();
   await expect(
-    page.getByRole("button", { name: "Reintentar misma intención" }),
+    page.getByRole("button", { name: "Reintentar esta operación" }),
   ).toBeHidden();
   await navigation
     .getByRole("button", { name: "Productos", exact: true })
@@ -79,9 +79,7 @@ test("workspace navigation preserves uncertain availability and moves keyboard f
   await expect(
     page.getByRole("button", { name: "Marcar no disponible Agua de prueba" }),
   ).toBeDisabled();
-  await page
-    .getByRole("button", { name: "Reintentar misma intención" })
-    .click();
+  await page.getByRole("button", { name: "Reintentar esta operación" }).click();
   await expect.poll(() => attempts.length).toBe(2);
   expect(attempts[1]).toEqual(attempts[0]);
   expect(attempts[0]?.key).toBeTruthy();

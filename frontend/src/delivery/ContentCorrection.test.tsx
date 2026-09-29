@@ -218,6 +218,18 @@ it("uses exact Pending, excluding InPreparation and Ready", async () => {
   fireEvent.click(action());
   expect(input()).toHaveAttribute("max", "2");
 });
+it("identifies a confirmed inconsistent order state without offering correction", async () => {
+  order.liquidationBlockers = ["state_inconsistent"];
+  await open();
+  await waitFor(() =>
+    expect(article()).toHaveTextContent(
+      "El pedido presenta una inconsistencia de estado confirmada",
+    ),
+  );
+  expect(
+    screen.queryByRole("button", { name: "Corregir cantidad confirmada" }),
+  ).not.toBeInTheDocument();
+});
 it("does not cross-associate same Product across Contents or Incorporations", () => {
   prepared();
   const exact = works[0];
@@ -252,7 +264,9 @@ it.each(["missing", "total", "ready", "buckets", "qrf"])(
         name: "Corregir cantidad confirmada",
       }),
     ).toBeNull();
-    expect(article()).toHaveTextContent("Estado no disponible o inconsistente");
+    expect(article()).toHaveTextContent(
+      "No se pudo determinar cuánto se puede corregir",
+    );
   },
 );
 it.each(["", "0", "-1", "1.5", "5"])(
@@ -550,7 +564,9 @@ it("keeps correction unavailable when the authoritative Order refresh fails", as
     ),
   );
   await waitFor(() =>
-    expect(article()).toHaveTextContent("Estado no disponible o inconsistente"),
+    expect(article()).toHaveTextContent(
+      "No se pudo consultar la información necesaria para corregir",
+    ),
   );
   expect(
     screen.queryByRole("button", { name: "Corregir cantidad confirmada" }),

@@ -106,7 +106,7 @@ describe("ContextConfigurationSection", () => {
     );
     await user.click(screen.getByRole("button", { name: "Crear Contexto" }));
     await user.click(
-      await screen.findByRole("button", { name: "Reintentar misma intención" }),
+      await screen.findByRole("button", { name: "Reintentar esta operación" }),
     );
     expect(create.mock.calls[0]).toEqual(create.mock.calls[1]);
   });

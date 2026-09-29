@@ -382,7 +382,7 @@ describe("InventoryHistory", () => {
     await user.type(quantity, "0");
     expect(
       screen.getByText(
-        "Este movimiento queda sin efecto. La History permanece.",
+        "Este movimiento queda sin efecto. Su historial permanece.",
       ),
     ).toBeInTheDocument();
     await user.click(
@@ -501,7 +501,7 @@ describe("InventoryHistory", () => {
       "li",
     )!;
     expect(card).toHaveTextContent("Entrada");
-    expect(card).toHaveTextContent("Significado efectivo actual: waste 2");
+    expect(card).toHaveTextContent("Significado efectivo actual: Merma 2");
     expect(card).toHaveTextContent("Operadora 1");
     expect(card).toHaveTextContent("Operadora 2");
     await user.click(

@@ -142,7 +142,9 @@ it("coordinates cancellation uncertainty and confirmed terminal retirement acros
     screen.getByRole("button", { name: "Continuar este Pedido" }),
   );
   await waitFor(() => expect(pendingReads).toBeGreaterThan(0));
-  await screen.findByText(/Existe una Composición pendiente autoritativa/);
+  await screen.findByText(
+    /Hay productos pendientes de confirmar en este pedido/,
+  );
   await user.click(
     screen.getByRole("button", { name: "Abrir entrega de este Pedido" }),
   );
@@ -172,7 +174,9 @@ it("coordinates cancellation uncertainty and confirmed terminal retirement acros
   await screen.findByText(/Pedido completamente cancelado:/);
   await waitFor(() =>
     expect(
-      screen.queryByText(/Existe una Composición pendiente autoritativa/),
+      screen.queryByText(
+        /Hay productos pendientes de confirmar en este pedido/,
+      ),
     ).not.toBeInTheDocument(),
   );
   expect(pendingReads).toBeGreaterThanOrEqual(before);

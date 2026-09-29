@@ -1714,7 +1714,7 @@ describe("OrderWorkflow - autoridad de Composición pendiente", () => {
     );
 
     expect(
-      await screen.findByText(/no se reenviará automáticamente/),
+      await screen.findByText(/no se enviarán automáticamente/),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Cantidad de Agua")).toHaveTextContent("1");
     expect(

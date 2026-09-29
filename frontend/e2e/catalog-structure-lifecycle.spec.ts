@@ -47,7 +47,7 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
   const groupName = `Grupo I3 ${suffix}`;
   const productName = `Producto I3 ${suffix}`;
   const renamedProductName = `Producto I3 renombrado ${suffix}`;
-  const catalog = page.getByRole("region", { name: "Productos vigentes" });
+  const catalog = page.getByRole("region", { name: "Productos", exact: true });
 
   await login(page, catalogActor);
 

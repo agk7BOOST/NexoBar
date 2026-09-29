@@ -88,9 +88,9 @@ function knownFailureMessage(
     case "inventory.item.reactivation_name_conflict":
       return "Otro elemento activo ya usa ese nombre. Elegí un nombre operacional de reemplazo para reactivar este elemento.";
     case "inventory.item.unit_correction_requires_replacement":
-      return "La Unidad ya no puede cambiarse porque este elemento tiene History de Movimientos. Retirá este elemento y creá otro con la Unidad corregida.";
+      return "La unidad ya no puede cambiarse porque este elemento tiene historial de movimientos. Retirá este elemento y creá otro con la unidad corregida.";
     case "inventory.item.delete_movement_history_conflict":
-      return "El elemento no puede eliminarse porque existe History de Movimientos y debe conservarse.";
+      return "El elemento no puede eliminarse porque tiene historial de movimientos que debe conservarse.";
     case "inventory.item.not_found":
       return "El elemento ya no está disponible. La configuración se actualizó.";
     case "inventory.item.lifecycle_state_conflict":
@@ -317,7 +317,7 @@ export function InventoryConfigurationItemControls({
         <p aria-label={`Preparación para operar de ${item.operationalName}`}>
           {item.ordinaryOperationReady
             ? "Listo para movimientos"
-            : "Requiere conteo/reconciliación"}
+            : "Requiere conteo y reconciliación"}
         </p>
       )}
       <p aria-label={`Unidad operacional de ${item.operationalName}`}>
@@ -343,8 +343,9 @@ export function InventoryConfigurationItemControls({
             Retirar
           </button>
           <p>
-            Retirar conserva la History, quita el elemento de la operación y no
-            pone el saldo en cero.
+            Retirar conserva el historial y quita el elemento de la operación.
+            Dejará de haber una existencia actual establecida. Si se reactiva,
+            será necesario realizar un nuevo conteo y reconciliación.
           </p>
         </>
       ) : (
@@ -356,7 +357,10 @@ export function InventoryConfigurationItemControls({
           >
             Reactivar
           </button>
-          <p>Se reactivará como Activo y requerirá conteo/reconciliación.</p>
+          <p>
+            Se reactivará como Activo y requerirá un nuevo conteo físico y
+            reconciliación.
+          </p>
           {replacementNameRequired && (
             <label>
               Nombre operacional de reemplazo para Reactivar
@@ -402,9 +406,9 @@ export function InventoryConfigurationItemControls({
         </form>
       ) : (
         <p>
-          La Unidad ya no puede cambiarse porque este elemento tiene History de
-          Movimientos. Para usar otra Unidad: retiralo, creá un elemento nuevo y
-          establecé su existencia mediante conteo/reconciliación.
+          La unidad ya no puede cambiarse porque este elemento tiene historial
+          de movimientos. Para usar otra unidad: retiralo, creá un elemento
+          nuevo y establecé su existencia mediante conteo y reconciliación.
         </p>
       )}
 
@@ -412,6 +416,7 @@ export function InventoryConfigurationItemControls({
         <div>
           <button
             type="button"
+            className="secondary-button"
             disabled={blocked}
             aria-label={`Eliminar definitivamente ${item.operationalName}`}
             onClick={() => setConfirmDelete(true)}
@@ -420,7 +425,7 @@ export function InventoryConfigurationItemControls({
           </button>
           <p>
             Elimina permanentemente la configuración y sólo es posible sin
-            History de Movimientos.
+            historial de movimientos.
           </p>
           {confirmDelete && (
             <div

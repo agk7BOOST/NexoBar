@@ -155,7 +155,7 @@ function priceChangeErrorMessage(problem: ProblemDetails): string {
         ? "El Precio cambió desde que fue observado. El Catálogo se actualizará."
         : `El Precio cambió desde que fue observado. El Precio vigente es ${problem.currentPrice}.`;
     case "catalog.product.idempotency_key_conflict":
-      return "La identidad de este cambio de Precio ya fue usada para otra intención.";
+      return "Este cambio de precio ya está asociado a otros datos. Revisá la operación antes de volver a intentarla.";
     default:
       return "No se pudo cambiar el Precio. Revisá los datos e intentá nuevamente.";
   }
@@ -172,7 +172,7 @@ function preparationChangeErrorMessage(problem: ProblemDetails): string {
     case "catalog.product.not_current":
       return "El Producto ya no está vigente.";
     case "catalog.product.idempotency_key_conflict":
-      return "La identidad de esta configuración de preparación ya fue usada para otra intención.";
+      return "Este cambio de preparación ya está asociado a otros datos. Revisá la operación antes de volver a intentarla.";
     default:
       return "No se pudo actualizar la configuración de preparación. Revisá los datos e intentá nuevamente.";
   }
@@ -192,7 +192,7 @@ function groupErrorMessage(problem: ProblemDetails): string {
       return "El Producto ya no está activo.";
     case "catalog.product.idempotency_key_conflict":
     case "catalog.product.group_change.idempotency_key_conflict":
-      return "La identidad de este cambio de Grupo ya fue usada para otra intención.";
+      return "Este cambio de grupo ya está asociado a otros datos. Revisá la operación antes de volver a intentarla.";
     default:
       return "No se pudo actualizar el Grupo. Revisá los datos e intentá nuevamente.";
   }
@@ -210,7 +210,7 @@ function renameErrorMessage(problem: ProblemDetails): string {
       return "El Producto ya no existe.";
     case "catalog.product.idempotency_key_conflict":
     case "catalog.product.operational_name_change.idempotency_key_conflict":
-      return "La identidad de este renombre ya fue usada para otra intención.";
+      return "Este cambio de nombre ya está asociado a otros datos. Revisá la operación antes de volver a intentarla.";
     default:
       return "No se pudo renombrar el Producto. Revisá los datos e intentá nuevamente.";
   }
@@ -232,7 +232,7 @@ function lifecycleErrorMessage(
     case "catalog.product.idempotency_key_conflict":
     case "catalog.product.retire.idempotency_key_conflict":
     case "catalog.product.reactivate.idempotency_key_conflict":
-      return `La identidad de esta acción de ${action === "retire" ? "retiro" : "reactivación"} ya fue usada para otra intención.`;
+      return `Este ${action === "retire" ? "retiro" : "reactivación"} ya está asociado a otros datos. Revisá la operación antes de volver a intentarla.`;
     default:
       return `No se pudo ${action === "retire" ? "retirar" : "reactivar"} el Producto.`;
   }
@@ -452,6 +452,35 @@ export function CatalogPanel({
   const displayedLoadError = providedLoadError ?? loadError;
   const reloadProducts = providedReloadProducts ?? reloadCatalog;
 
+  function clearSettledNotices() {
+    const keepPending = (notice: Notice | null, isPending: boolean) =>
+      isPending && notice?.kind === "uncertain" ? notice : null;
+    setGroupNotice((current) =>
+      keepPending(current, uncertainGroupCreation !== null),
+    );
+    setCreationNotice((current) =>
+      keepPending(current, uncertainCreation !== null),
+    );
+    setPriceNotice((current) =>
+      keepPending(current, uncertainPriceChange !== null),
+    );
+    setPreparationNotice((current) =>
+      keepPending(current, uncertainPreparationChange !== null),
+    );
+    setGroupNoticeForProduct((current) =>
+      keepPending(current, uncertainGroupChange !== null),
+    );
+    setRenameNotice((current) =>
+      keepPending(current, uncertainRename !== null),
+    );
+    setLifecycleNotice((current) =>
+      keepPending(current, uncertainLifecycle !== null),
+    );
+    setDeleteNotice((current) =>
+      keepPending(current, uncertainDelete !== null),
+    );
+  }
+
   async function prepareMutation(
     setNotice: (notice: Notice) => void = setCreationNotice,
   ): Promise<string | null> {
@@ -470,6 +499,7 @@ export function CatalogPanel({
   }
 
   async function submitCreation(intention: ProductCreationIntention) {
+    clearSettledNotices();
     setCreationNotice(null);
     setIsCreating(true);
 
@@ -550,7 +580,7 @@ export function CatalogPanel({
     setCreationNotice({
       kind: "uncertain",
       message:
-        "La intención pendiente fue descartada. El resultado anterior sigue sin confirmarse; el próximo envío será una intención nueva.",
+        "Descartaste el reintento pendiente. El resultado anterior sigue sin confirmarse; el próximo envío será otra operación.",
     });
   }
 
@@ -569,6 +599,7 @@ export function CatalogPanel({
   }
 
   async function submitPriceChange(intention: ProductPriceChangeIntention) {
+    clearSettledNotices();
     setPriceNotice(null);
     setIsChangingPrice(true);
 
@@ -672,6 +703,7 @@ export function CatalogPanel({
   async function submitPreparationChange(
     intention: ProductPreparationChangeIntention,
   ) {
+    clearSettledNotices();
     setPreparationNotice(null);
     setIsChangingPreparation(true);
     try {
@@ -778,6 +810,7 @@ export function CatalogPanel({
   }
 
   async function submitGroupCreation(intention: GroupCreationIntention) {
+    clearSettledNotices();
     setGroupNotice(null);
     setIsCreatingGroup(true);
     try {
@@ -853,6 +886,7 @@ export function CatalogPanel({
   }
 
   async function submitGroupChange(intention: ProductGroupChangeIntention) {
+    clearSettledNotices();
     setGroupNoticeForProduct(null);
     setIsChangingGroup(true);
     try {
@@ -940,6 +974,7 @@ export function CatalogPanel({
   }
 
   async function submitRename(intention: ProductRenameIntention) {
+    clearSettledNotices();
     setRenameNotice(null);
     setIsRenaming(true);
     try {
@@ -1018,6 +1053,7 @@ export function CatalogPanel({
   }
 
   async function submitLifecycle(intention: ProductLifecycleIntention) {
+    clearSettledNotices();
     setLifecycleNotice(null);
     setIsChangingLifecycle(true);
     try {
@@ -1087,6 +1123,7 @@ export function CatalogPanel({
   }
 
   async function submitDelete(intention: ProductDeleteIntention) {
+    clearSettledNotices();
     setDeleteNotice(null);
     setIsDeleting(true);
     try {
@@ -1118,7 +1155,13 @@ export function CatalogPanel({
           message:
             error.problem.code ===
             "catalog.product.delete.confirmed_participation"
-              ? "El Producto no puede eliminarse porque participó en un Pedido confirmado. Podés retirarlo por separado."
+              ? products.find((product) => product.id === intention.productId)
+                  ?.isActive === true
+                ? "El Producto no puede eliminarse porque participó en un Pedido confirmado. Podés retirarlo por separado."
+                : products.find((product) => product.id === intention.productId)
+                      ?.isActive === false
+                  ? "El Producto no puede eliminarse porque participó en un Pedido confirmado. Ya está retirado; se conserva su historial."
+                  : "El Producto no puede eliminarse porque participó en un Pedido confirmado. Actualizá la lista para consultar su estado."
               : error.problem.code === "catalog.product.not_found"
                 ? "El Producto ya no existe en el Catálogo."
                 : "No se pudo eliminar el Producto.",
@@ -1128,7 +1171,7 @@ export function CatalogPanel({
         setDeleteNotice({
           kind: "uncertain",
           message:
-            "Resultado de eliminación no confirmado. Reintentá con la misma identidad.",
+            "No pudimos confirmar si se eliminó el producto. Podés reintentar esta operación sin duplicarla.",
         });
       }
     } finally {
@@ -1208,7 +1251,7 @@ export function CatalogPanel({
               no fue confirmada.
             </p>
             <p>
-              El reintento usa exactamente el mismo nombre, identidad y token.
+              El reintento conserva el mismo nombre sin duplicar la operación.
             </p>
             <div className="intention-actions">
               <button
@@ -1225,7 +1268,7 @@ export function CatalogPanel({
                   setUncertainGroupCreation(null);
                   setGroupNotice({
                     kind: "uncertain",
-                    message: "La intención pendiente fue descartada.",
+                    message: "Descartaste el reintento pendiente.",
                   });
                 }}
               >
@@ -1280,7 +1323,7 @@ export function CatalogPanel({
             {isCreating
               ? "Creando…"
               : uncertainCreation
-                ? "Hay una intención pendiente"
+                ? "Hay una operación pendiente de confirmar"
                 : "Crear producto"}
           </button>
         </form>
@@ -1309,13 +1352,13 @@ export function CatalogPanel({
               </div>
             </dl>
             <p>
-              El reintento usa exactamente estos datos y la misma identidad.
+              El reintento conserva los mismos datos sin duplicar la operación.
             </p>
             {creationFormDiffers && (
               <p className="pending-change-warning">
-                Los cambios del formulario no alteran esta intención pendiente.
-                Para enviarlos como una intención nueva, descartá primero la
-                pendiente.
+                Los cambios del formulario no alteran la operación pendiente.
+                Para enviarlos como otra operación, descartá primero el
+                reintento pendiente.
               </p>
             )}
             <div className="intention-actions">
@@ -1324,7 +1367,7 @@ export function CatalogPanel({
                 onClick={() => void submitCreation(uncertainCreation)}
                 disabled={isCreating}
               >
-                Reintentar misma intención
+                Reintentar esta operación
               </button>
               <button
                 className="secondary-button"
@@ -1341,12 +1384,15 @@ export function CatalogPanel({
 
       <section className="panel" aria-labelledby="products-title">
         <div className="section-heading">
-          <h2 id="products-title">Productos vigentes</h2>
+          <h2 id="products-title">Productos</h2>
           <button
             className="secondary-button"
             type="button"
-            onClick={() => void reloadProducts()}
-            disabled={isLoading}
+            onClick={() => {
+              clearSettledNotices();
+              void reloadProducts();
+            }}
+            disabled={displayedIsLoading}
           >
             Actualizar
           </button>
@@ -1419,8 +1465,8 @@ export function CatalogPanel({
               </div>
             </dl>
             <p>
-              El reintento usa exactamente estos precios y la misma identidad.
-              No se reintentará automáticamente.
+              El reintento conserva estos precios sin duplicar el cambio. No se
+              hará automáticamente.
             </p>
             <div className="intention-actions">
               <button
@@ -1474,8 +1520,8 @@ export function CatalogPanel({
               </div>
             </dl>
             <p>
-              El reintento usa exactamente este destino, estado observado y la
-              misma identidad. No se reintentará automáticamente.
+              El reintento conserva este destino y el estado observado sin
+              duplicar el cambio. No se hará automáticamente.
             </p>
             <div className="intention-actions">
               <button
@@ -1535,14 +1581,33 @@ export function CatalogPanel({
                       <span
                         aria-label={`Estado de ciclo de vida: ${product.isActive ? "Activo" : "Retirado"}`}
                       >
-                        {product.isActive ? "Activo" : "Retirado"}
+                        {product.isActive ? (
+                          "Activo"
+                        ) : (
+                          <strong>Retirado</strong>
+                        )}
                       </span>
                     </td>
                     <td>
                       <span
                         aria-label={`Estado de disponibilidad: ${product.isAvailable ? "Disponible" : "No disponible"}`}
                       >
-                        {product.isAvailable ? "Disponible" : "No disponible"}
+                        {product.isActive ? (
+                          product.isAvailable ? (
+                            "Disponible"
+                          ) : (
+                            "No disponible"
+                          )
+                        ) : (
+                          <>
+                            Disponibilidad conservada:{" "}
+                            {product.isAvailable
+                              ? "Disponible"
+                              : "No disponible"}
+                            . No puede agregarse a pedidos mientras esté
+                            retirado.
+                          </>
+                        )}
                       </span>
                     </td>
                     <td>
@@ -1811,8 +1876,8 @@ export function CatalogPanel({
               fue confirmado.
             </p>
             <p>
-              El reintento conserva exactamente el estado observado, el destino,
-              la identidad y el token.
+              El reintento conserva el estado observado y el destino, sin
+              duplicar el cambio.
             </p>
             <div className="intention-actions">
               <button
@@ -1900,8 +1965,8 @@ export function CatalogPanel({
           >
             <p>El renombre del Producto no fue confirmado.</p>
             <p>
-              El reintento conserva exactamente el nombre observado, el nuevo
-              nombre, la identidad y el token.
+              El reintento conserva el nombre observado y el nuevo nombre, sin
+              duplicar el cambio.
             </p>
             <div className="intention-actions">
               <button
@@ -1987,8 +2052,8 @@ export function CatalogPanel({
               de {uncertainLifecycle.operationalName} no fue confirmado.
             </p>
             <p>
-              El reintento usa la misma acción, identidad y token. No se
-              reintentará automáticamente.
+              El reintento conserva la misma acción sin duplicar el cambio. No
+              se hará automáticamente.
             </p>
             <div className="intention-actions">
               <button
@@ -2044,7 +2109,8 @@ export function CatalogPanel({
           >
             <p>
               La eliminación de {uncertainDelete.operationalName} tiene
-              resultado incierto. El reintento usa la misma identidad y token.
+              resultado incierto. Podés reintentar esta eliminación sin
+              duplicarla.
             </p>
             <button
               type="button"

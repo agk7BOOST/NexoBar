@@ -174,7 +174,7 @@ export function AppliedPriceCorrection({
       setMessage(
         status(error) === 403
           ? "Tu usuario no tiene autorización para consultar los precios aplicados. Actualizá precios y pedido antes de continuar."
-          : "No se pudo actualizar el Estado autoritativo. Actualizá precios y Pedido antes de continuar.",
+          : "No se pudo consultar el estado actual. Actualizá precios y Pedido antes de continuar.",
       );
     }
   }
