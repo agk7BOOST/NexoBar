@@ -127,7 +127,7 @@ function messageForProblem(
   action: "create" | "rename" | IdentityMutationKind,
 ): string {
   if (problem.code === "identities_and_capabilities.idempotency_conflict") {
-    return "La clave de idempotencia pertenece a otra intención. Descartá la intención pendiente e iniciá una nueva.";
+    return "Este intento ya está asociado a otra operación. Descartá la intención pendiente e iniciá una nueva.";
   }
   if (problem.code === "identities_and_capabilities.invalid_request") {
     return "Ingresá un nombre operacional válido.";
@@ -1295,8 +1295,8 @@ export function GeneralConfigurationPanel({
         >
           <h3>Eliminar definitivamente {deleteTarget.operationalName}</h3>
           <p>
-            Se quitará la Identity de la configuración actual. Sólo puede
-            eliminarse si ninguna Historia funcional relevante necesita
+            Se quitará la identidad de la configuración actual. Solo puede
+            eliminarse si no existen operaciones registradas que deban
             conservar su atribución. El servidor comprobará la elegibilidad.
           </p>
           <button

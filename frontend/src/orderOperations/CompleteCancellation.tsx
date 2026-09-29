@@ -192,13 +192,12 @@ export function CompleteCancellation({
           {!evaluation.isTerminal && (
             <>
               <p>
-                Requiere autorización de Operaciones de pedidos y cierre básico
-                (OrderOperationsAndBasicClosure).
+                Requiere la responsabilidad Pedidos y cierre básico.
               </p>
               {evaluation.requiresOperationalIntervention === true && (
                 <p>
-                  La evaluación requiere además Intervención operacional
-                  (OperationalIntervention) para esta misma Identity.
+                  Además requiere la responsabilidad Intervención operacional
+                  para este usuario.
                 </p>
               )}
               <button

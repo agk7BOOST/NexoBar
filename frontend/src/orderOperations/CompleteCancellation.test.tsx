@@ -153,7 +153,9 @@ it("offers authoritative Direct/Pending-only cancellation with base authority an
   expect(
     screen.getByRole("button", { name: "Cancelar pedido completo" }),
   ).toBeEnabled();
-  expect(screen.getByText(/OrderOperationsAndBasicClosure/)).toBeVisible();
+  expect(
+    screen.getByText("Requiere la responsabilidad Pedidos y cierre básico."),
+  ).toBeVisible();
   expect(
     screen.queryByRole("region", { name: "Confirmar cancelación completa" }),
   ).not.toBeInTheDocument();
@@ -233,7 +235,9 @@ it.each(["inPreparationQuantity", "readyQuantity"] as const)(
     const surface = screen.getByRole("region", {
       name: "Cancelación completa excepcional",
     });
-    expect(surface).toHaveTextContent("OperationalIntervention");
+    expect(surface).toHaveTextContent(
+      "Además requiere la responsabilidad Intervención operacional para este usuario.",
+    );
     expect(surface).toHaveTextContent(
       "trabajo realizado permanecerá registrado en la Historia",
     );
@@ -247,7 +251,11 @@ it("does not derive intervention eligibility from local quantities", async () =>
   evaluation.requiresOperationalIntervention = true;
   evaluation.consequences = [];
   await open();
-  expect(screen.getByText(/La evaluación requiere además/)).toBeVisible();
+  expect(
+    screen.getByText(
+      "Además requiere la responsabilidad Intervención operacional para este usuario.",
+    ),
+  ).toBeVisible();
 });
 
 it("uses the confirmed terminal response and retires the active Order without a new active GET", async () => {

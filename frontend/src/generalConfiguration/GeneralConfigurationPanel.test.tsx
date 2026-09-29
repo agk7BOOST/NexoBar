@@ -181,7 +181,7 @@ describe("GeneralConfigurationPanel", () => {
         screen.getByRole("button", { name: "Eliminar definitivamente Beto" }),
       );
       expect(
-        screen.getByText(/ninguna Historia funcional relevante/),
+        screen.getByText(/no existen operaciones registradas/),
       ).toBeInTheDocument();
       expect(deleteIdentityMock).not.toHaveBeenCalled();
       await user.click(
