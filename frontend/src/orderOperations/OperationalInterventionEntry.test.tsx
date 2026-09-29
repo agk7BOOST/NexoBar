@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import App from "../App.tsx";
 import {
@@ -41,6 +42,9 @@ it("mounts the exact intervention lookup for an authenticated Identity without P
     responsibilities: ["OperationalIntervention"],
   });
   render(<App />);
+  await userEvent
+    .setup()
+    .click(await screen.findByRole("button", { name: "Preparación" }));
   expect(
     await screen.findByRole("region", { name: "Intervención operacional" }),
   ).toBeInTheDocument();

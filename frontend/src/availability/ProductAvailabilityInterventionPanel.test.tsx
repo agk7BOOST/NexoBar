@@ -69,6 +69,42 @@ describe("ProductAvailabilityInterventionPanel", () => {
     vi.stubGlobal("crypto", { randomUUID: () => "availability-key" });
   });
 
+  it("distinguishes a failed read from an empty list and allows an explicit retry", async () => {
+    listMock
+      .mockRejectedValueOnce(new AvailabilityNetworkError())
+      .mockResolvedValueOnce([available]);
+    const user = userEvent.setup();
+    renderPanel();
+    expect(await screen.findByText(/No se pudo consultar/)).toBeInTheDocument();
+    expect(
+      screen.queryByText("No hay Products vigentes."),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Reintentar consulta de disponibilidad",
+      }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Marcar no disponible Agua" }),
+    ).toBeEnabled();
+    expect(screen.queryByText(/No se pudo consultar/)).not.toBeInTheDocument();
+  });
+
+  it("finishes loading when access is denied even if the current Identity refresh is delayed", async () => {
+    listMock.mockRejectedValueOnce(
+      new AvailabilityProblemError({ status: 403 }),
+    );
+    const { onForbidden } = renderPanel();
+    expect(
+      await screen.findByText(/no tiene autorización/),
+    ).toBeInTheDocument();
+    expect(onForbidden).toHaveBeenCalledOnce();
+    expect(screen.queryByText(/Cargando Products/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("No hay Products vigentes."),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows explicit states and only availability actions", async () => {
     listMock.mockResolvedValueOnce([available, unavailable]);
     renderPanel();

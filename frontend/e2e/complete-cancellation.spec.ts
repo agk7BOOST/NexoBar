@@ -144,6 +144,7 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   ).toBeVisible();
 
   // Supported narrow read exposes Q/R/C/F and current Work without Preparation authority.
+  await page.getByRole("button", { name: "Preparación", exact: true }).click();
   const intervention = page.getByRole("region", {
     name: "Intervención operacional",
   });
@@ -166,6 +167,7 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   await quantity(intervention, "Total vigente (T)", "2");
   await quantity(intervention, "Entregada (D)", "0");
 
+  await page.getByRole("button", { name: "Pedidos", exact: true }).click();
   await lookup(page, operationalReference);
   const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
   for (const label of ["Liquidado", "Congelado", "Cerrado"])
@@ -273,6 +275,7 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   ]);
   page.off("request", recordCommand);
 
+  await page.getByRole("button", { name: "Preparación", exact: true }).click();
   await intervention
     .getByRole("button", { name: "Actualizar contenido", exact: true })
     .click();

@@ -59,7 +59,11 @@ it("coordinates cancellation uncertainty and confirmed terminal retirement acros
       return json({
         identityId: "base",
         operationalName: "Actor",
-        responsibilities: ["OrderOperationsAndBasicClosure"],
+        responsibilities: [
+          "OrderOperationsAndBasicClosure",
+          "Preparation",
+          "OperationalIntervention",
+        ],
       });
     if (url === "/api/security/antiforgery")
       return json({ requestToken: "csrf" });

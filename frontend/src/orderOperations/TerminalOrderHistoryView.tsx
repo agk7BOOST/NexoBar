@@ -176,7 +176,7 @@ export function TerminalOrderHistoryView({
   return (
     <section className="panel" aria-labelledby="terminal-history-lookup-title">
       <h2 id="terminal-history-lookup-title">Consultar historial terminal</h2>
-      <form onSubmit={(e) => void submit(e)}>
+      <form className="order-lookup-form" onSubmit={(e) => void submit(e)}>
         <label htmlFor="terminal-history-reference">
           Referencia operacional exacta
         </label>

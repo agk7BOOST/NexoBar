@@ -135,12 +135,14 @@ describe("App capability-aware administrative mounting", () => {
           screen.queryByLabelText("Composicion operacional"),
         ).not.toBeInTheDocument();
       expect(orderWorkflowPropsMock).toHaveBeenCalledTimes(seesOrder ? 1 : 0);
-      expect(orderLookupPropsMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          canChangeOrderContext: seesOrder,
-          canViewTerminalHistory: seesOrder,
-        }),
-      );
+      if (seesOrder)
+        expect(orderLookupPropsMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            canChangeOrderContext: true,
+            canViewTerminalHistory: true,
+          }),
+        );
+      else expect(orderLookupPropsMock).not.toHaveBeenCalled();
     },
   );
 
@@ -174,6 +176,37 @@ describe("App capability-aware administrative mounting", () => {
     await screen.findByLabelText("Composicion operacional");
     expect(
       screen.queryByLabelText("Catalog administrativo"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows only available workspaces and switches the visible surface", async () => {
+    getCurrentIdentityMock.mockResolvedValueOnce(
+      identity(["OrderOperationsAndBasicClosure", "CatalogConfiguration"]),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: "Espacios de trabajo",
+    });
+    expect(navigation.querySelectorAll("button")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Pedidos" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(
+      screen.queryByRole("region", { name: "Catalog administrativo" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Productos" }));
+    expect(
+      screen.getByRole("region", { name: "Catalog administrativo" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Composicion operacional" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Configuración" }),
     ).not.toBeInTheDocument();
   });
 

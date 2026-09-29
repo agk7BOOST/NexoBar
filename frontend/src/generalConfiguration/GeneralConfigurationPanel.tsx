@@ -866,7 +866,10 @@ export function GeneralConfigurationPanel({
   if (isForbidden) return null;
 
   return (
-    <section className="panel" aria-labelledby="general-configuration-title">
+    <section
+      className="panel general-configuration-panel"
+      aria-labelledby="general-configuration-title"
+    >
       <h2 id="general-configuration-title">Configuración general</h2>
       <form onSubmit={(event) => void handleCreate(event)}>
         <label htmlFor="identity-operational-name">Nombre operacional</label>
@@ -1110,6 +1113,7 @@ export function GeneralConfigurationPanel({
                     <td>{identity.loginIdentifier ?? ""}</td>
                     <td>
                       <ul
+                        className="identity-responsibilities"
                         aria-label={`Responsabilidades de ${identity.operationalName}`}
                       >
                         {FUNCTIONAL_RESPONSIBILITIES.map((responsibility) => {

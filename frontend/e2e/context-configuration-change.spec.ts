@@ -107,9 +107,11 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
       admin.getByRole("list", { name: "Contextos configurados" }),
     ).toContainText(contextB);
     await expect(
-      admin.getByRole("button", {
-        name: /renombrar|retirar|reactivar|eliminar|borrar/i,
-      }),
+      admin
+        .getByRole("list", { name: "Contextos configurados" })
+        .getByRole("button", {
+          name: /renombrar|retirar|reactivar|eliminar|borrar/i,
+        }),
     ).toHaveCount(0);
     await expect(
       g.getByLabel("Contexto para Primera Confirmacion"),

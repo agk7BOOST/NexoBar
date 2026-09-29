@@ -34,7 +34,29 @@ type AuthState =
   | { status: "unauthenticated" }
   | { status: "authenticated"; identity: CurrentIdentity };
 
+type Workspace =
+  "orders" | "preparation" | "products" | "inventory" | "configuration";
+
+const workspaceLabels: Record<Workspace, string> = {
+  orders: "Pedidos",
+  preparation: "Preparación",
+  products: "Productos",
+  inventory: "Inventario",
+  configuration: "Configuración",
+};
+
+const workspaceDescriptions: Record<Workspace, string> = {
+  orders: "Composición, consulta, entrega y finalización de pedidos.",
+  preparation: "Trabajo por destino e intervenciones operacionales.",
+  products: "Catálogo y disponibilidad de productos.",
+  inventory: "Estado, movimientos y configuración de inventario.",
+  configuration: "Identidades, contextos y destinos de preparación.",
+};
+
 function App() {
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(
+    null,
+  );
   const [activeOperationalReference, setActiveOperationalReference] = useState<
     string | null
   >(null);
@@ -116,12 +138,14 @@ function App() {
     setEndingOrders({});
     setDeliveryBusy({});
     setPreparationBusy([]);
+    setSelectedWorkspace(null);
   }, []);
 
   const setAuthenticatedIdentity = useCallback((identity: CurrentIdentity) => {
     identityGeneration.current += 1;
     setIdentityLifecycle((current) => current + 1);
     setAuthState({ status: "authenticated", identity });
+    setSelectedWorkspace(null);
   }, []);
 
   const refreshCurrentIdentity = useCallback(async () => {
@@ -137,6 +161,10 @@ function App() {
       }
     }
   }, [returnToLogin]);
+
+  const handleForbidden = useCallback(() => {
+    void refreshCurrentIdentity();
+  }, [refreshCurrentIdentity]);
 
   function activateOrder(operationalReference: string) {
     setActiveOperationalReference(operationalReference);
@@ -192,6 +220,42 @@ function App() {
     hasResponsibility(identity, "OrderOperationsAndBasicClosure");
   const canInterveneAvailability =
     identity !== null && hasResponsibility(identity, "OperationalIntervention");
+  const canPrepare =
+    identity !== null && hasResponsibility(identity, "Preparation");
+  const canOperateInventory =
+    identity !== null && hasResponsibility(identity, "InventoryOperation");
+  const canConfigureInventory =
+    identity !== null && hasResponsibility(identity, "InventoryConfiguration");
+  const workspaces: Workspace[] = [
+    ...(canComposeOrders ? (["orders"] as const) : []),
+    ...(canPrepare ? (["preparation"] as const) : []),
+    ...(canConfigureCatalog || canInterveneAvailability
+      ? (["products"] as const)
+      : []),
+    ...(canInterveneAvailability && !canPrepare
+      ? (["preparation"] as const)
+      : []),
+    ...(canOperateInventory || canConfigureInventory
+      ? (["inventory"] as const)
+      : []),
+    ...(canConfigureGeneral ? (["configuration"] as const) : []),
+  ];
+  const activeWorkspace =
+    selectedWorkspace !== null && workspaces.includes(selectedWorkspace)
+      ? selectedWorkspace
+      : workspaces[0];
+  const workspaceHeading = useRef<HTMLHeadingElement>(null);
+  const previousWorkspace = useRef<Workspace | undefined>(undefined);
+  useEffect(() => {
+    if (
+      previousWorkspace.current &&
+      previousWorkspace.current !== activeWorkspace
+    ) {
+      workspaceHeading.current?.focus();
+      workspaceHeading.current?.scrollIntoView?.({ block: "start" });
+    }
+    previousWorkspace.current = activeWorkspace;
+  }, [activeWorkspace]);
   const canRequestUnavailableProductException =
     canComposeOrders &&
     identity !== null &&
@@ -206,138 +270,242 @@ function App() {
           : null
       }
     >
-      <main className="page-shell">
-        <header className="page-header">
-          <p className="eyebrow">NexoBar</p>
-          <h1>Catálogo de productos</h1>
-          <p>Alta, consulta y operación con productos vigentes.</p>
-        </header>
-
-        {authState.status === "loading" && <p>Cargando sesión…</p>}
+      <main
+        className={
+          authState.status === "authenticated" ? "app-shell" : "auth-shell"
+        }
+      >
+        {authState.status !== "authenticated" && (
+          <header className="auth-header">
+            <span className="brand-mark" aria-hidden="true">
+              N
+            </span>
+            <p className="eyebrow">NexoBar · Operación</p>
+            <h1>Un espacio claro para cada tarea.</h1>
+            <p>Ingresá con tu identidad para continuar.</p>
+          </header>
+        )}
+        {authState.status === "loading" && (
+          <p role="status">Cargando sesión…</p>
+        )}
         {authState.status === "unauthenticated" && (
           <LoginPanel onAuthenticated={setAuthenticatedIdentity} />
         )}
         {authState.status === "authenticated" && (
           <>
-            <SessionBar
-              identity={authState.identity}
-              onLoggedOut={returnToLogin}
-            />
-            <OperationalInterventionPanel
-              key={authState.identity.identityId}
-              onUnauthorized={returnToLogin}
-              isOrderBlocked={(reference) =>
-                terminalOrders[reference] === true ||
-                endingOrders[reference] === true
-              }
-            />
-            <PreparationPanel
-              refreshSequence={preparationRefresh}
-              onBusyOrdersChange={setPreparationBusy}
-              onWorkChanged={refreshAfterPreparation}
-              onUnauthorized={returnToLogin}
-              isOrderBlocked={(reference) =>
-                terminalOrders[reference] === true ||
-                endingOrders[reference] === true ||
-                deliveryBusy[reference] === true
-              }
-            />
-            <InventoryPanel onUnauthorized={returnToLogin} />
-            {canInterveneAvailability && (
-              <ProductAvailabilityInterventionPanel
-                key={`availability-intervention:${identity.identityId}:${identityLifecycle}`}
-                onUnauthorized={returnToLogin}
-                onForbidden={() => void refreshCurrentIdentity()}
-              />
-            )}
-            {canComposeOrders && (
-              <OrderWorkflow
-                key={`operational-products:${identity.identityId}:${identityLifecycle}`}
-                endingRefreshSequence={endingRefresh}
-                activeOperationalReference={activeOperationalReference}
-                activeOrderId={activeOrderId}
-                requestedTarget={requestedTarget}
-                onActivateOrder={activateOrder}
-                onActiveOrderId={rememberActiveOrderId}
-                onStartNewOrder={startNewOrder}
-                onOrderChanged={requestOrderRefresh}
-                onActiveOrderRetired={retireActiveOrder}
-                onUnauthorized={returnToLogin}
-                canRequestUnavailableProductException={
-                  canRequestUnavailableProductException
-                }
-                ordinaryMutationsBlocked={
-                  activeOperationalReference !== null &&
-                  (terminalOrders[activeOperationalReference] === true ||
-                    endingOrders[activeOperationalReference] === true ||
-                    deliveryBusy[activeOperationalReference] === true ||
-                    preparationBusy.includes(activeOperationalReference))
-                }
-              />
-            )}
+            <a className="skip-link" href="#workspace-title">
+              Ir al contenido
+            </a>
+            <div className="app-sidebar">
+              <div className="app-brand">
+                <span className="brand-mark" aria-hidden="true">
+                  N
+                </span>
+                <span>
+                  <strong>NexoBar</strong>
+                  <small>Operación</small>
+                </span>
+              </div>
+              <nav className="workspace-nav" aria-label="Espacios de trabajo">
+                {workspaces.map((workspace) => (
+                  <button
+                    key={workspace}
+                    type="button"
+                    className="workspace-nav-item"
+                    aria-current={
+                      activeWorkspace === workspace ? "page" : undefined
+                    }
+                    onClick={() => setSelectedWorkspace(workspace)}
+                  >
+                    {workspaceLabels[workspace]}
+                  </button>
+                ))}
+              </nav>
+              <p className="sidebar-caption">Estado vigente desde NexoBar</p>
+            </div>
+            <div className="app-main">
+              <header className="app-topbar">
+                <span className="topbar-context">Espacio de trabajo</span>
+                <SessionBar
+                  identity={authState.identity}
+                  onLoggedOut={returnToLogin}
+                />
+              </header>
+              {activeWorkspace ? (
+                <div className="workspace-content">
+                  <header className="workspace-header">
+                    <p className="eyebrow">
+                      Operación · {workspaceLabels[activeWorkspace]}
+                    </p>
+                    <h1
+                      id="workspace-title"
+                      ref={workspaceHeading}
+                      tabIndex={-1}
+                    >
+                      {workspaceLabels[activeWorkspace]}
+                    </h1>
+                    <p>{workspaceDescriptions[activeWorkspace]}</p>
+                  </header>
+                  <div
+                    className="workspace"
+                    hidden={activeWorkspace !== "preparation"}
+                  >
+                    {canInterveneAvailability && (
+                      <OperationalInterventionPanel
+                        key={authState.identity.identityId}
+                        onUnauthorized={returnToLogin}
+                        isOrderBlocked={(reference) =>
+                          terminalOrders[reference] === true ||
+                          endingOrders[reference] === true
+                        }
+                      />
+                    )}
+                    {canPrepare && (
+                      <PreparationPanel
+                        refreshSequence={preparationRefresh}
+                        onBusyOrdersChange={setPreparationBusy}
+                        onWorkChanged={refreshAfterPreparation}
+                        onUnauthorized={returnToLogin}
+                        isOrderBlocked={(reference) =>
+                          terminalOrders[reference] === true ||
+                          endingOrders[reference] === true ||
+                          deliveryBusy[reference] === true
+                        }
+                      />
+                    )}
+                  </div>
+                  <div
+                    className="workspace"
+                    hidden={activeWorkspace !== "inventory"}
+                  >
+                    {(canOperateInventory || canConfigureInventory) && (
+                      <InventoryPanel
+                        onUnauthorized={returnToLogin}
+                        canOperate={canOperateInventory}
+                        canConfigure={canConfigureInventory}
+                      />
+                    )}
+                  </div>
+                  <div
+                    className="workspace"
+                    hidden={activeWorkspace !== "products"}
+                  >
+                    {canInterveneAvailability && (
+                      <ProductAvailabilityInterventionPanel
+                        key={`availability-intervention:${identity.identityId}:${identityLifecycle}`}
+                        onUnauthorized={returnToLogin}
+                        onForbidden={handleForbidden}
+                      />
+                    )}
+                    {canConfigureCatalog && (
+                      <CatalogPanel
+                        key={`admin-catalog:${identity.identityId}:${identityLifecycle}:${identity.responsibilities.join(",")}`}
+                        onUnauthorized={returnToLogin}
+                      />
+                    )}
+                  </div>
+                  <div
+                    className="workspace"
+                    hidden={activeWorkspace !== "orders"}
+                  >
+                    {canComposeOrders && (
+                      <OrderWorkflow
+                        key={`operational-products:${identity.identityId}:${identityLifecycle}`}
+                        endingRefreshSequence={endingRefresh}
+                        activeOperationalReference={activeOperationalReference}
+                        activeOrderId={activeOrderId}
+                        requestedTarget={requestedTarget}
+                        onActivateOrder={activateOrder}
+                        onActiveOrderId={rememberActiveOrderId}
+                        onStartNewOrder={startNewOrder}
+                        onOrderChanged={requestOrderRefresh}
+                        onActiveOrderRetired={retireActiveOrder}
+                        onUnauthorized={returnToLogin}
+                        canRequestUnavailableProductException={
+                          canRequestUnavailableProductException
+                        }
+                        ordinaryMutationsBlocked={
+                          activeOperationalReference !== null &&
+                          (terminalOrders[activeOperationalReference] ===
+                            true ||
+                            endingOrders[activeOperationalReference] === true ||
+                            deliveryBusy[activeOperationalReference] === true ||
+                            preparationBusy.includes(
+                              activeOperationalReference,
+                            ))
+                        }
+                      />
+                    )}
+                    {canComposeOrders && (
+                      <OrderLookup
+                        key={identity.identityId}
+                        requestedLookup={requestedLookup}
+                        canChangeOrderContext={canComposeOrders}
+                        canViewTerminalHistory={canComposeOrders}
+                        activeOperationalReference={activeOperationalReference}
+                        activeOrderId={activeOrderId}
+                        onContinueOrder={requestContinueOrder}
+                        onOpenDelivery={setDeliveryOperationalReference}
+                        identityId={identity.identityId}
+                        onUnauthorized={returnToLogin}
+                        onOrderState={rememberOrderState}
+                        onEndingBusy={rememberEndingBusy}
+                        onActiveOrderRetired={retireActiveOrder}
+                        isOrderMutationBusy={(reference) =>
+                          deliveryBusy[reference] === true ||
+                          preparationBusy.includes(reference)
+                        }
+                      />
+                    )}
+                    {canComposeOrders && (
+                      <DeliveryPanel
+                        refreshSequence={deliveryRefresh}
+                        onBusyChange={rememberDeliveryBusy}
+                        operationalReference={deliveryOperationalReference}
+                        onUnauthorized={returnToLogin}
+                        ordinaryMutationsBlocked={
+                          deliveryOperationalReference !== null &&
+                          (terminalOrders[deliveryOperationalReference] ===
+                            true ||
+                            endingOrders[deliveryOperationalReference] ===
+                              true ||
+                            preparationBusy.includes(
+                              deliveryOperationalReference,
+                            ))
+                        }
+                        onOrderChanged={requestOrderRefresh}
+                        onOrderRetired={retireActiveOrder}
+                      />
+                    )}
+                  </div>
+                  <div
+                    className="workspace"
+                    hidden={activeWorkspace !== "configuration"}
+                  >
+                    {canConfigureGeneral && (
+                      <GeneralConfigurationPanel
+                        key={`admin-general:${identity.identityId}:${identityLifecycle}:${identity.responsibilities.join(",")}`}
+                        currentIdentityId={identity.identityId}
+                        onCurrentIdentityChanged={refreshCurrentIdentity}
+                        onUnauthorized={returnToLogin}
+                        onForbidden={handleForbidden}
+                      />
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="workspace-content">
+                  <h1 id="workspace-title" ref={workspaceHeading} tabIndex={-1}>
+                    Sin espacios asignados
+                  </h1>
+                  <p className="notice">
+                    Esta Identity no tiene responsabilidades operacionales
+                    asignadas.
+                  </p>
+                </div>
+              )}
+            </div>
           </>
-        )}
-
-        {canConfigureCatalog && identity !== null && (
-          <CatalogPanel
-            key={`admin-catalog:${identity.identityId}:${identityLifecycle}:${identity.responsibilities.join(",")}`}
-            onUnauthorized={returnToLogin}
-          />
-        )}
-
-        {canConfigureGeneral && identity !== null && (
-          <GeneralConfigurationPanel
-            key={`admin-general:${identity.identityId}:${identityLifecycle}:${identity.responsibilities.join(",")}`}
-            currentIdentityId={identity.identityId}
-            onCurrentIdentityChanged={refreshCurrentIdentity}
-            onUnauthorized={returnToLogin}
-            onForbidden={() => void refreshCurrentIdentity()}
-          />
-        )}
-
-        <OrderLookup
-          key={
-            authState.status === "authenticated"
-              ? authState.identity.identityId
-              : "anonymous"
-          }
-          requestedLookup={requestedLookup}
-          canChangeOrderContext={canComposeOrders}
-          canViewTerminalHistory={canComposeOrders}
-          activeOperationalReference={activeOperationalReference}
-          activeOrderId={activeOrderId}
-          onContinueOrder={requestContinueOrder}
-          onOpenDelivery={setDeliveryOperationalReference}
-          identityId={
-            authState.status === "authenticated"
-              ? authState.identity.identityId
-              : undefined
-          }
-          onUnauthorized={returnToLogin}
-          onOrderState={rememberOrderState}
-          onEndingBusy={rememberEndingBusy}
-          onActiveOrderRetired={retireActiveOrder}
-          isOrderMutationBusy={(reference) =>
-            deliveryBusy[reference] === true ||
-            preparationBusy.includes(reference)
-          }
-        />
-
-        {authState.status === "authenticated" && (
-          <DeliveryPanel
-            refreshSequence={deliveryRefresh}
-            onBusyChange={rememberDeliveryBusy}
-            operationalReference={deliveryOperationalReference}
-            onUnauthorized={returnToLogin}
-            ordinaryMutationsBlocked={
-              deliveryOperationalReference !== null &&
-              (terminalOrders[deliveryOperationalReference] === true ||
-                endingOrders[deliveryOperationalReference] === true ||
-                preparationBusy.includes(deliveryOperationalReference))
-            }
-            onOrderChanged={requestOrderRefresh}
-            onOrderRetired={retireActiveOrder}
-          />
         )}
       </main>
     </NotificationSseProvider>

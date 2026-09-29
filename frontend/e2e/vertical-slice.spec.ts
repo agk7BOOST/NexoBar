@@ -737,11 +737,8 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
     configuration.getByText(itemName, { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Esta Identity no tiene autorización para operar Inventario.",
-      { exact: true },
-    ),
-  ).toBeVisible();
+    page.getByRole("region", { name: "Estado actual de Inventario" }),
+  ).toHaveCount(0);
 
   await configurationIdentity
     .getByRole("button", { name: "Cambiar persona / salir" })
@@ -759,11 +756,8 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
     operationIdentity.getByText("Operador Inventario E2E", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Esta Identity no tiene autorización para configurar Inventario.",
-      { exact: true },
-    ),
-  ).toBeVisible();
+    page.getByRole("region", { name: "Configuración de Inventario" }),
+  ).toHaveCount(0);
 
   const operation = page.getByRole("region", {
     name: "Estado actual de Inventario",

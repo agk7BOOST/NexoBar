@@ -126,6 +126,35 @@ describe("InventoryPanel", () => {
     vi.mocked(retireInventoryItem).mockReset();
   });
 
+  it("removes section navigation when the corresponding responsibility is revoked", async () => {
+    vi.mocked(listInventoryConfigurationItems).mockResolvedValue([
+      configurationItem,
+    ]);
+    vi.mocked(listInventoryOperationalItems).mockResolvedValue([uninitialized]);
+    const onUnauthorized = vi.fn();
+    const { rerender } = render(
+      <InventoryPanel onUnauthorized={onUnauthorized} />,
+    );
+    await screen.findByRole("link", { name: "Configuración" });
+    await screen.findByRole("link", { name: "Operación" });
+    rerender(
+      <InventoryPanel onUnauthorized={onUnauthorized} canOperate={false} />,
+    );
+    expect(
+      screen.queryByRole("link", { name: "Operación" }),
+    ).not.toBeInTheDocument();
+    await screen.findByRole("button", { name: "Crear elemento" });
+    expect(listInventoryOperationalItems).toHaveBeenCalledTimes(1);
+    rerender(
+      <InventoryPanel onUnauthorized={onUnauthorized} canConfigure={false} />,
+    );
+    expect(
+      screen.queryByRole("link", { name: "Configuración" }),
+    ).not.toBeInTheDocument();
+    await screen.findByRole("link", { name: "Operación" });
+    expect(listInventoryConfigurationItems).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     { configuration: true, operation: false, label: "Configuration only" },
     { configuration: false, operation: true, label: "Operation only" },

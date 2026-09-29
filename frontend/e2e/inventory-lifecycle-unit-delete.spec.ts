@@ -86,15 +86,7 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
   await expect(row).toContainText("U1");
   await expect(row).toContainText("Requiere conteo/reconciliación");
   await expect(
-    page.getByText(
-      "Esta Identity no tiene autorización para operar Inventario.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByRole("region", { name: "Estado actual de Inventario" })
-      .getByRole("article", { name }),
+    page.getByRole("region", { name: "Estado actual de Inventario" }),
   ).toHaveCount(0);
 
   await row.getByLabel(`Unidad observada actualmente de ${name}`).fill("U1");
@@ -113,15 +105,7 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
   await logout(page);
   await login(page, operator);
   await expect(
-    page.getByText(
-      "Esta Identity no tiene autorización para configurar Inventario.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByRole("region", { name: "Configuración de Inventario" })
-      .getByRole("button", { name: "Crear elemento" }),
+    page.getByRole("region", { name: "Configuración de Inventario" }),
   ).toHaveCount(0);
   const operation = page.getByRole("region", {
     name: "Estado actual de Inventario",

@@ -112,8 +112,11 @@ export class NotificationSseTransport {
   constructor(options: NotificationSseTransportOptions = {}) {
     this.eventSourceFactory =
       options.eventSourceFactory ?? createBrowserEventSource;
-    this.scheduleTimeout = options.setTimeout ?? globalThis.setTimeout;
-    this.cancelTimeout = options.clearTimeout ?? globalThis.clearTimeout;
+    this.scheduleTimeout =
+      options.setTimeout ??
+      ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
+    this.cancelTimeout =
+      options.clearTimeout ?? ((timer) => globalThis.clearTimeout(timer));
     this.random = options.random ?? Math.random;
   }
 

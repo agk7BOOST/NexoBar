@@ -27,6 +27,8 @@ import {
 
 interface InventoryPanelProps {
   onUnauthorized: () => void;
+  canConfigure?: boolean;
+  canOperate?: boolean;
 }
 
 type ScopeState<T> =
@@ -68,7 +70,11 @@ function creationFailureMessage(error: InventoryProblemError): string {
   }
 }
 
-export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
+export function InventoryPanel({
+  onUnauthorized,
+  canConfigure = true,
+  canOperate = true,
+}: InventoryPanelProps) {
   const [configuration, setConfiguration] = useState<
     ScopeState<InventoryConfigurationItem>
   >({ status: "loading" });
@@ -125,6 +131,7 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
   ]);
 
   const refreshConfiguration = useCallback(async () => {
+    if (!canConfigure) return;
     const sequence = ++configurationSequence.current;
     setConfiguration({ status: "loading" });
     try {
@@ -145,11 +152,11 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
         setConfiguration({ status: "error" });
       }
     }
-  }, [handleUnauthorized]);
+  }, [canConfigure, handleUnauthorized]);
 
   const refreshOperation = useCallback(
     async (showLoading = true) => {
-      if (!mountedRef.current || sessionEndedRef.current) return;
+      if (!canOperate || !mountedRef.current || sessionEndedRef.current) return;
       if (showLoading) setOperation({ status: "loading" });
       operationReadCoordinator.current.invalidate(async (isCurrent) => {
         try {
@@ -180,7 +187,7 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
         }
       });
     },
-    [handleUnauthorized],
+    [canOperate, handleUnauthorized],
   );
 
   const invalidateOperation = useCallback(() => {
@@ -198,13 +205,22 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      void refreshConfiguration();
-      void refreshOperation();
+      if (canConfigure) void refreshConfiguration();
+      if (canOperate) void refreshOperation();
     }, 0);
     return () => {
       window.clearTimeout(timeout);
+      cancelReadRequests();
+      cancelOperationRequests();
     };
-  }, [refreshConfiguration, refreshOperation]);
+  }, [
+    canConfigure,
+    canOperate,
+    refreshConfiguration,
+    refreshOperation,
+    cancelReadRequests,
+    cancelOperationRequests,
+  ]);
 
   const executeCreateIntent = useCallback(
     async (intent: CreateIntent) => {
@@ -351,12 +367,13 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
       <div className="inventory-family-heading">
         <p className="eyebrow">Inventario</p>
         <h2 id="inventory-heading">Inventario</h2>
-        {(configuration.status === "ready" || operation.status === "ready") && (
+        {((canConfigure && configuration.status === "ready") ||
+          (canOperate && operation.status === "ready")) && (
           <nav aria-label="Secciones de Inventario">
-            {configuration.status === "ready" && (
+            {canConfigure && configuration.status === "ready" && (
               <a href="#inventory-configuration">Configuración</a>
             )}
-            {operation.status === "ready" && (
+            {canOperate && operation.status === "ready" && (
               <a href="#inventory-operation">Operación</a>
             )}
           </nav>
@@ -365,6 +382,7 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
 
       <section
         id="inventory-configuration"
+        hidden={!canConfigure}
         className="panel"
         aria-labelledby="inventory-configuration-heading"
         aria-busy={configuration.status === "loading"}
@@ -523,11 +541,12 @@ export function InventoryPanel({ onUnauthorized }: InventoryPanelProps) {
 
       <section
         id="inventory-operation"
+        hidden={!canOperate}
         className="panel"
         aria-labelledby="inventory-operation-heading"
         aria-busy={operation.status === "loading"}
       >
-        {operationAuthorized && (
+        {canOperate && operationAuthorized && (
           <InventoryOperationFreshnessSubscription
             invalidate={invalidateOperation}
           />

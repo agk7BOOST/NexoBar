@@ -147,6 +147,7 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
     "intervention-e2e-secret",
     "Intervención E2E",
   );
+  await page.getByRole("button", { name: "Preparación", exact: true }).click();
   const intervention = page.getByRole("region", {
     name: "Intervención operacional",
   });

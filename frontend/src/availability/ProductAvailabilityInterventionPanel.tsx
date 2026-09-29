@@ -14,7 +14,8 @@ import {
   SessionProblemError,
 } from "../identity/sessionClient.ts";
 
-type Phase = "loading" | "idle" | "sending" | "uncertain";
+type Phase =
+  "loading" | "idle" | "sending" | "uncertain" | "error" | "forbidden";
 
 interface Props {
   onUnauthorized: () => void;
@@ -75,11 +76,15 @@ export function ProductAvailabilityInterventionPanel({
         error instanceof AvailabilityProblemError &&
         error.problem.status === 403
       ) {
+        setMessage(
+          "Esta Identity no tiene autorización para cambiar disponibilidad.",
+        );
+        setPhase("forbidden");
         onForbidden();
         return;
       }
       setMessage("No se pudo consultar la disponibilidad de los Products.");
-      setPhase("idle");
+      setPhase("error");
     }
   }, [onForbidden, onUnauthorized]);
 
@@ -121,6 +126,11 @@ export function ProductAvailabilityInterventionPanel({
         return;
       }
       if (error.problem.status === 403) {
+        setUncertainIntent(null);
+        setMessage(
+          "Esta Identity no tiene autorización para cambiar disponibilidad.",
+        );
+        setPhase("forbidden");
         onForbidden();
         return;
       }
@@ -175,8 +185,27 @@ export function ProductAvailabilityInterventionPanel({
         Esta superficie cambia únicamente la disponibilidad de Products
         vigentes.
       </p>
-      {message && <p role="status">{message}</p>}
+      {message && (
+        <p
+          className={`notice notice--${phase === "error" || phase === "forbidden" ? "functional-error" : phase === "uncertain" ? "uncertain" : "info"}`}
+          role="status"
+        >
+          {message}
+        </p>
+      )}
       {phase === "loading" && <p role="status">Cargando Products vigentes…</p>}
+      {phase === "error" && (
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => {
+            setMessage(null);
+            void reload();
+          }}
+        >
+          Reintentar consulta de disponibilidad
+        </button>
+      )}
       {uncertainIntent && (
         <div
           className="uncertain-intention"
@@ -198,7 +227,7 @@ export function ProductAvailabilityInterventionPanel({
           </button>
         </div>
       )}
-      {phase !== "loading" && products.length === 0 && (
+      {phase === "idle" && products.length === 0 && (
         <p>No hay Products vigentes.</p>
       )}
       {phase !== "loading" && products.length > 0 && (

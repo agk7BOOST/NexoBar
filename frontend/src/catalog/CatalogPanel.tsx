@@ -1248,7 +1248,10 @@ export function CatalogPanel({
       </section>
       <section className="panel" aria-labelledby="create-title">
         <h2 id="create-title">Crear producto</h2>
-        <form onSubmit={(event) => void handleCreate(event)}>
+        <form
+          className="paired-fields-form"
+          onSubmit={(event) => void handleCreate(event)}
+        >
           <label htmlFor="operational-name">Nombre operacional</label>
           <input
             id="operational-name"
