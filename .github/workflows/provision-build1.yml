@@ -1,0 +1,38 @@
+name: Provision Build 1 initial admin
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provision-build1
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Provision initial admin
+        shell: bash
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+          ConnectionStrings__IdentitiesAndCapabilities: ${{ secrets.NEXOBAR_BUILD1_CONNECTION_STRING }}
+          INITIAL_ADMIN_SECRET: ${{ secrets.NEXOBAR_BUILD1_INITIAL_ADMIN_SECRET }}
+          RECOVERY_FACTOR: ${{ secrets.NEXOBAR_BUILD1_RECOVERY_FACTOR }}
+        run: |
+          printf '%s\n%s\n' "$INITIAL_ADMIN_SECRET" "$RECOVERY_FACTOR" |
+            dotnet run --project backend/src/NexoBar.Host/NexoBar.Host.csproj --configuration Release -- \
+              provision-initial-admin \
+              --operational-name "Administrador Build 1" \
+              --login-identifier "admin-build1" \
+              --command-id "20082ae3-abe6-449a-9a77-2f20af367714"
