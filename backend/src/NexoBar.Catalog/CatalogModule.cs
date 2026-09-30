@@ -36,6 +36,7 @@ public static class CatalogModule
         services.AddScoped<IProductOperationalReferenceLookup,
             ProductOperationalReferenceLookup>();
 
+        services.AddScoped<NexoBar.OperationalConfiguration.IDestinationProductReferences, DestinationProductReferences>();
         return services;
     }
 
@@ -222,8 +223,8 @@ public static class CatalogModule
                 productId),
             ProductPreparationConfigurationChangeOutcome.ResponsibilityNotFound => Problem(
                 StatusCodes.Status409Conflict,
-                "Preparation Responsibility does not exist",
-                "The requested Preparation Responsibility does not exist.",
+                "Preparation destination is not selectable",
+                "The requested Preparation Responsibility does not exist or is retired.",
                 "catalog.product.preparation_responsibility_not_found",
                 productId,
                 preparationResponsibilityId:
@@ -378,6 +379,7 @@ public static class CatalogModule
         CatalogMutationOutcome.Changed => Results.Ok(result.Result),
         CatalogMutationOutcome.NotFound => ProductNotFound(productId),
         CatalogMutationOutcome.AlreadyRetired => Problem(StatusCodes.Status409Conflict, "Product already retired", "The Product is already retired.", "catalog.product.already_retired", productId),
+        CatalogMutationOutcome.DestinationNotCurrent => Problem(409, "Destino de preparación retirado", "Reactivá el destino antes de reactivar este Producto.", "catalog.product.preparation_destination_not_current", productId),
         CatalogMutationOutcome.AlreadyActive => Problem(StatusCodes.Status409Conflict, "Product already active", "The Product is already active.", "catalog.product.already_active", productId),
         CatalogMutationOutcome.NameConflict => Problem(StatusCodes.Status409Conflict, "Product name collision", "Another active Product uses this operational name.", "catalog.product.reactivation_name_conflict", productId),
         CatalogMutationOutcome.IdempotencyConflict => IdempotencyConflict($"catalog.product.{command}.idempotency_key_conflict"),

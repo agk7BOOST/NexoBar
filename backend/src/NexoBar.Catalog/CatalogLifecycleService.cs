@@ -9,7 +9,8 @@ namespace NexoBar.Catalog;
 internal sealed class CatalogLifecycleService(
     CatalogDbContext dbContext,
     IAuthenticatedSessionStabilizer sessionStabilizer,
-    ICatalogConfigurationCapabilityStabilizer catalogConfiguration)
+    ICatalogConfigurationCapabilityStabilizer catalogConfiguration,
+    NexoBar.OperationalConfiguration.IPreparationResponsibilityLookup preparationResponsibilities)
 {
     private const long GroupCreationNamespace = 0x47524F5550435245;
     private const long GroupChangeNamespace = 0x47524F5550434847;
@@ -154,6 +155,9 @@ internal sealed class CatalogLifecycleService(
         var current = await ReadDiagnosticAsync(productId, transaction, token);
         if (current is null) return ProductLifecycleCommandResult.NotFound();
         if (current.IsActive) return ProductLifecycleCommandResult.AlreadyActive();
+        if (current.PreparationResponsibilityId is Guid destinationId &&
+            !await preparationResponsibilities.IsActiveAsync(destinationId, transaction.GetDbTransaction(), token))
+            return ProductLifecycleCommandResult.DestinationNotCurrent();
         try
         {
             await dbContext.Database.ExecuteSqlInterpolatedAsync($"UPDATE catalog.products SET is_active = true, is_available = true WHERE id = {productId}", token);
@@ -184,7 +188,7 @@ internal sealed class CatalogLifecycleService(
 
     private async Task<ProductLifecycleDiagnostic?> ReadDiagnosticAsync(Guid id, IDbContextTransaction transaction, CancellationToken token) =>
         await dbContext.Database.SqlQuery<ProductLifecycleDiagnostic>($"""
-            SELECT is_active AS "IsActive", is_available AS "IsAvailable", group_id AS "GroupId", operational_name AS "OperationalName"
+            SELECT is_active AS "IsActive", is_available AS "IsAvailable", group_id AS "GroupId", operational_name AS "OperationalName", preparation_responsibility_id AS "PreparationResponsibilityId"
             FROM catalog.products WHERE id = {id} FOR UPDATE
             """).AsNoTracking().SingleOrDefaultAsync(token);
 
@@ -201,8 +205,8 @@ internal sealed class CatalogLifecycleService(
     }
 }
 
-internal sealed record ProductLifecycleDiagnostic(bool IsActive, bool IsAvailable, Guid? GroupId, string OperationalName);
-internal enum CatalogMutationOutcome { Changed, Created, Invalid, NameConflict, GroupNotFound, NotFound, NotCurrent, Stale, AlreadyRetired, AlreadyActive, IdempotencyConflict, AuthenticationRequired, Forbidden }
+internal sealed record ProductLifecycleDiagnostic(bool IsActive, bool IsAvailable, Guid? GroupId, string OperationalName, Guid? PreparationResponsibilityId);
+internal enum CatalogMutationOutcome { Changed, Created, Invalid, NameConflict, GroupNotFound, NotFound, NotCurrent, Stale, AlreadyRetired, AlreadyActive, DestinationNotCurrent, IdempotencyConflict, AuthenticationRequired, Forbidden }
 internal sealed record GroupCommandResult(CatalogMutationOutcome Outcome, GroupResponse? Group = null, string? Field = null, string? Error = null)
 { internal static GroupCommandResult Created(GroupResponse x) => new(CatalogMutationOutcome.Created, x); internal static GroupCommandResult Invalid(string f, string e) => new(CatalogMutationOutcome.Invalid, null, f, e); internal static GroupCommandResult NameConflict() => new(CatalogMutationOutcome.NameConflict); internal static GroupCommandResult IdempotencyConflict() => new(CatalogMutationOutcome.IdempotencyConflict); internal static GroupCommandResult AuthenticationRequired() => new(CatalogMutationOutcome.AuthenticationRequired); internal static GroupCommandResult Forbidden() => new(CatalogMutationOutcome.Forbidden); }
 internal sealed record GroupListResult(CatalogMutationOutcome Outcome, IReadOnlyList<GroupResponse>? Groups = null)
@@ -212,4 +216,4 @@ internal sealed record ProductGroupCommandResult(CatalogMutationOutcome Outcome,
 internal sealed record ProductNameCommandResult(CatalogMutationOutcome Outcome, ProductOperationalNameResponse? Result = null, string? CurrentName = null, string? Field = null, string? Error = null)
 { internal static ProductNameCommandResult Changed(ProductOperationalNameResponse x) => new(CatalogMutationOutcome.Changed, x); internal static ProductNameCommandResult Invalid(string f, string e) => new(CatalogMutationOutcome.Invalid, null, null, f, e); internal static ProductNameCommandResult NameConflict() => new(CatalogMutationOutcome.NameConflict); internal static ProductNameCommandResult NotFound() => new(CatalogMutationOutcome.NotFound); internal static ProductNameCommandResult Stale(string x) => new(CatalogMutationOutcome.Stale, null, x); internal static ProductNameCommandResult IdempotencyConflict() => new(CatalogMutationOutcome.IdempotencyConflict); internal static ProductNameCommandResult AuthenticationRequired() => new(CatalogMutationOutcome.AuthenticationRequired); internal static ProductNameCommandResult Forbidden() => new(CatalogMutationOutcome.Forbidden); }
 internal sealed record ProductLifecycleCommandResult(CatalogMutationOutcome Outcome, ProductLifecycleResponse? Result = null)
-{ internal static ProductLifecycleCommandResult Changed(ProductLifecycleResponse x) => new(CatalogMutationOutcome.Changed, x); internal static ProductLifecycleCommandResult NameConflict() => new(CatalogMutationOutcome.NameConflict); internal static ProductLifecycleCommandResult NotFound() => new(CatalogMutationOutcome.NotFound); internal static ProductLifecycleCommandResult AlreadyRetired() => new(CatalogMutationOutcome.AlreadyRetired); internal static ProductLifecycleCommandResult AlreadyActive() => new(CatalogMutationOutcome.AlreadyActive); internal static ProductLifecycleCommandResult IdempotencyConflict() => new(CatalogMutationOutcome.IdempotencyConflict); internal static ProductLifecycleCommandResult AuthenticationRequired() => new(CatalogMutationOutcome.AuthenticationRequired); internal static ProductLifecycleCommandResult Forbidden() => new(CatalogMutationOutcome.Forbidden); }
+{ internal static ProductLifecycleCommandResult DestinationNotCurrent() => new(CatalogMutationOutcome.DestinationNotCurrent); internal static ProductLifecycleCommandResult Changed(ProductLifecycleResponse x) => new(CatalogMutationOutcome.Changed, x); internal static ProductLifecycleCommandResult NameConflict() => new(CatalogMutationOutcome.NameConflict); internal static ProductLifecycleCommandResult NotFound() => new(CatalogMutationOutcome.NotFound); internal static ProductLifecycleCommandResult AlreadyRetired() => new(CatalogMutationOutcome.AlreadyRetired); internal static ProductLifecycleCommandResult AlreadyActive() => new(CatalogMutationOutcome.AlreadyActive); internal static ProductLifecycleCommandResult IdempotencyConflict() => new(CatalogMutationOutcome.IdempotencyConflict); internal static ProductLifecycleCommandResult AuthenticationRequired() => new(CatalogMutationOutcome.AuthenticationRequired); internal static ProductLifecycleCommandResult Forbidden() => new(CatalogMutationOutcome.Forbidden); }

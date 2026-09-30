@@ -9,6 +9,7 @@ export interface AdministrativeIdentity {
 }
 
 export interface PreparationResponsibility {
+  isActive: boolean;
   id: string;
   operationalName: string;
 }

@@ -149,6 +149,9 @@ internal sealed class SubsequentConfirmationService(
                 return SubsequentConfirmationResult.ProductNotCurrent(item.ProductId);
             }
 
+            if (!product.IsPreparationDestinationActive)
+                return SubsequentConfirmationResult.PreparationDestinationNotCurrent(item.ProductId);
+
             if (!product.IsAvailable && !item.UnavailableProductExceptionRequested)
             {
                 return SubsequentConfirmationResult.ProductUnavailable(item.ProductId);
@@ -425,6 +428,9 @@ internal sealed record SubsequentConfirmationResult(
     internal static SubsequentConfirmationResult OrderNotFound() =>
         new(SubsequentConfirmationOutcome.OrderNotFound, null, null);
 
+    internal static SubsequentConfirmationResult PreparationDestinationNotCurrent(Guid productId) =>
+        new(SubsequentConfirmationOutcome.PreparationDestinationNotCurrent, null, productId);
+
     internal static SubsequentConfirmationResult ProductNotCurrent(Guid productId) =>
         new(SubsequentConfirmationOutcome.ProductNotCurrent, null, productId);
 
@@ -466,6 +472,7 @@ internal enum SubsequentConfirmationOutcome
     DuplicateLine,
     OrderNotFound,
     ProductNotCurrent,
+    PreparationDestinationNotCurrent,
     ProductUnavailable,
     InstructionRequiresPreparation,
     IdempotencyConflict,

@@ -6,7 +6,7 @@
 - Backend autoritativo: C# sobre .NET 10 LTS y ASP.NET Core 10. Frontend: React 19, TypeScript estricto y Vite 8.
 - El backend es un monolito modular y una unidad principal de despliegue. `NexoBar.Host` compone los módulos y es el composition root.
 - Los módulos superiores son `OrderOperations`, `Catalog`, `Inventory`, `IdentitiesAndCapabilities` y `OperationalConfiguration`. Los cinco están materializados; `Inventory` posee su Estado, operaciones físicas, Historia y superficies web de configuración y operación, mientras `IdentitiesAndCapabilities` posee Estado, sesiones, administración y capacidades públicas de autorización.
-- `OperationalConfiguration` es un módulo persistente y funcional para `PreparationResponsibility` y Context configurado. PreparationResponsibility conserva su lifecycle incompleto; Context tiene el mínimo MVP de crear y listar, sin lifecycle de rename/retire/delete.
+- `OperationalConfiguration` es un módulo persistente y funcional para `PreparationResponsibility` y Context configurado. Ambos tienen lifecycle mínimo de rename, retiro/reactivación y Delete físico elegible; ordering y estaciones permanecen diferidos. Sus capacidades de participación/referencias se definen en OperationalConfiguration y son implementadas por los módulos propietarios, sin dependencias inversas de proyecto.
 - `Preparation` y `Delivery` son fronteras internas de `OrderOperations`, no módulos top-level. Son dimensiones distintas: `Ready != Delivered`.
 - Cada módulo conserva la propiedad de su Estado y colabora mediante capacidades explícitas. No hay ciclos ni un `Shared`/`Common` genérico.
 

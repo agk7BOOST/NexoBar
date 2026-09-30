@@ -51,6 +51,9 @@ internal sealed class OperationalContextService(
                 : CreateOperationalContextResult.IdempotencyConflict();
         }
 
+        if (await dbContext.OperationalContextLifecycleCommands.AnyAsync(x => x.IdempotencyKey == idempotencyKey, cancellationToken))
+            return CreateOperationalContextResult.IdempotencyConflict();
+
         if (!await authorization.StabilizeGeneralConfigurationAsync(
                 actor.IdentityId,
                 transaction.GetDbTransaction(),
@@ -110,8 +113,10 @@ internal sealed class OperationalContextService(
                 CreateOperationalContextOutcome.GeneralConfigurationRequired);
         }
 
-        var contexts = await new OperationalContextLookup(dbContext)
-            .ListConfiguredContextsAsync(cancellationToken);
+        var contexts = await dbContext.Contexts.AsNoTracking()
+            .OrderBy(x => x.OperationalName).ThenBy(x => x.Id)
+            .Select(x => new OperationalContextReference(x.Id, x.OperationalName, x.IsActive))
+            .ToArrayAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return contexts;
     }
@@ -147,7 +152,7 @@ internal sealed class OperationalContextService(
     }
 
     private static OperationalContextReference Map(OperationalContext context) =>
-        new(context.Id, context.OperationalName);
+        new(context.Id, context.OperationalName, context.IsActive);
 
     private static OperationalContextReference Map(
         OperationalContextCreationCommand command) =>

@@ -276,3 +276,97 @@ La evidencia siguiente corresponde a checkpoints focalizados previamente ejecuta
 **CTX-I3 — fixture y E2E dirigido.** DatabaseSetup actualizado para sembrar Context configurado antes de sus Orders; los Orders usan ID/nombre actuales y ConfirmationHistory guarda ID/nombre snapshot, sin compatibilidad agregada a producción. El proyecto DatabaseSetup compiló con **0 errores y 0 warnings**; el setup aislado terminó y los cinco DbContext quedaron con `HasPendingModelChanges=false`. El único spec Playwright descubrió **1**, pasó **1**, falló **0** y omitió **0**.
 
 El E2E usa G sólo con `GeneralConfiguration`, O sólo con `OrderOperationsAndBasicClosure` y P con `Preparation`. G crea A/B por la UI real; O hace First Confirmation en A por selector configurado y el request no usa texto libre; P observa el Work bajo A. O cambia ese mismo Order A→B manteniendo referencia y Content; P observa B en el mismo Work y conserva Product, cantidad, destino donde la UI lo expone y progreso. O confirma un segundo Order distinto que también usa B. La Liquidation congela el Order original y retira la acción Context Change. La aserción explícita de la versión final espera Context B en P después de la invalidación/refresh. Esto es evidencia E2E dirigida: no afirma una suite Playwright completa ni History terminal o lifecycle de Context.
+
+## Lifecycle mínimo de Contextos y Destinos de preparación 2026-09-30
+
+Cambio candidato implementado según el prompt de lifecycle autorizado en esta tarea. La semántica técnica y los ocho comandos administrativos están en [OperationalConfiguration](../operational-configuration/README.md#lifecycle-mínimo-de-contextos-y-destinos-de-preparación). No se modificaron las Sources normativas cerradas ni se ejecutó Product Polish A.
+
+Verificación sobre PostgreSQL real aislado:
+
+- OperationalConfiguration completo: **34/34**, incluidos los 22 casos nuevos de lifecycle, autoridad, replay actor-aware después de reinicio y Delete, expectativas obsoletas, unicidad entre retirados, atomicidad y consumidores. Cuatro carreras retienen la referencia antes del commit y comprueban el lock real PostgreSQL: First Confirmation frente a Delete de Contexto; configuración y reactivación de Product frente a Retire de destino; grant de Enablement frente a Delete de destino.
+- Catalog dirigido: **44/44** (`ProductPreparationConfigurationApiTests`, `ProductGroupsAndLifecycleApiTests`, `CatalogSecurityApiTests`).
+- OrderOperations dirigido: **92/92** en dos ejecuciones: 84 de First/Subsequent Confirmation, instructions, Work y concurrencia de Product; 8 de Context Change y First Confirmation con Context configurado. El read operacional mantiene exactamente `{ id, operationalName }`; `isActive` pertenece al read administrativo.
+- IdentitiesAndCapabilities dirigido: **20/20** (`CurrentPreparationDestinationsApiTests`, `IdentityAdministrationApiTests`).
+- `AddConfigurationLifecycle` Up/Down y upgrade de State previo: **PASS**. Down rechaza descartar lifecycle durable después de Delete. `HasPendingModelChanges=false` en OperationalConfiguration y en los cinco modelos del runner E2E.
+- Build de `backend/NexoBar.slnx --no-restore`: **PASS**, 0 errores y 0 warnings.
+
+Frontend final:
+
+- `npm run typecheck` y `npm run lint`: **PASS**.
+- Siete archivos unitarios dirigidos: **93/93**. Incluyen retry incierto con la misma intención, respuestas funcionales y recarga fallida después de un comando confirmado sin reenviar la mutación.
+- Chromium mediante el harness existente: **4/4**, sin fallos ni omisiones. `configuration-lifecycle.spec.ts` cubre retiro/reactivación de Contexto y retiro bloqueado por Product activo seguido de deshabilitar preparación y excluir el destino. Se reejecutaron también `preparation-configuration-e2e.spec.ts` y `context-configuration-change.spec.ts`; se conserva el flujo de Work, cambio de Contexto, frescura y Freeze.
+- `git diff --check`: **PASS**.
+
+La regresión inicial de OrderOperations detectó un `isActive` extra en el read operacional; se corrigió la proyección sin ensanchar el contrato. El E2E anterior de Contextos exigía ausencia de botones de lifecycle; su expectativa se actualizó para verificar las acciones ahora solicitadas, conservando el resto del escenario. Los resultados anteriores son focalizados: no afirman éxito de todas las suites backend, frontend o Playwright. La verificación se realizó antes del commit; no se hizo push.
+
+### Archivos de este cambio
+
+- [backend/src/NexoBar.Catalog/CatalogLifecycleService.cs](../../backend/src/NexoBar.Catalog/CatalogLifecycleService.cs)
+- [backend/src/NexoBar.Catalog/CatalogModule.cs](../../backend/src/NexoBar.Catalog/CatalogModule.cs)
+- [backend/src/NexoBar.Catalog/CatalogService.cs](../../backend/src/NexoBar.Catalog/CatalogService.cs)
+- [backend/src/NexoBar.Catalog/DestinationProductReferences.cs](../../backend/src/NexoBar.Catalog/DestinationProductReferences.cs)
+- [backend/src/NexoBar.Catalog/NexoBar.Catalog.csproj](../../backend/src/NexoBar.Catalog/NexoBar.Catalog.csproj)
+- [backend/src/NexoBar.Catalog/OrderConfirmationCatalog.cs](../../backend/src/NexoBar.Catalog/OrderConfirmationCatalog.cs)
+- [backend/src/NexoBar.IdentitiesAndCapabilities/DestinationEnablementReferences.cs](../../backend/src/NexoBar.IdentitiesAndCapabilities/DestinationEnablementReferences.cs)
+- [backend/src/NexoBar.IdentitiesAndCapabilities/IdentitiesAndCapabilitiesModule.cs](../../backend/src/NexoBar.IdentitiesAndCapabilities/IdentitiesAndCapabilitiesModule.cs)
+- [backend/src/NexoBar.IdentitiesAndCapabilities/IdentityAdministrationService.cs](../../backend/src/NexoBar.IdentitiesAndCapabilities/IdentityAdministrationService.cs)
+- [backend/src/NexoBar.IdentitiesAndCapabilities/PreparationEnablementService.cs](../../backend/src/NexoBar.IdentitiesAndCapabilities/PreparationEnablementService.cs)
+- [backend/src/NexoBar.OperationalConfiguration/ContextContracts.cs](../../backend/src/NexoBar.OperationalConfiguration/ContextContracts.cs)
+- [backend/src/NexoBar.OperationalConfiguration/LifecycleContracts.cs](../../backend/src/NexoBar.OperationalConfiguration/LifecycleContracts.cs)
+- [backend/src/NexoBar.OperationalConfiguration/Migrations/20260922130000_AddOperationalContexts.Designer.cs](../../backend/src/NexoBar.OperationalConfiguration/Migrations/20260922130000_AddOperationalContexts.Designer.cs)
+- [backend/src/NexoBar.OperationalConfiguration/Migrations/20260930120000_AddConfigurationLifecycle.cs](../../backend/src/NexoBar.OperationalConfiguration/Migrations/20260930120000_AddConfigurationLifecycle.cs)
+- [backend/src/NexoBar.OperationalConfiguration/Migrations/20260930120000_AddConfigurationLifecycle.Designer.cs](../../backend/src/NexoBar.OperationalConfiguration/Migrations/20260930120000_AddConfigurationLifecycle.Designer.cs)
+- [backend/src/NexoBar.OperationalConfiguration/Migrations/OperationalConfigurationDbContextModelSnapshot.cs](../../backend/src/NexoBar.OperationalConfiguration/Migrations/OperationalConfigurationDbContextModelSnapshot.cs)
+- [backend/src/NexoBar.OperationalConfiguration/OperationalConfigurationDbContext.cs](../../backend/src/NexoBar.OperationalConfiguration/OperationalConfigurationDbContext.cs)
+- [backend/src/NexoBar.OperationalConfiguration/OperationalConfigurationLifecycleEndpoints.cs](../../backend/src/NexoBar.OperationalConfiguration/OperationalConfigurationLifecycleEndpoints.cs)
+- [backend/src/NexoBar.OperationalConfiguration/OperationalConfigurationModule.cs](../../backend/src/NexoBar.OperationalConfiguration/OperationalConfigurationModule.cs)
+- [backend/src/NexoBar.OperationalConfiguration/OperationalContext.cs](../../backend/src/NexoBar.OperationalConfiguration/OperationalContext.cs)
+- [backend/src/NexoBar.OperationalConfiguration/OperationalContextLifecycleService.cs](../../backend/src/NexoBar.OperationalConfiguration/OperationalContextLifecycleService.cs)
+- [backend/src/NexoBar.OperationalConfiguration/OperationalContextLookup.cs](../../backend/src/NexoBar.OperationalConfiguration/OperationalContextLookup.cs)
+- [backend/src/NexoBar.OperationalConfiguration/OperationalContextService.cs](../../backend/src/NexoBar.OperationalConfiguration/OperationalContextService.cs)
+- [backend/src/NexoBar.OperationalConfiguration/PreparationResponsibility.cs](../../backend/src/NexoBar.OperationalConfiguration/PreparationResponsibility.cs)
+- [backend/src/NexoBar.OperationalConfiguration/PreparationResponsibilityContracts.cs](../../backend/src/NexoBar.OperationalConfiguration/PreparationResponsibilityContracts.cs)
+- [backend/src/NexoBar.OperationalConfiguration/PreparationResponsibilityLifecycleService.cs](../../backend/src/NexoBar.OperationalConfiguration/PreparationResponsibilityLifecycleService.cs)
+- [backend/src/NexoBar.OperationalConfiguration/PreparationResponsibilityLookup.cs](../../backend/src/NexoBar.OperationalConfiguration/PreparationResponsibilityLookup.cs)
+- [backend/src/NexoBar.OperationalConfiguration/PreparationResponsibilityService.cs](../../backend/src/NexoBar.OperationalConfiguration/PreparationResponsibilityService.cs)
+- [backend/src/NexoBar.OrderOperations/ConfigurationOperationalParticipation.cs](../../backend/src/NexoBar.OrderOperations/ConfigurationOperationalParticipation.cs)
+- [backend/src/NexoBar.OrderOperations/FirstConfirmationService.cs](../../backend/src/NexoBar.OrderOperations/FirstConfirmationService.cs)
+- [backend/src/NexoBar.OrderOperations/NexoBar.OrderOperations.csproj](../../backend/src/NexoBar.OrderOperations/NexoBar.OrderOperations.csproj)
+- [backend/src/NexoBar.OrderOperations/OrderContextChangeService.cs](../../backend/src/NexoBar.OrderOperations/OrderContextChangeService.cs)
+- [backend/src/NexoBar.OrderOperations/OrderOperationsModule.cs](../../backend/src/NexoBar.OrderOperations/OrderOperationsModule.cs)
+- [backend/src/NexoBar.OrderOperations/SubsequentConfirmationService.cs](../../backend/src/NexoBar.OrderOperations/SubsequentConfirmationService.cs)
+- [backend/tests/NexoBar.Catalog.IntegrationTests/ProductPreparationConfigurationApiTests.cs](../../backend/tests/NexoBar.Catalog.IntegrationTests/ProductPreparationConfigurationApiTests.cs)
+- [backend/tests/NexoBar.OperationalConfiguration.IntegrationTests/ConfigurationLifecycleApiTests.cs](../../backend/tests/NexoBar.OperationalConfiguration.IntegrationTests/ConfigurationLifecycleApiTests.cs)
+- [backend/tests/NexoBar.OperationalConfiguration.IntegrationTests/ConfigurationLifecycleConcurrencyTests.cs](../../backend/tests/NexoBar.OperationalConfiguration.IntegrationTests/ConfigurationLifecycleConcurrencyTests.cs)
+- [backend/tests/NexoBar.OperationalConfiguration.IntegrationTests/OperationalConfigurationApiFixture.cs](../../backend/tests/NexoBar.OperationalConfiguration.IntegrationTests/OperationalConfigurationApiFixture.cs)
+- [backend/tests/NexoBar.OrderOperations.IntegrationTests/ConfirmationInstructionApiTests.cs](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/ConfirmationInstructionApiTests.cs)
+- [backend/tests/NexoBar.OrderOperations.IntegrationTests/FirstConfirmationApiTests.cs](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/FirstConfirmationApiTests.cs)
+- [backend/tests/NexoBar.OrderOperations.IntegrationTests/OrderOperationsApiFixture.cs](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/OrderOperationsApiFixture.cs)
+- [backend/tests/NexoBar.OrderOperations.IntegrationTests/PreparationWorkApiTests.cs](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/PreparationWorkApiTests.cs)
+- [backend/tests/NexoBar.OrderOperations.IntegrationTests/ProductDeleteConcurrencyTests.cs](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/ProductDeleteConcurrencyTests.cs)
+- [backend/tests/NexoBar.OrderOperations.IntegrationTests/ProductRetirementConcurrencyTests.cs](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/ProductRetirementConcurrencyTests.cs)
+- [backend/tests/NexoBar.OrderOperations.IntegrationTests/SubsequentConfirmationApiTests.cs](../../backend/tests/NexoBar.OrderOperations.IntegrationTests/SubsequentConfirmationApiTests.cs)
+- [docs/architecture/overview.md](../../docs/architecture/overview.md)
+- [docs/catalog/README.md](../../docs/catalog/README.md)
+- [docs/engineering-handoff.md](../../docs/engineering-handoff.md)
+- [docs/identities-and-capabilities/administration.md](../../docs/identities-and-capabilities/administration.md)
+- [docs/identities-and-capabilities/security.md](../../docs/identities-and-capabilities/security.md)
+- [docs/operational-configuration/README.md](../../docs/operational-configuration/README.md)
+- [docs/order-operations/contracts-and-history.md](../../docs/order-operations/contracts-and-history.md)
+- [docs/order-operations/frontend.md](../../docs/order-operations/frontend.md)
+- [docs/testing/verification.md](../../docs/testing/verification.md)
+- [frontend/e2e/configuration-lifecycle.spec.ts](../../frontend/e2e/configuration-lifecycle.spec.ts)
+- [frontend/e2e/context-configuration-change.spec.ts](../../frontend/e2e/context-configuration-change.spec.ts)
+- [frontend/e2e/preparation-configuration-e2e.spec.ts](../../frontend/e2e/preparation-configuration-e2e.spec.ts)
+- [frontend/src/catalog/CatalogPanel.test.tsx](../../frontend/src/catalog/CatalogPanel.test.tsx)
+- [frontend/src/catalog/CatalogPanel.tsx](../../frontend/src/catalog/CatalogPanel.tsx)
+- [frontend/src/generalConfiguration/configurationLifecycleClient.test.ts](../../frontend/src/generalConfiguration/configurationLifecycleClient.test.ts)
+- [frontend/src/generalConfiguration/configurationLifecycleClient.ts](../../frontend/src/generalConfiguration/configurationLifecycleClient.ts)
+- [frontend/src/generalConfiguration/ConfigurationLifecycleControls.test.tsx](../../frontend/src/generalConfiguration/ConfigurationLifecycleControls.test.tsx)
+- [frontend/src/generalConfiguration/ConfigurationLifecycleControls.tsx](../../frontend/src/generalConfiguration/ConfigurationLifecycleControls.tsx)
+- [frontend/src/generalConfiguration/contextConfigurationClient.ts](../../frontend/src/generalConfiguration/contextConfigurationClient.ts)
+- [frontend/src/generalConfiguration/ContextConfigurationSection.test.tsx](../../frontend/src/generalConfiguration/ContextConfigurationSection.test.tsx)
+- [frontend/src/generalConfiguration/ContextConfigurationSection.tsx](../../frontend/src/generalConfiguration/ContextConfigurationSection.tsx)
+- [frontend/src/generalConfiguration/GeneralConfigurationPanel.test.tsx](../../frontend/src/generalConfiguration/GeneralConfigurationPanel.test.tsx)
+- [frontend/src/generalConfiguration/GeneralConfigurationPanel.tsx](../../frontend/src/generalConfiguration/GeneralConfigurationPanel.tsx)
+- [frontend/src/generalConfiguration/identityAdministrationClient.ts](../../frontend/src/generalConfiguration/identityAdministrationClient.ts)

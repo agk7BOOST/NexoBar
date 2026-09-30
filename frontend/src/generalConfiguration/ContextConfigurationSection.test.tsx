@@ -22,13 +22,15 @@ vi.mock("../identity/sessionClient.ts", async (importOriginal) => ({
 beforeEach(() => {
   list
     .mockReset()
-    .mockResolvedValue([{ id: "ctx-a", operationalName: "Mesa A" }]);
+    .mockResolvedValue([
+      { id: "ctx-a", operationalName: "Mesa A", isActive: true },
+    ]);
   create.mockReset();
   token.mockReset().mockResolvedValue("csrf");
 });
 
 describe("ContextConfigurationSection", () => {
-  it("lista, crea e recarga de forma autoritativa; no ofrece acciones de lifecycle u Order", async () => {
+  it("lista, crea y recarga de forma autoritativa; ofrece lifecycle administrativo", async () => {
     const user = userEvent.setup();
     create.mockResolvedValue({ id: "server-id", operationalName: "Salón" });
     render(
@@ -53,10 +55,8 @@ describe("ContextConfigurationSection", () => {
       screen.getByText("Contexto creado correctamente."),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", {
-        name: /renombrar|retirar|reactivar|eliminar|cambiar contexto/i,
-      }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Cambiar nombre" }),
+    ).toBeInTheDocument();
   });
 
   it("valida nombre vacío y muestra duplicado normalizado del backend", async () => {

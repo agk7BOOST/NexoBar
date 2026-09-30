@@ -491,6 +491,9 @@ public sealed class ProductPreparationConfigurationApiTests(CatalogApiFixture fi
 internal sealed class UnexpectedPreparationResponsibilityLookup :
     IPreparationResponsibilityLookup
 {
+    public Task<bool> ExistsAsync(Guid id, System.Data.Common.DbTransaction transaction, CancellationToken token) => ExistsAsync(id, token);
+    public Task<bool> IsActiveAsync(Guid id, System.Data.Common.DbTransaction transaction, CancellationToken token) => ExistsAsync(id, token);
+    public Task<IReadOnlyList<PreparationResponsibilityReference>> ListActiveAsync(CancellationToken token) => ListAsync(token);
     internal bool WasCalled { get; private set; }
 
     public Task<bool> ExistsAsync(

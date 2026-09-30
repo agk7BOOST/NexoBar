@@ -1,3 +1,4 @@
+import { ConfigurationLifecycleControls } from "./ConfigurationLifecycleControls.tsx";
 import {
   type FormEvent,
   useCallback,
@@ -166,12 +167,12 @@ function preparationResponsibilityCreationMessage(
   problem: IdentityAdministrationProblemDetails,
 ): string {
   if (problem.status === 409) {
-    return "Ya existe una responsabilidad de preparación con ese nombre.";
+    return "Ya existe un destino de preparación con ese nombre.";
   }
   if (problem.status === 400) {
     return "Ingresá un nombre operacional válido.";
   }
-  return "No se pudo crear la responsabilidad de preparación. Revisá los datos e intentá nuevamente.";
+  return "No se pudo crear el destino de preparación. Revisá los datos e intentá nuevamente.";
 }
 
 function mutationLabel(intention: IdentityMutationIntention): string {
@@ -236,6 +237,8 @@ export function GeneralConfigurationPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isForbidden, setIsForbidden] = useState(false);
   const readGeneration = useRef(0);
+  const [destinationLifecyclePending, setDestinationLifecyclePending] =
+    useState(false);
   const preparationResponsibilityReadGeneration = useRef(0);
   const [preparationResponsibilities, setPreparationResponsibilities] =
     useState<PreparationResponsibility[]>([]);
@@ -343,6 +346,7 @@ export function GeneralConfigurationPanel({
         if (generation === preparationResponsibilityReadGeneration.current) {
           setPreparationResponsibilities(loaded);
         }
+        return generation === preparationResponsibilityReadGeneration.current;
       } catch (error) {
         if (generation !== preparationResponsibilityReadGeneration.current)
           return;
@@ -357,8 +361,9 @@ export function GeneralConfigurationPanel({
           }
         }
         setPreparationResponsibilitiesError(
-          "No se pudo cargar el listado de responsabilidades de preparación.",
+          "No se pudo cargar el listado de destinos de preparación.",
         );
+        return false;
       } finally {
         if (generation === preparationResponsibilityReadGeneration.current) {
           setIsPreparationResponsibilitiesLoading(false);
@@ -490,7 +495,7 @@ export function GeneralConfigurationPanel({
       }
       setPreparationResponsibilityCreationNotice({
         kind: "success",
-        message: "Responsabilidad de preparación creada correctamente.",
+        message: "Destino de preparación creado correctamente.",
       });
       await reloadPreparationResponsibilities();
     } catch (error) {
@@ -515,7 +520,7 @@ export function GeneralConfigurationPanel({
         kind: "uncertain",
         message:
           error instanceof IdentityAdministrationNetworkError
-            ? "Resultado no confirmado: se perdió la comunicación y no sabemos si la responsabilidad de preparación fue creada."
+            ? "Resultado no confirmado: se perdió la comunicación y no sabemos si el destino de preparación fue creado."
             : "Resultado no confirmado: no fue posible confirmar la respuesta del servidor.",
       });
     } finally {
@@ -744,7 +749,7 @@ export function GeneralConfigurationPanel({
           kind: "functional-error",
           message:
             error.problem.status === 400
-              ? "La responsabilidad de preparación indicada no es válida."
+              ? "El destino de preparación indicado no es válido."
               : messageForProblem(error.problem, "assign"),
         });
         return;
@@ -1022,16 +1027,14 @@ export function GeneralConfigurationPanel({
       )}
 
       <section aria-labelledby="preparation-responsibilities-title">
-        <h3 id="preparation-responsibilities-title">
-          Responsabilidades de preparación
-        </h3>
+        <h3 id="preparation-responsibilities-title">Destinos de preparación</h3>
         <form
           onSubmit={(event) =>
             void handlePreparationResponsibilityCreate(event)
           }
         >
           <label htmlFor="preparation-responsibility-operational-name">
-            Nombre operacional de la responsabilidad
+            Nombre operacional del destino de preparación
           </label>
           <input
             id="preparation-responsibility-operational-name"
@@ -1040,12 +1043,15 @@ export function GeneralConfigurationPanel({
             onChange={(event) =>
               setPreparationResponsibilityName(event.target.value)
             }
-            disabled={isCreatingPreparationResponsibility}
+            disabled={
+              isCreatingPreparationResponsibility || destinationLifecyclePending
+            }
             required
           />
           <button
             type="submit"
             disabled={
+              destinationLifecyclePending ||
               isCreatingPreparationResponsibility ||
               uncertainPreparationResponsibilityCreation !== null
             }
@@ -1054,7 +1060,7 @@ export function GeneralConfigurationPanel({
               ? "Creando…"
               : uncertainPreparationResponsibilityCreation
                 ? "Hay una operación pendiente de confirmar"
-                : "Crear responsabilidad de preparación"}
+                : "Crear destino de preparación"}
           </button>
         </form>
 
@@ -1070,7 +1076,7 @@ export function GeneralConfigurationPanel({
           <div
             className="uncertain-intention"
             role="region"
-            aria-label="Creación de responsabilidad de preparación con resultado no confirmado"
+            aria-label="Creación de destino de preparación con resultado no confirmado"
           >
             <h4>Creación pendiente de confirmación</h4>
             <p>
@@ -1090,7 +1096,10 @@ export function GeneralConfigurationPanel({
                     uncertainPreparationResponsibilityCreation,
                   )
                 }
-                disabled={isCreatingPreparationResponsibility}
+                disabled={
+                  isCreatingPreparationResponsibility ||
+                  destinationLifecyclePending
+                }
               >
                 Reintentar esta operación
               </button>
@@ -1100,7 +1109,10 @@ export function GeneralConfigurationPanel({
                 onClick={() =>
                   setUncertainPreparationResponsibilityCreation(null)
                 }
-                disabled={isCreatingPreparationResponsibility}
+                disabled={
+                  isCreatingPreparationResponsibility ||
+                  destinationLifecyclePending
+                }
               >
                 Descartar e iniciar nueva
               </button>
@@ -1109,7 +1121,7 @@ export function GeneralConfigurationPanel({
         )}
 
         {isPreparationResponsibilitiesLoading && (
-          <p>Cargando responsabilidades de preparación…</p>
+          <p>Cargando destinos de preparación…</p>
         )}
         {!isPreparationResponsibilitiesLoading &&
           preparationResponsibilitiesError && (
@@ -1118,19 +1130,30 @@ export function GeneralConfigurationPanel({
         {!isPreparationResponsibilitiesLoading &&
           !preparationResponsibilitiesError &&
           preparationResponsibilities.length === 0 && (
-            <p>No hay responsabilidades de preparación.</p>
+            <p>No hay destinos de preparación.</p>
           )}
-        {!isPreparationResponsibilitiesLoading &&
-          !preparationResponsibilitiesError &&
-          preparationResponsibilities.length > 0 && (
-            <ul aria-label="Listado de responsabilidades de preparación">
-              {preparationResponsibilities.map((responsibility) => (
-                <li key={responsibility.id}>
-                  {responsibility.operationalName}
-                </li>
-              ))}
-            </ul>
-          )}
+        {preparationResponsibilities.length > 0 && (
+          <ul aria-label="Listado de destinos de preparación">
+            {preparationResponsibilities.map((responsibility) => (
+              <li key={responsibility.id}>
+                <span>{responsibility.operationalName}</span>
+                <ConfigurationLifecycleControls
+                  entity="preparation-responsibilities"
+                  item={responsibility}
+                  disabled={
+                    isCreatingPreparationResponsibility ||
+                    uncertainPreparationResponsibilityCreation !== null ||
+                    destinationLifecyclePending
+                  }
+                  onPendingChange={setDestinationLifecyclePending}
+                  onReload={reloadPreparationResponsibilities}
+                  onUnauthorized={onUnauthorized}
+                  onForbidden={retireForbiddenState}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <ContextConfigurationSection

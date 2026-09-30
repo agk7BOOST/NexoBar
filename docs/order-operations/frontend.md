@@ -2,7 +2,7 @@
 
 ## Context configurado y Context Change — MVP-FC-CTX
 
-GeneralConfiguration lista y crea Contextos mediante su UI administrativa, hace reload autoritativo y conserva una creación incierta para retry explícito con la misma key. No presenta UUID crudo ni controles de lifecycle. La autoridad es `GeneralConfiguration`.
+GeneralConfiguration lista y crea Contextos mediante su UI administrativa, hace reload autoritativo y conserva una creación incierta para retry explícito con la misma key. No presenta UUID crudo; el lifecycle administrativo de Contextos y destinos está documentado en OperationalConfiguration. La autoridad es `GeneralConfiguration`.
 
 OrderOperations carga opciones configuradas para First Confirmation, permite seleccionar Context por `operationalName` y envía sólo `contextId`; no ofrece texto libre. El lookup de Order muestra el Context actual por nombre operacional, sin UUID. La Identity con `OrderOperationsAndBasicClosure` puede seleccionar Context en First Confirmation y ejecutar un cambio explícito sobre un Order operativo; eso no habilita administrar Contextos. Preparation lee el Context actual sólo para coordinación y no administra ni cambia Context. El contrato backend, las reglas de no-op/stale y los límites de mutabilidad están en [Context actual, cambio e Historia](contracts-and-history.md#context-actual-cambio-e-historia-mvp-fc-ctx).
 

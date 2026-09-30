@@ -7,4 +7,5 @@ internal sealed record CreatePreparationResponsibilityRequest(string Operational
 
 public sealed record PreparationResponsibilityResponse(
     Guid Id,
-    string OperationalName);
+    string OperationalName,
+    bool IsActive = true);

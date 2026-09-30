@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using NexoBar.OperationalConfiguration;
 
 namespace NexoBar.IdentitiesAndCapabilities;
@@ -12,8 +13,10 @@ internal sealed class PreparationEnablementService(
         Guid preparationResponsibilityId,
         CancellationToken cancellationToken)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         if (!await preparationResponsibilities.ExistsAsync(
                 preparationResponsibilityId,
+                transaction.GetDbTransaction(),
                 cancellationToken))
         {
             return GrantPreparationEnablementOutcome.PreparationResponsibilityNotFound;
@@ -40,6 +43,7 @@ internal sealed class PreparationEnablementService(
             new PreparationEnablement(identityId, preparationResponsibilityId));
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        await transaction.CommitAsync(cancellationToken);
         return GrantPreparationEnablementOutcome.Granted;
     }
 

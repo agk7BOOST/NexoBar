@@ -34,7 +34,7 @@ Rename cambia la presentacion vigente de Catalog. No reescribe nombres ni conten
 
 Retire establece `IsActive=false`. El Product permanece persistido y sigue expuesto en el read administrativo. El browse operacional lo excluye y una nueva Confirmation lo rechaza como Product no actual (`product_not_current`). Precio, Group, configuracion de Preparation y disponibilidad almacenada permanecen preservados. Content confirmado y PreparationWork existentes no se alteran.
 
-Reactivate establece `IsActive=true` y `IsAvailable=true` por regla de lifecycle. Preserva Group, precio, configuracion de Preparation y nombre actual. Una colision con el nombre de un Product activo impide la reactivacion.
+Reactivate establece `IsActive=true` y `IsAvailable=true` por regla de lifecycle. Preserva Group, precio, configuracion de Preparation y nombre actual. Si conserva destino de preparación, su reactivación exige que ese destino esté activo, estabilizado dentro de la misma transacción; un destino retirado devuelve `catalog.product.preparation_destination_not_current` y conserva el Product retirado. Una colision con el nombre de un Product activo impide la reactivacion.
 
 `Retired` no significa `Deleted`: Product Delete no pertenece a este bloque.
 
@@ -187,7 +187,7 @@ Su semántica es:
 - `UUID → null`: deshabilitar prospectivamente;
 - `null → null`: no-op válido cuando el valor esperado coincide.
 
-El comando recibe `expectedCurrentPreparationResponsibilityId` y realiza un `UPDATE` condicionado atómico con comparación nullable; no aplica last-write-wins. Mantiene idempotencia durable local y resuelve el replay antes de consultar `OperationalConfiguration`. Para una intención nueva cuyo destino no es `null`, `Catalog` usa la capacidad pública estrecha de existencia de `PreparationResponsibility`.
+El comando recibe `expectedCurrentPreparationResponsibilityId` y realiza un `UPDATE` condicionado atómico con comparación nullable; no aplica last-write-wins. Mantiene idempotencia durable local y resuelve el replay antes de consultar `OperationalConfiguration`. Para una intención nueva cuyo destino no es `null`, `Catalog` usa `IsActiveAsync` para estabilizar un destino de preparación activo `FOR SHARE` dentro de la misma transacción. Un destino ausente o retirado obtiene el conflicto estable existente `catalog.product.preparation_responsibility_not_found` (409); no se convierte retiro en 404.
 
 Price Change continúa siendo otro comando explícito de `Catalog`, no un `PATCH` genérico: recibe `expectedCurrentPrice`, ejecuta un `UPDATE` condicionado, responde `409 Conflict` ante una expectativa desactualizada, mantiene idempotencia durable local y no crea Price History ni reescribe `appliedPrice` históricos.
 
@@ -196,3 +196,9 @@ Los endpoints materializados de Catalog ya no son anónimos ni comparten una fro
 El lookup de Preparation Responsibility para configurar un Product es un endpoint estrecho propiedad de Catalog y exige `CatalogConfiguration`; Catalog resuelve la referencia mediante su colaboración interna explícita con `OperationalConfiguration`. No se convierte el listado administrativo de `OperationalConfiguration` en una capacidad de Catalog ni se permite acceso directo entre storages.
 
 `CatalogConfiguration` es dueño de la configuración de Preparation del Product. Catalog lee los destinos seleccionables mediante ese lookup estrecho de su propiedad; no llama directamente a APIs administrativas de `OperationalConfiguration`. Configurar un Product no requiere `Preparation` ni una Preparation Enablement.
+
+## Lifecycle del destino de preparación
+
+Catalog conserva el ownership de referencias actuales de Product. Implementa `IDestinationProductReferences` para que OperationalConfiguration compruebe Products activos antes de Retire y todos los Products, incluidos retirados, antes de Delete, en la misma transacción PostgreSQL del comando. La consulta no modifica ni bloquea filas de Product: el destino `FOR UPDATE` se serializa contra el `FOR SHARE` que retienen nueva configuración, Reactivate Product y Confirmation. No se crean FK cross-module ni cascadas.
+
+El lookup para elegir nueva configuración usa `ListActiveAsync`; la resolución de nombres por ID para Work/Habilitaciones históricos continúa separada. `OrderConfirmationCatalog` conserva el snapshot de Product `FOR SHARE` y estabiliza sus destinos preparados activos en orden de ID mediante OperationalConfiguration. Su indicador interno `IsPreparationDestinationActive` permite que First/Subsequent Confirmation rechacen un destino retirado antes de originar Work, sin reescribir condiciones ya aplicadas. Las reglas y eliminación elegible pertenecen a [OperationalConfiguration](../operational-configuration/README.md#lifecycle-mínimo-de-contextos-y-destinos-de-preparación).

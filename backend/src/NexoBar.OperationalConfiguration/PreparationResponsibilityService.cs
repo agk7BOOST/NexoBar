@@ -52,6 +52,9 @@ internal sealed class PreparationResponsibilityService(
                 : CreatePreparationResponsibilityResult.IdempotencyConflict();
         }
 
+        if (await dbContext.PreparationResponsibilityLifecycleCommands.AnyAsync(x => x.IdempotencyKey == idempotencyKey, cancellationToken))
+            return CreatePreparationResponsibilityResult.IdempotencyConflict();
+
         if (!await authorization.StabilizeGeneralConfigurationAsync(
                 actor.IdentityId,
                 transaction.GetDbTransaction(),
@@ -134,7 +137,7 @@ internal sealed class PreparationResponsibilityService(
 
     private static PreparationResponsibilityResponse Map(
         PreparationResponsibility responsibility) =>
-        new(responsibility.Id, responsibility.OperationalName);
+        new(responsibility.Id, responsibility.OperationalName, responsibility.IsActive);
 
     private static PreparationResponsibilityResponse Map(
         PreparationResponsibilityCreationCommand command) =>

@@ -11,7 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace NexoBar.OperationalConfiguration;
 
-public static class OperationalConfigurationModule
+public static partial class OperationalConfigurationModule
 {
     public static IServiceCollection AddOperationalConfiguration(
         this IServiceCollection services,
@@ -33,6 +33,8 @@ public static class OperationalConfigurationModule
             PreparationResponsibilityLookup>();
         services.AddScoped<OperationalContextService>();
         services.AddScoped<IOrderContextConfiguration, OperationalContextLookup>();
+        services.AddScoped<OperationalContextLifecycleService>();
+        services.AddScoped<PreparationResponsibilityLifecycleService>();
         return services;
     }
 
@@ -80,9 +82,11 @@ public static class OperationalConfigurationModule
             .WithName("ListOrderOperationalContexts")
             .WithTags("OperationalConfiguration")
             .RequireAuthorization()
-            .Produces<IReadOnlyList<OperationalContextReference>>()
+            .Produces<IReadOnlyList<SelectableOperationalContextReference>>()
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden);
+        MapContextLifecycle(contexts);
+        MapDestinationLifecycle(group);
         return endpoints;
     }
 
@@ -170,7 +174,8 @@ public static class OperationalConfigurationModule
         var result = await service.ListForOrderOperationsAsync(cancellationToken);
         return result.Outcome switch
         {
-            OrderContextLookupAuthorizationOutcome.Authorized => Results.Ok(result.Contexts),
+            OrderContextLookupAuthorizationOutcome.Authorized => Results.Ok(result.Contexts!
+                .Select(context => new SelectableOperationalContextReference(context.Id, context.OperationalName))),
             OrderContextLookupAuthorizationOutcome.Unauthenticated => AuthenticationRequired(),
             OrderContextLookupAuthorizationOutcome.Forbidden => Results.Problem(
                 statusCode: 403,

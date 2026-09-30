@@ -90,6 +90,6 @@ Los párrafos R6–R12 siguientes conservan resultados y bloqueos **históricos*
 
 **Preparation Configuration Completion: CLOSED.** La UI de `GeneralConfiguration` crea y lista Preparation Responsibilities; la UI de `CatalogConfiguration` configura el destino de Preparation de Products existentes. La evidencia focalizada está en [Testing](testing/verification.md#mvp-fc-prep--preparation-configuration-completion). Este cierre no inicia un Slice ni atribuye una capacidad nueva a OrderOperations.
 
-El trabajo restante fuera de estos cierres incluye el lifecycle completo de Preparation Responsibility (rename, retiro/reactivación, delete, ordering y gestión de estaciones), administración arbitraria de Sessions y hardening de piloto/RNF. No se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
+El trabajo restante fuera de estos cierres incluye ordering y gestión de estaciones de Preparation Responsibility (su lifecycle mínimo de rename, retiro/reactivación y Delete elegible está implementado; véase OperationalConfiguration), administración arbitraria de Sessions y hardening de piloto/RNF. No se reabren UI de bootstrap, recovery anónimo o un superadministrador técnico.
 
 Solo para trazabilidad: [checkpoints históricos de slices](history/slice-checkpoints.md) y [auditoría de esta reorganización](context-audit.md). No son fuentes de nuevas decisiones ni lecturas de arranque obligatorias.

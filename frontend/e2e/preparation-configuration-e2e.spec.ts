@@ -137,10 +137,10 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
       "/api/operational-configuration/preparation-responsibilities",
     );
     await configuration
-      .getByLabel("Nombre operacional de la responsabilidad")
+      .getByLabel("Nombre operacional del destino de preparación")
       .fill(preparationResponsibilityName);
     await configuration
-      .getByRole("button", { name: "Crear responsabilidad de preparación" })
+      .getByRole("button", { name: "Crear destino de preparación" })
       .click();
     const createdResponsibilityResponse = await responsibilityCreation;
     expect(createdResponsibilityResponse.ok()).toBeTruthy();
@@ -153,14 +153,13 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
       preparationResponsibilityName,
     );
     await expect(
-      configuration.getByText(
-        "Responsabilidad de preparación creada correctamente.",
-        { exact: true },
-      ),
+      configuration.getByText("Destino de preparación creado correctamente.", {
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(
       configuration.getByRole("list", {
-        name: "Listado de responsabilidades de preparación",
+        name: "Listado de destinos de preparación",
       }),
     ).toContainText(preparationResponsibilityName);
 
@@ -245,7 +244,7 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
     });
     await preparationConfiguration.getByLabel("Requiere preparación").check();
     await preparationConfiguration
-      .getByLabel("Responsabilidad de preparación de destino")
+      .getByLabel("Destino de preparación")
       .selectOption({ label: preparationResponsibilityName });
     const configurationChange = waitForResponse(
       catalogPage,

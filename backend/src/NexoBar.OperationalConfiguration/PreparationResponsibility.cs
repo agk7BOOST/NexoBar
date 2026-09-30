@@ -13,4 +13,9 @@ internal sealed class PreparationResponsibility
     internal Guid Id { get; private set; }
     internal string OperationalName { get; private set; } = string.Empty;
     internal string NormalizedOperationalName { get; private set; } = string.Empty;
+    internal bool IsActive { get; private set; } = true;
+
+    internal void Rename(string name) => OperationalName = name;
+    internal void Retire() => IsActive = false;
+    internal void Reactivate() => IsActive = true;
 }

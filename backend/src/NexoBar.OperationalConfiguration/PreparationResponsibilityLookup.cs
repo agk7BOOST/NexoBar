@@ -9,6 +9,12 @@ public interface IPreparationResponsibilityLookup
 {
     Task<bool> ExistsAsync(Guid responsibilityId, CancellationToken cancellationToken);
 
+    Task<bool> ExistsAsync(Guid responsibilityId, DbTransaction transaction, CancellationToken cancellationToken);
+
+    Task<bool> IsActiveAsync(Guid responsibilityId, DbTransaction transaction, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PreparationResponsibilityReference>> ListActiveAsync(CancellationToken cancellationToken);
+
     Task<IReadOnlyList<PreparationResponsibilityReference>> ListAsync(
         CancellationToken cancellationToken);
 
@@ -25,6 +31,26 @@ public sealed record PreparationResponsibilityReference(
 internal sealed class PreparationResponsibilityLookup(
     OperationalConfigurationDbContext dbContext) : IPreparationResponsibilityLookup
 {
+    public async Task<bool> ExistsAsync(Guid responsibilityId, DbTransaction transaction, CancellationToken cancellationToken) =>
+        await ReadLockedAsync(responsibilityId, transaction, cancellationToken) is not null;
+
+    public async Task<bool> IsActiveAsync(Guid responsibilityId, DbTransaction transaction, CancellationToken cancellationToken) =>
+        await ReadLockedAsync(responsibilityId, transaction, cancellationToken) is { IsActive: true };
+
+    private async Task<PreparationResponsibility?> ReadLockedAsync(Guid id, DbTransaction transaction, CancellationToken token)
+    {
+        dbContext.Database.SetDbConnection(transaction.Connection!, contextOwnsConnection: false);
+        await dbContext.Database.UseTransactionAsync(transaction, token);
+        return await dbContext.PreparationResponsibilities.FromSqlInterpolated(
+                $"SELECT * FROM operational_configuration.preparation_responsibilities WHERE id = {id} FOR SHARE")
+            .AsNoTracking().SingleOrDefaultAsync(token);
+    }
+
+    public async Task<IReadOnlyList<PreparationResponsibilityReference>> ListActiveAsync(CancellationToken cancellationToken) =>
+        await dbContext.PreparationResponsibilities.AsNoTracking().Where(x => x.IsActive)
+            .OrderBy(x => x.OperationalName).ThenBy(x => x.Id)
+            .Select(x => new PreparationResponsibilityReference(x.Id, x.OperationalName)).ToArrayAsync(cancellationToken);
+
     public Task<bool> ExistsAsync(
         Guid responsibilityId,
         CancellationToken cancellationToken) =>

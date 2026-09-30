@@ -20,7 +20,7 @@ public sealed class ProductRetirementConcurrencyTests(OrderOperationsApiFixture 
         var releaseConfirmation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var application = fixture.CreateApplicationWithCatalogDecorator(services =>
             new HoldingCatalogSnapshot(
-                new OrderConfirmationCatalog(services.GetRequiredService<CatalogDbContext>()),
+                new OrderConfirmationCatalog(services.GetRequiredService<CatalogDbContext>(), services.GetRequiredService<NexoBar.OperationalConfiguration.IPreparationResponsibilityLookup>()),
                 snapshotHeld, releaseConfirmation));
         using var client = await fixture.LoginAsync(fixture.DefaultOrderOperationsActor, token, application);
 
@@ -68,7 +68,7 @@ public sealed class ProductRetirementConcurrencyTests(OrderOperationsApiFixture 
         var releaseConfirmation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var application = fixture.CreateApplicationWithCatalogDecorator(services =>
             new HoldingCatalogSnapshot(
-                new OrderConfirmationCatalog(services.GetRequiredService<CatalogDbContext>()),
+                new OrderConfirmationCatalog(services.GetRequiredService<CatalogDbContext>(), services.GetRequiredService<NexoBar.OperationalConfiguration.IPreparationResponsibilityLookup>()),
                 snapshotHeld,
                 releaseConfirmation));
         var actor = await fixture.CreateConfirmationActorAsync(true, true, token);

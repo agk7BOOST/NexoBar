@@ -585,7 +585,7 @@ describe("CatalogPanel - configuración de preparación", () => {
     await openPreparationChange(user, listedProduct);
     await user.click(screen.getByLabelText("Requiere preparación"));
     await user.selectOptions(
-      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      screen.getByLabelText("Destino de preparación"),
       kitchen.id,
     );
     await user.click(
@@ -619,7 +619,7 @@ describe("CatalogPanel - configuración de preparación", () => {
     const { user } = renderPanel([listedProduct]);
     await openPreparationChange(user, listedProduct);
     await user.selectOptions(
-      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      screen.getByLabelText("Destino de preparación"),
       bar.id,
     );
     await user.click(
@@ -657,7 +657,7 @@ describe("CatalogPanel - configuración de preparación", () => {
 
     expect(
       screen.getByText(
-        "Seleccioná una responsabilidad de preparación antes de confirmar.",
+        "Seleccioná un destino de preparación antes de confirmar.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -682,7 +682,7 @@ describe("CatalogPanel - configuración de preparación", () => {
     await openPreparationChange(user, listedProduct);
     await user.click(screen.getByLabelText("Requiere preparación"));
     await user.selectOptions(
-      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      screen.getByLabelText("Destino de preparación"),
       kitchen.id,
     );
     await user.click(
@@ -693,7 +693,7 @@ describe("CatalogPanel - configuración de preparación", () => {
     await openPreparationChange(user, listedProduct);
     await user.click(screen.getByLabelText("Requiere preparación"));
     await user.selectOptions(
-      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      screen.getByLabelText("Destino de preparación"),
       kitchen.id,
     );
     await user.click(
@@ -725,7 +725,7 @@ describe("CatalogPanel - configuración de preparación", () => {
     await openPreparationChange(user, listedProduct);
     await user.click(screen.getByLabelText("Requiere preparación"));
     await user.selectOptions(
-      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      screen.getByLabelText("Destino de preparación"),
       kitchen.id,
     );
     await user.click(
@@ -754,7 +754,7 @@ describe("CatalogPanel - configuración de preparación", () => {
     const { user } = renderPanel([listedProduct]);
     await openPreparationChange(user, listedProduct);
     await user.selectOptions(
-      screen.getByLabelText("Responsabilidad de preparación de destino"),
+      screen.getByLabelText("Destino de preparación"),
       bar.id,
     );
     await user.click(

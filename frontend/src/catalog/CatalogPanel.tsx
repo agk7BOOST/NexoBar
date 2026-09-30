@@ -166,7 +166,7 @@ function preparationChangeErrorMessage(problem: ProblemDetails): string {
     case "catalog.product.preparation_configuration_concurrency_conflict":
       return "La configuración de preparación cambió desde que fue observada. El Catálogo se actualizará.";
     case "catalog.product.preparation_responsibility_not_found":
-      return "La responsabilidad de preparación seleccionada ya no está disponible. El Catálogo se actualizará.";
+      return "El destino de preparación seleccionado ya no está disponible. El Catálogo se actualizará.";
     case "catalog.product.not_found":
       return "El Producto ya no existe.";
     case "catalog.product.not_current":
@@ -225,6 +225,8 @@ function lifecycleErrorMessage(
       return "El Producto ya está retirado.";
     case "catalog.product.already_active":
       return "El Producto ya está activo.";
+    case "catalog.product.preparation_destination_not_current":
+      return "No se puede reactivar: el destino de preparación está retirado. Reactivá primero ese destino.";
     case "catalog.product.reactivation_name_conflict":
       return "No se puede reactivar: otro Producto activo usa ese nombre.";
     case "catalog.product.not_found":
@@ -414,7 +416,7 @@ export function CatalogPanel({
           }
         }
         setPreparationResponsibilityOptionsError(
-          "No se pudo cargar las responsabilidades de preparación.",
+          "No se pudieron cargar los destinos de preparación.",
         );
       } finally {
         if (generation === preparationResponsibilityReadGeneration.current) {
@@ -816,7 +818,7 @@ export function CatalogPanel({
     ) {
       setPreparationNotice({
         kind: "functional-error",
-        message: "Seleccioná una responsabilidad de preparación.",
+        message: "Seleccioná un destino de preparación.",
       });
       return;
     }
@@ -1511,7 +1513,7 @@ export function CatalogPanel({
         )}
 
         {isPreparationResponsibilityOptionsLoading && (
-          <p>Cargando responsabilidades de preparación…</p>
+          <p>Cargando destinos de preparación…</p>
         )}
         {!isPreparationResponsibilityOptionsLoading &&
           preparationResponsibilityOptionsError && (
@@ -1878,7 +1880,7 @@ export function CatalogPanel({
               Requiere preparación
             </label>
             <label htmlFor="preparation-responsibility-destination">
-              Responsabilidad de preparación de destino
+              Destino de preparación
             </label>
             <select
               id="preparation-responsibility-destination"
@@ -1925,8 +1927,7 @@ export function CatalogPanel({
               preparationEditor.selectedPreparationResponsibilityId ===
                 null && (
                 <p role="alert">
-                  Seleccioná una responsabilidad de preparación antes de
-                  confirmar.
+                  Seleccioná un destino de preparación antes de confirmar.
                 </p>
               )}
             <div className="intention-actions">

@@ -303,8 +303,7 @@ public sealed class ConfirmationInstructionApiTests(OrderOperationsApiFixture fi
             TaskCreationOptions.RunContinuationsAsynchronously);
         await using var application = fixture.CreateApplicationWithCatalogDecorator(
             services => new BlockingCatalogDecorator(
-                new OrderConfirmationCatalog(
-                    services.GetRequiredService<CatalogDbContext>()),
+                new OrderConfirmationCatalog(services.GetRequiredService<CatalogDbContext>(), services.GetRequiredService<NexoBar.OperationalConfiguration.IPreparationResponsibilityLookup>()),
                 catalogLocked,
                 releaseCatalog));
         using var client = await fixture.LoginAsync(

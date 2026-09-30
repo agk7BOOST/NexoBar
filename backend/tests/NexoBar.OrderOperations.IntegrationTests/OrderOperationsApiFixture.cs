@@ -118,6 +118,8 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
                 identities_and_capabilities.identities,
                 operational_configuration.preparation_responsibility_creation_commands,
                 operational_configuration.preparation_responsibilities,
+                operational_configuration.context_lifecycle_commands,
+                operational_configuration.preparation_responsibility_lifecycle_commands,
                 operational_configuration.context_creation_commands,
                 operational_configuration.contexts
             """,
@@ -573,6 +575,15 @@ public sealed class OrderOperationsApiFixture : IAsyncLifetime
         CancellationToken cancellationToken)
     {
         await using var scope = application!.Services.CreateAsyncScope();
+        if (preparationResponsibilityId is Guid destinationId)
+        {
+            var configuration = scope.ServiceProvider.GetRequiredService<OperationalConfigurationDbContext>();
+            if (!await configuration.PreparationResponsibilities.AnyAsync(x => x.Id == destinationId, cancellationToken))
+            {
+                configuration.PreparationResponsibilities.Add(new PreparationResponsibility(destinationId, $"Destino {destinationId}"));
+                await configuration.SaveChangesAsync(cancellationToken);
+            }
+        }
         var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"""

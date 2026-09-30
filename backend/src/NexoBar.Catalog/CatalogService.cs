@@ -333,8 +333,9 @@ internal sealed class CatalogService(
         }
 
         if (request.NewPreparationResponsibilityId is Guid responsibilityId &&
-            !await preparationResponsibilities.ExistsAsync(
+            !await preparationResponsibilities.IsActiveAsync(
                 responsibilityId,
+                transaction.GetDbTransaction(),
                 cancellationToken))
         {
             return ProductPreparationConfigurationChangeResult
@@ -578,7 +579,7 @@ internal sealed class CatalogService(
             await transaction.RollbackAsync(cancellationToken);
             return PreparationResponsibilityListResult.CatalogConfigurationRequired();
         }
-        var responsibilities = await preparationResponsibilities.ListAsync(cancellationToken);
+        var responsibilities = await preparationResponsibilities.ListActiveAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return PreparationResponsibilityListResult.Succeeded(responsibilities);
     }

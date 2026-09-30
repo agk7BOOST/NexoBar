@@ -52,7 +52,7 @@ internal sealed class OrderContextChangeService(
             return new(OrderContextChangeOutcome.Forbidden);
 
         var target = await contextConfiguration.ResolveConfiguredContextAsync(
-            request.NewContextId, cancellationToken);
+            request.NewContextId, transaction.GetDbTransaction(), cancellationToken);
         if (target is null)
             return new(OrderContextChangeOutcome.TargetContextNotFound);
 

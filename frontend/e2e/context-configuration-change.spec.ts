@@ -106,13 +106,21 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
     await expect(
       admin.getByRole("list", { name: "Contextos configurados" }),
     ).toContainText(contextB);
-    await expect(
-      admin
-        .getByRole("list", { name: "Contextos configurados" })
-        .getByRole("button", {
-          name: /renombrar|retirar|reactivar|eliminar|borrar/i,
-        }),
-    ).toHaveCount(0);
+    for (const name of [contextA, contextB]) {
+      const controls = admin.getByRole("group", {
+        name: `Administrar ${name}`,
+      });
+      await expect(controls.getByText("Activo", { exact: true })).toBeVisible();
+      for (const action of [
+        "Cambiar nombre",
+        "Retirar",
+        "Eliminar definitivamente",
+      ]) {
+        await expect(
+          controls.getByRole("button", { name: action, exact: true }),
+        ).toBeEnabled();
+      }
+    }
     await expect(
       g.getByLabel("Contexto para Primera Confirmacion"),
     ).toHaveCount(0);

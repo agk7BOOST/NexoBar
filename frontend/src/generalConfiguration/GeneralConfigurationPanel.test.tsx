@@ -335,26 +335,24 @@ describe("GeneralConfigurationPanel", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: "Responsabilidades de preparación",
+        name: "Destinos de preparación",
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Listado de responsabilidades de preparación"),
+      screen.getByLabelText("Listado de destinos de preparación"),
     ).toHaveTextContent("Cocina");
     await user.type(
-      screen.getByLabelText("Nombre operacional de la responsabilidad"),
+      screen.getByLabelText("Nombre operacional del destino de preparación"),
       "Barra",
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Crear responsabilidad de preparación",
+        name: "Crear destino de preparación",
       }),
     );
 
     expect(
-      await screen.findByText(
-        "Responsabilidad de preparación creada correctamente.",
-      ),
+      await screen.findByText("Destino de preparación creado correctamente."),
     ).toBeInTheDocument();
     expect(createPreparationResponsibilityMock.mock.calls[0]?.[0]).toEqual({
       operationalName: "Barra",
@@ -363,7 +361,7 @@ describe("GeneralConfigurationPanel", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
     expect(
-      screen.getByLabelText("Listado de responsabilidades de preparación"),
+      screen.getByLabelText("Listado de destinos de preparación"),
     ).toHaveTextContent("Barra");
     await selectIdentity("Ana");
     expect(
@@ -374,12 +372,12 @@ describe("GeneralConfigurationPanel", () => {
   it("rejects a blank name locally and displays a duplicate conflict", async () => {
     const { user } = renderPanel();
     await user.type(
-      screen.getByLabelText("Nombre operacional de la responsabilidad"),
+      screen.getByLabelText("Nombre operacional del destino de preparación"),
       " ",
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Crear responsabilidad de preparación",
+        name: "Crear destino de preparación",
       }),
     );
     expect(
@@ -388,10 +386,10 @@ describe("GeneralConfigurationPanel", () => {
     expect(createPreparationResponsibilityMock).not.toHaveBeenCalled();
 
     await user.clear(
-      screen.getByLabelText("Nombre operacional de la responsabilidad"),
+      screen.getByLabelText("Nombre operacional del destino de preparación"),
     );
     await user.type(
-      screen.getByLabelText("Nombre operacional de la responsabilidad"),
+      screen.getByLabelText("Nombre operacional del destino de preparación"),
       "Cocina",
     );
     createPreparationResponsibilityMock.mockRejectedValueOnce(
@@ -399,12 +397,12 @@ describe("GeneralConfigurationPanel", () => {
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Crear responsabilidad de preparación",
+        name: "Crear destino de preparación",
       }),
     );
     expect(
       await screen.findByText(
-        "Ya existe una responsabilidad de preparación con ese nombre.",
+        "Ya existe un destino de preparación con ese nombre.",
       ),
     ).toBeInTheDocument();
   });
@@ -419,24 +417,22 @@ describe("GeneralConfigurationPanel", () => {
       });
     const { user } = renderPanel();
     await user.type(
-      screen.getByLabelText("Nombre operacional de la responsabilidad"),
+      screen.getByLabelText("Nombre operacional del destino de preparación"),
       "Cocina",
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Crear responsabilidad de preparación",
+        name: "Crear destino de preparación",
       }),
     );
     await screen.findByRole("region", {
-      name: "Creación de responsabilidad de preparación con resultado no confirmado",
+      name: "Creación de destino de preparación con resultado no confirmado",
     });
     const firstCall = createPreparationResponsibilityMock.mock.calls[0];
     await user.click(
       screen.getByRole("button", { name: "Reintentar esta operación" }),
     );
-    await screen.findByText(
-      "Responsabilidad de preparación creada correctamente.",
-    );
+    await screen.findByText("Destino de preparación creado correctamente.");
     expect(createPreparationResponsibilityMock.mock.calls[1]).toEqual(
       firstCall,
     );
@@ -778,7 +774,7 @@ describe("GeneralConfigurationPanel", () => {
     );
     expect(
       await screen.findByText(
-        "La responsabilidad de preparación indicada no es válida.",
+        "El destino de preparación indicado no es válido.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Cocina: Habilitada")).toBeInTheDocument();

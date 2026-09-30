@@ -20,7 +20,7 @@ public sealed class ProductDeleteConcurrencyTests(OrderOperationsApiFixture fixt
         var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var application = fixture.CreateApplicationWithCatalogDecorator(services =>
-            new HoldingCatalog(new OrderConfirmationCatalog(services.GetRequiredService<CatalogDbContext>()), reached, release));
+            new HoldingCatalog(new OrderConfirmationCatalog(services.GetRequiredService<CatalogDbContext>(), services.GetRequiredService<NexoBar.OperationalConfiguration.IPreparationResponsibilityLookup>()), reached, release));
         using var client = await fixture.LoginAsync(fixture.DefaultOrderOperationsActor, token, application);
 
         var confirmationTask = ConfirmAsync(client, product.Id, token);

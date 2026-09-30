@@ -28,6 +28,7 @@ partial class OperationalConfigurationDbContextModelSnapshot : ModelSnapshot
             "NexoBar.OperationalConfiguration.OperationalContext",
             b =>
             {
+                b.Property<bool>("IsActive").ValueGeneratedOnAdd().HasColumnType("boolean").HasColumnName("is_active").HasDefaultValue(true);
                 b.Property<Guid>("Id").HasColumnType("uuid").HasColumnName("id");
                 b.Property<string>("NormalizedOperationalName").IsRequired().ValueGeneratedOnAddOrUpdate().HasColumnType("text").HasColumnName("normalized_operational_name").HasComputedColumnSql("lower(operational_name)", true);
                 b.Property<string>("OperationalName").IsRequired().HasColumnType("text").HasColumnName("operational_name");
@@ -50,14 +51,12 @@ partial class OperationalConfigurationDbContextModelSnapshot : ModelSnapshot
                 b.ToTable("context_creation_commands", "operational_configuration", t => t.HasCheckConstraint("CK_operational_configuration_context_creation_command_names_not_empty", "length(btrim(intent_operational_name)) > 0 AND length(btrim(result_operational_name)) > 0"));
             });
 
-        modelBuilder.Entity(
-            "NexoBar.OperationalConfiguration.OperationalContextCreationCommand",
-            b => b.HasOne("NexoBar.OperationalConfiguration.OperationalContext", null).WithMany().HasForeignKey("ResultContextId").OnDelete(DeleteBehavior.Restrict).IsRequired().HasConstraintName("FK_op_config_context_creation_command_context"));
 
         modelBuilder.Entity(
             "NexoBar.OperationalConfiguration.PreparationResponsibility",
             b =>
             {
+                b.Property<bool>("IsActive").ValueGeneratedOnAdd().HasColumnType("boolean").HasColumnName("is_active").HasDefaultValue(true);
                 b.Property<Guid>("Id")
                     .HasColumnType("uuid")
                     .HasColumnName("id");
@@ -132,20 +131,36 @@ partial class OperationalConfigurationDbContextModelSnapshot : ModelSnapshot
                     });
             });
 
-        modelBuilder.Entity(
-            "NexoBar.OperationalConfiguration.PreparationResponsibilityCreationCommand",
-            b =>
-            {
-                b.HasOne(
-                        "NexoBar.OperationalConfiguration.PreparationResponsibility",
-                        null)
-                    .WithMany()
-                    .HasForeignKey("ResultResponsibilityId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired()
-                    .HasConstraintName(
-                        "FK_op_config_prep_responsibility_creation_cmd_responsibility");
-            });
+        modelBuilder.Entity("NexoBar.OperationalConfiguration.OperationalContextLifecycleCommand", b =>
+        {
+            b.Property<Guid>("IdempotencyKey").HasColumnType("uuid").HasColumnName("idempotency_key");
+            b.Property<Guid>("ActorIdentityId").HasColumnType("uuid").HasColumnName("actor_identity_id");
+            b.Property<string>("CommandKind").IsRequired().HasColumnType("text").HasColumnName("command_kind");
+            b.Property<Guid>("TargetId").HasColumnType("uuid").HasColumnName("target_id");
+            b.Property<string>("ExpectedOperationalName").IsRequired().HasColumnType("text").HasColumnName("expected_operational_name");
+            b.Property<bool>("ExpectedIsActive").HasColumnType("boolean").HasColumnName("expected_is_active");
+            b.Property<string>("NewOperationalName").HasColumnType("text").HasColumnName("new_operational_name");
+            b.Property<string>("ResultOperationalName").IsRequired().HasColumnType("text").HasColumnName("result_operational_name");
+            b.Property<bool>("ResultIsActive").HasColumnType("boolean").HasColumnName("result_is_active");
+            b.Property<bool>("ResultIsDeleted").HasColumnType("boolean").HasColumnName("result_is_deleted");
+            b.HasKey("IdempotencyKey");
+            b.ToTable("context_lifecycle_commands", "operational_configuration", t => t.HasCheckConstraint("CK_context_lifecycle_commands_kind", "command_kind IN ('Rename', 'Retire', 'Reactivate', 'Delete')"));
+        });
+        modelBuilder.Entity("NexoBar.OperationalConfiguration.PreparationResponsibilityLifecycleCommand", b =>
+        {
+            b.Property<Guid>("IdempotencyKey").HasColumnType("uuid").HasColumnName("idempotency_key");
+            b.Property<Guid>("ActorIdentityId").HasColumnType("uuid").HasColumnName("actor_identity_id");
+            b.Property<string>("CommandKind").IsRequired().HasColumnType("text").HasColumnName("command_kind");
+            b.Property<Guid>("TargetId").HasColumnType("uuid").HasColumnName("target_id");
+            b.Property<string>("ExpectedOperationalName").IsRequired().HasColumnType("text").HasColumnName("expected_operational_name");
+            b.Property<bool>("ExpectedIsActive").HasColumnType("boolean").HasColumnName("expected_is_active");
+            b.Property<string>("NewOperationalName").HasColumnType("text").HasColumnName("new_operational_name");
+            b.Property<string>("ResultOperationalName").IsRequired().HasColumnType("text").HasColumnName("result_operational_name");
+            b.Property<bool>("ResultIsActive").HasColumnType("boolean").HasColumnName("result_is_active");
+            b.Property<bool>("ResultIsDeleted").HasColumnType("boolean").HasColumnName("result_is_deleted");
+            b.HasKey("IdempotencyKey");
+            b.ToTable("preparation_responsibility_lifecycle_commands", "operational_configuration", t => t.HasCheckConstraint("CK_preparation_responsibility_lifecycle_commands_kind", "command_kind IN ('Rename', 'Retire', 'Reactivate', 'Delete')"));
+        });
 #pragma warning restore 612, 618
     }
 }

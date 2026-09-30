@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -34,6 +35,8 @@ public sealed class OperationalConfigurationApiFixture : IAsyncLifetime
         await scope.ServiceProvider
             .GetRequiredService<IdentitiesAndCapabilitiesDbContext>()
             .Database.MigrateAsync();
+        await scope.ServiceProvider.GetRequiredService<NexoBar.Catalog.CatalogDbContext>().Database.MigrateAsync();
+        await scope.ServiceProvider.GetRequiredService<NexoBar.OrderOperations.OrderOperationsDbContext>().Database.MigrateAsync();
     }
 
     internal async Task ResetAsync(CancellationToken cancellationToken)
@@ -41,9 +44,21 @@ public sealed class OperationalConfigurationApiFixture : IAsyncLifetime
         await using var scope = application!.Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider
             .GetRequiredService<OperationalConfigurationDbContext>();
+        foreach (var schema in new[] { "order_operations", "catalog" })
+        {
+            // Only the isolated fixture database; preserve each module's migration history.
+            var tables = await dbContext.Database.SqlQuery<string>($"SELECT tablename AS \"Value\" FROM pg_tables WHERE schemaname = {schema} AND tablename <> '__ef_migrations_history'").ToArrayAsync(cancellationToken);
+            if (tables.Length > 0)
+            {
+                var sql = "TRUNCATE TABLE " + string.Join(", ", tables.Select(table => $"\"{schema}\".\"{table.Replace("\"", "\"\"", StringComparison.Ordinal)}\""));
+                await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+            }
+        }
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                operational_configuration.context_lifecycle_commands,
+                operational_configuration.preparation_responsibility_lifecycle_commands,
                 operational_configuration.context_creation_commands,
                 operational_configuration.contexts,
                 operational_configuration.preparation_responsibility_creation_commands,
@@ -120,6 +135,9 @@ public sealed class OperationalConfigurationApiFixture : IAsyncLifetime
     }
 
     internal HttpClient CreateClient() => application!.CreateClient();
+
+    internal WebApplicationFactory<Program> DecorateServices(Action<IServiceCollection> configure) =>
+        application!.WithWebHostBuilder(builder => builder.ConfigureTestServices(configure));
 
     internal async Task<TestActor> CreateActorAsync(
         string operationalName,

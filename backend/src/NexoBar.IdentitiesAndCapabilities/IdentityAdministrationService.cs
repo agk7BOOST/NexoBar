@@ -347,6 +347,7 @@ internal sealed class IdentityAdministrationService(
 
                 if (!await preparationResponsibilities.ExistsAsync(
                         preparationResponsibilityId,
+                        dbContext.Database.CurrentTransaction!.GetDbTransaction(),
                         token))
                 {
                     return IdentityAdministrationResult

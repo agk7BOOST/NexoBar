@@ -1,4 +1,5 @@
 export interface ConfiguredContext {
+  isActive: boolean;
   id: string;
   operationalName: string;
 }

@@ -562,8 +562,7 @@ public sealed class PreparationWorkApiTests(OrderOperationsApiFixture fixture)
         await using var application =
             fixture.CreateApplicationWithCatalogDecoratorAndPreparationLookup(
                 services => new BlockingCatalogDecorator(
-                    new OrderConfirmationCatalog(
-                        services.GetRequiredService<CatalogDbContext>()),
+                    new OrderConfirmationCatalog(services.GetRequiredService<CatalogDbContext>(), services.GetRequiredService<NexoBar.OperationalConfiguration.IPreparationResponsibilityLookup>()),
                     catalogLocked,
                     releaseCatalog),
                 new ExistingPreparationResponsibilityLookup(
@@ -985,6 +984,9 @@ internal sealed class ExistingPreparationResponsibilityLookup(
     params PreparationResponsibilityReference[] responsibilities) :
     IPreparationResponsibilityLookup
 {
+    public Task<bool> ExistsAsync(Guid id, System.Data.Common.DbTransaction transaction, CancellationToken token) => ExistsAsync(id, token);
+    public Task<bool> IsActiveAsync(Guid id, System.Data.Common.DbTransaction transaction, CancellationToken token) => ExistsAsync(id, token);
+    public Task<IReadOnlyList<PreparationResponsibilityReference>> ListActiveAsync(CancellationToken token) => ListAsync(token);
     private readonly IReadOnlyList<PreparationResponsibilityReference> responsibilities =
         responsibilities
             .OrderBy(responsibility => responsibility.OperationalName)

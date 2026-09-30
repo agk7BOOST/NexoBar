@@ -31,9 +31,11 @@ public sealed record OrderConfirmationCatalogProduct(
     bool IsActive,
     bool IsAvailable,
     bool RequiresPreparation,
-    Guid? PreparationResponsibilityId);
+    Guid? PreparationResponsibilityId,
+    bool IsPreparationDestinationActive = true);
 
-internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext) :
+internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext,
+    NexoBar.OperationalConfiguration.IPreparationResponsibilityLookup preparationResponsibilities) :
     IOrderConfirmationCatalog, IOrderAppliedPriceCatalog
 {
     public async Task<IReadOnlyList<OrderConfirmationCatalogProduct>> ReadProductsAsync(
@@ -76,6 +78,12 @@ internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext) :
             .AsNoTracking()
             .ToArrayAsync(cancellationToken);
 
+        var activeDestinations = new HashSet<Guid>();
+        foreach (var destination in products.Where(x => x.IsActive && x.RequiresPreparation)
+            .Select(x => x.PreparationResponsibilityId!.Value).Distinct().Order())
+            if (await preparationResponsibilities.IsActiveAsync(destination, transaction, cancellationToken))
+                activeDestinations.Add(destination);
+
         return products
             .Select(product => new OrderConfirmationCatalogProduct(
                 product.Id,
@@ -84,7 +92,8 @@ internal sealed class OrderConfirmationCatalog(CatalogDbContext dbContext) :
                 product.IsActive,
                 product.IsAvailable,
                 product.RequiresPreparation,
-                product.PreparationResponsibilityId))
+                product.PreparationResponsibilityId,
+                !product.RequiresPreparation || activeDestinations.Contains(product.PreparationResponsibilityId!.Value)))
             .ToArray();
     }
 

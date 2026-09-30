@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="NexoBar.E2E.DatabaseSetup" />
+    <InternalsVisibleTo Include="NexoBar.OperationalConfiguration.IntegrationTests" />
     <InternalsVisibleTo Include="NexoBar.Catalog.IntegrationTests" />
     <InternalsVisibleTo Include="NexoBar.IdentitiesAndCapabilities.IntegrationTests" />
     <InternalsVisibleTo Include="NexoBar.OrderOperations.IntegrationTests" />

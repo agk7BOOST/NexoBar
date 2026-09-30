@@ -55,6 +55,8 @@ public static partial class OrderOperationsModule
         services.AddScoped<OperationalInterventionService>();
         services.AddScoped<OperationalInterventionQueryService>();
 
+        services.AddScoped<NexoBar.OperationalConfiguration.IContextOperationalParticipation, ConfigurationOperationalParticipation>();
+        services.AddScoped<NexoBar.OperationalConfiguration.IDestinationOperationalParticipation, ConfigurationOperationalParticipation>();
         return services;
     }
 
@@ -398,8 +400,8 @@ public static partial class OrderOperationsModule
                 "order.context_change.forbidden"),
             OrderContextChangeOutcome.OrderNotFound => Problem(404, "Order not found",
                 "No active Order exists with the supplied identity.", "order.context_change.order_not_found"),
-            OrderContextChangeOutcome.TargetContextNotFound => Problem(409, "Target Context not found",
-                "The selected Context is not configured.", "order.context_change.target_context_not_found"),
+            OrderContextChangeOutcome.TargetContextNotFound => Problem(409, "Target Context is not selectable",
+                "The selected Context does not exist or is retired.", "order.context_change.target_context_not_found"),
             OrderContextChangeOutcome.NoChange => Problem(409, "Context is unchanged",
                 "The Order already has the requested Context.", "order.context_change.no_change"),
             OrderContextChangeOutcome.ExpectedContextStale => Problem(409, "Current Context is stale",
@@ -1283,6 +1285,7 @@ public static partial class OrderOperationsModule
                 "Order not found",
                 "No Order exists with the supplied operational reference.",
                 "order_operations.order.not_found"),
+            SubsequentConfirmationOutcome.PreparationDestinationNotCurrent => Problem(409, "Preparation destination is retired", "Future confirmations require an active preparation destination.", "order_operations.confirmation.preparation_destination_not_current", result.ProductId),
             SubsequentConfirmationOutcome.ProductNotCurrent => Problem(
                 StatusCodes.Status409Conflict,
                 "Product is not current",
@@ -1575,6 +1578,7 @@ public static partial class OrderOperationsModule
                 "A Product and canonical Instruction pair may appear only once in a Confirmation.",
                 "order_operations.confirmation.duplicate_line",
                 result.ProductId),
+            FirstConfirmationOutcome.PreparationDestinationNotCurrent => Problem(409, "Preparation destination is retired", "Future confirmations require an active preparation destination.", "order_operations.confirmation.preparation_destination_not_current", result.ProductId),
             FirstConfirmationOutcome.ProductNotCurrent => Problem(
                 StatusCodes.Status409Conflict,
                 "Product is not current",

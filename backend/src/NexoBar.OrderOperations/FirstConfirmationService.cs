@@ -105,6 +105,7 @@ internal sealed class FirstConfirmationService(
 
         var configuredContext = await contextConfiguration.ResolveConfiguredContextAsync(
             intent.ContextId.Value,
+            transaction.GetDbTransaction(),
             cancellationToken);
         if (configuredContext is null)
         {
@@ -124,6 +125,9 @@ internal sealed class FirstConfirmationService(
             {
                 return FirstConfirmationResult.ProductNotCurrent(item.ProductId);
             }
+
+            if (!product.IsPreparationDestinationActive)
+                return FirstConfirmationResult.PreparationDestinationNotCurrent(item.ProductId);
 
             if (!product.IsAvailable && !item.UnavailableProductExceptionRequested)
             {
@@ -422,6 +426,9 @@ internal sealed record FirstConfirmationResult(
     internal static FirstConfirmationResult DuplicateLine(Guid productId) =>
         new(FirstConfirmationOutcome.DuplicateLine, null, productId);
 
+    internal static FirstConfirmationResult PreparationDestinationNotCurrent(Guid productId) =>
+        new(FirstConfirmationOutcome.PreparationDestinationNotCurrent, null, productId);
+
     internal static FirstConfirmationResult ProductNotCurrent(Guid productId) =>
         new(FirstConfirmationOutcome.ProductNotCurrent, null, productId);
 
@@ -456,6 +463,7 @@ internal enum FirstConfirmationOutcome
     QuantityInvalid,
     DuplicateLine,
     ProductNotCurrent,
+    PreparationDestinationNotCurrent,
     ProductUnavailable,
     InstructionRequiresPreparation,
     IdempotencyConflict,

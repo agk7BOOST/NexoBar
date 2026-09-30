@@ -110,3 +110,9 @@ La resolución de nombres usa un batch lookup estrecho de `OperationalConfigurat
 - El Estado de autenticación es explícito: `loading`, `unauthenticated` o `authenticated(currentIdentity)`. Login envía `loginIdentifier + secret` con antiforgery, muestra el `401` genérico y limpia el secret al tener éxito. La barra de sesión muestra el `OperationalName` actual y permite logout/cambiar persona.
 
 Parámetros normativos, seguridad global y administración aún pendiente: [fronteras de seguridad](../architecture/security-boundaries.md).
+
+### Lifecycle de destinos y conservación de Habilitaciones
+
+Retirar un Destino de preparación no elimina Preparation Enablements existentes ni cambia la política vigente de grant/revoke. El lookup de existencia y la resolución por ID siguen incluyendo retirados: la Identity conserva el acceso al Work ya originado bajo las reglas de Preparation y enablement exacto. Rename presenta el nombre vigente donde el lookup ya tenía esa semántica; no reescribe Historia.
+
+IdentitiesAndCapabilities implementa `IDestinationEnablementReferences` para bloquear Delete de un destino mientras cualquier habilitación actual lo referencie. La comprobación usa la transacción PostgreSQL del comando de OperationalConfiguration. Grant estabiliza la existencia del destino `FOR SHARE` en su propia transacción, incluida la provisión técnica; Delete lo bloquea `FOR UPDATE`, por lo que no pueden confirmar una habilitación nueva y la eliminación de su destino. No hay FK cross-module ni revocaciones automáticas. El lifecycle y sus conflictos pertenecen a [OperationalConfiguration](../operational-configuration/README.md#lifecycle-mínimo-de-contextos-y-destinos-de-preparación).

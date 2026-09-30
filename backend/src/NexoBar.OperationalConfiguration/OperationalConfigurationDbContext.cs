@@ -16,8 +16,13 @@ internal sealed class OperationalConfigurationDbContext(
     internal DbSet<OperationalContextCreationCommand> OperationalContextCreationCommands =>
         Set<OperationalContextCreationCommand>();
 
+    internal DbSet<OperationalContextLifecycleCommand> OperationalContextLifecycleCommands => Set<OperationalContextLifecycleCommand>();
+    internal DbSet<PreparationResponsibilityLifecycleCommand> PreparationResponsibilityLifecycleCommands => Set<PreparationResponsibilityLifecycleCommand>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        ConfigureContextLifecycle(modelBuilder.Entity<OperationalContextLifecycleCommand>());
+        ConfigureDestinationLifecycle(modelBuilder.Entity<PreparationResponsibilityLifecycleCommand>());
         modelBuilder.HasDefaultSchema("operational_configuration");
         modelBuilder.ApplyConfiguration(new PreparationResponsibilityConfiguration());
         modelBuilder.ApplyConfiguration(
@@ -39,6 +44,7 @@ internal sealed class OperationalConfigurationDbContext(
             builder.HasKey(context => context.Id)
                 .HasName("PK_operational_configuration_contexts");
             builder.Property(context => context.Id).HasColumnName("id").ValueGeneratedNever();
+            builder.Property(context => context.IsActive).HasColumnName("is_active").HasDefaultValue(true);
             builder.Property(context => context.OperationalName)
                 .HasColumnName("operational_name").HasColumnType("text").IsRequired();
             builder.Property(context => context.NormalizedOperationalName)
@@ -77,10 +83,7 @@ internal sealed class OperationalConfigurationDbContext(
             builder.HasIndex(command => command.ResultContextId)
                 .HasDatabaseName("UX_op_config_context_creation_command_result")
                 .IsUnique();
-            builder.HasOne<OperationalContext>().WithMany()
-                .HasForeignKey(command => command.ResultContextId)
-                .HasConstraintName("FK_op_config_context_creation_command_context")
-                .OnDelete(DeleteBehavior.Restrict);
+
         }
     }
 
@@ -98,6 +101,7 @@ internal sealed class OperationalConfigurationDbContext(
                 .HasName("PK_operational_configuration_preparation_responsibilities");
             builder.Property(responsibility => responsibility.Id)
                 .HasColumnName("id").ValueGeneratedNever();
+            builder.Property(responsibility => responsibility.IsActive).HasColumnName("is_active").HasDefaultValue(true);
             builder.Property(responsibility => responsibility.OperationalName)
                 .HasColumnName("operational_name").HasColumnType("text").IsRequired();
             builder.Property(responsibility => responsibility.NormalizedOperationalName)
@@ -150,11 +154,37 @@ internal sealed class OperationalConfigurationDbContext(
                 .HasDatabaseName(
                     "UX_op_config_preparation_responsibility_creation_cmd_result")
                 .IsUnique();
-            builder.HasOne<PreparationResponsibility>().WithMany()
-                .HasForeignKey(command => command.ResultResponsibilityId)
-                .HasConstraintName(
-                    "FK_op_config_prep_responsibility_creation_cmd_responsibility")
-                .OnDelete(DeleteBehavior.Restrict);
+
         }
+    }
+    private static void ConfigureContextLifecycle(EntityTypeBuilder<OperationalContextLifecycleCommand> builder)
+    {
+        builder.ToTable("context_lifecycle_commands", table => table.HasCheckConstraint("CK_context_lifecycle_commands_kind", "command_kind IN ('Rename', 'Retire', 'Reactivate', 'Delete')"));
+        builder.HasKey(x => x.IdempotencyKey);
+        builder.Property(x => x.IdempotencyKey).HasColumnName("idempotency_key").ValueGeneratedNever();
+        builder.Property(x => x.ActorIdentityId).HasColumnName("actor_identity_id");
+        builder.Property(x => x.CommandKind).HasColumnName("command_kind").HasColumnType("text").IsRequired();
+        builder.Property(x => x.TargetId).HasColumnName("target_id");
+        builder.Property(x => x.ExpectedOperationalName).HasColumnName("expected_operational_name").HasColumnType("text").IsRequired();
+        builder.Property(x => x.ExpectedIsActive).HasColumnName("expected_is_active");
+        builder.Property(x => x.NewOperationalName).HasColumnName("new_operational_name").HasColumnType("text");
+        builder.Property(x => x.ResultOperationalName).HasColumnName("result_operational_name").HasColumnType("text").IsRequired();
+        builder.Property(x => x.ResultIsActive).HasColumnName("result_is_active");
+        builder.Property(x => x.ResultIsDeleted).HasColumnName("result_is_deleted");
+    }
+    private static void ConfigureDestinationLifecycle(EntityTypeBuilder<PreparationResponsibilityLifecycleCommand> builder)
+    {
+        builder.ToTable("preparation_responsibility_lifecycle_commands", table => table.HasCheckConstraint("CK_preparation_responsibility_lifecycle_commands_kind", "command_kind IN ('Rename', 'Retire', 'Reactivate', 'Delete')"));
+        builder.HasKey(x => x.IdempotencyKey);
+        builder.Property(x => x.IdempotencyKey).HasColumnName("idempotency_key").ValueGeneratedNever();
+        builder.Property(x => x.ActorIdentityId).HasColumnName("actor_identity_id");
+        builder.Property(x => x.CommandKind).HasColumnName("command_kind").HasColumnType("text").IsRequired();
+        builder.Property(x => x.TargetId).HasColumnName("target_id");
+        builder.Property(x => x.ExpectedOperationalName).HasColumnName("expected_operational_name").HasColumnType("text").IsRequired();
+        builder.Property(x => x.ExpectedIsActive).HasColumnName("expected_is_active");
+        builder.Property(x => x.NewOperationalName).HasColumnName("new_operational_name").HasColumnType("text");
+        builder.Property(x => x.ResultOperationalName).HasColumnName("result_operational_name").HasColumnType("text").IsRequired();
+        builder.Property(x => x.ResultIsActive).HasColumnName("result_is_active");
+        builder.Property(x => x.ResultIsDeleted).HasColumnName("result_is_deleted");
     }
 }

@@ -683,8 +683,7 @@ public sealed class FirstConfirmationApiTests(OrderOperationsApiFixture fixture)
 
         await using var application = fixture.CreateApplicationWithCatalogDecorator(
             services => new BlockingCatalogDecorator(
-                new OrderConfirmationCatalog(
-                    services.GetRequiredService<CatalogDbContext>()),
+                new OrderConfirmationCatalog(services.GetRequiredService<CatalogDbContext>(), services.GetRequiredService<NexoBar.OperationalConfiguration.IPreparationResponsibilityLookup>()),
                 lockAcquired,
                 releaseConfirmation));
         using var client = await fixture.LoginAsync(

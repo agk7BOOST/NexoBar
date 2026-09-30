@@ -115,6 +115,7 @@ public static class IdentitiesAndCapabilitiesModule
         services.AddScoped<IExtraordinaryGeneralConfigurationRecoveryService>(services =>
             services.GetRequiredService<ExtraordinaryGeneralConfigurationRecoveryService>());
 
+        services.AddScoped<NexoBar.OperationalConfiguration.IDestinationEnablementReferences, DestinationEnablementReferences>();
         return services;
     }
 

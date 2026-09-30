@@ -1,3 +1,4 @@
+import { ConfigurationLifecycleControls } from "./ConfigurationLifecycleControls.tsx";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { getAntiforgeryToken } from "../identity/sessionClient.ts";
 import {
@@ -23,9 +24,11 @@ export function ContextConfigurationSection({
     token: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lifecyclePending, setLifecyclePending] = useState(false);
   const reload = useCallback(async () => {
     try {
       setContexts(await listConfiguredContexts());
+      return true;
     } catch (error) {
       if (
         error instanceof ContextConfigurationError &&
@@ -38,6 +41,7 @@ export function ContextConfigurationSection({
       )
         onForbidden();
       else setNotice("No se pudo cargar la configuración de Contextos.");
+      return false;
     }
   }, [onForbidden, onUnauthorized]);
   useEffect(() => {
@@ -108,7 +112,18 @@ export function ContextConfigurationSection({
       <h3 id="contexts-title">Contextos</h3>
       <ul aria-label="Contextos configurados">
         {contexts.map((context) => (
-          <li key={context.id}>{context.operationalName}</li>
+          <li key={context.id}>
+            <span>{context.operationalName}</span>
+            <ConfigurationLifecycleControls
+              entity="contexts"
+              item={context}
+              disabled={busy || pending !== null || lifecyclePending}
+              onPendingChange={setLifecyclePending}
+              onReload={reload}
+              onUnauthorized={onUnauthorized}
+              onForbidden={onForbidden}
+            />
+          </li>
         ))}
       </ul>
       <form onSubmit={(event) => void handle(event)}>
@@ -120,9 +135,12 @@ export function ContextConfigurationSection({
           value={name}
           onChange={(event) => setName(event.target.value)}
           required
-          disabled={busy}
+          disabled={busy || lifecyclePending}
         />
-        <button type="submit" disabled={busy || pending !== null}>
+        <button
+          type="submit"
+          disabled={busy || pending !== null || lifecyclePending}
+        >
           Crear Contexto
         </button>
       </form>
@@ -132,7 +150,7 @@ export function ContextConfigurationSection({
           <p>{pending.name}</p>
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || lifecyclePending}
             onClick={() => void submit(pending)}
           >
             Reintentar esta operación
