@@ -102,6 +102,7 @@ async function recordCount(
   user: ReturnType<typeof userEvent.setup>,
   value = "7.500",
 ) {
+  await user.click(screen.getByRole("button", { name: "Conteo" }));
   await user.type(
     screen.getByLabelText("Cantidad observada para Harina"),
     value,
@@ -307,6 +308,7 @@ describe("InventoryItemOperations", () => {
       "7.500 kg",
     );
 
+    await user.click(screen.getByRole("button", { name: "Conteo" }));
     await user.type(
       screen.getByLabelText("Cantidad observada para Harina"),
       "8",
@@ -363,6 +365,16 @@ describe("InventoryItemOperations", () => {
       const user = userEvent.setup();
       const { onAuthoritativeMutation } = renderOperations();
 
+      await user.click(
+        screen.getByRole("button", {
+          name:
+            client === recordInventoryEntry
+              ? "Entrada"
+              : client === recordManualInventoryExit
+                ? "Salida manual"
+                : "Merma",
+        }),
+      );
       await user.type(screen.getByLabelText(label), quantity);
       await user.click(screen.getByRole("button", { name: button }));
 
@@ -397,6 +409,7 @@ describe("InventoryItemOperations", () => {
       });
     const user = userEvent.setup();
     renderOperations();
+    await user.click(screen.getByRole("button", { name: "Merma" }));
     const quantity = screen.getByLabelText("Cantidad de merma para Harina");
     await user.type(quantity, "0.125");
     await user.click(screen.getByRole("button", { name: "Registrar merma" }));
@@ -443,6 +456,7 @@ describe("InventoryItemOperations", () => {
     const onUnauthorized = vi.fn();
     renderOperations({}, onUnauthorized);
 
+    await user.click(screen.getByRole("button", { name: "Entrada" }));
     await user.type(
       screen.getByLabelText("Cantidad de entrada para Harina"),
       "1",
@@ -464,6 +478,7 @@ describe("InventoryItemOperations", () => {
     const user = userEvent.setup();
     renderOperations();
 
+    await user.click(screen.getByRole("button", { name: "Entrada" }));
     await user.type(
       screen.getByLabelText("Cantidad de entrada para Harina"),
       "1e2",
@@ -473,11 +488,7 @@ describe("InventoryItemOperations", () => {
       await screen.findByText("Ingresá una cantidad positiva válida."),
     ).toBeInTheDocument();
     expect(recordInventoryEntry).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole("button", { name: "Registrar salida manual" }),
-    ).toBeEnabled();
-    expect(
-      screen.getByRole("button", { name: "Registrar merma" }),
-    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Salida manual" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Merma" })).toBeEnabled();
   });
 });

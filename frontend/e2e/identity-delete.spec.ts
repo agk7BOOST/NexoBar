@@ -46,9 +46,9 @@ test("eligible Identity is removed and functional Order History preserves anothe
         general.getByText("Identidad creada correctamente."),
       ).toBeVisible();
       await general.getByRole("button", { name: "Actualizar" }).click();
-      return general
-        .getByRole("row")
-        .filter({ has: admin.getByRole("cell", { name, exact: true }) });
+      return general.getByRole("region", {
+        name: `Administrar identidad ${name}`,
+      });
     }
 
     const eligible = await createIdentity(eligibleName);
@@ -60,7 +60,7 @@ test("eligible Identity is removed and functional Order History preserves anothe
       general.getByRole("region", {
         name: `Confirmar eliminación de ${eligibleName}`,
       }),
-    ).toContainText("Historia funcional relevante");
+    ).toContainText("no existen operaciones registradas");
     await general
       .getByRole("button", { name: "Confirmar eliminación definitiva" })
       .click();
@@ -80,7 +80,7 @@ test("eligible Identity is removed and functional Order History preserves anothe
       .getByRole("button", { name: `Configurar credencial de ${actorName}` })
       .click();
     const credential = general.getByRole("form", {
-      name: "Configurar credencial local",
+      name: `Configurar acceso de ${actorName}`,
     });
     await credential.getByLabel("Identificador de acceso").fill(actorLogin);
     await credential.getByLabel("Nueva clave secreta").fill(actorSecret);
@@ -88,12 +88,10 @@ test("eligible Identity is removed and functional Order History preserves anothe
       .getByRole("button", { name: "Guardar credencial" })
       .click();
     await expect(
-      target.getByRole("cell", { name: "Configurada", exact: true }),
+      target.getByText("configurado", { exact: true }),
     ).toBeVisible();
     await target.getByRole("button", { name: `Activar ${actorName}` }).click();
-    await expect(
-      target.getByRole("cell", { name: "Activa", exact: true }),
-    ).toBeVisible();
+    await expect(target.getByText("Activa", { exact: true })).toBeVisible();
 
     await login(catalog, "price-catalog-e2e", "price-catalog-e2e-secret");
     await catalog

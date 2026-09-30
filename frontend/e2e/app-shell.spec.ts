@@ -61,7 +61,7 @@ test("workspace navigation preserves uncertain availability and moves keyboard f
     .click();
   await expect(
     page.getByText(
-      "Resultado incierto. Reintentá exactamente la misma intención.",
+      "No pudimos confirmar si se cambió la disponibilidad. Podés reintentar esta operación sin duplicarla.",
     ),
   ).toBeVisible();
   await navigation
@@ -111,6 +111,104 @@ for (const surface of surfaces) {
     ).toHaveCount(0);
     for (const width of [1280, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
+      await expect
+        .poll(() =>
+          page.evaluate(
+            "document.documentElement.scrollWidth <= window.innerWidth",
+          ),
+        )
+        .toBe(true);
+      if (surface.login === "general-configuration-admin-a-e2e") {
+        const identities = page.getByRole("list", {
+          name: "Listado de identidades",
+        });
+        expect(
+          await identities.locator(":scope > li").count(),
+        ).toBeGreaterThanOrEqual(8);
+        const manage = identities.getByRole("button", {
+          name: "Administrar Administradora general A E2E",
+        });
+        await manage.click();
+        const detail = page.getByRole("region", {
+          name: "Administrar identidad Administradora general A E2E",
+        });
+        await expect(detail).toBeFocused();
+        await expect(
+          detail.getByRole("button", {
+            name: "Desactivar Administradora general A E2E",
+          }),
+        ).toBeVisible();
+        expect(
+          await page.evaluate(
+            "document.documentElement.scrollWidth <= window.innerWidth",
+          ),
+        ).toBe(true);
+        await detail.getByRole("button", { name: "Volver al listado" }).click();
+        await expect(manage).toBeFocused();
+      }
+      if (surface.login === "inventory-config-e2e") {
+        const configured = page
+          .getByRole("list", { name: "Elementos configurados" })
+          .getByRole("listitem")
+          .filter({ hasText: "Insumo corrección Inventario E2E" });
+        await configured
+          .locator("details.inventory-configuration-item > summary")
+          .click();
+        await expect(
+          configured.getByRole("button", {
+            name: "Retirar Insumo corrección Inventario E2E",
+          }),
+        ).toBeVisible();
+        await expect(configured).toContainText("Unidad: unidades");
+        expect(
+          await page.evaluate(
+            "document.documentElement.scrollWidth <= window.innerWidth",
+          ),
+        ).toBe(true);
+        await configured
+          .locator("details.inventory-configuration-item > summary")
+          .click();
+      }
+      if (surface.login === "inventory-operation-e2e") {
+        const item = page.getByRole("article", {
+          name: "Insumo corrección Inventario E2E",
+        });
+        await item.getByRole("button", { name: "Entrada" }).click();
+        await expect(
+          item.getByRole("form", {
+            name: "Entrada de Insumo corrección Inventario E2E",
+          }),
+        ).toBeVisible();
+        await expect(item).toContainText(
+          "Elemento: Insumo corrección Inventario E2E · Unidad: unidades",
+        );
+        expect(
+          await page.evaluate(
+            "document.documentElement.scrollWidth <= window.innerWidth",
+          ),
+        ).toBe(true);
+        await item.getByRole("button", { name: "Cerrar formulario" }).click();
+      }
+      if (surface.login === "price-catalog-e2e") {
+        const firstProduct = page
+          .locator(".catalog-products-table tbody tr")
+          .first();
+        await expect(
+          firstProduct.locator("td:first-child strong"),
+        ).toBeVisible();
+        const name = await firstProduct
+          .locator("td:first-child strong")
+          .textContent();
+        await expect(firstProduct.locator("td:last-child")).toHaveAttribute(
+          "data-product-name",
+          name!,
+        );
+        await expect(
+          firstProduct.getByRole("button", {
+            name: `Cambiar precio de ${name}`,
+          }),
+        ).toBeVisible();
+      }
       await expect
         .poll(() =>
           page.evaluate(

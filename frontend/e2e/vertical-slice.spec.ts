@@ -375,11 +375,10 @@ test("otro contexto autorizado ve el marcador remoto y no puede iniciar un segun
         name: `Agregar ${productName} a Nueva Composición`,
       })
       .click();
-    await expect(
-      otherComposition.getByText(
-        /Descartala explícitamente para comenzar otra/,
-      ),
-    ).toBeVisible();
+    await expect(otherComposition).toContainText(
+      "Descartala explícitamente para comenzar otra.",
+      { timeout: 10_000 },
+    );
 
     const antiforgery = await otherPage
       .context()
@@ -761,6 +760,7 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
   });
   const item = operation.getByRole("article", { name: itemName });
   await expect(item).toContainText("Existencia física no establecida");
+  await item.getByRole("button", { name: "Conteo" }).click();
   await item.getByLabel(`Cantidad observada para ${itemName}`).fill("5.5");
   await item.getByRole("button", { name: "Registrar conteo" }).click();
   await expect(item).toContainText("Conteo registrado: 5.5 kg");
@@ -769,10 +769,12 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
   await expect(item).toContainText("Existencia inicial establecida en 5.5");
   await expect(item).toContainText("Existencia registrada5.5 kg");
 
+  await item.getByRole("button", { name: "Entrada" }).click();
   await item.getByLabel(`Cantidad de entrada para ${itemName}`).fill("2");
   await item.getByRole("button", { name: "Registrar entrada" }).click();
   await expect(item).toContainText("Existencia registrada7.5 kg");
 
+  await item.getByRole("button", { name: "Salida manual" }).click();
   await item.getByLabel(`Cantidad de salida manual para ${itemName}`).fill("8");
   await item.getByRole("button", { name: "Registrar salida manual" }).click();
   await expect(item).toContainText("Existencia registrada-0.5 kg");
@@ -780,6 +782,7 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
     "Inconsistencia de saldo",
   );
 
+  await item.getByRole("button", { name: "Merma" }).click();
   await item.getByLabel(`Cantidad de merma para ${itemName}`).fill("0.5");
   await item.getByRole("button", { name: "Registrar merma" }).click();
   await expect(item).toContainText("Existencia registrada-1 kg");

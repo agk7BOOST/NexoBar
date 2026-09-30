@@ -37,16 +37,74 @@ function unavailable(error: unknown) {
     return "No se pudo consultar el historial por un fallo de comunicación.";
   return "No se pudo leer el historial. Intentá nuevamente.";
 }
+function latestContentFact(content: TerminalHistoryContent) {
+  const facts = [
+    ...content.preparationHistory.map((fact) => ({
+      label:
+        (
+          {
+            PreparationQuantityStarted: "Preparación iniciada",
+            PreparationQuantityReady: "Preparación lista",
+            PreparationCorrection: "Preparación corregida",
+            PreparationIntervention: "Intervención en preparación",
+          } as Record<string, string>
+        )[fact.type] ?? "Hecho de preparación",
+      quantity: fact.quantity,
+      at: fact.occurredAtUtc,
+    })),
+    ...content.deliveries.map((fact) => ({
+      label: "Entrega registrada",
+      quantity: fact.quantity,
+      at: fact.occurredAtUtc,
+    })),
+    ...content.priceCorrections.map((fact) => ({
+      label: `Precio corregido de ${fact.previousPrice} a ${fact.resultingPrice}`,
+      quantity: null,
+      at: fact.occurredAtUtc,
+    })),
+    ...content.corrections.map((fact) => ({
+      label: `Cantidad confirmada corregida de ${fact.previousQuantity} a ${fact.resultingQuantity}`,
+      quantity: null,
+      at: fact.occurredAtUtc,
+    })),
+    ...content.cancellations.map((fact) => ({
+      label: `Contenido cancelado de ${fact.previousQuantity} a ${fact.resultingQuantity}`,
+      quantity: null,
+      at: fact.occurredAtUtc,
+    })),
+    ...content.deliveryCorrections.map((fact) => ({
+      label: `Entrega corregida de ${fact.previousDeliveredQuantity} a ${fact.resultingDeliveredQuantity}`,
+      quantity: null,
+      at: fact.occurredAtUtc,
+    })),
+  ];
+  return facts.reduce<(typeof facts)[number] | null>(
+    (latest, fact) =>
+      latest === null || Date.parse(fact.at) >= Date.parse(latest.at)
+        ? fact
+        : latest,
+    null,
+  );
+}
 function Content({ content: c }: { content: TerminalHistoryContent }) {
+  const latest = latestContentFact(c);
   return (
     <article className="terminal-history-content">
-      <h5>Contenido {c.contentOrdinal}</h5>
+      <h5>
+        {c.productOperationalNameSnapshot ?? "Nombre histórico no disponible"}
+      </h5>
       <p>
-        <strong>
-          {c.productOperationalNameSnapshot ?? "Nombre histórico no disponible"}
-        </strong>{" "}
-        · Cantidad confirmada: {c.originalConfirmedQuantity}
+        Contenido {c.contentOrdinal} · Cantidad confirmada:{" "}
+        {c.originalConfirmedQuantity}
+        {" · "}Entregado efectivo: {c.effectiveDeliveredQuantity}
       </p>
+      {latest && (
+        <p className="terminal-history-latest">
+          Último hecho: {latest.label}
+          {latest.quantity !== null && ` · ${latest.quantity} unidades`} ·{" "}
+          {when(latest.at)}
+        </p>
+      )}
       <p>
         Precio confirmado: {c.appliedPrice} · Precio histórico efectivo:{" "}
         {c.effectiveAppliedPrice}
@@ -56,103 +114,116 @@ function Content({ content: c }: { content: TerminalHistoryContent }) {
         {c.requiresPreparation ? "Requerida" : "No requerida"}
       </p>
       {c.preparationResponsibilityId && (
-        <p className="technical-reference">
-          Identificador del destino de preparación:{" "}
-          {c.preparationResponsibilityId}
-        </p>
+        <details className="terminal-history-technical">
+          <summary>Identificador del destino de preparación</summary>
+          <p className="technical-reference">{c.preparationResponsibilityId}</p>
+        </details>
       )}
       {c.unavailableProductExceptionApplied && (
         <p>Incorporado mediante excepción por producto no disponible</p>
       )}
-      {c.priceCorrections.length > 0 && (
-        <section>
-          <h6>Correcciones de precio</h6>
-          <ol>
-            {c.priceCorrections.map((x, i) => (
-              <li key={i}>
-                {x.previousPrice} → {x.resultingPrice};{" "}
-                {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-      {c.corrections.length > 0 && (
-        <section>
-          <h6>Corrección de contenido</h6>
-          <ol>
-            {c.corrections.map((x, i) => (
-              <li key={i}>
-                {x.previousQuantity} → {x.resultingQuantity};{" "}
-                {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-      {c.cancellations.length > 0 && (
-        <section>
-          <h6>Cancelación de contenido</h6>
-          <ol>
-            {c.cancellations.map((x, i) => (
-              <li key={i}>
-                {x.previousQuantity} → {x.resultingQuantity};{" "}
-                {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-      {c.preparationHistory.length > 0 && (
-        <section>
-          <h6>Historial de preparación</h6>
-          <ol>
-            {c.preparationHistory.map((x, i) => (
-              <li key={i}>
-                {(
-                  {
-                    PreparationQuantityStarted: "Inicio",
-                    PreparationQuantityReady: "Listo",
-                    PreparationCorrection: "Corrección",
-                    PreparationIntervention: "Intervención",
-                  } as Record<string, string>
-                )[x.type] ?? x.type}
-                : {x.quantity} · Pendiente {x.resultingPendingQuantity}, en
-                preparación {x.resultingInPreparationQuantity}, listo{" "}
-                {x.resultingReadyQuantity}; {actor(x.actorIdentityId)} ·{" "}
-                {when(x.occurredAtUtc)}
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-      {c.deliveries.length > 0 && (
-        <section>
-          <h6>Entregas</h6>
-          <ol>
-            {c.deliveries.map((x, i) => (
-              <li key={i}>
-                {x.type === "QuantityDelivered" ? "Entrega registrada" : x.type}
-                : {x.quantity} · acumulado {x.resultingDeliveredQuantity};{" "}
-                {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-      {c.deliveryCorrections.length > 0 && (
-        <section>
-          <h6>Correcciones de entrega</h6>
-          <ol>
-            {c.deliveryCorrections.map((x, i) => (
-              <li key={i}>
-                {x.previousDeliveredQuantity} → {x.resultingDeliveredQuantity};{" "}
-                {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
+      <details className="terminal-content-events">
+        <summary>
+          Ver hechos: {c.preparationHistory.length} de preparación,{" "}
+          {c.deliveries.length} entregas,{" "}
+          {c.priceCorrections.length +
+            c.corrections.length +
+            c.cancellations.length +
+            c.deliveryCorrections.length}{" "}
+          correcciones o cancelaciones
+        </summary>
+        {c.priceCorrections.length > 0 && (
+          <section>
+            <h6>Correcciones de precio</h6>
+            <ol>
+              {c.priceCorrections.map((x, i) => (
+                <li key={i}>
+                  {x.previousPrice} → {x.resultingPrice};{" "}
+                  {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+        {c.corrections.length > 0 && (
+          <section>
+            <h6>Corrección de contenido</h6>
+            <ol>
+              {c.corrections.map((x, i) => (
+                <li key={i}>
+                  {x.previousQuantity} → {x.resultingQuantity};{" "}
+                  {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+        {c.cancellations.length > 0 && (
+          <section>
+            <h6>Cancelación de contenido</h6>
+            <ol>
+              {c.cancellations.map((x, i) => (
+                <li key={i}>
+                  {x.previousQuantity} → {x.resultingQuantity};{" "}
+                  {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+        {c.preparationHistory.length > 0 && (
+          <section>
+            <h6>Historial de preparación</h6>
+            <ol>
+              {c.preparationHistory.map((x, i) => (
+                <li key={i}>
+                  {(
+                    {
+                      PreparationQuantityStarted: "Inicio",
+                      PreparationQuantityReady: "Listo",
+                      PreparationCorrection: "Corrección",
+                      PreparationIntervention: "Intervención",
+                    } as Record<string, string>
+                  )[x.type] ?? x.type}
+                  : {x.quantity} · Pendiente {x.resultingPendingQuantity}, en
+                  preparación {x.resultingInPreparationQuantity}, listo{" "}
+                  {x.resultingReadyQuantity}; {actor(x.actorIdentityId)} ·{" "}
+                  {when(x.occurredAtUtc)}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+        {c.deliveries.length > 0 && (
+          <section>
+            <h6>Entregas</h6>
+            <ol>
+              {c.deliveries.map((x, i) => (
+                <li key={i}>
+                  {x.type === "QuantityDelivered"
+                    ? "Entrega registrada"
+                    : x.type}
+                  : {x.quantity} · acumulado {x.resultingDeliveredQuantity};{" "}
+                  {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+        {c.deliveryCorrections.length > 0 && (
+          <section>
+            <h6>Correcciones de entrega</h6>
+            <ol>
+              {c.deliveryCorrections.map((x, i) => (
+                <li key={i}>
+                  {x.previousDeliveredQuantity} → {x.resultingDeliveredQuantity}
+                  ; {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+      </details>
     </article>
   );
 }
@@ -305,10 +376,20 @@ function TerminalHistoryResult({
           <ul>
             {h.completeCancellation.consequences.map((x, i) => (
               <li key={i}>
-                Incorporación {x.incorporationId}, contenido {x.contentOrdinal}:
-                Directo/Pendiente {x.directOrPendingQuantity}, en preparación{" "}
+                Incorporación{" "}
+                {h.incorporations.find(
+                  (incorporation) => incorporation.id === x.incorporationId,
+                )?.ordinal ?? "no disponible"}
+                , contenido {x.contentOrdinal}: Directo/Pendiente{" "}
+                {x.directOrPendingQuantity}, en preparación{" "}
                 {x.inPreparationQuantity}, listo {x.readyQuantity}, resultado{" "}
                 {x.resultingFulfillmentQuantity}
+                <details className="terminal-history-technical">
+                  <summary>Identificador de incorporación</summary>
+                  <span className="technical-reference">
+                    {x.incorporationId}
+                  </span>
+                </details>
               </li>
             ))}
           </ul>

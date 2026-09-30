@@ -43,12 +43,28 @@ function generalConfiguration(page: Page): Locator {
 
 function identityRow(
   configuration: Locator,
-  page: Page,
+  _page: Page,
   operationalName: string,
 ): Locator {
-  return configuration.getByRole("row").filter({
-    has: page.getByRole("cell", { name: operationalName, exact: true }),
+  return configuration.getByRole("region", {
+    name: `Administrar identidad ${operationalName}`,
   });
+}
+
+async function selectIdentity(
+  configuration: Locator,
+  operationalName: string,
+): Promise<void> {
+  await configuration
+    .getByRole("button", {
+      name: `Administrar ${operationalName}`,
+    })
+    .click();
+  await expect(
+    configuration.getByRole("region", {
+      name: `Administrar identidad ${operationalName}`,
+    }),
+  ).toBeVisible();
 }
 
 async function authenticateThroughCurrent(
@@ -139,11 +155,9 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
 
     let target = identityRow(configuration, adminAPage, targetInitialName);
     await expect(target).toBeVisible();
+    await expect(target.getByText("Inactiva", { exact: true })).toBeVisible();
     await expect(
-      target.getByRole("cell", { name: "Inactiva", exact: true }),
-    ).toBeVisible();
-    await expect(
-      target.getByRole("cell", { name: "No configurada", exact: true }),
+      target.getByText("sin configurar", { exact: true }),
     ).toBeVisible();
     const afterCreate = (await refreshAdministrativeState(
       adminAPage,
@@ -285,10 +299,12 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       }),
     ).toBeVisible();
     await expect(
-      target.getByRole("cell", { name: "Configurada", exact: true }),
+      target.getByText("configurado", { exact: true }),
     ).toBeVisible();
     await expect(
-      target.getByRole("cell", { name: targetLoginIdentifier, exact: true }),
+      target.getByText(`Identificador de acceso: ${targetLoginIdentifier}`, {
+        exact: true,
+      }),
     ).toBeVisible();
 
     const activatedForLifecycle = waitForResponse(
@@ -300,9 +316,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       .getByRole("button", { name: `Activar ${targetRenamedName}` })
       .click();
     expect((await activatedForLifecycle).ok()).toBeTruthy();
-    await expect(
-      target.getByRole("cell", { name: "Activa", exact: true }),
-    ).toBeVisible();
+    await expect(target.getByText("Activa", { exact: true })).toBeVisible();
 
     const deactivated = waitForResponse(
       adminAPage,
@@ -313,14 +327,10 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       .getByRole("button", { name: `Desactivar ${targetRenamedName}` })
       .click();
     expect((await deactivated).ok()).toBeTruthy();
-    await expect(
-      target.getByRole("cell", { name: "Inactiva", exact: true }),
-    ).toBeVisible();
+    await expect(target.getByText("Inactiva", { exact: true })).toBeVisible();
     await refreshAdministrativeState(adminAPage, configuration);
     target = identityRow(configuration, adminAPage, targetRenamedName);
-    await expect(
-      target.getByRole("cell", { name: "Inactiva", exact: true }),
-    ).toBeVisible();
+    await expect(target.getByText("Inactiva", { exact: true })).toBeVisible();
 
     const activated = waitForResponse(
       adminAPage,
@@ -331,15 +341,12 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       .getByRole("button", { name: `Activar ${targetRenamedName}` })
       .click();
     expect((await activated).ok()).toBeTruthy();
-    await expect(
-      target.getByRole("cell", { name: "Activa", exact: true }),
-    ).toBeVisible();
+    await expect(target.getByText("Activa", { exact: true })).toBeVisible();
     await refreshAdministrativeState(adminAPage, configuration);
     target = identityRow(configuration, adminAPage, targetRenamedName);
-    await expect(
-      target.getByRole("cell", { name: "Activa", exact: true }),
-    ).toBeVisible();
+    await expect(target.getByText("Activa", { exact: true })).toBeVisible();
 
+    await selectIdentity(configuration, adminB.operationalName);
     const adminBRow = identityRow(
       configuration,
       adminAPage,
@@ -383,6 +390,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       }),
     ).toHaveCount(0);
 
+    await selectIdentity(configuration, adminA.operationalName);
     const adminARow = identityRow(
       configuration,
       adminAPage,
@@ -421,6 +429,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       "POST",
       /\/api\/identities\/[^/]+\/responsibilities\/GeneralConfiguration\/assign/,
     );
+    await selectIdentity(configuration, adminB.operationalName);
     await identityRow(configuration, adminAPage, adminB.operationalName)
       .getByRole("button", {
         name: `Asignar Configuración general a ${adminB.operationalName}`,
@@ -445,6 +454,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     configuration = generalConfiguration(adminAPage);
     await expect(configuration).toBeVisible();
 
+    await selectIdentity(configuration, adminA.operationalName);
     const currentAdminA = identityRow(
       configuration,
       adminAPage,
@@ -484,6 +494,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     });
 
     const restoredConfiguration = generalConfiguration(adminAPage);
+    await selectIdentity(restoredConfiguration, adminA.operationalName);
     await identityRow(restoredConfiguration, adminAPage, adminA.operationalName)
       .getByRole("button", {
         name: `Configurar credencial de ${adminA.operationalName}`,

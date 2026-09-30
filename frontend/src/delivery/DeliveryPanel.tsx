@@ -887,29 +887,33 @@ export function DeliveryPanel({
                     )}
 
                     <div className="content-correction">
-                      <dl className="delivery-quantities">
-                        <div>
-                          <dt>Q · Cantidad confirmada original</dt>
-                          <dd>{item.confirmedQuantity ?? "No disponible"}</dd>
-                        </div>
-                        <div>
-                          <dt>R · Retirada por corrección</dt>
-                          <dd>
-                            {item.removedByCorrectionQuantity ??
-                              "No disponible"}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>C · Cantidad cancelada</dt>
-                          <dd>{item.cancelledQuantity ?? "No disponible"}</dd>
-                        </div>
-                        <div>
-                          <dt>F · Obligación vigente</dt>
-                          <dd>
-                            {item.currentFulfillmentQuantity ?? "No disponible"}
-                          </dd>
-                        </div>
-                      </dl>
+                      <details className="delivery-technical-quantities">
+                        <summary>Ver cantidades confirmadas y ajustes</summary>
+                        <dl className="delivery-quantities">
+                          <div>
+                            <dt>Q · Cantidad confirmada original</dt>
+                            <dd>{item.confirmedQuantity ?? "No disponible"}</dd>
+                          </div>
+                          <div>
+                            <dt>R · Retirada por corrección</dt>
+                            <dd>
+                              {item.removedByCorrectionQuantity ??
+                                "No disponible"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>C · Cantidad cancelada</dt>
+                            <dd>{item.cancelledQuantity ?? "No disponible"}</dd>
+                          </div>
+                          <div>
+                            <dt>F · Obligación vigente</dt>
+                            <dd>
+                              {item.currentFulfillmentQuantity ??
+                                "No disponible"}
+                            </dd>
+                          </div>
+                        </dl>
+                      </details>
                       {item.currentFulfillmentQuantity === 0 && (
                         <p>Sin obligación vigente</p>
                       )}

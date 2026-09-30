@@ -176,6 +176,9 @@ describe("TerminalOrderHistoryView", () => {
     expect(
       result.getByText("Nombre histórico no disponible"),
     ).toBeInTheDocument();
+    expect(
+      result.getByText(/Último hecho: Entrega corregida de 1 a 0/),
+    ).toBeInTheDocument();
     expect(result.getAllByRole("listitem")[1]).toHaveTextContent("10 → 12");
     expect(result.getByText("Corrección de contenido")).toBeInTheDocument();
     expect(result.getByText("Cancelación de contenido")).toBeInTheDocument();

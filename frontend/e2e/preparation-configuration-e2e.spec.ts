@@ -99,11 +99,11 @@ function generalConfiguration(page: Page): Locator {
 
 function identityRow(
   configuration: Locator,
-  page: Page,
+  _page: Page,
   operationalName: string,
 ): Locator {
-  return configuration.getByRole("row").filter({
-    has: page.getByRole("cell", { name: operationalName, exact: true }),
+  return configuration.getByRole("region", {
+    name: `Administrar identidad ${operationalName}`,
   });
 }
 
@@ -164,6 +164,11 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
       }),
     ).toContainText(preparationResponsibilityName);
 
+    await configuration
+      .getByRole("button", {
+        name: `Administrar ${preparationActor.operationalName}`,
+      })
+      .click();
     const preparationOperator = identityRow(
       configuration,
       generalPage,

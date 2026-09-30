@@ -114,6 +114,9 @@ export function InventoryItemOperations({
   onAuthoritativeMutation,
   onItemUnavailable,
 }: InventoryItemOperationsProps) {
+  const [activeOperation, setActiveOperation] = useState<
+    InventoryOperationIntent["kind"] | null
+  >(null);
   const [countQuantity, setCountQuantity] = useState("");
   const [entryQuantity, setEntryQuantity] = useState("");
   const [exitQuantity, setExitQuantity] = useState("");
@@ -160,6 +163,7 @@ export function InventoryItemOperations({
           );
           setIntent(null);
           setCountObservation(result);
+          setActiveOperation("reconcile");
           setCountQuantity("");
           setNotice({
             kind: "success",
@@ -178,6 +182,7 @@ export function InventoryItemOperations({
           );
           setIntent(null);
           setCountObservation(null);
+          setActiveOperation(null);
           setNotice({
             kind: "success",
             message: reconciliationMessage(result),
@@ -249,6 +254,7 @@ export function InventoryItemOperations({
           }
           if (error.status === 404) {
             setCountObservation(null);
+            setActiveOperation(null);
             setNotice({
               kind: "functional-error",
               message: "El elemento o conteo ya no está disponible.",
@@ -264,6 +270,7 @@ export function InventoryItemOperations({
                 "inventory.reconciliation.observation_invalidated")
           ) {
             setCountObservation(null);
+            setActiveOperation("count");
             setNotice({
               kind: "functional-error",
               message:
@@ -399,28 +406,82 @@ export function InventoryItemOperations({
 
   return (
     <div className="inventory-item-operations">
-      <form
-        className="inventory-operation-form"
-        aria-label={`Conteo físico de ${item.operationalName}`}
-        onSubmit={(event) => beginQuantityIntent(event, "count", countQuantity)}
+      <div
+        className="inventory-operation-choices"
+        aria-label={`Acciones de ${item.operationalName}`}
       >
-        <h5>Conteo físico</h5>
-        <label>
-          Cantidad observada para {item.operationalName}
-          <input
-            inputMode="decimal"
-            value={countQuantity}
-            disabled={blocked}
-            onChange={(event) => setCountQuantity(event.target.value)}
-          />
-        </label>
-        <button type="submit" disabled={blocked}>
-          Registrar conteo
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={blocked}
+          onClick={() => setActiveOperation("count")}
+        >
+          Conteo
         </button>
-        <p>Observar no modifica la existencia registrada.</p>
-      </form>
+        {countObservation !== null && (
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={blocked}
+            onClick={() => setActiveOperation("reconcile")}
+          >
+            Reconciliación
+          </button>
+        )}
+        {quantityForms.map((form) => (
+          <button
+            key={form.kind}
+            type="button"
+            className="secondary-button"
+            disabled={blocked}
+            onClick={() => setActiveOperation(form.kind)}
+          >
+            {form.title}
+          </button>
+        ))}
+      </div>
+      {activeOperation !== null && (
+        <div className="inventory-selected-operation">
+          <p>
+            Elemento: <strong>{item.operationalName}</strong> · Unidad:{" "}
+            {item.operationalUnit}
+          </p>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={blocked}
+            onClick={() => setActiveOperation(null)}
+          >
+            Cerrar formulario
+          </button>
+        </div>
+      )}
+      {activeOperation === "count" && (
+        <form
+          className="inventory-operation-form"
+          aria-label={`Conteo físico de ${item.operationalName}`}
+          onSubmit={(event) =>
+            beginQuantityIntent(event, "count", countQuantity)
+          }
+        >
+          <h5>Conteo físico</h5>
+          <label>
+            Cantidad observada para {item.operationalName}
+            <input
+              inputMode="decimal"
+              value={countQuantity}
+              disabled={blocked}
+              onChange={(event) => setCountQuantity(event.target.value)}
+            />
+          </label>
+          <button type="submit" disabled={blocked}>
+            Registrar conteo
+          </button>
+          <p>Observar no modifica la existencia registrada.</p>
+        </form>
+      )}
 
-      {countObservation !== null && (
+      {countObservation !== null && activeOperation === "reconcile" && (
         <section
           className="inventory-reconciliation"
           aria-label={`Reconciliar conteo de ${item.operationalName}`}
@@ -449,32 +510,34 @@ export function InventoryItemOperations({
         </section>
       )}
 
-      {quantityForms.length > 0 && (
+      {quantityForms.length > 0 && activeOperation !== null && (
         <div className="inventory-everyday-operations">
-          {quantityForms.map((form) => (
-            <form
-              className="inventory-operation-form"
-              aria-label={`${form.title} de ${item.operationalName}`}
-              key={form.kind}
-              onSubmit={(event) =>
-                beginQuantityIntent(event, form.kind, form.value)
-              }
-            >
-              <h5>{form.title}</h5>
-              <label>
-                {form.label}
-                <input
-                  inputMode="decimal"
-                  value={form.value}
-                  disabled={blocked}
-                  onChange={(event) => form.setValue(event.target.value)}
-                />
-              </label>
-              <button type="submit" disabled={blocked}>
-                {form.button}
-              </button>
-            </form>
-          ))}
+          {quantityForms
+            .filter((form) => form.kind === activeOperation)
+            .map((form) => (
+              <form
+                className="inventory-operation-form"
+                aria-label={`${form.title} de ${item.operationalName}`}
+                key={form.kind}
+                onSubmit={(event) =>
+                  beginQuantityIntent(event, form.kind, form.value)
+                }
+              >
+                <h5>{form.title}</h5>
+                <label>
+                  {form.label}
+                  <input
+                    inputMode="decimal"
+                    value={form.value}
+                    disabled={blocked}
+                    onChange={(event) => form.setValue(event.target.value)}
+                  />
+                </label>
+                <button type="submit" disabled={blocked}>
+                  {form.button}
+                </button>
+              </form>
+            ))}
         </div>
       )}
 

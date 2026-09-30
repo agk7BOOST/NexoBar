@@ -233,7 +233,7 @@ describe("InventoryPanel", () => {
     await renderConfigurationOnly();
 
     expect(screen.getByText("Harina")).toBeInTheDocument();
-    expect(screen.getAllByText("kg").length).toBeGreaterThan(0);
+    expect(screen.getByText("Unidad: kg")).toBeInTheDocument();
     expect(screen.getByLabelText("Nombre operacional")).toBeInTheDocument();
     expect(screen.getByLabelText("Unidad operacional")).toHaveProperty(
       "type",
@@ -376,6 +376,8 @@ describe("InventoryPanel", () => {
     const user = userEvent.setup();
     render(<InventoryPanel onUnauthorized={vi.fn()} />);
 
+    await user.click((await screen.findByText("Harina")).closest("summary")!);
+    await user.click(screen.getByText("Corregir unidad de Harina"));
     await user.type(
       await screen.findByRole("textbox", { name: "Nueva Unidad de Harina" }),
       "l",
@@ -831,6 +833,9 @@ describe("InventoryPanel", () => {
     const user = userEvent.setup();
     render(<InventoryPanel onUnauthorized={vi.fn()} />);
 
+    await user.click(
+      await screen.findByRole("button", { name: "Salida manual" }),
+    );
     await user.type(
       await screen.findByLabelText("Cantidad de salida manual para Harina"),
       "5",
@@ -912,6 +917,7 @@ describe("InventoryPanel", () => {
       "No hay movimientos registrados para este elemento.",
     );
 
+    await user.click(screen.getByRole("button", { name: "Entrada" }));
     await user.type(
       screen.getByLabelText("Cantidad de entrada para Harina"),
       "1",

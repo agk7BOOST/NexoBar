@@ -1628,7 +1628,7 @@ export function CatalogPanel({
           !displayedLoadError &&
           products.length === 0 && <p>No hay productos vigentes.</p>}
         {!displayedIsLoading && !displayedLoadError && products.length > 0 && (
-          <div className="table-scroll">
+          <div className="table-scroll catalog-products-table">
             <table>
               <caption>
                 Ciclo de vida y disponibilidad son independientes. Retirar no
@@ -1650,9 +1650,11 @@ export function CatalogPanel({
               <tbody>
                 {products.map((product) => (
                   <tr key={product.id}>
-                    <td>{product.operationalName}</td>
-                    <td>{product.price}</td>
-                    <td>
+                    <td data-label="Producto">
+                      <strong>{product.operationalName}</strong>
+                    </td>
+                    <td data-label="Precio">{product.price}</td>
+                    <td data-label="Estado">
                       <span
                         aria-label={`Estado de ciclo de vida: ${product.isActive ? "Activo" : "Retirado"}`}
                       >
@@ -1663,7 +1665,7 @@ export function CatalogPanel({
                         )}
                       </span>
                     </td>
-                    <td>
+                    <td data-label="Disponibilidad">
                       <span
                         aria-label={`Estado de disponibilidad: ${product.isAvailable ? "Disponible" : "No disponible"}`}
                       >
@@ -1685,18 +1687,21 @@ export function CatalogPanel({
                         )}
                       </span>
                     </td>
-                    <td>
+                    <td data-label="Grupo">
                       {product.groupId == null
                         ? "Sin Grupo"
                         : (groups.find((group) => group.id === product.groupId)
                             ?.operationalName ?? "Grupo no disponible")}
                     </td>
-                    <td>
+                    <td data-label="Preparación">
                       {product.requiresPreparation
                         ? `Requiere preparación: ${preparationDestinationLabel(product.preparationResponsibilityId)}`
                         : "No requiere preparación"}
                     </td>
-                    <td>
+                    <td
+                      data-label="Acciones"
+                      data-product-name={product.operationalName}
+                    >
                       <button
                         className="secondary-button"
                         type="button"

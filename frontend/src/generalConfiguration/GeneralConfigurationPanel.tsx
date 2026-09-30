@@ -228,6 +228,10 @@ export function GeneralConfigurationPanel({
   onForbidden,
 }: GeneralConfigurationPanelProps) {
   const [identities, setIdentities] = useState<AdministrativeIdentity[]>([]);
+  const [selectedIdentityId, setSelectedIdentityId] = useState<string | null>(
+    null,
+  );
+  const identityDetailRef = useRef<HTMLElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isForbidden, setIsForbidden] = useState(false);
@@ -417,6 +421,7 @@ export function GeneralConfigurationPanel({
       );
       setIdentities((current) => reconcileIdentity(current, created));
       setCreatedIdentityId(created.identityId);
+      setSelectedIdentityId(created.identityId);
       setUncertainCreation(null);
       if (formMatchesIntention) setCreationName("");
       setCreationNotice({
@@ -629,6 +634,9 @@ export function GeneralConfigurationPanel({
                   );
       if (intention.kind === "delete") {
         setDeleteTarget(null);
+        setSelectedIdentityId((current) =>
+          current === intention.identityId ? null : current,
+        );
         setIdentities((current) =>
           current.filter(
             (identity) => identity.identityId !== intention.identityId,
@@ -885,6 +893,35 @@ export function GeneralConfigurationPanel({
   const createdIdentity =
     identities.find((identity) => identity.identityId === createdIdentityId) ??
     null;
+  const selectedIdentity =
+    identities.find((identity) => identity.identityId === selectedIdentityId) ??
+    null;
+  const identityEditing =
+    renameEditor !== null ||
+    credentialEditor !== null ||
+    deleteTarget !== null ||
+    uncertainRename !== null ||
+    uncertainCredential !== null ||
+    uncertainMutation !== null ||
+    uncertainEnablementMutation !== null;
+
+  function selectIdentity(identityId: string) {
+    if (identityEditing && identityId !== selectedIdentityId) return;
+    setSelectedIdentityId(identityId);
+    window.requestAnimationFrame(() => {
+      identityDetailRef.current?.focus();
+      identityDetailRef.current?.scrollIntoView?.({ block: "start" });
+    });
+  }
+
+  function returnToIdentityList() {
+    if (identityEditing) return;
+    const previousId = selectedIdentityId;
+    setSelectedIdentityId(null);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`manage-identity-${previousId}`)?.focus();
+    });
+  }
 
   return (
     <section
@@ -947,15 +984,9 @@ export function GeneralConfigurationPanel({
           <button
             type="button"
             className="secondary-button"
-            onClick={() => {
-              const row = document.getElementById(
-                `identity-${createdIdentity.identityId}`,
-              );
-              row?.focus();
-              row?.scrollIntoView?.({ block: "start" });
-            }}
+            onClick={() => selectIdentity(createdIdentity.identityId)}
           >
-            Ver esta identidad en el listado
+            Administrar esta identidad
           </button>
         </section>
       )}
@@ -1139,214 +1170,302 @@ export function GeneralConfigurationPanel({
         <p>No hay identidades.</p>
       )}
       {!isLoading && !loadError && identities.length > 0 && (
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Nombre operacional</th>
-                <th scope="col">Estado</th>
-                <th scope="col">Credencial local</th>
-                <th scope="col">Identificador de acceso</th>
-                <th scope="col">Responsabilidades</th>
-                <th scope="col">Habilitaciones de preparación</th>
-                <th scope="col">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {identities.map((identity) => {
-                const unresolvedEnablements =
-                  isPreparationResponsibilitiesLoading
-                    ? []
-                    : identity.preparationEnablements.filter(
-                        (enablementId) =>
-                          !preparationResponsibilities.some(
-                            (responsibility) =>
-                              responsibility.id === enablementId,
-                          ),
-                      );
+        <ul className="identity-list" aria-label="Listado de identidades">
+          {identities.map((identity) => (
+            <li
+              key={identity.identityId}
+              id={"identity-" + identity.identityId}
+            >
+              <div className="identity-list-summary">
+                <strong>{identity.operationalName}</strong>
+                <span>
+                  {identity.isActive ? "Activa" : "Inactiva"} · Acceso{" "}
+                  {identity.hasLocalCredential
+                    ? "configurado"
+                    : "sin configurar"}
+                </span>
+                <span>
+                  {identity.responsibilities.length === 0
+                    ? "Sin responsabilidades"
+                    : identity.responsibilities
+                        .map(
+                          (code) =>
+                            responsibilityLabels[
+                              code as FunctionalResponsibility
+                            ] ?? code,
+                        )
+                        .join(" · ")}
+                </span>
+              </div>
+              <button
+                id={"manage-identity-" + identity.identityId}
+                type="button"
+                className="secondary-button"
+                aria-label={"Administrar " + identity.operationalName}
+                disabled={
+                  identityEditing && identity.identityId !== selectedIdentityId
+                }
+                onClick={() => selectIdentity(identity.identityId)}
+              >
+                Administrar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {selectedIdentity && (
+        <section
+          ref={identityDetailRef}
+          className="identity-detail"
+          tabIndex={-1}
+          aria-label={
+            "Administrar identidad " + selectedIdentity.operationalName
+          }
+        >
+          <div className="section-heading">
+            <div>
+              <h3>{selectedIdentity.operationalName}</h3>
+              <p>
+                <span>{selectedIdentity.isActive ? "Activa" : "Inactiva"}</span>
+                {" · Acceso "}
+                <span>
+                  {selectedIdentity.hasLocalCredential
+                    ? "configurado"
+                    : "sin configurar"}
+                </span>
+              </p>
+              {selectedIdentity.loginIdentifier && (
+                <p>
+                  Identificador de acceso: {selectedIdentity.loginIdentifier}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={identityEditing}
+              onClick={returnToIdentityList}
+            >
+              Volver al listado
+            </button>
+          </div>
+
+          <section className="identity-detail-group">
+            <h4>Responsabilidades</h4>
+            <ul
+              className="identity-detail-actions"
+              aria-label={
+                "Responsabilidades de " + selectedIdentity.operationalName
+              }
+            >
+              {FUNCTIONAL_RESPONSIBILITIES.map((responsibility) => {
+                const isAssigned =
+                  selectedIdentity.responsibilities.includes(responsibility);
                 return (
-                  <tr
-                    key={identity.identityId}
-                    id={`identity-${identity.identityId}`}
-                    tabIndex={-1}
-                  >
-                    <td>{identity.operationalName}</td>
-                    <td>{identity.isActive ? "Activa" : "Inactiva"}</td>
-                    <td>
-                      {identity.hasLocalCredential
-                        ? "Configurada"
-                        : "No configurada"}
-                    </td>
-                    <td>{identity.loginIdentifier ?? ""}</td>
-                    <td>
-                      <ul
-                        className="identity-responsibilities"
-                        aria-label={`Responsabilidades de ${identity.operationalName}`}
-                      >
-                        {FUNCTIONAL_RESPONSIBILITIES.map((responsibility) => {
-                          const isAssigned =
-                            identity.responsibilities.includes(responsibility);
-                          return (
-                            <li key={responsibility}>
-                              <span>
-                                {responsibilityLabels[responsibility]}:{" "}
-                                {isAssigned ? "Asignada" : "No asignada"}
-                              </span>{" "}
-                              <button
-                                className="secondary-button"
-                                type="button"
-                                onClick={() =>
-                                  void startIdentityMutation(
-                                    isAssigned ? "revoke" : "assign",
-                                    identity,
-                                    responsibility,
-                                  )
-                                }
-                                disabled={
-                                  isMutatingIdentity ||
-                                  uncertainMutation !== null
-                                }
-                                aria-label={`${isAssigned ? "Revocar" : "Asignar"} ${responsibilityLabels[responsibility]} a ${identity.operationalName}`}
-                              >
-                                {isAssigned ? "Revocar" : "Asignar"}
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </td>
-                    <td>
-                      <p>Habilitaciones de preparación</p>
-                      <ul
-                        aria-label={`Habilitaciones de preparación de ${identity.operationalName}`}
-                      >
-                        {preparationResponsibilities.map((responsibility) => {
-                          const isEnabled =
-                            identity.preparationEnablements.includes(
-                              responsibility.id,
-                            );
-                          return (
-                            <li key={responsibility.id}>
-                              <span>
-                                {responsibility.operationalName}:{" "}
-                                {isEnabled ? "Habilitada" : "No habilitada"}
-                              </span>{" "}
-                              <button
-                                className="secondary-button"
-                                type="button"
-                                onClick={() =>
-                                  void startEnablementMutation(
-                                    isEnabled ? "revoke" : "grant",
-                                    identity,
-                                    responsibility,
-                                  )
-                                }
-                                disabled={
-                                  isMutatingEnablement ||
-                                  uncertainEnablementMutation !== null
-                                }
-                                aria-label={`${isEnabled ? "Revocar habilitación" : "Otorgar habilitación"} ${responsibility.operationalName} a ${identity.operationalName}`}
-                              >
-                                {isEnabled
-                                  ? "Revocar habilitación"
-                                  : "Otorgar habilitación"}
-                              </button>
-                            </li>
-                          );
-                        })}
-                        {unresolvedEnablements.map((enablementId) => (
-                          <li key={enablementId}>
-                            <span>
-                              Responsabilidad de preparación desconocida
-                            </span>{" "}
-                            <small>Id: {enablementId}</small>
-                          </li>
-                        ))}
-                      </ul>
-                    </td>
-                    <td>
+                  <li key={responsibility}>
+                    <span>
+                      {`${responsibilityLabels[responsibility]}: ${isAssigned ? "Asignada" : "No asignada"}`}
+                    </span>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() =>
+                        void startIdentityMutation(
+                          isAssigned ? "revoke" : "assign",
+                          selectedIdentity,
+                          responsibility,
+                        )
+                      }
+                      disabled={
+                        isMutatingIdentity || uncertainMutation !== null
+                      }
+                      aria-label={
+                        (isAssigned ? "Revocar " : "Asignar ") +
+                        responsibilityLabels[responsibility] +
+                        " a " +
+                        selectedIdentity.operationalName
+                      }
+                    >
+                      {isAssigned ? "Revocar" : "Asignar"}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
+          <section className="identity-detail-group">
+            <h4>Habilitaciones de preparación</h4>
+            <p>
+              Un destino de preparación es un lugar de trabajo, no un cargo ni
+              una persona. Esta identidad puede atender únicamente los destinos
+              habilitados cuando también tiene Preparación asignada.
+            </p>
+            {!selectedIdentity.responsibilities.includes("Preparation") && (
+              <p>
+                Asigná Preparación para habilitar destinos a esta identidad.
+              </p>
+            )}
+            <ul
+              className="identity-detail-actions"
+              aria-label={
+                "Habilitaciones de preparación de " +
+                selectedIdentity.operationalName
+              }
+            >
+              {preparationResponsibilities
+                .filter(
+                  (responsibility) =>
+                    selectedIdentity.responsibilities.includes("Preparation") ||
+                    selectedIdentity.preparationEnablements.includes(
+                      responsibility.id,
+                    ),
+                )
+                .map((responsibility) => {
+                  const isEnabled =
+                    selectedIdentity.preparationEnablements.includes(
+                      responsibility.id,
+                    );
+                  return (
+                    <li key={responsibility.id}>
+                      <span>
+                        {`${responsibility.operationalName}: ${isEnabled ? "Habilitada" : "No habilitada"}`}
+                      </span>
+                      {!selectedIdentity.responsibilities.includes(
+                        "Preparation",
+                      ) && <small>No utilizable sin Preparación</small>}
                       <button
                         className="secondary-button"
                         type="button"
                         onClick={() =>
-                          void startIdentityMutation(
-                            identity.isActive ? "deactivate" : "activate",
-                            identity,
+                          void startEnablementMutation(
+                            isEnabled ? "revoke" : "grant",
+                            selectedIdentity,
+                            responsibility,
                           )
                         }
                         disabled={
-                          isMutatingIdentity || uncertainMutation !== null
+                          isMutatingEnablement ||
+                          uncertainEnablementMutation !== null
                         }
-                        aria-label={`${identity.isActive ? "Desactivar" : "Activar"} ${identity.operationalName}`}
-                      >
-                        {identity.isActive ? "Desactivar" : "Activar"}
-                      </button>
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => {
-                          if (
-                            !isSettingCredential &&
-                            uncertainCredential === null
-                          ) {
-                            setCredentialEditor({
-                              identityId: identity.identityId,
-                              operationalName: identity.operationalName,
-                              hasLocalCredential: identity.hasLocalCredential,
-                              changeLoginIdentifier:
-                                !identity.hasLocalCredential,
-                              currentLoginIdentifier:
-                                identity.loginIdentifier ?? "",
-                              loginIdentifier: "",
-                              secret: "",
-                            });
-                            setCredentialNotice(null);
-                          }
-                        }}
-                        disabled={
-                          isSettingCredential || uncertainCredential !== null
+                        aria-label={
+                          (isEnabled
+                            ? "Revocar habilitación "
+                            : "Otorgar habilitación ") +
+                          responsibility.operationalName +
+                          " a " +
+                          selectedIdentity.operationalName
                         }
-                        aria-label={`Configurar credencial de ${identity.operationalName}`}
                       >
-                        {identity.hasLocalCredential
-                          ? "Reemplazar credencial"
-                          : "Configurar credencial"}
+                        {isEnabled
+                          ? "Revocar habilitación"
+                          : "Otorgar habilitación"}
                       </button>
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => {
-                          if (uncertainRename === null && !isRenaming) {
-                            setRenameEditor({
-                              identityId: identity.identityId,
-                              operationalName: identity.operationalName,
-                            });
-                            setRenameNotice(null);
-                          }
-                        }}
-                        disabled={isRenaming || uncertainRename !== null}
-                        aria-label={`Cambiar nombre de ${identity.operationalName}`}
-                      >
-                        Cambiar nombre
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => setDeleteTarget(identity)}
-                        disabled={
-                          isMutatingIdentity || uncertainMutation !== null
-                        }
-                        aria-label={`Eliminar definitivamente ${identity.operationalName}`}
-                      >
-                        Eliminar definitivamente
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </li>
+                  );
+                })}
+              {!isPreparationResponsibilitiesLoading &&
+                selectedIdentity.preparationEnablements
+                  .filter(
+                    (id) =>
+                      !preparationResponsibilities.some(
+                        (responsibility) => responsibility.id === id,
+                      ),
+                  )
+                  .map((id) => (
+                    <li key={id}>
+                      <span>Destino de preparación desconocido</span>
+                      <details>
+                        <summary>Identificador técnico</summary>
+                        <span className="technical-reference">{id}</span>
+                      </details>
+                    </li>
+                  ))}
+            </ul>
+          </section>
+
+          <section className="identity-detail-group identity-sensitive-actions">
+            <h4>Acceso y acciones sensibles</h4>
+            <div className="identity-action-buttons">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() =>
+                  void startIdentityMutation(
+                    selectedIdentity.isActive ? "deactivate" : "activate",
+                    selectedIdentity,
+                  )
+                }
+                disabled={isMutatingIdentity || uncertainMutation !== null}
+                aria-label={
+                  (selectedIdentity.isActive ? "Desactivar " : "Activar ") +
+                  selectedIdentity.operationalName
+                }
+              >
+                {selectedIdentity.isActive ? "Desactivar" : "Activar"}
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  if (!isSettingCredential && uncertainCredential === null) {
+                    setCredentialEditor({
+                      identityId: selectedIdentity.identityId,
+                      operationalName: selectedIdentity.operationalName,
+                      hasLocalCredential: selectedIdentity.hasLocalCredential,
+                      changeLoginIdentifier:
+                        !selectedIdentity.hasLocalCredential,
+                      currentLoginIdentifier:
+                        selectedIdentity.loginIdentifier ?? "",
+                      loginIdentifier: "",
+                      secret: "",
+                    });
+                    setCredentialNotice(null);
+                  }
+                }}
+                disabled={isSettingCredential || uncertainCredential !== null}
+                aria-label={
+                  "Configurar credencial de " + selectedIdentity.operationalName
+                }
+              >
+                {selectedIdentity.hasLocalCredential
+                  ? "Reemplazar credencial"
+                  : "Configurar credencial"}
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  if (uncertainRename === null && !isRenaming) {
+                    setRenameEditor({
+                      identityId: selectedIdentity.identityId,
+                      operationalName: selectedIdentity.operationalName,
+                    });
+                    setRenameNotice(null);
+                  }
+                }}
+                disabled={isRenaming || uncertainRename !== null}
+                aria-label={
+                  "Cambiar nombre de " + selectedIdentity.operationalName
+                }
+              >
+                Cambiar nombre
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setDeleteTarget(selectedIdentity)}
+                disabled={isMutatingIdentity || uncertainMutation !== null}
+                aria-label={
+                  "Eliminar definitivamente " + selectedIdentity.operationalName
+                }
+              >
+                Eliminar definitivamente
+              </button>
+            </div>
+          </section>
+        </section>
       )}
 
       {deleteTarget && (

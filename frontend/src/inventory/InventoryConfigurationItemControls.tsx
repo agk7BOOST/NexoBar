@@ -310,20 +310,6 @@ export function InventoryConfigurationItemControls({
 
   return (
     <div className="inventory-configuration-controls">
-      <p aria-label={`Estado del ciclo de vida de ${item.operationalName}`}>
-        Estado: <strong>{item.isActive ? "Activo" : "Retirado"}</strong>
-      </p>
-      {item.isActive && (
-        <p aria-label={`Preparación para operar de ${item.operationalName}`}>
-          {item.ordinaryOperationReady
-            ? "Listo para movimientos"
-            : "Requiere conteo y reconciliación"}
-        </p>
-      )}
-      <p aria-label={`Unidad operacional de ${item.operationalName}`}>
-        Unidad operacional: <strong>{item.operationalUnit}</strong>
-      </p>
-
       {item.isActive ? (
         <>
           <button
@@ -376,40 +362,46 @@ export function InventoryConfigurationItemControls({
       )}
 
       {item.unitCorrectionEligible ? (
-        <form onSubmit={submitUnitCorrection}>
-          <h5>Corregir Unidad</h5>
-          <label>
-            Unidad observada actualmente
-            <input
-              aria-label={`Unidad observada actualmente de ${item.operationalName}`}
-              value={unitObserved}
-              disabled={blocked}
-              onChange={(event) => setUnitObserved(event.target.value)}
-            />
-          </label>
-          <label>
-            Nueva Unidad
-            <input
-              aria-label={`Nueva Unidad de ${item.operationalName}`}
-              value={newUnit}
-              disabled={blocked}
-              onChange={(event) => setNewUnit(event.target.value)}
-            />
-          </label>
-          <button type="submit" disabled={blocked}>
-            Corregir Unidad
-          </button>
-          <p>
-            No se convierte ninguna cantidad. La nueva Unidad cambia la
-            interpretación futura y puede requerir un nuevo conteo.
-          </p>
-        </form>
+        <details className="inventory-unit-correction">
+          <summary>Corregir unidad de {item.operationalName}</summary>
+          <form onSubmit={submitUnitCorrection}>
+            <h5>Corregir Unidad</h5>
+            <label>
+              Unidad observada actualmente
+              <input
+                aria-label={`Unidad observada actualmente de ${item.operationalName}`}
+                value={unitObserved}
+                disabled={blocked}
+                onChange={(event) => setUnitObserved(event.target.value)}
+              />
+            </label>
+            <label>
+              Nueva Unidad
+              <input
+                aria-label={`Nueva Unidad de ${item.operationalName}`}
+                value={newUnit}
+                disabled={blocked}
+                onChange={(event) => setNewUnit(event.target.value)}
+              />
+            </label>
+            <button type="submit" disabled={blocked}>
+              Corregir Unidad
+            </button>
+            <p>
+              No se convierte ninguna cantidad. La nueva Unidad cambia la
+              interpretación futura y puede requerir un nuevo conteo.
+            </p>
+          </form>
+        </details>
       ) : (
-        <p>
-          La unidad ya no puede cambiarse porque este elemento tiene historial
-          de movimientos. Para usar otra unidad: retiralo, creá un elemento
-          nuevo y establecé su existencia mediante conteo y reconciliación.
-        </p>
+        <details>
+          <summary>Por qué no puede cambiarse la unidad</summary>
+          <p>
+            La unidad ya no puede cambiarse porque este elemento tiene historial
+            de movimientos. Para usar otra unidad: retiralo, creá un elemento
+            nuevo y establecé su existencia mediante conteo y reconciliación.
+          </p>
+        </details>
       )}
 
       {item.deleteEligible && (

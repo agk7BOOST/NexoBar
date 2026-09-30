@@ -60,6 +60,7 @@ test("Inventario abierto se actualiza por SSE tras una entrada de otro operador"
           "/api/inventory/operations/items" &&
         response.status() === 200,
     );
+    await operatorBItem.getByRole("button", { name: "Entrada" }).click();
     await operatorBItem
       .getByLabel(`Cantidad de entrada para ${itemName}`)
       .fill("5");
@@ -67,7 +68,7 @@ test("Inventario abierto se actualiza por SSE tras una entrada de otro operador"
       .getByRole("button", { name: "Registrar entrada" })
       .click();
     await expect(operatorBItem.getByRole("status")).toContainText(
-      "Entrada registrada. Saldo autoritativo resultante: 15 unidades.",
+      "Entrada registrada. Existencia registrada: 15 unidades.",
     );
 
     await operatorARefresh;

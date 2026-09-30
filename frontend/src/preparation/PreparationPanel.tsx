@@ -843,14 +843,18 @@ export function PreparationPanel({
                           sourceQuantity(item, "correct-ready") > 0) &&
                           isOrderBlocked?.(item.operationalReference) !==
                             true && (
-                            <div className="preparation-corrections">
+                            <details className="preparation-corrections">
+                              <summary>
+                                Corregir progreso de{" "}
+                                {item.productOperationalName ?? "este producto"}
+                              </summary>
                               <p>
                                 Estas correcciones ajustan el progreso de
                                 preparación registrado por error.
                               </p>
                               {renderAction(item, "correct-start")}
                               {renderAction(item, "correct-ready")}
-                            </div>
+                            </details>
                           )}
                         {intent?.phase === "submitting" && (
                           <p role="status">Confirmando operación…</p>

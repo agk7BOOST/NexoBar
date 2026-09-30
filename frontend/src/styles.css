@@ -889,14 +889,19 @@ form select,
 .confirmation-form label:first-of-type,
 .confirmation-form label:last-of-type {
   grid-column: 1;
+  grid-row: 2;
 }
 
 .confirmation-form button {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 3;
 }
 
-.confirmation-form > select,
+.confirmation-form > select {
+  grid-column: 1;
+  grid-row: 3;
+}
+
 .order-lookup-form > input {
   grid-column: 1;
   grid-row: 2;
@@ -1310,7 +1315,7 @@ input[type="checkbox"] {
 }
 
 .inventory-configuration-controls {
-  min-width: 22rem;
+  min-width: 0;
 }
 
 .inventory-configuration-controls p {
@@ -1338,37 +1343,274 @@ caption {
   padding-top: 1rem;
 }
 
-.identity-responsibilities {
+.identity-list,
+.inventory-configuration-list {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+
+.identity-list > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  padding: 0.8rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.identity-list-summary {
   display: grid;
-  gap: 0.5rem;
-  min-width: 22rem;
-  margin: 0;
+  gap: 0.15rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.identity-list-summary > span {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.identity-list > li > button {
+  flex: none;
+}
+
+.identity-detail {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--border-strong);
+  scroll-margin-top: 1rem;
+}
+
+.identity-detail-group {
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.identity-detail-actions {
+  margin: 0.75rem 0 0;
   padding: 0;
   list-style: none;
 }
 
-.identity-responsibilities li {
+.identity-detail-actions > li {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  padding: 0.5rem 0;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 0.5rem;
 }
 
-.identity-responsibilities li:last-child {
-  border: 0;
-  padding-bottom: 0;
-}
-
-.identity-responsibilities span {
+.identity-detail-actions > li > span {
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 0.85rem;
 }
 
-.identity-responsibilities button {
+.identity-detail-actions button {
   flex: none;
+}
+
+.identity-sensitive-actions {
+  background: var(--surface-muted);
+  padding: 0.9rem;
+}
+
+.identity-action-buttons,
+.inventory-operation-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.inventory-configuration-item {
+  border-bottom: 1px solid var(--border);
+}
+
+.inventory-configuration-item > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.8rem 0;
+  cursor: pointer;
+}
+
+.inventory-configuration-item > summary > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inventory-summary-action {
+  color: var(--brand);
+  font-weight: 650;
+}
+
+.inventory-configuration-detail {
+  padding: 0.5rem 0 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.inventory-configuration-detail h4 {
+  margin: 0 0 0.75rem;
+}
+
+.inventory-unit-correction {
+  margin-top: 1rem;
+}
+
+.inventory-unit-correction form,
+.inventory-selected-operation {
+  max-width: 34rem;
+}
+
+.inventory-operation-choices button {
+  min-height: 2.75rem;
+}
+
+.inventory-selected-operation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.inventory-selected-operation p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.preparation-corrections,
+.delivery-technical-quantities {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.65rem;
+}
+
+.preparation-corrections summary,
+.delivery-technical-quantities summary,
+.inventory-configuration-controls summary {
+  min-height: 2.75rem;
+  cursor: pointer;
+  color: var(--brand);
+  font-weight: 650;
+}
+
+.terminal-history-content {
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 0;
+}
+
+.terminal-history-content > h5 {
+  margin: 0 0 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.terminal-history-content > p {
+  margin: 0.25rem 0;
+}
+
+.terminal-history-latest {
+  font-weight: 600;
+}
+
+.terminal-content-events {
+  margin-top: 0.65rem;
+}
+
+.terminal-content-events > summary,
+.terminal-history-technical > summary {
+  min-height: 2.75rem;
+  cursor: pointer;
+  color: var(--brand);
+}
+
+.terminal-content-events > section {
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+}
+
+.terminal-content-events li {
+  padding-block: 0.3rem;
+}
+
+@media (max-width: 800px) {
+  .inventory-configuration-item > summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .catalog-products-table {
+    overflow: visible;
+  }
+
+  .table-scroll.catalog-products-table table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+  }
+
+  .catalog-products-table thead {
+    display: none;
+  }
+
+  .catalog-products-table tbody tr {
+    display: block;
+    border-bottom: 1px solid var(--border);
+    padding: 0.6rem 0;
+  }
+
+  .catalog-products-table td {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, 30%) minmax(0, 1fr);
+    gap: 0.5rem;
+    border: 0;
+    padding: 0.3rem 0.65rem;
+    overflow-wrap: anywhere;
+  }
+
+  .catalog-products-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  .table-scroll.catalog-products-table td:last-child:has(button) {
+    display: block;
+    min-width: 0;
+  }
+
+  .catalog-products-table td:last-child::before {
+    content: attr(data-product-name);
+    display: block;
+    color: var(--text);
+    font-weight: 700;
+  }
+
+  .catalog-products-table td:last-child button {
+    margin: 0.25rem 0.3rem 0.25rem 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 640px) {
+  .identity-list > li,
+  .identity-detail-actions > li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .identity-list > li > button,
+  .identity-detail-actions button {
+    align-self: flex-start;
+  }
+
+  .catalog-products-table td {
+    grid-template-columns: minmax(5.5rem, 32%) minmax(0, 1fr);
+  }
 }
 
 .notice--info {

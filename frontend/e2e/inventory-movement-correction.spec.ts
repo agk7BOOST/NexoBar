@@ -20,6 +20,7 @@ test("MVP-FC-INV-MC corrects the same root successively and preserves its histor
   await signIn(page);
   const item = page.getByRole("article", { name: itemName });
   await expect(item).toContainText("10 unidades");
+  await item.getByRole("button", { name: "Entrada" }).click();
   await item.getByLabel(`Cantidad de entrada para ${itemName}`).fill("10");
   const entryResponse = page.waitForResponse(
     (r) =>
@@ -52,7 +53,7 @@ test("MVP-FC-INV-MC corrects the same root successively and preserves its histor
   await history.getByRole("button", { name: "Guardar corrección" }).click();
   expect((await correction1).ok()).toBeTruthy();
   await expect(item).toContainText("16 unidades");
-  await expect(history).toContainText("Entry 10 → Entry 6");
+  await expect(history).toContainText("Entrada 10 → Entrada 6");
 
   await history
     .getByRole("button", { name: "Corregir movimiento" })
@@ -68,8 +69,8 @@ test("MVP-FC-INV-MC corrects the same root successively and preserves its histor
   await history.getByRole("button", { name: "Guardar corrección" }).click();
   expect((await correction2).ok()).toBeTruthy();
   await expect(item).toContainText("8 unidades");
-  await expect(history).toContainText("Entry 6 → Waste 2");
-  await expect(history).toContainText("Significado efectivo actual: waste 2");
+  await expect(history).toContainText("Entrada 6 → Merma 2");
+  await expect(history).toContainText("Significado efectivo actual: Merma 2");
   await expect(original).toContainText("Entrada");
   await expect(
     history.getByText("Este movimiento queda sin efecto"),

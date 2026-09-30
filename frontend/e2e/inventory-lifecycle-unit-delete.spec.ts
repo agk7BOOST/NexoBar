@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 
 const configurator = {
@@ -18,11 +18,9 @@ async function login(page: Page, actor: typeof configurator) {
   await page.getByLabel("Secreto").fill(actor.secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
-    page
-      .getByRole("region", { name: "Usuario actual" })
-      .getByText(actor.name, {
-        exact: true,
-      }),
+    page.getByRole("region", { name: "Usuario actual" }).getByText(actor.name, {
+      exact: true,
+    }),
   ).toBeVisible();
 }
 
@@ -57,6 +55,20 @@ async function refreshOperation(page: Page) {
   await read;
 }
 
+function configurationItem(config: Locator, name: string): Locator {
+  return config
+    .getByRole("list", { name: "Elementos configurados" })
+    .getByRole("listitem")
+    .filter({ hasText: name });
+}
+
+async function openConfigurationItem(item: Locator): Promise<void> {
+  const detail = item.locator("details.inventory-configuration-item");
+  if ((await detail.getAttribute("open")) === null) {
+    await detail.locator(":scope > summary").click();
+  }
+}
+
 test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
   page,
 }) => {
@@ -79,16 +91,16 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
   const created = await createdPromise;
   const createdItem = (await created.json()) as { itemId: string };
   expect(createdItem.itemId).toBeTruthy();
-  let row = config.getByRole("row").filter({
-    has: page.getByRole("cell", { name, exact: true }),
-  });
+  let row = configurationItem(config, name);
   await expect(row).toContainText("Activo");
   await expect(row).toContainText("U1");
-  await expect(row).toContainText("Requiere conteo/reconciliación");
+  await expect(row).toContainText("Requiere conteo y reconciliación");
   await expect(
     page.getByRole("region", { name: "Estado actual de Inventario" }),
   ).toHaveCount(0);
 
+  await openConfigurationItem(row);
+  await row.getByText(`Corregir unidad de ${name}`).click();
   await row.getByLabel(`Unidad observada actualmente de ${name}`).fill("U1");
   await row.getByLabel(`Nueva Unidad de ${name}`).fill("U2");
   const unitCorrection = page.waitForResponse(
@@ -100,7 +112,7 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
   expect((await unitCorrection).ok()).toBeTruthy();
   await refreshConfiguration(page);
   await expect(row).toContainText("U2");
-  await expect(row).toContainText("Requiere conteo/reconciliación");
+  await expect(row).toContainText("Requiere conteo y reconciliación");
 
   await logout(page);
   await login(page, operator);
@@ -123,14 +135,14 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
     item.getByRole("button", { name: "Registrar merma" }),
   ).toHaveCount(0);
 
+  await item.getByRole("button", { name: "Conteo" }).click();
   await item.getByLabel(`Cantidad observada para ${name}`).fill("8");
   await item.getByRole("button", { name: "Registrar conteo" }).click();
   await expect(item).toContainText("Conteo registrado: 8 U2");
   await item.getByRole("button", { name: "Reconciliar conteo" }).click();
   await expect(item).toContainText("Existencia registrada8 U2");
-  await expect(
-    item.getByRole("button", { name: "Registrar entrada" }),
-  ).toBeVisible();
+  await expect(item.getByRole("button", { name: "Entrada" })).toBeVisible();
+  await item.getByRole("button", { name: "Entrada" }).click();
   await item.getByLabel(`Cantidad de entrada para ${name}`).fill("2");
   await item.getByRole("button", { name: "Registrar entrada" }).click();
   await expect(item).toContainText("Existencia registrada10 U2");
@@ -145,23 +157,22 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
   await logout(page);
   await login(page, configurator);
   await refreshConfiguration(page);
-  row = config.getByRole("row").filter({
-    has: page.getByRole("cell", { name, exact: true }),
-  });
+  row = configurationItem(config, name);
   await expect(row).toContainText("U2");
-  await expect(row).toContainText("La Unidad ya no puede cambiarse");
+  await openConfigurationItem(row);
+  await row.getByText("Por qué no puede cambiarse la unidad").click();
+  await expect(row).toContainText("La unidad ya no puede cambiarse");
   await expect(
     row.getByRole("button", { name: "Corregir Unidad" }),
   ).toHaveCount(0);
   await expect(row).toContainText("retiralo, creá un elemento nuevo");
   await expect(row).toContainText(
-    "establecé su existencia mediante conteo/reconciliación",
+    "establecé su existencia mediante conteo y reconciliación",
   );
 
+  await openConfigurationItem(row);
   await row.getByRole("button", { name: `Retirar ${name}` }).click();
-  await expect(
-    row.getByLabel("Estado del ciclo de vida de " + name),
-  ).toContainText("Retirado");
+  await expect(row).toContainText("Retirado");
   const retiredConfigurationRead = await refreshConfiguration(page);
   const retiredConfiguration = (await retiredConfigurationRead.json()) as {
     itemId: string;
@@ -171,12 +182,11 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
     retiredConfiguration.find((candidate) => candidate.operationalName === name)
       ?.itemId,
   ).toBe(createdItem.itemId);
-  row = config.getByRole("row").filter({
-    has: page.getByRole("cell", { name, exact: true }),
-  });
+  row = configurationItem(config, name);
   await expect(row).toContainText("Retirado");
   await expect(row).toContainText("Reactivar");
   await expect(row).not.toContainText("10 U2");
+  await openConfigurationItem(row);
   await expect(
     row.getByRole("button", { name: `Reactivar ${name}` }),
   ).toBeVisible();
@@ -189,19 +199,14 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
   await logout(page);
   await login(page, configurator);
   await refreshConfiguration(page);
-  row = config.getByRole("row").filter({
-    has: page.getByRole("cell", { name, exact: true }),
-  });
+  row = configurationItem(config, name);
+  await openConfigurationItem(row);
   await row.getByRole("button", { name: `Reactivar ${name}` }).click();
-  await expect(
-    row.getByLabel("Estado del ciclo de vida de " + name),
-  ).toContainText("Activo");
-  await refreshConfiguration(page);
-  row = config.getByRole("row").filter({
-    has: page.getByRole("cell", { name, exact: true }),
-  });
   await expect(row).toContainText("Activo");
-  await expect(row).toContainText("Requiere conteo/reconciliación");
+  await refreshConfiguration(page);
+  row = configurationItem(config, name);
+  await expect(row).toContainText("Activo");
+  await expect(row).toContainText("Requiere conteo y reconciliación");
   await expect(row).toContainText("U2");
 
   await logout(page);
@@ -213,10 +218,12 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
   await expect(
     item.getByRole("button", { name: "Registrar entrada" }),
   ).toHaveCount(0);
+  await item.getByRole("button", { name: "Conteo" }).click();
   await item.getByLabel(`Cantidad observada para ${name}`).fill("11");
   await item.getByRole("button", { name: "Registrar conteo" }).click();
   await item.getByRole("button", { name: "Reconciliar conteo" }).click();
   await expect(item).toContainText("Existencia registrada11 U2");
+  await item.getByRole("button", { name: "Entrada" }).click();
   await item.getByLabel(`Cantidad de entrada para ${name}`).fill("1");
   await item.getByRole("button", { name: "Registrar entrada" }).click();
   await expect(item).toContainText("Existencia registrada12 U2");
@@ -244,11 +251,10 @@ test("MVP-FC-INV-LU-I3 eligible definitive Delete through Configuration", async 
   await config.getByLabel("Nombre operacional").fill(name);
   await config.locator("#inventory-operational-unit").fill("ud");
   await config.getByRole("button", { name: "Crear elemento" }).click();
-  const row = config.getByRole("row").filter({
-    has: page.getByRole("cell", { name, exact: true }),
-  });
+  const row = configurationItem(config, name);
   await expect(row).toContainText("Activo");
-  await expect(row).toContainText("Requiere conteo/reconciliación");
+  await expect(row).toContainText("Requiere conteo y reconciliación");
+  await openConfigurationItem(row);
   await expect(
     row.getByRole("button", { name: `Retirar ${name}` }),
   ).toBeVisible();
@@ -280,17 +286,9 @@ test("MVP-FC-INV-LU-I3 eligible definitive Delete through Configuration", async 
     .click();
   expect((await deletion).ok()).toBeTruthy();
   await refreshConfiguration(page);
-  await expect(
-    config.getByRole("row").filter({
-      has: page.getByRole("cell", { name, exact: true }),
-    }),
-  ).toHaveCount(0);
+  await expect(configurationItem(config, name)).toHaveCount(0);
   await refreshConfiguration(page);
-  await expect(
-    config.getByRole("row").filter({
-      has: page.getByRole("cell", { name, exact: true }),
-    }),
-  ).toHaveCount(0);
+  await expect(configurationItem(config, name)).toHaveCount(0);
 
   await logout(page);
   await login(page, operator);

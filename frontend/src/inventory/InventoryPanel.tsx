@@ -485,56 +485,48 @@ export function InventoryPanel({
             {configuration.items.length === 0 ? (
               <p>No hay elementos de Inventario configurados.</p>
             ) : (
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th scope="col">Nombre operacional</th>
-                      <th scope="col">Estado</th>
-                      <th scope="col">Listo para operar</th>
-                      <th scope="col">Unidad operacional</th>
-                      <th scope="col">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {configuration.items.map((item) => (
-                      <tr key={item.itemId}>
-                        <td>{item.operationalName}</td>
-                        <td>
-                          <span
-                            aria-label={`Estado de ${item.operationalName}`}
-                          >
-                            {item.isActive ? "Activo" : "Retirado"}
-                          </span>
-                        </td>
-                        <td>
+              <ul
+                className="inventory-configuration-list"
+                aria-label="Elementos configurados"
+              >
+                {configuration.items.map((item) => (
+                  <li key={item.itemId}>
+                    <details className="inventory-configuration-item">
+                      <summary>
+                        <strong>{item.operationalName}</strong>
+                        <span>{item.isActive ? "Activo" : "Retirado"}</span>
+                        <span>
                           {item.isActive
                             ? item.ordinaryOperationReady
                               ? "Listo para movimientos"
                               : "Requiere conteo y reconciliación"
                             : "No aplica: Retirado"}
-                        </td>
-                        <td>{item.operationalUnit}</td>
-                        <td>
-                          <InventoryConfigurationItemControls
-                            item={item}
-                            onUnauthorized={handleUnauthorized}
-                            onAuthoritativeMutation={
-                              handleAuthoritativeConfiguration
-                            }
-                            onStaleState={(message) =>
-                              setConfigurationNotice({
-                                kind: "functional-error",
-                                message,
-                              })
-                            }
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </span>
+                        <span>Unidad: {item.operationalUnit}</span>
+                        <span className="inventory-summary-action">
+                          Administrar
+                        </span>
+                      </summary>
+                      <div className="inventory-configuration-detail">
+                        <h4>Configuración de {item.operationalName}</h4>
+                        <InventoryConfigurationItemControls
+                          item={item}
+                          onUnauthorized={handleUnauthorized}
+                          onAuthoritativeMutation={
+                            handleAuthoritativeConfiguration
+                          }
+                          onStaleState={(message) =>
+                            setConfigurationNotice({
+                              kind: "functional-error",
+                              message,
+                            })
+                          }
+                        />
+                      </div>
+                    </details>
+                  </li>
+                ))}
+              </ul>
             )}
           </>
         )}
