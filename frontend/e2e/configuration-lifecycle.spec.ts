@@ -17,8 +17,8 @@ async function login(page: Page, account: "general" | "catalog" | "order") {
   };
   const [identifier, secret, name] = accounts[account];
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(identifier);
-  await page.getByLabel("Secreto", { exact: true }).fill(secret);
+  await page.getByLabel("Usuario de acceso").fill(identifier);
+  await page.getByLabel("Contraseña", { exact: true }).fill(secret);
   const response = page.waitForResponse(
     (r) =>
       new URL(r.url()).pathname === "/api/identity-sessions" &&
@@ -43,9 +43,9 @@ test("Context lifecycle excludes retired Contexts from new Orders and restores r
       o = await operation.newPage();
     await login(g, "general");
     const name = `Context lifecycle ${randomUUID().slice(0, 8)}`;
-    await g.getByLabel("Nombre operacional del Contexto").fill(name);
+    await g.getByLabel("Nombre del contexto").fill(name);
     await g
-      .getByRole("button", { name: "Crear Contexto", exact: true })
+      .getByRole("button", { name: "Crear contexto", exact: true })
       .click();
     const row = g
       .getByRole("list", { name: "Contextos configurados" })
@@ -55,10 +55,10 @@ test("Context lifecycle excludes retired Contexts from new Orders and restores r
     await login(o, "order");
     await expect(
       o
-        .getByLabel("Contexto para Primera Confirmacion")
+        .getByLabel("Contexto del pedido")
         .getByRole("option", { name, exact: true }),
     ).toHaveCount(1);
-    await row.getByRole("button", { name: "Retirar", exact: true }).click();
+    await row.getByRole("button", { name: /^Retirar / }).click();
     await expect(
       row.getByText(/Los pedidos que ya lo usan no se modificarán/),
     ).toBeVisible();
@@ -67,20 +67,18 @@ test("Context lifecycle excludes retired Contexts from new Orders and restores r
       .click();
     await expect(row.getByText("Retirado", { exact: true })).toBeVisible();
     await o.reload();
-    await expect(
-      o.getByLabel("Contexto para Primera Confirmacion"),
-    ).toBeVisible();
+    await expect(o.getByLabel("Contexto del pedido")).toBeVisible();
     await expect(
       o
-        .getByLabel("Contexto para Primera Confirmacion")
+        .getByLabel("Contexto del pedido")
         .getByRole("option", { name, exact: true }),
     ).toHaveCount(0);
-    await row.getByRole("button", { name: "Reactivar", exact: true }).click();
+    await row.getByRole("button", { name: /^Reactivar / }).click();
     await expect(row.getByText("Activo", { exact: true })).toBeVisible();
     await o.reload();
     await expect(
       o
-        .getByLabel("Contexto para Primera Confirmacion")
+        .getByLabel("Contexto del pedido")
         .getByRole("option", { name, exact: true }),
     ).toHaveCount(1);
   } finally {
@@ -100,9 +98,7 @@ test("Destination lifecycle blocks active Product dependencies and removes retir
     await login(g, "general");
     const destination = `Destination lifecycle ${randomUUID().slice(0, 8)}`;
     const product = `Product lifecycle ${randomUUID().slice(0, 8)}`;
-    await g
-      .getByLabel("Nombre operacional del destino de preparación")
-      .fill(destination);
+    await g.getByLabel("Nombre del destino de preparación").fill(destination);
     await g
       .getByRole("button", {
         name: "Crear destino de preparación",
@@ -119,9 +115,7 @@ test("Destination lifecycle blocks active Product dependencies and removes retir
       name: "Crear producto",
       exact: true,
     });
-    await create
-      .getByLabel("Nombre operacional", { exact: true })
-      .fill(product);
+    await create.getByLabel("Nombre", { exact: true }).fill(product);
     await create.getByLabel("Precio", { exact: true }).fill("5");
     await create
       .getByRole("button", { name: "Crear producto", exact: true })
@@ -146,12 +140,12 @@ test("Destination lifecycle blocks active Product dependencies and removes retir
       })
       .click();
     await expect(editor).toHaveCount(0);
-    await row.getByRole("button", { name: "Retirar", exact: true }).click();
+    await row.getByRole("button", { name: /^Retirar / }).click();
     await row
       .getByRole("button", { name: "Confirmar retiro", exact: true })
       .click();
     await expect(
-      row.getByText(/No se puede retirar porque todavía hay productos activos/),
+      row.getByText(/Este destino tiene productos activos/),
     ).toBeVisible();
     await expect(row.getByText("Activo", { exact: true })).toBeVisible();
     await configure.click();
@@ -188,6 +182,25 @@ test("Destination lifecycle blocks active Product dependencies and removes retir
         .getByLabel("Destino de preparación")
         .getByRole("option", { name: destination, exact: true }),
     ).toHaveCount(0);
+    await row.getByRole("button", { name: /^Reactivar / }).click();
+    await expect(row.getByText("Activo", { exact: true })).toBeVisible();
+    await c.reload();
+    await c
+      .getByRole("button", {
+        name: `Configurar preparación de ${product}`,
+        exact: true,
+      })
+      .click();
+    const restored = c.getByRole("form", {
+      name: `Configurar preparación de ${product}`,
+      exact: true,
+    });
+    await restored.getByLabel("Requiere preparación", { exact: true }).check();
+    await expect(
+      restored
+        .getByLabel("Destino de preparación")
+        .getByRole("option", { name: destination, exact: true }),
+    ).toHaveCount(1);
   } finally {
     await administration.close();
     await catalogContext.close();

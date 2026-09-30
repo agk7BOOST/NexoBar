@@ -59,8 +59,8 @@ async function open() {
       onUnauthorized={onUnauthorized}
     />,
   );
-  await user.type(screen.getByLabelText("Referencia operacional"), reference);
-  await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
+  await user.type(screen.getByLabelText("Referencia del pedido"), reference);
+  await user.click(screen.getByRole("button", { name: "Buscar pedido" }));
   await screen.findByRole("region", { name: "Liquidación y Cierre" });
   return user;
 }
@@ -68,7 +68,7 @@ async function simple(
   user: ReturnType<typeof userEvent.setup>,
   medium = "Bono vecinal",
 ) {
-  await user.type(screen.getByLabelText("Medio de pago declarado"), medium);
+  await user.type(screen.getByLabelText("Medio de pago"), medium);
   await user.click(screen.getByRole("button", { name: "Liquidar" }));
 }
 
@@ -133,7 +133,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Liquidar" })).toBeEnabled();
     expect(
-      screen.queryByRole("button", { name: "Cerrar Pedido" }),
+      screen.queryByRole("button", { name: "Cerrar pedido" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
@@ -185,9 +185,9 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
       "datetime",
       "2026-09-05T17:59:00Z",
     );
-    expect(screen.getByRole("button", { name: "Cerrar Pedido" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Cerrar pedido" })).toBeEnabled();
     expect(mutation).toHaveBeenCalledTimes(1); // No automatic Closure.
-    await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
+    await user.click(screen.getByRole("button", { name: "Buscar pedido" }));
     expect(await screen.findByTitle("2026-09-05T17:59:00Z")).toBeVisible();
   });
 
@@ -195,7 +195,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
     "valida el medio antes de crear una intención (%s)",
     async (medium) => {
       await open();
-      const input = screen.getByLabelText("Medio de pago declarado");
+      const input = screen.getByLabelText("Medio de pago");
       fireEvent.change(input, { target: { value: medium } });
       fireEvent.submit(
         screen.getByRole("form", { name: "Liquidación simple" }),
@@ -222,10 +222,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
       return json({ occurredAt: "2026-09-05T17:59:00Z" });
     });
     const user = await open();
-    await user.type(
-      screen.getByLabelText("Medio de pago declarado"),
-      "No enviar",
-    );
+    await user.type(screen.getByLabelText("Medio de pago"), "No enviar");
     await user.click(
       screen.getByRole("button", {
         name: "Registrar cobro gestionado externamente",
@@ -242,9 +239,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
     expect(new Headers(init!.headers).get("X-NexoBar-CSRF")).toBe(
       "csrf-ending",
     );
-    expect(
-      screen.queryByText("Medio de pago declarado"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Medio de pago")).not.toBeInTheDocument();
     expect(screen.getByText("Cobro gestionado externamente")).toBeVisible();
   });
 
@@ -268,9 +263,9 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
           name: "Registrar cobro gestionado externamente",
         }),
       ).toBeDisabled();
-      expect(screen.getByLabelText("Medio de pago declarado")).toBeDisabled();
+      expect(screen.getByLabelText("Medio de pago")).toBeDisabled();
       expect(
-        screen.getByRole("button", { name: "Buscar Pedido" }),
+        screen.getByRole("button", { name: "Buscar pedido" }),
       ).toBeDisabled();
       await user.click(
         screen.getByRole("button", { name: "Reintentar misma operación" }),
@@ -307,7 +302,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
         screen.getByRole("button", {
           name:
             kind === "close"
-              ? "Cerrar Pedido"
+              ? "Cerrar pedido"
               : "Registrar cobro gestionado externamente",
         }),
       );
@@ -333,11 +328,11 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
         );
         expect(
           screen.queryByRole("button", {
-            name: /reabrir|reopen|Cerrar Pedido|Agregar productos a este Pedido/i,
+            name: /reabrir|reopen|Cerrar pedido|Agregar productos a este Pedido/i,
           }),
         ).not.toBeInTheDocument();
         expect(
-          screen.getByRole("button", { name: "Buscar Pedido" }),
+          screen.getByRole("button", { name: "Buscar pedido" }),
         ).toBeEnabled();
       }
     },
@@ -397,7 +392,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
       }),
     );
     await open();
-    fireEvent.change(screen.getByLabelText("Medio de pago declarado"), {
+    fireEvent.change(screen.getByLabelText("Medio de pago"), {
       target: { value: "Bono" },
     });
     const form = screen.getByRole("form", { name: "Liquidación simple" });
@@ -431,7 +426,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
         rejected(status, status === 409 ? "not_liquidated" : "forbidden"),
       );
       const user = await open();
-      await user.click(screen.getByRole("button", { name: "Cerrar Pedido" }));
+      await user.click(screen.getByRole("button", { name: "Cerrar pedido" }));
       if (status === 401) {
         await waitFor(() => expect(onUnauthorized).toHaveBeenCalledOnce());
       } else {
@@ -454,10 +449,10 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
       }),
     );
     const user = await open();
-    await user.click(screen.getByRole("button", { name: "Cerrar Pedido" }));
+    await user.click(screen.getByRole("button", { name: "Cerrar pedido" }));
     expect(screen.queryByText(/Pedido cerrado:/)).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Cerrar Pedido" }),
+      screen.getByRole("button", { name: "Cerrar pedido" }),
     ).toBeDisabled();
     await act(async () =>
       confirm(json({ closedAt: "2026-09-05T18:00:00Z", isClosed: true })),
@@ -465,7 +460,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
     expect(await screen.findByText(/Pedido cerrado:/)).toBeVisible();
     expect(reads).toBe(1);
     expect(
-      screen.queryByRole("button", { name: "Cerrar Pedido" }),
+      screen.queryByRole("button", { name: "Cerrar pedido" }),
     ).not.toBeInTheDocument();
   });
 
@@ -481,7 +476,7 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
     );
     expect(
       await screen.findByText(
-        "No se pudo obtener la protección de la solicitud.",
+        "No pudimos preparar la finalización del pedido. Intentá nuevamente.",
       ),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Liquidar" })).toBeDisabled();
@@ -512,7 +507,9 @@ describe("Liquidación y Cierre desde el Pedido autoritativo", () => {
       ],
     };
     await open();
-    expect(screen.getByText("Pedido cerrado")).toBeVisible();
+    expect(
+      screen.getByText("Pedido cerrado", { selector: ".order-task-status" }),
+    ).toBeVisible();
     expect(
       screen.getByText("Fecha de Liquidación no disponible en esta consulta."),
     ).toBeVisible();

@@ -82,7 +82,7 @@ async function open() {
   await screen.findByRole("article", {
     name: "Agua, sin instrucción, incorporación 1",
   });
-  await screen.findByText("Importe funcional actual");
+  await screen.findByText("Importe de lo entregado");
 }
 function content() {
   return screen.getByRole("article", {
@@ -106,7 +106,7 @@ async function correct(quantity: string) {
   fireEvent.click(submit());
 }
 function amount() {
-  return screen.getByText("Importe funcional actual").parentElement!;
+  return screen.getByText("Importe de lo entregado").parentElement!;
 }
 beforeEach(() => {
   discardAntiforgeryToken();
@@ -226,7 +226,9 @@ it.each([1, 3])(
     await waitFor(() =>
       expect(amount()).toHaveTextContent(order.functionalAmount),
     );
-    expect(content()).toHaveTextContent(`Disponible para entregar${2 + quantity}`);
+    expect(content()).toHaveTextContent(
+      `Disponible para entregar${2 + quantity}`,
+    );
     expect(content()).toHaveTextContent("Listo5");
     expect(content()).toHaveTextContent("Total5");
     if (quantity === 3)

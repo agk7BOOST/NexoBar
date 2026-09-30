@@ -66,8 +66,8 @@ async function authenticateThroughCurrent(
   actor: Actor,
 ): Promise<void> {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(actor.identifier);
-  await page.getByLabel("Secreto").fill(actor.secret);
+  await page.getByLabel("Usuario de acceso").fill(actor.identifier);
+  await page.getByLabel("Contraseña").fill(actor.secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -133,7 +133,7 @@ test("S9 Catalog separates administration, ordinary composition, and unavailable
     });
     await expect(adminCatalog).toBeVisible();
     await expect(
-      adminPage.getByRole("region", { name: "Composici\u00f3n inicial" }),
+      adminPage.getByRole("region", { name: "Preparar pedido" }),
     ).toHaveCount(0);
     const adminProduct = adminCatalog.getByRole("row").filter({
       has: adminPage.getByRole("cell", { name: availableProduct, exact: true }),
@@ -145,9 +145,7 @@ test("S9 Catalog separates administration, ordinary composition, and unavailable
       name: `Cambiar precio de ${availableProduct}`,
     });
     await priceChange.getByLabel("Nuevo precio").fill("12");
-    await priceChange
-      .getByRole("button", { name: "Confirmar cambio de Precio" })
-      .click();
+    await priceChange.getByRole("button", { name: "Guardar precio" }).click();
     await expect(
       adminProduct.getByRole("cell", { name: "12", exact: true }),
     ).toBeVisible();
@@ -165,7 +163,7 @@ test("S9 Catalog separates administration, ordinary composition, and unavailable
     );
     await authenticateThroughCurrent(ordinaryPage, ordinaryOperator);
     const ordinaryComposition = ordinaryPage.getByRole("region", {
-      name: "Composici\u00f3n inicial",
+      name: "Preparar pedido",
     });
     await expect(ordinaryComposition).toBeVisible();
     await expect(
@@ -179,7 +177,7 @@ test("S9 Catalog separates administration, ordinary composition, and unavailable
     ).toHaveCount(0);
     await ordinaryComposition
       .getByRole("button", {
-        name: `Agregar ${availableProduct} a Composici\u00f3n inicial`,
+        name: `Agregar ${availableProduct} a Preparar pedido`,
       })
       .click();
     await expect(
@@ -202,7 +200,7 @@ test("S9 Catalog separates administration, ordinary composition, and unavailable
     );
     await authenticateThroughCurrent(interventionPage, interventionOperator);
     const interventionComposition = interventionPage.getByRole("region", {
-      name: "Composici\u00f3n inicial",
+      name: "Preparar pedido",
     });
     await expect(interventionComposition).toBeVisible();
     await expect(
@@ -220,12 +218,12 @@ test("S9 Catalog separates administration, ordinary composition, and unavailable
     await expect(unavailableRow).toContainText("No disponible");
     await expect(
       unavailableRow.getByRole("button", {
-        name: `Agregar ${unavailableProduct} a Composici\u00f3n inicial`,
+        name: `Agregar ${unavailableProduct} a Preparar pedido`,
       }),
     ).toBeDisabled();
     await expect(
       interventionComposition.getByRole("button", {
-        name: "Confirmar Primera Composici\u00f3n",
+        name: "Crear Pedido",
       }),
     ).toBeDisabled();
     const operationalResponse = interventionOperationalResponses.at(-1);
@@ -327,7 +325,7 @@ test("S10 unavailable Product intervention requires dual authority and preserves
     ).toHaveCount(0);
 
     const composition = interventionPage.getByRole("region", {
-      name: "Composición inicial",
+      name: "Preparar pedido",
     });
     const unavailableRow = composition.getByRole("row").filter({
       has: interventionPage.getByRole("cell", {
@@ -337,11 +335,11 @@ test("S10 unavailable Product intervention requires dual authority and preserves
     });
     await expect(
       unavailableRow.getByRole("button", {
-        name: `Agregar ${unavailableProduct} a Composición inicial`,
+        name: `Agregar ${unavailableProduct} a Preparar pedido`,
       }),
     ).toBeDisabled();
     const interventionAdd = unavailableRow.getByRole("button", {
-      name: `Agregar ${unavailableProduct} mediante intervención a Composición inicial`,
+      name: `Agregar ${unavailableProduct} mediante intervención a Preparar pedido`,
     });
     await expect(interventionAdd).toBeEnabled();
     await interventionAdd.click();
@@ -350,7 +348,7 @@ test("S10 unavailable Product intervention requires dual authority and preserves
     ).toBeVisible();
     await composition
       .getByRole("button", {
-        name: `Agregar ${availableProduct} a Composición inicial`,
+        name: `Agregar ${availableProduct} a Preparar pedido`,
       })
       .click();
     await selectInitialContext(composition);

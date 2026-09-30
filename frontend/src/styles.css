@@ -1552,7 +1552,13 @@ caption {
   }
 
   .catalog-products-table thead {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .catalog-products-table tbody tr {
@@ -1889,4 +1895,30 @@ tbody tr:hover {
   .inventory-family-heading nav {
     gap: 0.4rem;
   }
+}
+/* Native modal and destructive emphasis use the existing palette. */
+.sensitive-action-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  border: 1px solid var(--text-muted);
+  border-radius: var(--radius);
+  padding: var(--space-6);
+  background: var(--surface);
+  color: var(--text);
+}
+.sensitive-action-dialog::backdrop {
+  background: rgb(22 32 24 / 45%);
+}
+.danger-button {
+  background: var(--error);
+  border-color: var(--error);
+  color: var(--surface);
+}
+.danger-button:hover:not(:disabled) {
+  background: var(--error);
+  border-color: var(--error);
+}
+input,
+select,
+textarea {
+  border-color: var(--text-muted);
 }

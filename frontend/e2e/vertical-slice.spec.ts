@@ -31,8 +31,8 @@ async function signIn(
   secret: string,
   operationalName: string,
 ) {
-  await page.getByLabel("Identificador de acceso").fill(loginIdentifier);
-  await page.getByLabel("Secreto").fill(secret);
+  await page.getByLabel("Usuario de acceso").fill(loginIdentifier);
+  await page.getByLabel("Contraseña").fill(secret);
   const loginResponse = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === "/api/identity-sessions" &&
@@ -50,7 +50,7 @@ async function signIn(
 async function readActiveOperationalReference(
   composition: Locator,
 ): Promise<string> {
-  const label = "Referencia del Pedido activo";
+  const label = "Referencia del pedido activo";
   const activeOrderSummary = composition.getByRole("status").filter({
     hasText: label,
   });
@@ -86,7 +86,7 @@ async function createConfirmedOrder(page: Page): Promise<{
   const catalogCreation = page.getByRole("region", { name: "Crear producto" });
   await expect(catalogCreation).toBeVisible();
   await catalogCreation
-    .getByRole("textbox", { name: "Nombre operacional", exact: true })
+    .getByRole("textbox", { name: "Nombre", exact: true })
     .fill(productName);
   await catalogCreation
     .getByRole("textbox", { name: "Precio", exact: true })
@@ -101,17 +101,17 @@ async function createConfirmedOrder(page: Page): Promise<{
   ).toBeVisible();
   await page
     .getByRole("region", { name: "Usuario actual" })
-    .getByRole("button", { name: "Cambiar persona / salir" })
+    .getByRole("button", { name: "Cerrar sesión" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
 
   await signIn(page, "delivery-e2e", "delivery-e2e-secret", "Delivery E2E");
   const initialComposition = page.getByRole("region", {
-    name: "Composición inicial",
+    name: "Preparar pedido",
   });
   await expect(initialComposition).toBeVisible();
   const addButton = initialComposition.getByRole("button", {
-    name: `Agregar ${productName} a Composición inicial`,
+    name: `Agregar ${productName} a Preparar pedido`,
   });
   await addButton.click();
   await addButton.click();
@@ -128,14 +128,14 @@ async function createConfirmedOrder(page: Page): Promise<{
     }),
   ).toHaveText("2");
   await initialComposition
-    .getByRole("combobox", { name: "Contexto para Primera Confirmacion" })
+    .getByRole("combobox", { name: "Contexto del pedido" })
     .selectOption({ label: "Contexto base E2E" });
   await initialComposition
     .getByRole("button", { name: "Crear Pedido" })
     .click();
 
   const subsequentComposition = page.getByRole("region", {
-    name: "Nueva Composición",
+    name: "Agregar productos al pedido",
   });
   await expect(subsequentComposition).toBeVisible();
 
@@ -165,6 +165,9 @@ async function createConfirmedOrder(page: Page): Promise<{
   await expect(
     firstItem.getByRole("cell", { name: "10", exact: true }),
   ).toBeVisible();
+  await incorporation1
+    .getByText("Detalle de la confirmación", { exact: true })
+    .click();
   await expect(incorporation1.getByRole("time")).toHaveAttribute(
     "datetime",
     /\S+/,
@@ -181,11 +184,11 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
 
   await page
     .getByRole("region", { name: "Usuario actual" })
-    .getByRole("button", { name: "Cambiar persona / salir" })
+    .getByRole("button", { name: "Cerrar sesión" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
-  await page.getByLabel("Identificador de acceso").fill("price-catalog-e2e");
-  await page.getByLabel("Secreto").fill("price-catalog-e2e-secret");
+  await page.getByLabel("Usuario de acceso").fill("price-catalog-e2e");
+  await page.getByLabel("Contraseña").fill("price-catalog-e2e-secret");
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -202,9 +205,7 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
     name: `Cambiar precio de ${productName}`,
   });
   await priceChangeForm.getByLabel("Nuevo precio").fill("12");
-  await priceChangeForm
-    .getByRole("button", { name: "Confirmar cambio de Precio" })
-    .click();
+  await priceChangeForm.getByRole("button", { name: "Guardar precio" }).click();
 
   await expect(
     productRow.getByRole("cell", { name: "12", exact: true }),
@@ -212,11 +213,11 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
 
   await page
     .getByRole("region", { name: "Usuario actual" })
-    .getByRole("button", { name: "Cambiar persona / salir" })
+    .getByRole("button", { name: "Cerrar sesión" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
-  await page.getByLabel("Identificador de acceso").fill("delivery-e2e");
-  await page.getByLabel("Secreto").fill("delivery-e2e-secret");
+  await page.getByLabel("Usuario de acceso").fill("delivery-e2e");
+  await page.getByLabel("Contraseña").fill("delivery-e2e-secret");
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -224,16 +225,16 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
       .getByText("Delivery E2E", { exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("textbox", { name: "Referencia operacional", exact: true })
+    .getByRole("textbox", { name: "Referencia del pedido", exact: true })
     .fill(operationalReference);
-  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  await page.getByRole("button", { name: "Buscar pedido" }).click();
   await page
     .getByRole("region", { name: "Pedido consultado" })
     .getByRole("button", { name: "Agregar productos a este Pedido" })
     .click();
 
   const subsequentComposition = page.getByRole("region", {
-    name: "Nueva Composición",
+    name: "Agregar productos al pedido",
   });
   await expect(subsequentComposition).toBeVisible();
   await expect(
@@ -253,7 +254,7 @@ test("conserva el Precio aplicado histórico entre Incorporaciones del mismo Ped
   ).toBeVisible();
   await subsequentComposition
     .getByRole("button", {
-      name: `Agregar ${productName} a Nueva Composición`,
+      name: `Agregar ${productName} a Agregar productos al pedido`,
     })
     .click();
   await expect(
@@ -330,10 +331,12 @@ test("otro contexto autorizado ve el marcador remoto y no puede iniciar un segun
 }) => {
   const { productName, operationalReference } =
     await createConfirmedOrder(page);
-  const composition = page.getByRole("region", { name: "Nueva Composición" });
+  const composition = page.getByRole("region", {
+    name: "Agregar productos al pedido",
+  });
   await composition
     .getByRole("button", {
-      name: `Agregar ${productName} a Nueva Composición`,
+      name: `Agregar ${productName} a Agregar productos al pedido`,
     })
     .click();
   await expect(
@@ -351,9 +354,9 @@ test("otro contexto autorizado ve el marcador remoto y no puede iniciar un segun
         .getByText("Delivery E2E", { exact: true }),
     ).toBeVisible();
     await otherPage
-      .getByRole("textbox", { name: "Referencia operacional", exact: true })
+      .getByRole("textbox", { name: "Referencia del pedido", exact: true })
       .fill(operationalReference);
-    await otherPage.getByRole("button", { name: "Buscar Pedido" }).click();
+    await otherPage.getByRole("button", { name: "Buscar pedido" }).click();
     const consultedOrder = otherPage.getByRole("region", {
       name: "Pedido consultado",
     });
@@ -363,7 +366,7 @@ test("otro contexto autorizado ve el marcador remoto y no puede iniciar un segun
       .click();
 
     const otherComposition = otherPage.getByRole("region", {
-      name: "Nueva Composición",
+      name: "Agregar productos al pedido",
     });
     await expect(
       otherComposition.getByText(
@@ -372,7 +375,7 @@ test("otro contexto autorizado ve el marcador remoto y no puede iniciar un segun
     ).toBeVisible();
     await otherComposition
       .getByRole("button", {
-        name: `Agregar ${productName} a Nueva Composición`,
+        name: `Agregar ${productName} a Agregar productos al pedido`,
       })
       .click();
     await expect(otherComposition).toContainText(
@@ -412,11 +415,11 @@ test("informa un Pedido inexistente sin conservar el resultado previo", async ({
 }) => {
   const { operationalReference } = await createConfirmedOrder(page);
   const referenceInput = page.getByRole("textbox", {
-    name: "Referencia operacional",
+    name: "Referencia del pedido",
     exact: true,
   });
   await referenceInput.fill(operationalReference);
-  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  await page.getByRole("button", { name: "Buscar pedido" }).click();
   const priorResult = page.getByRole("region", { name: "Pedido activo" });
   await expect(priorResult).toBeVisible();
   await expect(
@@ -425,10 +428,10 @@ test("informa un Pedido inexistente sin conservar el resultado previo", async ({
 
   const missingReference = "00000000-0000-0000-0000-000000000001";
   await referenceInput.fill(missingReference);
-  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  await page.getByRole("button", { name: "Buscar pedido" }).click();
 
   await expect(
-    page.getByText("No se encontró un Pedido con esa Referencia operacional.", {
+    page.getByText("No se encontró un Pedido con esa Referencia del pedido.", {
       exact: true,
     }),
   ).toBeVisible();
@@ -439,7 +442,7 @@ test("informa un Pedido inexistente sin conservar el resultado previo", async ({
   await expect(referenceInput).toHaveValue(missingReference);
 
   const subsequentComposition = page.getByRole("region", {
-    name: "Nueva Composición",
+    name: "Agregar productos al pedido",
   });
   await expect(
     subsequentComposition.getByText(operationalReference, { exact: true }),
@@ -453,8 +456,8 @@ test("Preparation y Delivery operan cantidades parciales con Identities reales",
   page,
 }) => {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill("preparador-e2e");
-  await page.getByLabel("Secreto").fill("preparation-e2e-secret");
+  await page.getByLabel("Usuario de acceso").fill("preparador-e2e");
+  await page.getByLabel("Contraseña").fill("preparation-e2e-secret");
   await page.getByRole("button", { name: "Ingresar" }).click();
 
   const identity = page.getByRole("region", { name: "Usuario actual" });
@@ -489,16 +492,14 @@ test("Preparation y Delivery operan cantidades parciales con Identities reales",
   await expect(preparationRow).toContainText("En preparación1");
   await expect(preparationRow).toContainText("Listo0");
 
-  await identity
-    .getByRole("button", { name: "Cambiar persona / salir" })
-    .click();
+  await identity.getByRole("button", { name: "Cerrar sesión" }).click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
   await expect(page.getByText("Preparador E2E", { exact: true })).toHaveCount(
     0,
   );
 
-  await page.getByLabel("Identificador de acceso").fill("preparadora-b-e2e");
-  await page.getByLabel("Secreto").fill("preparation-b-e2e-secret");
+  await page.getByLabel("Usuario de acceso").fill("preparadora-b-e2e");
+  await page.getByLabel("Contraseña").fill("preparation-b-e2e-secret");
   await page.getByRole("button", { name: "Ingresar" }).click();
 
   const secondIdentity = page.getByRole("region", { name: "Usuario actual" });
@@ -533,11 +534,9 @@ test("Preparation y Delivery operan cantidades parciales con Identities reales",
   ).trim();
   expect(operationalReference).not.toBe("");
 
-  await secondIdentity
-    .getByRole("button", { name: "Cambiar persona / salir" })
-    .click();
-  await page.getByLabel("Identificador de acceso").fill("delivery-e2e");
-  await page.getByLabel("Secreto").fill("delivery-e2e-secret");
+  await secondIdentity.getByRole("button", { name: "Cerrar sesión" }).click();
+  await page.getByLabel("Usuario de acceso").fill("delivery-e2e");
+  await page.getByLabel("Contraseña").fill("delivery-e2e-secret");
   await page.getByRole("button", { name: "Ingresar" }).click();
 
   const deliveryIdentity = page.getByRole("region", {
@@ -547,11 +546,11 @@ test("Preparation y Delivery operan cantidades parciales con Identities reales",
     deliveryIdentity.getByText("Delivery E2E", { exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("textbox", { name: "Referencia operacional", exact: true })
+    .getByRole("textbox", { name: "Referencia del pedido", exact: true })
     .fill(operationalReference);
-  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  await page.getByRole("button", { name: "Buscar pedido" }).click();
   await page
-    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .getByRole("button", { name: "Abrir entrega de este pedido" })
     .click();
 
   const delivery = page.getByRole("region", {
@@ -605,7 +604,7 @@ for (const mode of ["simple", "external"] as const) {
     const { productName, operationalReference } =
       await createConfirmedOrder(page);
     await page
-      .getByRole("button", { name: "Abrir entrega de este Pedido" })
+      .getByRole("button", { name: "Abrir entrega de este pedido" })
       .click();
     const delivery = page.getByRole("region", {
       name: `Entrega del Pedido ${operationalReference}`,
@@ -622,13 +621,13 @@ for (const mode of ["simple", "external"] as const) {
     await expect(content).toContainText("Entregado2");
     const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
     await expect(
-      ending.getByText("Importe funcional actual").locator("..").locator("dd"),
+      ending.getByText("Importe de lo entregado").locator("..").locator("dd"),
     ).toHaveText(/^20(?:\.0+)?$/);
     await expect(
       ending.getByRole("button", { name: "Liquidar", exact: true }),
     ).toBeEnabled();
     await expect(
-      ending.getByRole("button", { name: "Cerrar Pedido" }),
+      ending.getByRole("button", { name: "Cerrar pedido" }),
     ).toHaveCount(0);
     await expect(
       ending.getByText(
@@ -637,7 +636,7 @@ for (const mode of ["simple", "external"] as const) {
     ).toBeVisible();
     if (mode === "simple") {
       await ending
-        .getByLabel("Medio de pago declarado")
+        .getByLabel("Medio de pago")
         .fill("  Vale del club / septiembre  ");
       await ending
         .getByRole("button", { name: "Liquidar", exact: true })
@@ -659,7 +658,7 @@ for (const mode of ["simple", "external"] as const) {
         ending.getByText("Vale del club / septiembre", { exact: true }),
       ).toBeVisible();
     } else {
-      await expect(ending.getByText("Medio de pago declarado")).toHaveCount(0);
+      await expect(ending.getByText("Medio de pago")).toHaveCount(0);
       await expect(
         ending.getByText("Cobro gestionado externamente", { exact: true }),
       ).toBeVisible();
@@ -667,14 +666,16 @@ for (const mode of ["simple", "external"] as const) {
     await expect(
       ending.getByText("Pedido cerrado", { exact: true }),
     ).toHaveCount(0);
-    const composition = page.getByRole("region", { name: "Nueva Composición" });
+    const composition = page.getByRole("region", {
+      name: "Agregar productos al pedido",
+    });
     await expect(
       composition.getByRole("button", {
-        name: `Agregar ${productName} a Nueva Composición`,
+        name: `Agregar ${productName} a Agregar productos al pedido`,
         exact: true,
       }),
     ).toBeDisabled();
-    await ending.getByRole("button", { name: "Cerrar Pedido" }).click();
+    await ending.getByRole("button", { name: "Cerrar pedido" }).click();
     const closed = page
       .getByRole("status")
       .filter({ hasText: "Pedido cerrado:" });
@@ -685,7 +686,7 @@ for (const mode of ["simple", "external"] as const) {
       page.getByRole("button", { name: "Agregar productos a este Pedido" }),
     ).toHaveCount(0);
     await page
-      .getByLabel("Referencia operacional exacta")
+      .getByLabel("Referencia del pedido finalizado")
       .fill(operationalReference);
     await page.getByRole("button", { name: "Ver historial" }).click();
     const history = page.getByRole("region", { name: "Historial del pedido" });
@@ -709,8 +710,8 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
 }) => {
   const itemName = `Harina E2E ${randomUUID().slice(0, 8)}`;
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill("inventory-config-e2e");
-  await page.getByLabel("Secreto").fill("inventory-config-e2e-secret");
+  await page.getByLabel("Usuario de acceso").fill("inventory-config-e2e");
+  await page.getByLabel("Contraseña").fill("inventory-config-e2e-secret");
   await page.getByRole("button", { name: "Ingresar" }).click();
 
   const configurationIdentity = page.getByRole("region", {
@@ -724,9 +725,9 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
   const configuration = page.getByRole("region", {
     name: "Configuración de Inventario",
   });
-  await configuration.getByLabel("Nombre operacional").fill(itemName);
+  await configuration.getByLabel("Nombre").fill(itemName);
   await configuration
-    .getByRole("textbox", { name: "Unidad operacional", exact: true })
+    .getByRole("textbox", { name: "Unidad de medida", exact: true })
     .fill("kg");
   await configuration.getByRole("button", { name: "Crear elemento" }).click();
   await expect(
@@ -737,12 +738,10 @@ test("Inventario ejecuta operaciones físicas e Historia con capacidades separad
   ).toHaveCount(0);
 
   await configurationIdentity
-    .getByRole("button", { name: "Cambiar persona / salir" })
+    .getByRole("button", { name: "Cerrar sesión" })
     .click();
-  await page
-    .getByLabel("Identificador de acceso")
-    .fill("inventory-operation-e2e");
-  await page.getByLabel("Secreto").fill("inventory-operation-e2e-secret");
+  await page.getByLabel("Usuario de acceso").fill("inventory-operation-e2e");
+  await page.getByLabel("Contraseña").fill("inventory-operation-e2e-secret");
   await page.getByRole("button", { name: "Ingresar" }).click();
 
   const operationIdentity = page.getByRole("region", {
@@ -813,7 +812,7 @@ test("Content Correction conserva Q, reduce F y permite cumplir y Liquidar", asy
   const { productName, operationalReference } =
     await createConfirmedOrder(page);
   await page
-    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .getByRole("button", { name: "Abrir entrega de este pedido" })
     .click();
   const content = page
     .getByRole("region", { name: `Entrega del Pedido ${operationalReference}` })
@@ -822,15 +821,17 @@ test("Content Correction conserva Q, reduce F y permite cumplir y Liquidar", asy
     });
   const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
   const amount = ending
-    .getByText("Importe funcional actual")
+    .getByText("Importe de lo entregado")
     .locator("..")
     .locator("dd");
   await content
     .getByRole("button", { name: "Corregir cantidad confirmada", exact: true })
     .click();
-  await content.getByLabel(/^Cantidad a retirar \(x\)/).fill("1");
+  await content.getByLabel(/^Cantidad confirmada a corregir/).fill("1");
   await expect(content).toContainText("Máximo corregible actualmente: 2");
-  await expect(content).toContainText("F resultante (prevista): 1");
+  await expect(content).toContainText(
+    "Cantidad requerida resultante (prevista): 1",
+  );
   await content
     .getByRole("button", {
       name: "Confirmar corrección de cantidad confirmada",
@@ -843,7 +844,7 @@ test("Content Correction conserva Q, reduce F y permite cumplir y Liquidar", asy
   await content.getByRole("button", { name: /^Entregar / }).click();
   await expect(content).toContainText("Entregado1");
   await expect(amount).toHaveText(/^10(?:\.0+)?$/);
-  await ending.getByLabel("Medio de pago declarado").fill("Efectivo");
+  await ending.getByLabel("Medio de pago").fill("Efectivo");
   await ending.getByRole("button", { name: "Liquidar", exact: true }).click();
   await expect(ending.getByText(/Pedido congelado/)).toBeVisible();
   await expect(
@@ -861,7 +862,7 @@ test("Delivery Correction reduce importe, permite reentrega y desaparece al Liqu
   const { productName, operationalReference } =
     await createConfirmedOrder(page);
   await page
-    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .getByRole("button", { name: "Abrir entrega de este pedido" })
     .click();
   const delivery = page.getByRole("region", {
     name: `Entrega del Pedido ${operationalReference}`,
@@ -871,7 +872,7 @@ test("Delivery Correction reduce importe, permite reentrega y desaparece al Liqu
   });
   const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
   const amount = ending
-    .getByText("Importe funcional actual")
+    .getByText("Importe de lo entregado")
     .locator("..")
     .locator("dd");
   const deliver = content.getByRole("button", {
@@ -895,7 +896,7 @@ test("Delivery Correction reduce importe, permite reentrega y desaparece al Liqu
   await deliver.click();
   await expect(content).toContainText("Entregado2");
   await expect(amount).toHaveText(/^20(?:\.0+)?$/);
-  await ending.getByLabel("Medio de pago declarado").fill("Efectivo");
+  await ending.getByLabel("Medio de pago").fill("Efectivo");
   await ending.getByRole("button", { name: "Liquidar", exact: true }).click();
   await expect(ending.getByText(/Pedido congelado/)).toBeVisible();
   await expect(
@@ -909,7 +910,7 @@ test("Content Cancellation conserva Q, aumenta C y permite cumplir y Liquidar", 
   const { productName, operationalReference } =
     await createConfirmedOrder(page);
   await page
-    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .getByRole("button", { name: "Abrir entrega de este pedido" })
     .click();
   const content = page
     .getByRole("region", { name: `Entrega del Pedido ${operationalReference}` })
@@ -918,16 +919,16 @@ test("Content Cancellation conserva Q, aumenta C y permite cumplir y Liquidar", 
     });
   const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
   const amount = ending
-    .getByText("Importe funcional actual")
+    .getByText("Importe de lo entregado")
     .locator("..")
     .locator("dd");
   await content
     .getByRole("button", { name: "Cancelar cantidad pendiente", exact: true })
     .click();
-  await content.getByLabel(/^Cantidad a cancelar \(x\)/).fill("1");
+  await content.getByLabel(/^Cantidad a cancelar/).fill("1");
   await expect(content).toContainText("Máximo cancelable actualmente: 2");
   await expect(content).toContainText(
-    "F resultante tras cancelar (prevista): 1",
+    "Cantidad requerida tras cancelar (prevista): 1",
   );
   await content
     .getByRole("button", {
@@ -941,7 +942,7 @@ test("Content Cancellation conserva Q, aumenta C y permite cumplir y Liquidar", 
   await content.getByRole("button", { name: /^Entregar / }).click();
   await expect(content).toContainText("Entregado1");
   await expect(amount).toHaveText(/^10(?:\.0+)?$/);
-  await ending.getByLabel("Medio de pago declarado").fill("Efectivo");
+  await ending.getByLabel("Medio de pago").fill("Efectivo");
   await ending.getByRole("button", { name: "Liquidar", exact: true }).click();
   await expect(ending.getByText(/Pedido congelado/)).toBeVisible();
   await expect(

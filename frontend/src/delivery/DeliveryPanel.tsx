@@ -39,6 +39,7 @@ interface DeliveryPanelProps {
 type DeliveryIntentPhase = "submitting" | "uncertain";
 
 interface DeliveryIntent {
+  productName?: string;
   operationalReference: string;
   phase: DeliveryIntentPhase;
   kind: "delivery" | "correction" | "contentCorrection" | "cancellation";
@@ -51,7 +52,7 @@ interface DeliveryIntent {
 }
 
 interface ContentMessage {
-  kind: "error" | "uncertain";
+  kind: "error" | "uncertain" | "success";
   text: string;
   detail?: string;
 }
@@ -102,6 +103,21 @@ export function DeliveryPanel({
   onOrderRetired,
   onBusyChange,
 }: DeliveryPanelProps) {
+  const editorOpener = useRef<HTMLButtonElement | null>(null);
+  const [editorFocus, setEditorFocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (editorFocus) document.getElementById(editorFocus)?.focus();
+  }, [editorFocus]);
+  function returnEditorFocus() {
+    setEditorFocus(null);
+    queueMicrotask(() => {
+      if (
+        editorOpener.current?.isConnected &&
+        !editorOpener.current.closest("[hidden]")
+      )
+        editorOpener.current.focus();
+    });
+  }
   const [cancellationInputs, setCancellationInputs] = useState<
     Record<string, string>
   >({});
@@ -408,7 +424,7 @@ export function DeliveryPanel({
         if (intent.kind === "delivery") editedQuantityKeys.current.delete(key);
         setContentMessage(key, {
           kind: "error",
-          text: "No se pudo obtener la protección de la solicitud.",
+          text: "No pudimos preparar la operación sobre este contenido. Intentá nuevamente.",
         });
         return;
       }
@@ -451,11 +467,15 @@ export function DeliveryPanel({
           setCorrectionOpen((current) => ({ ...current, [key]: false }));
           setCorrectionInputs((current) => ({ ...current, [key]: "" }));
         }
-        setContentMessage(key, null);
+        setContentMessage(key, {
+          kind: "success",
+          text: `${intent.quantity} unidades de ${intent.productName ?? "este producto"}: ${intent.kind === "delivery" ? "entrega registrada" : intent.kind === "correction" ? "entrega corregida" : intent.kind === "cancellation" ? "cantidad pendiente cancelada" : "cantidad confirmada corregida"}.`,
+        });
         setSynchronizingKey(key, true);
         const refreshed = await refreshDelivery(reference);
         onOrderChanged?.(reference);
         if (refreshed) setSynchronizingKey(key, false);
+        if (intent.kind !== "delivery") returnEditorFocus();
       } catch (error) {
         if (error instanceof DeliveryProblemError && error.status === 401) {
           handleUnauthorized();
@@ -639,6 +659,8 @@ export function DeliveryPanel({
         orderId: delivery!.orderId,
         incorporationId: item.incorporationId,
         contentOrdinal: item.contentOrdinal,
+        productName:
+          item.productOperationalName ?? "Nombre histórico no disponible",
         quantity,
         idempotencyKey: crypto.randomUUID(),
       };
@@ -937,17 +959,29 @@ export function DeliveryPanel({
                               type="button"
                               className="secondary-button"
                               disabled={isBlocked}
-                              onClick={() =>
+                              onClick={(event) => {
+                                editorOpener.current = event.currentTarget;
+                                setEditorFocus(fieldId + "-content-correction");
                                 setContentCorrectionOpen((current) => ({
                                   ...current,
                                   [key]: true,
-                                }))
-                              }
+                                }));
+                              }}
                             >
                               Corregir cantidad confirmada
                             </button>
                             {contentCorrectionOpen[key] && (
                               <form
+                                onKeyDown={(event) => {
+                                  if (event.key === "Escape" && !isBlocked) {
+                                    event.preventDefault();
+                                    setContentCorrectionOpen((current) => ({
+                                      ...current,
+                                      [key]: false,
+                                    }));
+                                    returnEditorFocus();
+                                  }
+                                }}
                                 noValidate
                                 onSubmit={(event) => {
                                   event.preventDefault();
@@ -961,7 +995,7 @@ export function DeliveryPanel({
                                 <label
                                   htmlFor={fieldId + "-content-correction"}
                                 >
-                                  Cantidad a retirar (x) — {description}
+                                  Cantidad confirmada a corregir — {description}
                                 </label>
                                 <input
                                   id={fieldId + "-content-correction"}
@@ -978,11 +1012,9 @@ export function DeliveryPanel({
                                     }))
                                   }
                                 />
+                                <p>Cantidad solicitada: {requested || "—"}</p>
                                 <p>
-                                  Cantidad solicitada (x): {requested || "—"}
-                                </p>
-                                <p>
-                                  F resultante (prevista):{" "}
+                                  Cantidad requerida resultante (prevista):{" "}
                                   {validCorrection
                                     ? item.currentFulfillmentQuantity! -
                                       Number(requested)
@@ -990,6 +1022,20 @@ export function DeliveryPanel({
                                 </p>
                                 <button type="submit" disabled={isBlocked}>
                                   Confirmar corrección de cantidad confirmada
+                                </button>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  disabled={isBlocked}
+                                  onClick={() => {
+                                    setContentCorrectionOpen((current) => ({
+                                      ...current,
+                                      [key]: false,
+                                    }));
+                                    returnEditorFocus();
+                                  }}
+                                >
+                                  Volver
                                 </button>
                               </form>
                             )}
@@ -1022,17 +1068,29 @@ export function DeliveryPanel({
                               type="button"
                               className="secondary-button"
                               disabled={isBlocked}
-                              onClick={() =>
+                              onClick={(event) => {
+                                editorOpener.current = event.currentTarget;
+                                setEditorFocus(fieldId + "-cancellation");
                                 setCancellationOpen((current) => ({
                                   ...current,
                                   [key]: true,
-                                }))
-                              }
+                                }));
+                              }}
                             >
                               Cancelar cantidad pendiente
                             </button>
                             {cancellationOpen[key] && (
                               <form
+                                onKeyDown={(event) => {
+                                  if (event.key === "Escape" && !isBlocked) {
+                                    event.preventDefault();
+                                    setCancellationOpen((current) => ({
+                                      ...current,
+                                      [key]: false,
+                                    }));
+                                    returnEditorFocus();
+                                  }
+                                }}
                                 noValidate
                                 onSubmit={(event) => {
                                   event.preventDefault();
@@ -1040,7 +1098,7 @@ export function DeliveryPanel({
                                 }}
                               >
                                 <label htmlFor={fieldId + "-cancellation"}>
-                                  Cantidad a cancelar (x) — {description}
+                                  Cantidad a cancelar — {description}
                                 </label>
                                 <input
                                   id={fieldId + "-cancellation"}
@@ -1058,11 +1116,11 @@ export function DeliveryPanel({
                                   }
                                 />
                                 <p>
-                                  Cantidad solicitada para cancelar (x):{" "}
+                                  Cantidad solicitada para cancelar:{" "}
                                   {cancellationRequested || "—"}
                                 </p>
                                 <p>
-                                  F resultante tras cancelar (prevista):{" "}
+                                  Cantidad requerida tras cancelar (prevista):{" "}
                                   {validCancellation
                                     ? item.currentFulfillmentQuantity! -
                                       Number(cancellationRequested)
@@ -1070,6 +1128,20 @@ export function DeliveryPanel({
                                 </p>
                                 <button type="submit" disabled={isBlocked}>
                                   Confirmar cancelación de cantidad pendiente
+                                </button>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  disabled={isBlocked}
+                                  onClick={() => {
+                                    setCancellationOpen((current) => ({
+                                      ...current,
+                                      [key]: false,
+                                    }));
+                                    returnEditorFocus();
+                                  }}
+                                >
+                                  Volver
                                 </button>
                               </form>
                             )}
@@ -1084,17 +1156,29 @@ export function DeliveryPanel({
                           className="secondary-button"
                           disabled={isBlocked}
                           aria-label={`Corregir entrega ${description}`}
-                          onClick={() =>
+                          onClick={(event) => {
+                            editorOpener.current = event.currentTarget;
+                            setEditorFocus(fieldId + "-correction");
                             setCorrectionOpen((current) => ({
                               ...current,
                               [key]: true,
-                            }))
-                          }
+                            }));
+                          }}
                         >
                           Corregir entrega
                         </button>
                         {correctionOpen[key] && (
                           <form
+                            onKeyDown={(event) => {
+                              if (event.key === "Escape" && !isBlocked) {
+                                event.preventDefault();
+                                setCorrectionOpen((current) => ({
+                                  ...current,
+                                  [key]: false,
+                                }));
+                                returnEditorFocus();
+                              }
+                            }}
                             noValidate
                             onSubmit={(event) => {
                               event.preventDefault();
@@ -1143,6 +1227,20 @@ export function DeliveryPanel({
                             <button type="submit" disabled={isBlocked}>
                               Confirmar corrección de entrega
                             </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              disabled={isBlocked}
+                              onClick={() => {
+                                setCorrectionOpen((current) => ({
+                                  ...current,
+                                  [key]: false,
+                                }));
+                                returnEditorFocus();
+                              }}
+                            >
+                              Volver
+                            </button>
                           </form>
                         )}
                       </div>
@@ -1187,9 +1285,11 @@ export function DeliveryPanel({
                         className={`notice ${
                           itemMessage.kind === "uncertain"
                             ? "notice--uncertain"
-                            : "notice--functional-error"
+                            : itemMessage.kind === "success"
+                              ? "notice--success"
+                              : "notice--functional-error"
                         }`}
-                        role="alert"
+                        role={itemMessage.kind === "error" ? "alert" : "status"}
                       >
                         <p>{itemMessage.text}</p>
                         {itemMessage.detail && <p>{itemMessage.detail}</p>}

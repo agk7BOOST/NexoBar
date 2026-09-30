@@ -139,7 +139,7 @@ export function CompleteCancellation({
         unauthorized();
         return;
       }
-      setMessage("No se pudo obtener la protección de la solicitud.");
+      setMessage("No pudimos preparar la cancelación. Intentá nuevamente.");
       setPhase("idle");
       lock(false);
     }
@@ -183,7 +183,7 @@ export function CompleteCancellation({
               {evaluation.blockers.map((code) => (
                 <li key={code}>
                   {cancellationBlockers[code] ??
-                    `Cancelación completa no disponible (${code}). Actualizá el Estado.`}
+                    "Cancelación completa no disponible. Actualizá el estado."}
                 </li>
               ))}
             </ul>

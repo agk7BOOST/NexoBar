@@ -31,8 +31,8 @@ const directProduct = "Bebida E2E directa";
 
 async function login(page: Page, actor: Actor) {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(actor.login);
-  await page.getByLabel("Secreto").fill(actor.secret);
+  await page.getByLabel("Usuario de acceso").fill(actor.login);
+  await page.getByLabel("Contraseña").fill(actor.secret);
   const loginResponse = page.waitForResponse(
     (r) =>
       new URL(r.url()).pathname === "/api/identity-sessions" &&
@@ -54,7 +54,7 @@ async function login(page: Page, actor: Actor) {
 }
 
 async function logout(page: Page) {
-  await page.getByRole("button", { name: "Cambiar persona / salir" }).click();
+  await page.getByRole("button", { name: "Cerrar sesión" }).click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
 }
 
@@ -79,12 +79,12 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
     await login(g, actorG);
     const admin = g.getByRole("region", { name: "Configuración general" });
     for (const name of [contextA, contextB]) {
-      await admin.getByLabel("Nombre operacional del Contexto").fill(name);
+      await admin.getByLabel("Nombre del contexto").fill(name);
       const createResponse = waitPost(
         g,
         /\/api\/operational-configuration\/contexts$/,
       );
-      await admin.getByRole("button", { name: "Crear Contexto" }).click();
+      await admin.getByRole("button", { name: "Crear contexto" }).click();
       const response = await createResponse;
       expect(response.status()).toBe(201);
       const created = (await response.json()) as {
@@ -95,9 +95,7 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
       await expect(
         admin.getByRole("list", { name: "Contextos configurados" }),
       ).toContainText(name);
-      await expect(
-        admin.getByText("Contexto creado correctamente."),
-      ).toBeVisible();
+      await expect(admin.getByText(/Se creó “/)).toBeVisible();
       await expect(admin.getByText(created.id, { exact: true })).toHaveCount(0);
     }
     await expect(
@@ -117,13 +115,17 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
         "Eliminar definitivamente",
       ]) {
         await expect(
-          controls.getByRole("button", { name: action, exact: true }),
+          controls.getByRole("button", {
+            name:
+              action === "Cambiar nombre"
+                ? `Cambiar nombre de ${name}`
+                : `${action} ${name}`,
+            exact: true,
+          }),
         ).toBeEnabled();
       }
     }
-    await expect(
-      g.getByLabel("Contexto para Primera Confirmacion"),
-    ).toHaveCount(0);
+    await expect(g.getByLabel("Contexto del pedido")).toHaveCount(0);
     await expect(
       g.getByRole("button", { name: "Cambiar contexto" }),
     ).toHaveCount(0);
@@ -131,10 +133,8 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
 
     const o = await oContext.newPage();
     await login(o, actorO);
-    const composition = o.getByRole("region", { name: "Composición inicial" });
-    const contextSelector = composition.getByLabel(
-      "Contexto para Primera Confirmacion",
-    );
+    const composition = o.getByRole("region", { name: "Preparar pedido" });
+    const contextSelector = composition.getByLabel("Contexto del pedido");
     await expect(
       contextSelector.getByRole("option", { name: contextA, exact: true }),
     ).toBeAttached();
@@ -147,7 +147,7 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
     await contextSelector.selectOption({ label: contextA });
     await composition
       .getByRole("button", {
-        name: `Agregar ${preparedProduct} a Composición inicial`,
+        name: `Agregar ${preparedProduct} a Preparar pedido`,
       })
       .click();
     const firstRequest = o.waitForRequest(
@@ -291,16 +291,16 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
     await expect(work).toContainText("Listo1");
 
     // A second Order may independently use B.
-    await o.getByRole("button", { name: "Iniciar nuevo Pedido" }).click();
+    await o.getByRole("button", { name: "Iniciar nuevo pedido" }).click();
     const secondComposition = o.getByRole("region", {
-      name: "Composición inicial",
+      name: "Preparar pedido",
     });
     await secondComposition
-      .getByLabel("Contexto para Primera Confirmacion")
+      .getByLabel("Contexto del pedido")
       .selectOption({ label: contextB });
     await secondComposition
       .getByRole("button", {
-        name: `Agregar ${directProduct} a Composición inicial`,
+        name: `Agregar ${directProduct} a Preparar pedido`,
       })
       .click();
     const secondConfirmation = waitPost(
@@ -322,9 +322,9 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
 
     // Re-identify the original Order before fulfilling and freezing it.
     await o
-      .getByRole("textbox", { name: "Referencia operacional", exact: true })
+      .getByRole("textbox", { name: "Referencia del pedido", exact: true })
       .fill(originalReference);
-    await o.getByRole("button", { name: "Buscar Pedido" }).click();
+    await o.getByRole("button", { name: "Buscar pedido" }).click();
     await expect(o.getByLabel("Contexto actual del Pedido")).toHaveText(
       contextB,
     );
@@ -337,10 +337,10 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
         .nth(0),
     ).toContainText(preparedProduct);
     await expect(
-      o.getByRole("button", { name: "Abrir entrega de este Pedido" }),
+      o.getByRole("button", { name: "Abrir entrega de este pedido" }),
     ).toBeVisible();
     await o
-      .getByRole("button", { name: "Abrir entrega de este Pedido" })
+      .getByRole("button", { name: "Abrir entrega de este pedido" })
       .click();
     const delivery = o.getByRole("region", {
       name: `Entrega del Pedido ${originalReference}`,
@@ -355,25 +355,23 @@ test("MVP-FC-CTX-I3 Context configuration, same-Order change, Preparation freshn
     await expect(deliveryItem).toContainText("Entregado1");
 
     const ending = o.getByRole("region", { name: "Liquidación y Cierre" });
-    await ending
-      .getByLabel("Medio de pago declarado")
-      .fill("E2E Context checkpoint");
+    await ending.getByLabel("Medio de pago").fill("E2E Context checkpoint");
     const liquidation = waitPost(
       o,
       /\/api\/order-operations\/orders\/[^/]+\/liquidate-simple$/,
     );
     await ending.getByRole("button", { name: "Liquidar" }).click();
     expect((await liquidation).ok()).toBeTruthy();
-    await expect(ending).toContainText("CongeladoSí");
+    await expect(ending).toContainText("Operación congelada por liquidaciónSí");
     await expect(
       o.getByRole("button", { name: "Cambiar contexto" }),
     ).toHaveCount(0);
 
     // The second Order is still independently identifiable and shares B.
     await o
-      .getByRole("textbox", { name: "Referencia operacional", exact: true })
+      .getByRole("textbox", { name: "Referencia del pedido", exact: true })
       .fill(secondOrder.operationalReference);
-    await o.getByRole("button", { name: "Buscar Pedido" }).click();
+    await o.getByRole("button", { name: "Buscar pedido" }).click();
     await expect(o.getByLabel("Contexto actual del Pedido")).toHaveText(
       contextB,
     );

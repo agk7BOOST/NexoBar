@@ -1,3 +1,4 @@
+import { SensitiveActionDialog } from "../ui/SensitiveActionDialog.tsx";
 import {
   type FormEvent,
   useCallback,
@@ -322,6 +323,7 @@ export function CatalogPanel({
   const [isRenaming, setIsRenaming] = useState(false);
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
   const groupsReadGeneration = useRef(0);
+  const [catalogRefreshRequired, setCatalogRefreshRequired] = useState(false);
   const editorOpener = useRef<HTMLElement | null>(null);
   const [editorRequest, setEditorRequest] = useState<{
     kind: "price" | "preparation" | "group" | "rename" | "delete";
@@ -333,7 +335,15 @@ export function CatalogPanel({
     const editor = document.getElementById(
       `catalog-${editorRequest.kind}-editor`,
     );
-    editor?.focus();
+    const field = editor?.querySelector<HTMLInputElement | HTMLSelectElement>(
+      "input:not([disabled]), select:not([disabled])",
+    );
+    (field ?? editor)?.focus();
+    if (
+      (editorRequest.kind === "price" || editorRequest.kind === "rename") &&
+      field instanceof HTMLInputElement
+    )
+      field.select();
     editor?.scrollIntoView?.({ block: "start" });
   }, [editorRequest]);
 
@@ -351,7 +361,12 @@ export function CatalogPanel({
   }
 
   function returnToProduct() {
-    editorOpener.current?.focus();
+    if (
+      editorOpener.current?.isConnected &&
+      !editorOpener.current.closest("[hidden]")
+    )
+      editorOpener.current.focus();
+    else document.getElementById("products-title")?.focus();
     editorOpener.current?.scrollIntoView?.({ block: "nearest" });
   }
 
@@ -362,6 +377,7 @@ export function CatalogPanel({
         if (generation === readGeneration.current) {
           setLoadedProducts(loadedProducts);
         }
+        return generation === readGeneration.current;
       } catch (error) {
         if (generation !== readGeneration.current) return;
         if (error instanceof CatalogProblemError) {
@@ -376,6 +392,7 @@ export function CatalogPanel({
           }
         }
         setLoadError("No se pudo cargar el listado de productos.");
+        return false;
       } finally {
         if (generation === readGeneration.current) {
           setIsLoading(false);
@@ -487,6 +504,14 @@ export function CatalogPanel({
   const displayedIsLoading = providedIsLoading ?? isLoading;
   const displayedLoadError = providedLoadError ?? loadError;
   const reloadProducts = providedReloadProducts ?? reloadCatalog;
+  async function refreshConfirmedCatalog() {
+    try {
+      const refreshed: unknown = await reloadProducts();
+      setCatalogRefreshRequired(refreshed === false);
+    } catch {
+      setCatalogRefreshRequired(true);
+    }
+  }
   const showSetup =
     providedProducts !== undefined ? providedIsLoading !== true : catalogReady;
 
@@ -558,9 +583,9 @@ export function CatalogPanel({
       }
       setCreationNotice({
         kind: "success",
-        message: "Producto creado correctamente.",
+        message: `Se creó “${intention.request.operationalName}”.`,
       });
-      await reloadProducts();
+      await refreshConfirmedCatalog();
     } catch (error) {
       if (error instanceof CatalogProblemError) {
         if (error.problem.status === 401) {
@@ -653,9 +678,10 @@ export function CatalogPanel({
       setPriceEditor(null);
       setPriceNotice({
         kind: "success",
-        message: `Precio de ${intention.operationalName} actualizado correctamente.`,
+        message: `Se actualizó el precio de “${intention.operationalName}”.`,
       });
-      await reloadProducts();
+      await refreshConfirmedCatalog();
+      returnToProduct();
     } catch (error) {
       if (error instanceof CatalogProblemError) {
         if (error.problem.status === 401) {
@@ -721,7 +747,7 @@ export function CatalogPanel({
     setPriceNotice({
       kind: "uncertain",
       message:
-        "El cambio incierto fue descartado. El resultado previo sigue sin confirmarse; un cambio futuro será una intención nueva.",
+        "Dejaste de reintentar. Esto no deshace la operación; su resultado sigue sin confirmarse.",
     });
   }
 
@@ -757,9 +783,9 @@ export function CatalogPanel({
       setPreparationEditor(null);
       setPreparationNotice({
         kind: "success",
-        message: `Configuración de preparación de ${intention.operationalName} actualizada correctamente.`,
+        message: `Se actualizó la preparación de “${intention.operationalName}”.`,
       });
-      await reloadProducts();
+      await refreshConfirmedCatalog();
     } catch (error) {
       if (error instanceof CatalogProblemError) {
         if (error.problem.status === 401) {
@@ -845,7 +871,7 @@ export function CatalogPanel({
     setPreparationNotice({
       kind: "uncertain",
       message:
-        "La configuración pendiente fue descartada. El resultado previo sigue sin confirmarse; un cambio futuro será una intención nueva.",
+        "Dejaste de reintentar. Esto no deshace la operación; su resultado sigue sin confirmarse.",
     });
   }
 
@@ -863,7 +889,7 @@ export function CatalogPanel({
       setGroupName("");
       setGroupNotice({
         kind: "success",
-        message: "Grupo creado correctamente.",
+        message: `Se creó el grupo “${intention.request.operationalName}”.`,
       });
       await reloadGroups();
     } catch (error) {
@@ -941,9 +967,10 @@ export function CatalogPanel({
       setGroupEditor(null);
       setGroupNoticeForProduct({
         kind: "success",
-        message: `Grupo de ${intention.operationalName} actualizado correctamente.`,
+        message: `Se actualizó el grupo de “${intention.operationalName}”.`,
       });
-      await reloadProducts();
+      await refreshConfirmedCatalog();
+      returnToProduct();
     } catch (error) {
       if (error instanceof CatalogProblemError) {
         if (error.problem.status === 401) {
@@ -1030,9 +1057,10 @@ export function CatalogPanel({
       setRenameEditor(null);
       setRenameNotice({
         kind: "success",
-        message: "Nombre operacional actualizado correctamente.",
+        message: "Se guardó el nuevo nombre del producto.",
       });
-      await reloadProducts();
+      await refreshConfirmedCatalog();
+      returnToProduct();
     } catch (error) {
       if (error instanceof CatalogProblemError) {
         if (error.problem.status === 401) {
@@ -1111,10 +1139,10 @@ export function CatalogPanel({
         kind: "success",
         message:
           intention.action === "retire"
-            ? "Producto retirado correctamente."
-            : "Producto reactivado correctamente; ahora está disponible.",
+            ? `Se retiró “${intention.operationalName}”.`
+            : `“${intention.operationalName}” está activo y disponible.`,
       });
-      await reloadProducts();
+      await refreshConfirmedCatalog();
     } catch (error) {
       if (error instanceof CatalogProblemError) {
         if (error.problem.status === 401) {
@@ -1178,9 +1206,10 @@ export function CatalogPanel({
       setDeleteCandidate(null);
       setDeleteNotice({
         kind: "success",
-        message: "Producto eliminado definitivamente del Catálogo.",
+        message: `Se eliminó definitivamente “${intention.operationalName}”.`,
       });
-      await reloadProducts();
+      await refreshConfirmedCatalog();
+      returnToProduct();
     } catch (error) {
       if (error instanceof CatalogProblemError) {
         if (error.problem.status === 401) {
@@ -1223,8 +1252,12 @@ export function CatalogPanel({
 
   async function handleDelete(product: Product) {
     if (isDeleting || uncertainDelete !== null) return;
+    setIsDeleting(true);
     const antiforgeryToken = await prepareMutation(setDeleteNotice);
-    if (antiforgeryToken === null) return;
+    if (antiforgeryToken === null) {
+      setIsDeleting(false);
+      return;
+    }
     await submitDelete({
       productId: product.id,
       operationalName: product.operationalName,
@@ -1263,9 +1296,7 @@ export function CatalogPanel({
           Grupos
         </h2>
         <form onSubmit={(event) => void handleGroupCreation(event)}>
-          <label htmlFor="group-operational-name">
-            Nombre operacional del Grupo
-          </label>
+          <label htmlFor="group-operational-name">Nombre del grupo</label>
           <input
             id="group-operational-name"
             value={groupName}
@@ -1280,7 +1311,10 @@ export function CatalogPanel({
           </button>
         </form>
         {groupNotice && (
-          <p className={`notice notice--${groupNotice.kind}`} role="status">
+          <p
+            className={`notice notice--${groupNotice.kind}`}
+            role={groupNotice.kind === "functional-error" ? "alert" : "status"}
+          >
             {groupNotice.message}
           </p>
         )}
@@ -1316,8 +1350,12 @@ export function CatalogPanel({
                   });
                 }}
               >
-                Descartar creación incierta
+                Dejar de reintentar
               </button>
+              <p>
+                Esto no deshace la operación. Su resultado sigue sin
+                confirmarse.
+              </p>
             </div>
           </div>
         )}
@@ -1341,7 +1379,7 @@ export function CatalogPanel({
           className="paired-fields-form"
           onSubmit={(event) => void handleCreate(event)}
         >
-          <label htmlFor="operational-name">Nombre operacional</label>
+          <label htmlFor="operational-name">Nombre</label>
           <input
             id="operational-name"
             name="operationalName"
@@ -1375,7 +1413,12 @@ export function CatalogPanel({
         </form>
 
         {creationNotice && (
-          <p className={`notice notice--${creationNotice.kind}`} role="status">
+          <p
+            className={`notice notice--${creationNotice.kind}`}
+            role={
+              creationNotice.kind === "functional-error" ? "alert" : "status"
+            }
+          >
             {creationNotice.message}
           </p>
         )}
@@ -1421,8 +1464,12 @@ export function CatalogPanel({
                 onClick={discardUncertainCreation}
                 disabled={isCreating}
               >
-                Descartar e iniciar nueva
+                Dejar de reintentar
               </button>
+              <p>
+                Esto no deshace la operación. Su resultado sigue sin
+                confirmarse.
+              </p>
             </div>
           </div>
         )}
@@ -1435,7 +1482,9 @@ export function CatalogPanel({
       {showSetup && products.length === 0 && setupSections}
       <section className="panel" aria-labelledby="products-title">
         <div className="section-heading">
-          <h2 id="products-title">Productos</h2>
+          <h2 id="products-title" tabIndex={-1}>
+            Productos
+          </h2>
           {products.length > 0 && (
             <div className="catalog-section-actions">
               <button
@@ -1476,14 +1525,19 @@ export function CatalogPanel({
         </div>
 
         {priceNotice && (
-          <p className={`notice notice--${priceNotice.kind}`} role="status">
+          <p
+            className={`notice notice--${priceNotice.kind}`}
+            role={priceNotice.kind === "functional-error" ? "alert" : "status"}
+          >
             {priceNotice.message}
           </p>
         )}
         {preparationNotice && (
           <p
             className={`notice notice--${preparationNotice.kind}`}
-            role="status"
+            role={
+              preparationNotice.kind === "functional-error" ? "alert" : "status"
+            }
           >
             {preparationNotice.message}
           </p>
@@ -1491,23 +1545,38 @@ export function CatalogPanel({
         {groupNoticeForProduct && (
           <p
             className={`notice notice--${groupNoticeForProduct.kind}`}
-            role="status"
+            role={
+              groupNoticeForProduct.kind === "functional-error"
+                ? "alert"
+                : "status"
+            }
           >
             {groupNoticeForProduct.message}
           </p>
         )}
         {renameNotice && (
-          <p className={`notice notice--${renameNotice.kind}`} role="status">
+          <p
+            className={`notice notice--${renameNotice.kind}`}
+            role={renameNotice.kind === "functional-error" ? "alert" : "status"}
+          >
             {renameNotice.message}
           </p>
         )}
         {lifecycleNotice && (
-          <p className={`notice notice--${lifecycleNotice.kind}`} role="status">
+          <p
+            className={`notice notice--${lifecycleNotice.kind}`}
+            role={
+              lifecycleNotice.kind === "functional-error" ? "alert" : "status"
+            }
+          >
             {lifecycleNotice.message}
           </p>
         )}
-        {deleteNotice && (
-          <p className={`notice notice--${deleteNotice.kind}`} role="status">
+        {deleteNotice && (!deleteCandidate || uncertainDelete !== null) && (
+          <p
+            className={`notice notice--${deleteNotice.kind}`}
+            role={deleteNotice.kind === "functional-error" ? "alert" : "status"}
+          >
             {deleteNotice.message}
           </p>
         )}
@@ -1559,8 +1628,12 @@ export function CatalogPanel({
                 onClick={discardUncertainPriceChange}
                 disabled={isChangingPrice}
               >
-                Descartar cambio incierto
+                Dejar de reintentar
               </button>
+              <p>
+                Esto no deshace la operación. Su resultado sigue sin
+                confirmarse.
+              </p>
             </div>
           </div>
         )}
@@ -1616,12 +1689,29 @@ export function CatalogPanel({
                 onClick={discardUncertainPreparationChange}
                 disabled={isChangingPreparation}
               >
-                Descartar configuración incierta
+                Dejar de reintentar
               </button>
+              <p>
+                Esto no deshace la operación. Su resultado sigue sin
+                confirmarse.
+              </p>
             </div>
           </div>
         )}
 
+        {catalogRefreshRequired && (
+          <div role="status">
+            <p>
+              El cambio está confirmado, pero no pudimos actualizar la lista.
+            </p>
+            <button
+              type="button"
+              onClick={() => void refreshConfirmedCatalog()}
+            >
+              Reintentar consulta
+            </button>
+          </div>
+        )}
         {displayedIsLoading && <p>Cargando productos…</p>}
         {!displayedIsLoading && displayedLoadError && (
           <p role="alert">{displayedLoadError}</p>
@@ -1640,23 +1730,39 @@ export function CatalogPanel({
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Nombre</th>
-                  <th scope="col">Precio</th>
-                  <th scope="col">Ciclo de vida</th>
-                  <th scope="col">Disponibilidad temporal</th>
-                  <th scope="col">Grupo</th>
-                  <th scope="col">Preparación</th>
-                  <th scope="col">Acciones</th>
+                  <th scope="col" id="catalog-column-name">
+                    Nombre
+                  </th>
+                  <th scope="col" id="catalog-column-price">
+                    Precio
+                  </th>
+                  <th scope="col" id="catalog-column-lifecycle">
+                    Ciclo de vida
+                  </th>
+                  <th scope="col" id="catalog-column-availability">
+                    Disponibilidad temporal
+                  </th>
+                  <th scope="col" id="catalog-column-group">
+                    Grupo
+                  </th>
+                  <th scope="col" id="catalog-column-preparation">
+                    Preparación
+                  </th>
+                  <th scope="col" id="catalog-column-actions">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {products.map((product) => (
-                  <tr key={product.id}>
-                    <td data-label="Producto">
+                  <tr key={product.id} aria-label={product.operationalName}>
+                    <td headers="catalog-column-name" data-label="Producto">
                       <strong>{product.operationalName}</strong>
                     </td>
-                    <td data-label="Precio">{product.price}</td>
-                    <td data-label="Estado">
+                    <td headers="catalog-column-price" data-label="Precio">
+                      {product.price}
+                    </td>
+                    <td headers="catalog-column-lifecycle" data-label="Estado">
                       <span
                         aria-label={`Estado de ciclo de vida: ${product.isActive ? "Activo" : "Retirado"}`}
                       >
@@ -1667,7 +1773,10 @@ export function CatalogPanel({
                         )}
                       </span>
                     </td>
-                    <td data-label="Disponibilidad">
+                    <td
+                      headers="catalog-column-availability"
+                      data-label="Disponibilidad"
+                    >
                       <span
                         aria-label={`Estado de disponibilidad: ${product.isAvailable ? "Disponible" : "No disponible"}`}
                       >
@@ -1689,18 +1798,22 @@ export function CatalogPanel({
                         )}
                       </span>
                     </td>
-                    <td data-label="Grupo">
+                    <td headers="catalog-column-group" data-label="Grupo">
                       {product.groupId == null
                         ? "Sin Grupo"
                         : (groups.find((group) => group.id === product.groupId)
                             ?.operationalName ?? "Grupo no disponible")}
                     </td>
-                    <td data-label="Preparación">
+                    <td
+                      headers="catalog-column-preparation"
+                      data-label="Preparación"
+                    >
                       {product.requiresPreparation
                         ? `Requiere preparación: ${preparationDestinationLabel(product.preparationResponsibilityId)}`
                         : "No requiere preparación"}
                     </td>
                     <td
+                      headers="catalog-column-actions"
                       data-label="Acciones"
                       data-product-name={product.operationalName}
                     >
@@ -1780,7 +1893,7 @@ export function CatalogPanel({
                       )}
                       <button
                         type="button"
-                        className="secondary-button"
+                        className="danger-button"
                         onClick={() => {
                           setDeleteCandidate(product);
                           focusOpenedEditor("delete");
@@ -1802,6 +1915,13 @@ export function CatalogPanel({
           <form
             className="price-change-form"
             id="catalog-price-editor"
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !isChangingPrice) {
+                event.preventDefault();
+                setPriceEditor(null);
+                returnToProduct();
+              }
+            }}
             tabIndex={-1}
             onSubmit={(event) => void handlePriceChange(event)}
             aria-label={`Cambiar precio de ${priceEditor.operationalName}`}
@@ -1832,7 +1952,7 @@ export function CatalogPanel({
             />
             <div className="intention-actions">
               <button type="submit" disabled={isChangingPrice}>
-                {isChangingPrice ? "Cambiando…" : "Confirmar cambio de Precio"}
+                {isChangingPrice ? "Cambiando…" : "Guardar precio"}
               </button>
               <button
                 className="secondary-button"
@@ -1853,6 +1973,13 @@ export function CatalogPanel({
           <form
             className="price-change-form"
             id="catalog-preparation-editor"
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !isChangingPreparation) {
+                event.preventDefault();
+                setPreparationEditor(null);
+                returnToProduct();
+              }
+            }}
             tabIndex={-1}
             onSubmit={(event) => void handlePreparationChange(event)}
             aria-label={`Configurar preparación de ${preparationEditor.operationalName}`}
@@ -1989,8 +2116,12 @@ export function CatalogPanel({
                   setGroupEditor(null);
                 }}
               >
-                Descartar cambio incierto
+                Dejar de reintentar
               </button>
+              <p>
+                Esto no deshace la operación. Su resultado sigue sin
+                confirmarse.
+              </p>
             </div>
           </div>
         )}
@@ -1999,6 +2130,13 @@ export function CatalogPanel({
           <form
             className="price-change-form"
             id="catalog-group-editor"
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !isChangingGroup) {
+                event.preventDefault();
+                setGroupEditor(null);
+                returnToProduct();
+              }
+            }}
             tabIndex={-1}
             onSubmit={(event) => void handleGroupChange(event)}
             aria-label={`Configurar Grupo de ${groupEditor.operationalName}`}
@@ -2083,8 +2221,12 @@ export function CatalogPanel({
                   setRenameEditor(null);
                 }}
               >
-                Descartar renombre incierto
+                Dejar de reintentar
               </button>
+              <p>
+                Esto no deshace la operación. Su resultado sigue sin
+                confirmarse.
+              </p>
             </div>
           </div>
         )}
@@ -2093,6 +2235,13 @@ export function CatalogPanel({
           <form
             className="price-change-form"
             id="catalog-rename-editor"
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !isRenaming) {
+                event.preventDefault();
+                setRenameEditor(null);
+                returnToProduct();
+              }
+            }}
             tabIndex={-1}
             onSubmit={(event) => void handleRename(event)}
             aria-label={`Renombrar ${renameEditor.observedName}`}
@@ -2101,9 +2250,7 @@ export function CatalogPanel({
               <span className="field-label">Nombre observado</span>
               <strong>{renameEditor.observedName}</strong>
             </div>
-            <label htmlFor="new-product-operational-name">
-              Nuevo nombre operacional
-            </label>
+            <label htmlFor="new-product-operational-name">Nuevo nombre</label>
             <input
               id="new-product-operational-name"
               value={renameEditor.newName}
@@ -2173,42 +2320,40 @@ export function CatalogPanel({
                 onClick={() => setUncertainLifecycle(null)}
                 disabled={isChangingLifecycle}
               >
-                Descartar acción incierta
+                Dejar de reintentar
               </button>
+              <p>
+                Esto no deshace la operación. Su resultado sigue sin
+                confirmarse.
+              </p>
             </div>
           </div>
         )}
         {deleteCandidate && uncertainDelete === null && (
-          <div
-            role="alertdialog"
-            aria-label="Confirmar eliminación definitiva de Producto"
-            id="catalog-delete-editor"
-            tabIndex={-1}
-          >
-            <p>
-              Eliminar definitivamente {deleteCandidate.operationalName} quita
-              su configuración del Catálogo. Sólo es posible si nunca participó
-              en un Pedido confirmado. Esta acción no se puede deshacer.
-            </p>
-            <button
-              type="button"
-              disabled={isDeleting}
-              onClick={() => void handleDelete(deleteCandidate)}
-            >
-              Confirmar eliminación definitiva
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={isDeleting}
-              onClick={() => {
-                setDeleteCandidate(null);
-                returnToProduct();
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
+          <SensitiveActionDialog
+            objectName={deleteCandidate.operationalName}
+            consequence="Se quitará su configuración del catálogo. Sólo puede eliminarse si nunca participó en un pedido confirmado."
+            busy={isDeleting}
+            fallbackFocusId="products-title"
+            feedback={
+              deleteNotice && (
+                <p
+                  role={
+                    deleteNotice.kind === "functional-error"
+                      ? "alert"
+                      : "status"
+                  }
+                >
+                  {deleteNotice.message}
+                </p>
+              )
+            }
+            onConfirm={() => void handleDelete(deleteCandidate)}
+            onClose={() => {
+              setDeleteCandidate(null);
+              returnToProduct();
+            }}
+          />
         )}
         {uncertainDelete && (
           <div
@@ -2237,8 +2382,11 @@ export function CatalogPanel({
                 setDeleteCandidate(null);
               }}
             >
-              Descartar intención incierta
+              Dejar de reintentar
             </button>
+            <p>
+              Esto no deshace la operación. Su resultado sigue sin confirmarse.
+            </p>
           </div>
         )}
       </section>

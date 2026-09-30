@@ -1,3 +1,4 @@
+import { SensitiveActionDialog } from "../ui/SensitiveActionDialog.tsx";
 import { ConfigurationLifecycleControls } from "./ConfigurationLifecycleControls.tsx";
 import {
   type FormEvent,
@@ -109,6 +110,7 @@ interface CredentialIntention {
 }
 
 interface GeneralConfigurationPanelProps {
+  onOwnAccessChanged?: () => void;
   currentIdentityId: string;
   onCurrentIdentityChanged: () => Promise<void>;
   onUnauthorized: () => void;
@@ -223,6 +225,7 @@ function reconcileIdentity(
 }
 
 export function GeneralConfigurationPanel({
+  onOwnAccessChanged,
   currentIdentityId,
   onCurrentIdentityChanged,
   onUnauthorized,
@@ -287,6 +290,8 @@ export function GeneralConfigurationPanel({
   const [enablementNotice, setEnablementNotice] = useState<Notice | null>(null);
   const [uncertainEnablementMutation, setUncertainEnablementMutation] =
     useState<EnablementMutationIntention | null>(null);
+  const [deactivateTarget, setDeactivateTarget] =
+    useState<AdministrativeIdentity | null>(null);
   const [credentialEditor, setCredentialEditor] =
     useState<CredentialEditor | null>(null);
   const [isSettingCredential, setIsSettingCredential] = useState(false);
@@ -431,7 +436,7 @@ export function GeneralConfigurationPanel({
       if (formMatchesIntention) setCreationName("");
       setCreationNotice({
         kind: "success",
-        message: "Identidad creada correctamente.",
+        message: `Se creó la identidad “${created.operationalName}”.`,
       });
     } catch (error) {
       if (error instanceof IdentityAdministrationProblemError) {
@@ -493,11 +498,13 @@ export function GeneralConfigurationPanel({
       if (formMatchesIntention) {
         setPreparationResponsibilityName("");
       }
+      const refreshed = await reloadPreparationResponsibilities();
       setPreparationResponsibilityCreationNotice({
         kind: "success",
-        message: "Destino de preparación creado correctamente.",
+        message: refreshed
+          ? `Se creó el destino “${intention.request.operationalName}”.`
+          : `Se creó el destino “${intention.request.operationalName}”, pero no pudimos actualizar la lista.`,
       });
-      await reloadPreparationResponsibilities();
     } catch (error) {
       if (error instanceof IdentityAdministrationProblemError) {
         if (error.problem.status === 401) {
@@ -569,7 +576,7 @@ export function GeneralConfigurationPanel({
       if (formMatchesIntention) setRenameEditor(null);
       setRenameNotice({
         kind: "success",
-        message: `Nombre operacional de ${intention.currentOperationalName} actualizado correctamente.`,
+        message: `“${intention.currentOperationalName}” ahora se llama “${renamed.operationalName}”.`,
       });
     } catch (error) {
       if (error instanceof IdentityAdministrationProblemError) {
@@ -651,9 +658,10 @@ export function GeneralConfigurationPanel({
         setIdentities((current) => reconcileIdentity(current, response));
       }
       setUncertainMutation(null);
+      setDeactivateTarget(null);
       setMutationNotice({
         kind: "success",
-        message: `${mutationLabel(intention)} realizada correctamente.`,
+        message: `${mutationLabel(intention)} confirmada.`,
       });
       if (intention.identityId === currentIdentityId) {
         await onCurrentIdentityChanged();
@@ -696,8 +704,12 @@ export function GeneralConfigurationPanel({
     responsibility?: FunctionalResponsibility,
   ) {
     if (isMutatingIdentity || uncertainMutation !== null) return;
+    setIsMutatingIdentity(true);
     const antiforgeryToken = await prepareMutation(setMutationNotice);
-    if (antiforgeryToken === null) return;
+    if (antiforgeryToken === null) {
+      setIsMutatingIdentity(false);
+      return;
+    }
     await submitIdentityMutation({
       kind,
       identityId: identity.identityId,
@@ -732,7 +744,7 @@ export function GeneralConfigurationPanel({
       setUncertainEnablementMutation(null);
       setEnablementNotice({
         kind: "success",
-        message: `${enablementMutationLabel(intention)} realizada correctamente.`,
+        message: `${enablementMutationLabel(intention)} confirmada.`,
       });
     } catch (error) {
       if (error instanceof IdentityAdministrationProblemError) {
@@ -790,6 +802,62 @@ export function GeneralConfigurationPanel({
     setUncertainCredential(null);
   }
 
+  const deactivateTargetId = deactivateTarget?.identityId;
+  useEffect(() => {
+    if (!deactivateTargetId) return;
+    const opener = document.activeElement;
+    document.getElementById("identity-deactivation-title")?.focus();
+    return () => {
+      queueMicrotask(() => {
+        if (
+          opener instanceof HTMLElement &&
+          opener.isConnected &&
+          !opener.closest("[hidden]")
+        )
+          opener.focus();
+      });
+    };
+  }, [deactivateTargetId]);
+  const renameTargetId = renameEditor?.identityId;
+  const credentialTargetId = credentialEditor?.identityId;
+  useEffect(() => {
+    if (!renameTargetId) return;
+    const opener = document.activeElement;
+    const input = document.getElementById(
+      "renamed-identity-operational-name",
+    ) as HTMLInputElement | null;
+    input?.focus();
+    input?.select();
+    return () => {
+      queueMicrotask(() => {
+        if (
+          opener instanceof HTMLElement &&
+          opener.isConnected &&
+          !opener.closest("[hidden]")
+        )
+          opener.focus();
+      });
+    };
+  }, [renameTargetId]);
+  useEffect(() => {
+    if (!credentialTargetId) return;
+    const opener = document.activeElement;
+    (
+      document.getElementById("credential-login-identifier") ??
+      document.getElementById("credential-secret")
+    )?.focus();
+    return () => {
+      queueMicrotask(() => {
+        if (
+          opener instanceof HTMLElement &&
+          opener.isConnected &&
+          !opener.closest("[hidden]")
+        )
+          opener.focus();
+      });
+    };
+  }, [credentialTargetId]);
+
   async function submitCredential(intention: CredentialIntention) {
     setCredentialNotice(null);
     setIsSettingCredential(true);
@@ -804,10 +872,10 @@ export function GeneralConfigurationPanel({
       clearCredentialEditor();
       setCredentialNotice({
         kind: "success",
-        message: "Credencial actualizada correctamente.",
+        message: `Se actualizó el acceso de “${response.operationalName}”.`,
       });
       if (intention.identityId === currentIdentityId) {
-        onUnauthorized();
+        (onOwnAccessChanged ?? onUnauthorized)();
       }
     } catch (error) {
       if (error instanceof IdentityAdministrationProblemError) {
@@ -827,8 +895,8 @@ export function GeneralConfigurationPanel({
             "identities_and_capabilities.idempotency_conflict"
               ? messageForProblem(error.problem, "rename")
               : error.problem.status === 409
-                ? "El identificador de acceso ya está en uso."
-                : "Revisá el identificador de acceso y la clave secreta.",
+                ? "El usuario de acceso ya está en uso."
+                : "Revisá el usuario de acceso y la contraseña.",
         });
         return;
       }
@@ -836,7 +904,7 @@ export function GeneralConfigurationPanel({
       setCredentialNotice({
         kind: "uncertain",
         message:
-          "Resultado no confirmado: no sabemos si la credencial fue actualizada.",
+          "No pudimos confirmar si se actualizó el acceso. Reintentá esta misma operación; no se duplicará.",
       });
     } finally {
       setIsSettingCredential(false);
@@ -852,7 +920,7 @@ export function GeneralConfigurationPanel({
     ) {
       setCredentialNotice({
         kind: "functional-error",
-        message: "Ingresá un identificador de acceso.",
+        message: "Ingresá un usuario de acceso.",
       });
       return;
     }
@@ -933,9 +1001,11 @@ export function GeneralConfigurationPanel({
       className="panel general-configuration-panel"
       aria-labelledby="general-configuration-title"
     >
-      <h2 id="general-configuration-title">Configuración general</h2>
+      <h2 id="general-configuration-title" tabIndex={-1}>
+        Configuración general
+      </h2>
       <form onSubmit={(event) => void handleCreate(event)}>
-        <label htmlFor="identity-operational-name">Nombre operacional</label>
+        <label htmlFor="identity-operational-name">Nombre</label>
         <input
           id="identity-operational-name"
           name="operationalName"
@@ -957,7 +1027,10 @@ export function GeneralConfigurationPanel({
       </form>
 
       {creationNotice && (
-        <p className={`notice notice--${creationNotice.kind}`} role="status">
+        <p
+          className={`notice notice--${creationNotice.kind}`}
+          role={creationNotice.kind === "functional-error" ? "alert" : "status"}
+        >
           {creationNotice.message}
         </p>
       )}
@@ -1020,21 +1093,26 @@ export function GeneralConfigurationPanel({
               onClick={() => setUncertainCreation(null)}
               disabled={isCreating}
             >
-              Descartar e iniciar nueva
+              Dejar de reintentar
             </button>
+            <p>
+              Esto no deshace la operación. Su resultado sigue sin confirmarse.
+            </p>
           </div>
         </div>
       )}
 
       <section aria-labelledby="preparation-responsibilities-title">
-        <h3 id="preparation-responsibilities-title">Destinos de preparación</h3>
+        <h3 id="preparation-responsibilities-title" tabIndex={-1}>
+          Destinos de preparación
+        </h3>
         <form
           onSubmit={(event) =>
             void handlePreparationResponsibilityCreate(event)
           }
         >
           <label htmlFor="preparation-responsibility-operational-name">
-            Nombre operacional del destino de preparación
+            Nombre del destino de preparación
           </label>
           <input
             id="preparation-responsibility-operational-name"
@@ -1067,7 +1145,12 @@ export function GeneralConfigurationPanel({
         {preparationResponsibilityCreationNotice && (
           <p
             className={`notice notice--${preparationResponsibilityCreationNotice.kind}`}
-            role="status"
+            role={
+              preparationResponsibilityCreationNotice.kind ===
+              "functional-error"
+                ? "alert"
+                : "status"
+            }
           >
             {preparationResponsibilityCreationNotice.message}
           </p>
@@ -1114,8 +1197,12 @@ export function GeneralConfigurationPanel({
                   destinationLifecyclePending
                 }
               >
-                Descartar e iniciar nueva
+                Dejar de reintentar
               </button>
+              <p>
+                Esto no deshace la operación. Su resultado sigue sin
+                confirmarse.
+              </p>
             </div>
           </div>
         )}
@@ -1125,7 +1212,15 @@ export function GeneralConfigurationPanel({
         )}
         {!isPreparationResponsibilitiesLoading &&
           preparationResponsibilitiesError && (
-            <p role="alert">{preparationResponsibilitiesError}</p>
+            <div role="alert">
+              <p>{preparationResponsibilitiesError}</p>
+              <button
+                type="button"
+                onClick={() => void reloadPreparationResponsibilities()}
+              >
+                Reintentar consulta
+              </button>
+            </div>
           )}
         {!isPreparationResponsibilitiesLoading &&
           !preparationResponsibilitiesError &&
@@ -1147,6 +1242,12 @@ export function GeneralConfigurationPanel({
                   }
                   onPendingChange={setDestinationLifecyclePending}
                   onReload={reloadPreparationResponsibilities}
+                  onResult={(message) =>
+                    setPreparationResponsibilityCreationNotice({
+                      kind: "success",
+                      message,
+                    })
+                  }
                   onUnauthorized={onUnauthorized}
                   onForbidden={retireForbiddenState}
                 />
@@ -1173,17 +1274,28 @@ export function GeneralConfigurationPanel({
         </button>
       </div>
       {renameNotice && (
-        <p className={`notice notice--${renameNotice.kind}`} role="status">
+        <p
+          className={`notice notice--${renameNotice.kind}`}
+          role={renameNotice.kind === "functional-error" ? "alert" : "status"}
+        >
           {renameNotice.message}
         </p>
       )}
-      {mutationNotice && (
-        <p className={`notice notice--${mutationNotice.kind}`} role="status">
+      {mutationNotice && (!deleteTarget || uncertainMutation !== null) && (
+        <p
+          className={`notice notice--${mutationNotice.kind}`}
+          role={mutationNotice.kind === "functional-error" ? "alert" : "status"}
+        >
           {mutationNotice.message}
         </p>
       )}
       {enablementNotice && (
-        <p className={`notice notice--${enablementNotice.kind}`} role="status">
+        <p
+          className={`notice notice--${enablementNotice.kind}`}
+          role={
+            enablementNotice.kind === "functional-error" ? "alert" : "status"
+          }
+        >
           {enablementNotice.message}
         </p>
       )}
@@ -1259,9 +1371,7 @@ export function GeneralConfigurationPanel({
                 </span>
               </p>
               {selectedIdentity.loginIdentifier && (
-                <p>
-                  Identificador de acceso: {selectedIdentity.loginIdentifier}
-                </p>
+                <p>Usuario de acceso: {selectedIdentity.loginIdentifier}</p>
               )}
             </div>
             <button
@@ -1304,13 +1414,13 @@ export function GeneralConfigurationPanel({
                         isMutatingIdentity || uncertainMutation !== null
                       }
                       aria-label={
-                        (isAssigned ? "Revocar " : "Asignar ") +
+                        (isAssigned ? "Quitar " : "Asignar ") +
                         responsibilityLabels[responsibility] +
                         " a " +
                         selectedIdentity.operationalName
                       }
                     >
-                      {isAssigned ? "Revocar" : "Asignar"}
+                      {isAssigned ? "Quitar" : "Asignar"}
                     </button>
                   </li>
                 );
@@ -1319,7 +1429,7 @@ export function GeneralConfigurationPanel({
           </section>
 
           <section className="identity-detail-group">
-            <h4>Habilitaciones de preparación</h4>
+            <h4>Destinos habilitados</h4>
             <p>
               Un destino de preparación es un lugar de trabajo, no un cargo ni
               una persona. Esta identidad puede atender únicamente los destinos
@@ -1333,8 +1443,7 @@ export function GeneralConfigurationPanel({
             <ul
               className="identity-detail-actions"
               aria-label={
-                "Habilitaciones de preparación de " +
-                selectedIdentity.operationalName
+                "Destinos habilitados de " + selectedIdentity.operationalName
               }
             >
               {preparationResponsibilities
@@ -1374,16 +1483,16 @@ export function GeneralConfigurationPanel({
                         }
                         aria-label={
                           (isEnabled
-                            ? "Revocar habilitación "
-                            : "Otorgar habilitación ") +
+                            ? "Quitar habilitación "
+                            : "Habilitar destino ") +
                           responsibility.operationalName +
                           " a " +
                           selectedIdentity.operationalName
                         }
                       >
                         {isEnabled
-                          ? "Revocar habilitación"
-                          : "Otorgar habilitación"}
+                          ? "Quitar habilitación"
+                          : "Habilitar destino"}
                       </button>
                     </li>
                   );
@@ -1415,10 +1524,9 @@ export function GeneralConfigurationPanel({
                 className="secondary-button"
                 type="button"
                 onClick={() =>
-                  void startIdentityMutation(
-                    selectedIdentity.isActive ? "deactivate" : "activate",
-                    selectedIdentity,
-                  )
+                  selectedIdentity.isActive
+                    ? setDeactivateTarget(selectedIdentity)
+                    : void startIdentityMutation("activate", selectedIdentity)
                 }
                 disabled={isMutatingIdentity || uncertainMutation !== null}
                 aria-label={
@@ -1449,12 +1557,15 @@ export function GeneralConfigurationPanel({
                 }}
                 disabled={isSettingCredential || uncertainCredential !== null}
                 aria-label={
-                  "Configurar credencial de " + selectedIdentity.operationalName
+                  (selectedIdentity.hasLocalCredential
+                    ? "Cambiar acceso de "
+                    : "Configurar acceso de ") +
+                  selectedIdentity.operationalName
                 }
               >
                 {selectedIdentity.hasLocalCredential
-                  ? "Reemplazar credencial"
-                  : "Configurar credencial"}
+                  ? "Cambiar acceso"
+                  : "Configurar acceso"}
               </button>
               <button
                 className="secondary-button"
@@ -1477,7 +1588,7 @@ export function GeneralConfigurationPanel({
               </button>
               <button
                 type="button"
-                className="secondary-button"
+                className="danger-button"
                 onClick={() => setDeleteTarget(selectedIdentity)}
                 disabled={isMutatingIdentity || uncertainMutation !== null}
                 aria-label={
@@ -1491,41 +1602,82 @@ export function GeneralConfigurationPanel({
         </section>
       )}
 
-      {deleteTarget && (
+      {deactivateTarget && (
         <section
-          role="region"
-          aria-label={`Confirmar eliminación de ${deleteTarget.operationalName}`}
+          aria-label={`Confirmar desactivación de ${deactivateTarget.operationalName}`}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Escape" &&
+              !isMutatingIdentity &&
+              !uncertainMutation
+            )
+              setDeactivateTarget(null);
+          }}
         >
-          <h3>Eliminar definitivamente {deleteTarget.operationalName}</h3>
+          <h3 id="identity-deactivation-title" tabIndex={-1}>
+            Desactivar “{deactivateTarget.operationalName}”
+          </h3>
           <p>
-            Se quitará la identidad de la configuración actual. Solo puede
-            eliminarse si no existen operaciones registradas que deban conservar
-            su atribución. El servidor comprobará la elegibilidad.
+            No podrá operar y se cerrarán sus sesiones. Su identidad y las
+            operaciones registradas permanecen.
           </p>
+          {deactivateTarget.identityId === currentIdentityId && (
+            <p>Estás desactivando tu propio acceso. Esta sesión se cerrará.</p>
+          )}
+          <button
+            type="button"
+            className="danger-button"
+            disabled={isMutatingIdentity || uncertainMutation !== null}
+            onClick={() =>
+              void startIdentityMutation("deactivate", deactivateTarget)
+            }
+          >
+            Confirmar desactivación
+          </button>
           <button
             type="button"
             disabled={isMutatingIdentity || uncertainMutation !== null}
-            onClick={() => void startIdentityMutation("delete", deleteTarget)}
+            onClick={() => setDeactivateTarget(null)}
           >
-            Confirmar eliminación definitiva
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => setDeleteTarget(null)}
-          >
-            Cancelar
+            Volver
           </button>
         </section>
+      )}
+      {deleteTarget && uncertainMutation === null && (
+        <SensitiveActionDialog
+          objectName={deleteTarget.operationalName}
+          consequence="Se quitará esta identidad y su acceso de la configuración actual. Sólo puede eliminarse si no tiene operaciones cuya atribución deba conservarse."
+          busy={isMutatingIdentity}
+          fallbackFocusId="general-configuration-title"
+          feedback={
+            mutationNotice && (
+              <p
+                role={
+                  mutationNotice.kind === "functional-error"
+                    ? "alert"
+                    : "status"
+                }
+              >
+                {mutationNotice.message}
+              </p>
+            )
+          }
+          onConfirm={() => void startIdentityMutation("delete", deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
+        />
       )}
 
       {renameEditor && uncertainRename === null && (
         <form
           onSubmit={(event) => void handleRename(event)}
-          aria-label="Cambiar nombre operacional"
+          aria-label="Cambiar nombre"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !isRenaming && !uncertainRename)
+              setRenameEditor(null);
+          }}
         >
           <label htmlFor="renamed-identity-operational-name">
-            Nuevo nombre operacional
+            Nuevo nombre
           </label>
           <input
             id="renamed-identity-operational-name"
@@ -1556,38 +1708,52 @@ export function GeneralConfigurationPanel({
       )}
 
       {credentialNotice && (
-        <p className={`notice notice--${credentialNotice.kind}`} role="status">
+        <p
+          className={`notice notice--${credentialNotice.kind}`}
+          role={
+            credentialNotice.kind === "functional-error" ? "alert" : "status"
+          }
+        >
           {credentialNotice.message}
         </p>
       )}
       {credentialEditor && uncertainCredential === null && (
         <form
           onSubmit={(event) => void handleCredential(event)}
-          aria-label={`${credentialEditor.hasLocalCredential ? "Reemplazar" : "Configurar"} acceso de ${credentialEditor.operationalName}`}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Escape" &&
+              !isSettingCredential &&
+              !uncertainCredential
+            )
+              clearCredentialEditor();
+          }}
+          aria-label={`${credentialEditor.hasLocalCredential ? "Cambiar" : "Configurar"} acceso de ${credentialEditor.operationalName}`}
         >
           <h3>
-            {credentialEditor.hasLocalCredential ? "Reemplazar" : "Configurar"}{" "}
+            {credentialEditor.hasLocalCredential ? "Cambiar" : "Configurar"}{" "}
             acceso de {credentialEditor.operationalName}
           </h3>
           {credentialEditor.hasLocalCredential && (
             <p>
-              Identificador vigente:{" "}
+              Usuario de acceso actual:{" "}
               {credentialEditor.currentLoginIdentifier || "no disponible"}
             </p>
           )}
           <p>
             {credentialEditor.hasLocalCredential
               ? "Al guardar, se revocarán todas las sesiones de esta persona. Tendrá que volver a ingresar."
-              : "Esta persona necesitará este identificador y la nueva clave para ingresar."}
+              : "Esta persona necesitará este usuario y contraseña para ingresar."}
           </p>
           {(!credentialEditor.hasLocalCredential ||
             credentialEditor.changeLoginIdentifier) && (
             <>
               <label htmlFor="credential-login-identifier">
-                Identificador de acceso
+                Usuario de acceso
               </label>
               <input
                 id="credential-login-identifier"
+                autoComplete="off"
                 value={credentialEditor.loginIdentifier}
                 onChange={(event) =>
                   setCredentialEditor(
@@ -1614,12 +1780,13 @@ export function GeneralConfigurationPanel({
                   )
                 }
               >
-                Cambiar identificador de acceso
+                Cambiar usuario de acceso
               </button>
             )}
-          <label htmlFor="credential-secret">Nueva clave secreta</label>
+          <label htmlFor="credential-secret">Nueva contraseña</label>
           <input
             id="credential-secret"
+            autoComplete="new-password"
             type="password"
             value={credentialEditor.secret}
             onChange={(event) =>
@@ -1632,7 +1799,7 @@ export function GeneralConfigurationPanel({
             required
           />
           <button type="submit" disabled={isSettingCredential}>
-            {isSettingCredential ? "Actualizando…" : "Guardar credencial"}
+            {isSettingCredential ? "Actualizando…" : "Guardar acceso"}
           </button>
           <button
             type="button"
@@ -1675,8 +1842,11 @@ export function GeneralConfigurationPanel({
             onClick={clearCredentialEditor}
             disabled={isSettingCredential}
           >
-            Descartar e iniciar nueva
+            Dejar de reintentar
           </button>
+          <p>
+            Esto no deshace la operación. Su resultado sigue sin confirmarse.
+          </p>
         </div>
       )}
 
@@ -1708,8 +1878,11 @@ export function GeneralConfigurationPanel({
               }}
               disabled={isRenaming}
             >
-              Descartar e iniciar nuevo
+              Dejar de reintentar
             </button>
+            <p>
+              Esto no deshace la operación. Su resultado sigue sin confirmarse.
+            </p>
           </div>
         </div>
       )}
@@ -1739,8 +1912,11 @@ export function GeneralConfigurationPanel({
               onClick={() => setUncertainMutation(null)}
               disabled={isMutatingIdentity}
             >
-              Descartar e iniciar nueva
+              Dejar de reintentar
             </button>
+            <p>
+              Esto no deshace la operación. Su resultado sigue sin confirmarse.
+            </p>
           </div>
         </div>
       )}
@@ -1772,8 +1948,11 @@ export function GeneralConfigurationPanel({
               onClick={() => setUncertainEnablementMutation(null)}
               disabled={isMutatingEnablement}
             >
-              Descartar e iniciar nueva
+              Dejar de reintentar
             </button>
+            <p>
+              Esto no deshace la operación. Su resultado sigue sin confirmarse.
+            </p>
           </div>
         </div>
       )}

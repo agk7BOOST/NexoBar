@@ -34,7 +34,7 @@ export function SessionBar({ identity, onLoggedOut }: SessionBarProps) {
         disabled={isLoggingOut}
         onClick={() => void endSession()}
       >
-        {isLoggingOut ? "Cerrando…" : "Cambiar persona / salir"}
+        {isLoggingOut ? "Cerrando…" : "Cerrar sesión"}
       </button>
       {message && <p role="alert">{message}</p>}
     </section>

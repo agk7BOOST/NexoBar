@@ -1,4 +1,11 @@
-import { type FormEvent, useCallback, useRef, useState } from "react";
+import { SensitiveActionDialog } from "../ui/SensitiveActionDialog.tsx";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   discardAntiforgeryToken,
   getAntiforgeryToken,
@@ -107,14 +114,31 @@ export function InventoryConfigurationItemControls({
   onAuthoritativeMutation,
   onStaleState,
 }: InventoryConfigurationItemControlsProps) {
-  const [unitObserved, setUnitObserved] = useState(item.operationalUnit);
+  const unitObserved = item.operationalUnit;
   const [newUnit, setNewUnit] = useState("");
   const [replacementName, setReplacementName] = useState("");
   const [replacementNameRequired, setReplacementNameRequired] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmRetire, setConfirmRetire] = useState(false);
   const [intent, setIntentState] = useState<ConfigIntent | null>(null);
   const intentRef = useRef<ConfigIntent | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const retirement = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!confirmRetire) return;
+    const opener = document.activeElement;
+    retirement.current?.querySelector<HTMLParagraphElement>("p")?.focus();
+    return () => {
+      queueMicrotask(() => {
+        if (
+          opener instanceof HTMLElement &&
+          opener.isConnected &&
+          !opener.closest("[hidden]")
+        )
+          opener.focus();
+      });
+    };
+  }, [confirmRetire]);
 
   const setIntent = useCallback((next: ConfigIntent | null) => {
     intentRef.current = next;
@@ -139,6 +163,7 @@ export function InventoryConfigurationItemControls({
         return;
       }
 
+      let committed = false;
       try {
         if (current.kind === "retire") {
           await retireInventoryItem(
@@ -171,8 +196,10 @@ export function InventoryConfigurationItemControls({
           );
         }
 
+        committed = true;
         setIntent(null);
         setConfirmDelete(false);
+        setConfirmRetire(false);
         setReplacementNameRequired(false);
         setReplacementName("");
         setNewUnit("");
@@ -180,11 +207,18 @@ export function InventoryConfigurationItemControls({
           kind: "success",
           message:
             current.kind === "delete"
-              ? "Elemento eliminado definitivamente."
-              : "Cambio aplicado correctamente.",
+              ? `Se eliminó definitivamente “${item.operationalName}”.`
+              : `Se confirmó la ${intentLabel(current.kind)} de “${item.operationalName}”.`,
         });
         await onAuthoritativeMutation();
       } catch (error) {
+        if (committed) {
+          setNotice({
+            kind: "success",
+            message: `Se confirmó la ${intentLabel(current.kind)} de “${item.operationalName}”, pero no pudimos actualizar la lista.`,
+          });
+          return;
+        }
         if (isUncertain(error)) {
           setIntent({ ...current, phase: "uncertain" });
           setNotice({
@@ -245,7 +279,13 @@ export function InventoryConfigurationItemControls({
         });
       }
     },
-    [onAuthoritativeMutation, onStaleState, onUnauthorized, setIntent],
+    [
+      item.operationalName,
+      onAuthoritativeMutation,
+      onStaleState,
+      onUnauthorized,
+      setIntent,
+    ],
   );
 
   function beginIntent(next: ConfigIntent) {
@@ -316,18 +356,49 @@ export function InventoryConfigurationItemControls({
             type="button"
             disabled={blocked}
             aria-label={`Retirar ${item.operationalName}`}
-            onClick={() =>
-              beginIntent({
-                phase: "submitting",
-                kind: "retire",
-                itemId: item.itemId,
-                body: { expectedCurrentIsActive: true },
-                idempotencyKey: crypto.randomUUID(),
-              })
-            }
+            onClick={() => setConfirmRetire(true)}
           >
             Retirar
           </button>
+          {confirmRetire && (
+            <div
+              ref={retirement}
+              role="group"
+              aria-label={`Confirmar retiro de ${item.operationalName}`}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && !blocked) setConfirmRetire(false);
+              }}
+            >
+              <p tabIndex={-1}>
+                Se retirará “{item.operationalName}”. Su existencia actual
+                dejará de estar establecida y los conteos pendientes ya no
+                podrán reconciliarse. El historial permanece.
+              </p>
+              <button
+                type="button"
+                className="danger-button"
+                disabled={blocked}
+                onClick={() =>
+                  beginIntent({
+                    phase: "submitting",
+                    kind: "retire",
+                    itemId: item.itemId,
+                    body: { expectedCurrentIsActive: true },
+                    idempotencyKey: crypto.randomUUID(),
+                  })
+                }
+              >
+                Confirmar retiro
+              </button>
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => setConfirmRetire(false)}
+              >
+                Volver
+              </button>
+            </div>
+          )}
           <p>
             Retirar conserva el historial y quita el elemento de la operación.
             Dejará de haber una existencia actual establecida. Si se reactiva,
@@ -349,9 +420,9 @@ export function InventoryConfigurationItemControls({
           </p>
           {replacementNameRequired && (
             <label>
-              Nombre operacional de reemplazo para Reactivar
+              Nombre de reemplazo para reactivar
               <input
-                aria-label="Nombre operacional de reemplazo para Reactivar"
+                aria-label="Nombre de reemplazo para reactivar"
                 value={replacementName}
                 disabled={blocked}
                 onChange={(event) => setReplacementName(event.target.value)}
@@ -365,27 +436,27 @@ export function InventoryConfigurationItemControls({
         <details className="inventory-unit-correction">
           <summary>Corregir unidad de {item.operationalName}</summary>
           <form onSubmit={submitUnitCorrection}>
-            <h5>Corregir Unidad</h5>
+            <h5>Corregir unidad</h5>
             <label>
               Unidad observada actualmente
               <input
                 aria-label={`Unidad observada actualmente de ${item.operationalName}`}
                 value={unitObserved}
                 disabled={blocked}
-                onChange={(event) => setUnitObserved(event.target.value)}
+                readOnly
               />
             </label>
             <label>
-              Nueva Unidad
+              Nueva unidad
               <input
-                aria-label={`Nueva Unidad de ${item.operationalName}`}
+                aria-label={`Nueva unidad de ${item.operationalName}`}
                 value={newUnit}
                 disabled={blocked}
                 onChange={(event) => setNewUnit(event.target.value)}
               />
             </label>
             <button type="submit" disabled={blocked}>
-              Corregir Unidad
+              Corregir unidad
             </button>
             <p>
               No se convierte ninguna cantidad. La nueva Unidad cambia la
@@ -419,42 +490,38 @@ export function InventoryConfigurationItemControls({
             Elimina permanentemente la configuración y sólo es posible sin
             historial de movimientos.
           </p>
-          {confirmDelete && (
-            <div
-              role="alertdialog"
-              aria-label="Confirmar eliminación definitiva"
-            >
-              <p>
-                Esta acción elimina definitivamente este elemento. No se puede
-                deshacer.
-              </p>
-              <button
-                type="button"
-                disabled={blocked}
-                onClick={() =>
-                  beginIntent({
-                    phase: "submitting",
-                    kind: "delete",
-                    itemId: item.itemId,
-                    idempotencyKey: crypto.randomUUID(),
-                  })
-                }
-              >
-                Confirmar eliminación definitiva
-              </button>
-              <button
-                type="button"
-                disabled={blocked}
-                onClick={() => setConfirmDelete(false)}
-              >
-                Cancelar
-              </button>
-            </div>
+          {confirmDelete && intent?.phase !== "uncertain" && (
+            <SensitiveActionDialog
+              objectName={item.operationalName}
+              consequence="Se eliminará este elemento de inventario y sus conteos. Sólo puede eliminarse si no tiene historial de movimientos."
+              busy={intent !== null}
+              fallbackFocusId="inventory-configuration-heading"
+              onConfirm={() =>
+                beginIntent({
+                  phase: "submitting",
+                  kind: "delete",
+                  itemId: item.itemId,
+                  idempotencyKey: crypto.randomUUID(),
+                })
+              }
+              onClose={() => setConfirmDelete(false)}
+              feedback={
+                notice && (
+                  <p
+                    role={
+                      notice.kind === "functional-error" ? "alert" : "status"
+                    }
+                  >
+                    {notice.message}
+                  </p>
+                )
+              }
+            />
           )}
         </div>
       )}
 
-      {notice !== null && (
+      {notice !== null && (!confirmDelete || intent?.phase === "uncertain") && (
         <div
           className={`notice notice--${notice.kind}`}
           role={notice.kind === "success" ? "status" : "alert"}

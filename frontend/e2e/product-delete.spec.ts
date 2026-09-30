@@ -8,8 +8,8 @@ async function login(
   operationalName: string,
 ) {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(identifier);
-  await page.getByLabel("Secreto").fill(secret);
+  await page.getByLabel("Usuario de acceso").fill(identifier);
+  await page.getByLabel("Contraseña").fill(secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -21,13 +21,13 @@ async function login(
 async function logout(page: Page) {
   await page
     .getByRole("region", { name: "Usuario actual" })
-    .getByRole("button", { name: "Cambiar persona / salir" })
+    .getByRole("button", { name: "Cerrar sesión" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
 }
 
 async function createProduct(page: Page, name: string) {
-  await page.getByLabel("Nombre operacional", { exact: true }).fill(name);
+  await page.getByLabel("Nombre", { exact: true }).fill(name);
   await page.getByLabel("Precio", { exact: true }).fill("5");
   await page.getByRole("button", { name: "Crear producto" }).click();
   await expect(
@@ -55,12 +55,12 @@ test("eligible Product is deleted and its operational name can be reused", async
     .getByRole("button", { name: `Eliminar definitivamente ${name}` })
     .click();
   await expect(
-    page.getByRole("alertdialog", {
-      name: "Confirmar eliminación definitiva de Producto",
+    page.getByRole("dialog", {
+      name: `Eliminar definitivamente “${name}”`,
     }),
-  ).toContainText("nunca participó en un Pedido confirmado");
+  ).toContainText("nunca participó en un pedido confirmado");
   await page
-    .getByRole("button", { name: "Confirmar eliminación definitiva" })
+    .getByRole("button", { name: "Eliminar definitivamente", exact: true })
     .click();
   await expect(row).toHaveCount(0);
   await createProduct(page, name);
@@ -80,12 +80,12 @@ test("confirmed Product rejects Delete and Retire remains separate", async ({
   await createProduct(page, name);
   await logout(page);
   await login(page, "delivery-e2e", "delivery-e2e-secret", "Delivery E2E");
-  const composition = page.getByRole("region", { name: "Composición inicial" });
+  const composition = page.getByRole("region", { name: "Preparar pedido" });
   await composition
-    .getByRole("button", { name: `Agregar ${name} a Composición inicial` })
+    .getByRole("button", { name: `Agregar ${name} a Preparar pedido` })
     .click();
   await composition
-    .getByLabel("Contexto para Primera Confirmacion")
+    .getByLabel("Contexto del pedido")
     .selectOption({ label: "Contexto base E2E" });
   const response = page.waitForResponse(
     (candidate) =>
@@ -108,7 +108,7 @@ test("confirmed Product rejects Delete and Retire remains separate", async ({
     .getByRole("button", { name: `Eliminar definitivamente ${name}` })
     .click();
   await page
-    .getByRole("button", { name: "Confirmar eliminación definitiva" })
+    .getByRole("button", { name: "Eliminar definitivamente", exact: true })
     .click();
   await expect(
     page.getByText(

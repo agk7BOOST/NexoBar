@@ -182,14 +182,14 @@ describe("OperationalIntervention target and actions", () => {
       expect(input).toHaveAttribute("max", "3");
       expect(input).toHaveAttribute("min", "1");
       const expected = [
-        ["Confirmada (Q)", "12", "12"],
-        ["Cancelada (C)", "1", "4"],
-        ["Obligación de cumplimiento (F)", "10", "7"],
-        ["Total vigente (T)", "10", "7"],
-        ["Pendiente (P)", "2", "2"],
-        ["Entregada (D)", "2", "2"],
-        ["En preparación (I)", "3", isReady ? "3" : "0"],
-        ["Lista (Y)", "5", isReady ? "2" : "5"],
+        ["Cantidad confirmada", "12", "12"],
+        ["Cantidad cancelada", "1", "4"],
+        ["Cantidad requerida", "10", "7"],
+        ["Total requerido", "10", "7"],
+        ["Pendiente", "2", "2"],
+        ["Entregada", "2", "2"],
+        ["En preparación", "3", isReady ? "3" : "0"],
+        ["Lista", "5", isReady ? "2" : "5"],
       ];
       for (const [label, before, after] of expected) {
         expect(
@@ -289,10 +289,11 @@ describe("OperationalIntervention target and actions", () => {
       await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
       const summary = screen.getByLabelText("Obligación vigente");
       expect(
-        within(summary).getByText("Total vigente (T)").nextElementSibling,
+        within(summary).getByText("Total requerido").nextElementSibling,
       ).toHaveTextContent("10");
       expect(
-        within(summary).getByText("Cancelada (C)").nextElementSibling,
+        screen.getByText("Cantidad cancelada", { selector: "dt" })
+          .nextElementSibling,
       ).toHaveTextContent("1");
       expect(screen.getByRole("button", { name: started })).toBeDisabled();
       expect(screen.getByRole("button", { name: ready })).toBeDisabled();
@@ -310,10 +311,11 @@ describe("OperationalIntervention target and actions", () => {
         screen.queryByRole("button", { name: isReady ? ready : started }),
       ).not.toBeInTheDocument();
       expect(
-        within(summary).getByText("Total vigente (T)").nextElementSibling,
+        within(summary).getByText("Total requerido").nextElementSibling,
       ).toHaveTextContent("7");
       expect(
-        within(summary).getByText("Cancelada (C)").nextElementSibling,
+        screen.getByText("Cantidad cancelada", { selector: "dt" })
+          .nextElementSibling,
       ).toHaveTextContent("4");
     },
   );
@@ -423,7 +425,7 @@ describe("OperationalIntervention target and actions", () => {
       ).not.toBeInTheDocument();
       expect(
         screen.getByText(
-          code === "frozen" ? /El Pedido está congelado/ : /El Estado cambió/,
+          code === "frozen" ? /El Pedido está congelado/ : /El estado cambió/,
         ),
       ).toBeInTheDocument();
     },

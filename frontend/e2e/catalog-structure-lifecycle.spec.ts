@@ -22,8 +22,8 @@ const orderActor: Actor = {
 
 async function login(page: Page, actor: Actor) {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(actor.identifier);
-  await page.getByLabel("Secreto").fill(actor.secret);
+  await page.getByLabel("Usuario de acceso").fill(actor.identifier);
+  await page.getByLabel("Contraseña").fill(actor.secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -35,7 +35,7 @@ async function login(page: Page, actor: Actor) {
 async function logout(page: Page) {
   await page
     .getByRole("region", { name: "Usuario actual" })
-    .getByRole("button", { name: "Cambiar persona / salir" })
+    .getByRole("button", { name: "Cerrar sesión" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
 }
@@ -51,15 +51,13 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
 
   await login(page, catalogActor);
 
-  await page.getByLabel("Nombre operacional del Grupo").fill(groupName);
+  await page.getByLabel("Nombre del grupo").fill(groupName);
   await page.getByRole("button", { name: "Crear Grupo" }).click();
   await expect(
     page.getByRole("list", { name: "Grupos del Catálogo" }),
   ).toContainText(groupName);
 
-  await page
-    .getByLabel("Nombre operacional", { exact: true })
-    .fill(productName);
+  await page.getByLabel("Nombre", { exact: true }).fill(productName);
   await page.getByLabel("Precio", { exact: true }).fill("10");
   const administrativeProductsResponsePromise = page.waitForResponse(
     (response) =>
@@ -99,7 +97,7 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
   await product
     .getByRole("button", { name: `Renombrar ${productName}` })
     .click();
-  await page.getByLabel("Nuevo nombre operacional").fill(renamedProductName);
+  await page.getByLabel("Nuevo nombre").fill(renamedProductName);
   await page.getByRole("button", { name: "Confirmar renombre" }).click();
   product = catalog.getByRole("row").filter({
     has: page.getByRole("cell", { name: renamedProductName, exact: true }),
@@ -109,13 +107,13 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
 
   await logout(page);
   await login(page, orderActor);
-  const composition = page.getByRole("region", { name: "Composición inicial" });
+  const composition = page.getByRole("region", { name: "Preparar pedido" });
   await expect(
     composition.getByText(renamedProductName, { exact: true }),
   ).toBeVisible();
   await composition
     .getByRole("button", {
-      name: `Agregar ${renamedProductName} a Composición inicial`,
+      name: `Agregar ${renamedProductName} a Preparar pedido`,
     })
     .click();
   await selectInitialContext(composition);
@@ -154,7 +152,7 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
   await logout(page);
   await login(page, orderActor);
   const retiredComposition = page.getByRole("region", {
-    name: "Composición inicial",
+    name: "Preparar pedido",
   });
   await expect(
     retiredComposition.getByText(renamedProductName, { exact: true }),
@@ -208,7 +206,7 @@ test("MVP-FC-CAT-I3 Catalog structure and Product lifecycle", async ({
   await login(page, orderActor);
   await expect(
     page
-      .getByRole("region", { name: "Composición inicial" })
+      .getByRole("region", { name: "Preparar pedido" })
       .getByText(renamedProductName, { exact: true }),
   ).toBeVisible();
 });

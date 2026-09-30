@@ -87,9 +87,9 @@ export function CompositionLineEditor({
             type="button"
             onClick={() => onRemove(line.draftLineId)}
             disabled={isLocked}
-            aria-label={`Retirar ${product.operationalName}, línea ${lineNumber}, de la composición`}
+            aria-label={`Quitar de la composición ${product.operationalName}, línea ${lineNumber}`}
           >
-            Retirar
+            Quitar de la composición
           </button>
         </div>
       </td>

@@ -234,8 +234,8 @@ describe("InventoryPanel", () => {
 
     expect(screen.getByText("Harina")).toBeInTheDocument();
     expect(screen.getByText("Unidad: kg")).toBeInTheDocument();
-    expect(screen.getByLabelText("Nombre operacional")).toBeInTheDocument();
-    expect(screen.getByLabelText("Unidad operacional")).toHaveProperty(
+    expect(screen.getByLabelText("Nombre")).toBeInTheDocument();
+    expect(screen.getByLabelText("Unidad de medida")).toHaveProperty(
       "type",
       "text",
     );
@@ -291,6 +291,10 @@ describe("InventoryPanel", () => {
     await userEvent
       .setup()
       .click(await screen.findByRole("button", { name: "Retirar Harina" }));
+    expect(retireInventoryItem).not.toHaveBeenCalled();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Confirmar retiro" }));
 
     await waitFor(() => expect(retireInventoryItem).toHaveBeenCalledTimes(1));
     expect(retireInventoryItem).toHaveBeenCalledWith(
@@ -331,12 +335,12 @@ describe("InventoryPanel", () => {
     );
     expect(
       await screen.findByRole("textbox", {
-        name: "Nombre operacional de reemplazo para Reactivar",
+        name: "Nombre de reemplazo para reactivar",
       }),
     ).toBeInTheDocument();
     await user.type(
       screen.getByRole("textbox", {
-        name: "Nombre operacional de reemplazo para Reactivar",
+        name: "Nombre de reemplazo para reactivar",
       }),
       "Otro nombre",
     );
@@ -379,10 +383,10 @@ describe("InventoryPanel", () => {
     await user.click((await screen.findByText("Harina")).closest("summary")!);
     await user.click(screen.getByText("Corregir unidad de Harina"));
     await user.type(
-      await screen.findByRole("textbox", { name: "Nueva Unidad de Harina" }),
+      await screen.findByRole("textbox", { name: "Nueva unidad de Harina" }),
       "l",
     );
-    await user.click(screen.getByRole("button", { name: "Corregir Unidad" }));
+    await user.click(screen.getByRole("button", { name: "Corregir unidad" }));
 
     await waitFor(() => expect(correctInventoryUnit).toHaveBeenCalledTimes(1));
     expect(correctInventoryUnit).toHaveBeenCalledWith(
@@ -393,7 +397,7 @@ describe("InventoryPanel", () => {
       "csrf-1",
     );
     expect(
-      await screen.findByText(/Cambio aplicado correctamente/),
+      await screen.findByText(/Se confirmó la corrección de unidad de/),
     ).toBeInTheDocument();
     expect(listInventoryConfigurationItems).toHaveBeenCalledTimes(2);
   });
@@ -417,7 +421,7 @@ describe("InventoryPanel", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Corregir Unidad" }),
+      screen.queryByRole("button", { name: "Corregir unidad" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Eliminar definitivamente/ }),
@@ -441,9 +445,9 @@ describe("InventoryPanel", () => {
         name: "Eliminar definitivamente Harina",
       }),
     );
-    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+      screen.getByRole("button", { name: "Eliminar definitivamente" }),
     );
 
     await waitFor(() => expect(deleteInventoryItem).toHaveBeenCalledTimes(1));
@@ -474,7 +478,7 @@ describe("InventoryPanel", () => {
       }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+      screen.getByRole("button", { name: "Eliminar definitivamente" }),
     );
 
     expect(
@@ -504,7 +508,7 @@ describe("InventoryPanel", () => {
       }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+      screen.getByRole("button", { name: "Eliminar definitivamente" }),
     );
     await user.click(
       await screen.findByRole("button", { name: "Reintentar misma operación" }),
@@ -545,8 +549,8 @@ describe("InventoryPanel", () => {
     render(<InventoryPanel onUnauthorized={vi.fn()} />);
     await screen.findByRole("button", { name: "Crear elemento" });
 
-    await user.type(screen.getByLabelText("Nombre operacional"), "  Azúcar  ");
-    await user.type(screen.getByLabelText("Unidad operacional"), "  kg  ");
+    await user.type(screen.getByLabelText("Nombre"), "  Azúcar  ");
+    await user.type(screen.getByLabelText("Unidad de medida"), "  kg  ");
     await user.click(screen.getByRole("button", { name: "Crear elemento" }));
 
     expect(createInventoryItem).toHaveBeenCalledWith(
@@ -554,10 +558,10 @@ describe("InventoryPanel", () => {
       firstKey,
       "csrf-1",
     );
-    const form = screen.getByLabelText("Nombre operacional").closest("form")!;
+    const form = screen.getByLabelText("Nombre").closest("form")!;
     fireEvent.submit(form);
     expect(createInventoryItem).toHaveBeenCalledTimes(1);
-    expect(screen.getByLabelText("Nombre operacional")).toBeDisabled();
+    expect(screen.getByLabelText("Nombre")).toBeDisabled();
 
     post.resolve({
       itemId: "item-2",
@@ -567,11 +571,9 @@ describe("InventoryPanel", () => {
       movementRevision: 0,
     });
 
-    expect(
-      await screen.findByText("Elemento de Inventario creado correctamente."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Se creó el elemento/)).toBeInTheDocument();
     expect(await screen.findByText("Azúcar")).toBeInTheDocument();
-    expect(screen.getByLabelText("Nombre operacional")).toHaveValue("");
+    expect(screen.getByLabelText("Nombre")).toHaveValue("");
     expect(listInventoryConfigurationItems).toHaveBeenCalledTimes(2);
   });
 
@@ -593,8 +595,8 @@ describe("InventoryPanel", () => {
     const user = userEvent.setup();
     render(<InventoryPanel onUnauthorized={vi.fn()} />);
     await screen.findByRole("button", { name: "Crear elemento" });
-    await user.type(screen.getByLabelText("Nombre operacional"), "Azúcar");
-    await user.type(screen.getByLabelText("Unidad operacional"), "kg");
+    await user.type(screen.getByLabelText("Nombre"), "Azúcar");
+    await user.type(screen.getByLabelText("Unidad de medida"), "kg");
     await user.click(screen.getByRole("button", { name: "Crear elemento" }));
 
     expect(
@@ -602,7 +604,7 @@ describe("InventoryPanel", () => {
         "No se pudo confirmar si el elemento fue creado.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Nombre operacional")).toBeDisabled();
+    expect(screen.getByLabelText("Nombre")).toBeDisabled();
     expect(
       screen.queryByRole("button", { name: /Descartar/ }),
     ).not.toBeInTheDocument();
@@ -627,8 +629,8 @@ describe("InventoryPanel", () => {
     const user = userEvent.setup();
     render(<InventoryPanel onUnauthorized={vi.fn()} />);
     await screen.findByRole("button", { name: "Crear elemento" });
-    await user.type(screen.getByLabelText("Nombre operacional"), "Harina");
-    await user.type(screen.getByLabelText("Unidad operacional"), "kg");
+    await user.type(screen.getByLabelText("Nombre"), "Harina");
+    await user.type(screen.getByLabelText("Unidad de medida"), "kg");
     await user.click(screen.getByRole("button", { name: "Crear elemento" }));
 
     expect(
@@ -652,8 +654,8 @@ describe("InventoryPanel", () => {
     );
     const user = userEvent.setup();
     await renderConfigurationOnly();
-    await user.type(screen.getByLabelText("Nombre operacional"), "Inválido");
-    await user.type(screen.getByLabelText("Unidad operacional"), "kg");
+    await user.type(screen.getByLabelText("Nombre"), "Inválido");
+    await user.type(screen.getByLabelText("Unidad de medida"), "kg");
     await user.click(screen.getByRole("button", { name: "Crear elemento" }));
 
     expect(
@@ -675,8 +677,8 @@ describe("InventoryPanel", () => {
     );
     const user = userEvent.setup();
     await renderConfigurationOnly();
-    await user.type(screen.getByLabelText("Nombre operacional"), "Azúcar");
-    await user.type(screen.getByLabelText("Unidad operacional"), "kg");
+    await user.type(screen.getByLabelText("Nombre"), "Azúcar");
+    await user.type(screen.getByLabelText("Unidad de medida"), "kg");
     await user.click(screen.getByRole("button", { name: "Crear elemento" }));
 
     expect(
@@ -696,8 +698,8 @@ describe("InventoryPanel", () => {
     const onUnauthorized = vi.fn();
     const user = userEvent.setup();
     await renderConfigurationOnly(onUnauthorized);
-    await user.type(screen.getByLabelText("Nombre operacional"), "Azúcar");
-    await user.type(screen.getByLabelText("Unidad operacional"), "kg");
+    await user.type(screen.getByLabelText("Nombre"), "Azúcar");
+    await user.type(screen.getByLabelText("Unidad de medida"), "kg");
     await user.click(screen.getByRole("button", { name: "Crear elemento" }));
 
     await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
@@ -728,8 +730,8 @@ describe("InventoryPanel", () => {
     const onUnauthorized = vi.fn();
     const user = userEvent.setup();
     await renderConfigurationOnly(onUnauthorized);
-    await user.type(screen.getByLabelText("Nombre operacional"), "Azúcar");
-    await user.type(screen.getByLabelText("Unidad operacional"), "kg");
+    await user.type(screen.getByLabelText("Nombre"), "Azúcar");
+    await user.type(screen.getByLabelText("Unidad de medida"), "kg");
     await user.click(screen.getByRole("button", { name: "Crear elemento" }));
 
     expect(
@@ -796,7 +798,7 @@ describe("InventoryPanel", () => {
     expect(negative).toHaveTextContent("-2.250 kg");
     expect(negative).toHaveTextContent("Inconsistencia de saldo");
     expect(negative).toHaveTextContent(
-      "Realiza un conteo para verificar la existencia.",
+      "Realizá un conteo para verificar la existencia.",
     );
     expect(within(negative).getByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText(/versión de stock/i)).not.toBeInTheDocument();
@@ -848,7 +850,7 @@ describe("InventoryPanel", () => {
     await waitFor(() => expect(refreshed).toHaveTextContent("-3 kg"));
     expect(refreshed).toHaveTextContent("Inconsistencia de saldo");
     expect(within(refreshed).getByRole("alert")).toHaveTextContent(
-      "Realiza un conteo para verificar la existencia.",
+      "Realizá un conteo para verificar la existencia.",
     );
   });
 

@@ -5,7 +5,7 @@ export async function selectInitialContext(
   name = "Contexto base E2E",
 ): Promise<void> {
   const selector = composition.getByRole("combobox", {
-    name: "Contexto para Primera Confirmacion",
+    name: "Contexto del pedido",
     exact: true,
   });
   await expect(

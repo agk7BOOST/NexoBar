@@ -112,7 +112,9 @@ export function OrderEnding({
         unauthorized();
         return;
       }
-      setMessage("No se pudo obtener la protección de la solicitud.");
+      setMessage(
+        "No pudimos preparar la finalización del pedido. Intentá nuevamente.",
+      );
       setPhase(retry ? "uncertain" : "idle");
       if (!retry) {
         setIntent(null);
@@ -151,7 +153,7 @@ export function OrderEnding({
         setMessage(
           blockers[code] ??
             (code === "idempotency_key_conflict"
-              ? "La operación no coincide con la intención original. Se consultará el Estado vigente."
+              ? "La operación no coincide con el envío original. Se consultará el estado vigente."
               : "El Estado del Pedido cambió. Se consultará el Estado vigente."),
         );
         await refresh();
@@ -218,7 +220,7 @@ export function OrderEnding({
       )}
       <dl className="confirmation-summary">
         <div>
-          <dt>Importe funcional actual</dt>
+          <dt>Importe de lo entregado</dt>
           <dd>{order.functionalAmount}</dd>
         </div>
         <div>
@@ -228,22 +230,28 @@ export function OrderEnding({
           </dd>
         </div>
         <div>
-          <dt>Liquidado</dt>
-          <dd>{order.isLiquidated ? "Sí" : "No"}</dd>
-        </div>
-        <div>
-          <dt>Congelado</dt>
-          <dd>{order.isFrozen ? "Sí" : "No"}</dd>
-        </div>
-        <div>
           <dt>Cierre</dt>
           <dd>{order.isClosureEligible ? "Disponible" : "No disponible"}</dd>
         </div>
-        <div>
-          <dt>Cerrado</dt>
-          <dd>{order.isClosed ? "Sí" : "No"}</dd>
-        </div>
       </dl>
+      <p>Según las cantidades entregadas y el precio aplicado actual.</p>
+      <details>
+        <summary>Detalle de liquidación y cierre</summary>
+        <dl className="confirmation-summary">
+          <div>
+            <dt>Liquidado</dt>
+            <dd>{order.isLiquidated ? "Sí" : "No"}</dd>
+          </div>
+          <div>
+            <dt>Operación congelada por liquidación</dt>
+            <dd>{order.isFrozen ? "Sí" : "No"}</dd>
+          </div>
+          <div>
+            <dt>Cerrado</dt>
+            <dd>{order.isClosed ? "Sí" : "No"}</dd>
+          </div>
+        </dl>
+      </details>
       {order.liquidationBlockers?.length > 0 && (
         <ul>
           {order.liquidationBlockers.map((code) => (
@@ -289,7 +297,7 @@ export function OrderEnding({
           </div>
           {order.liquidationMode === "Simple" && (
             <div>
-              <dt>Medio de pago declarado</dt>
+              <dt>Medio de pago</dt>
               <dd>{order.declaredPaymentMedium}</dd>
             </div>
           )}
@@ -312,9 +320,7 @@ export function OrderEnding({
                 begin("simple");
               }}
             >
-              <label htmlFor="declared-payment-medium">
-                Medio de pago declarado
-              </label>
+              <label htmlFor="declared-payment-medium">Medio de pago</label>
               <input
                 id="declared-payment-medium"
                 type="text"
@@ -357,7 +363,7 @@ export function OrderEnding({
             disabled={disabled}
             onClick={() => begin("close")}
           >
-            Cerrar Pedido
+            Cerrar pedido
           </button>
         )}
       {order.isClosed && (

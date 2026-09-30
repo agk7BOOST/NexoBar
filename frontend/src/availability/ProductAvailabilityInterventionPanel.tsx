@@ -106,9 +106,12 @@ export function ProductAvailabilityInterventionPanel({
       if (!mounted.current) return;
       setUncertainIntent(null);
       setMessage("Cambio confirmado. Actualizando la lista de productos…");
-      if ((await reload()) && mounted.current)
+      const refreshed = await reload();
+      if (mounted.current)
         setMessage(
-          `Disponibilidad de ${productName ?? "este producto"} actualizada.`,
+          refreshed
+            ? `Disponibilidad de ${productName ?? "este producto"} actualizada.`
+            : `Se confirmó el cambio de disponibilidad de ${productName ?? "este producto"}, pero no pudimos actualizar la lista.`,
         );
     } catch (error) {
       if (!mounted.current) return;
@@ -167,7 +170,7 @@ export function ProductAvailabilityInterventionPanel({
         return;
       }
       setMessage(
-        "No se pudo obtener la protección de la solicitud. Intentá nuevamente.",
+        "No pudimos preparar el cambio de disponibilidad. Intentá nuevamente.",
       );
       return;
     }
@@ -227,7 +230,7 @@ export function ProductAvailabilityInterventionPanel({
             )?.operationalName ?? "nombre no disponible"}
           </p>
           <p className="technical-reference">
-            Identificador: {uncertainIntent.productId}
+            Referencia técnica: {uncertainIntent.productId}
           </p>
           <p>
             El reintento conserva el mismo producto y el mismo cambio

@@ -135,8 +135,8 @@ it("coordinates cancellation uncertainty and confirmed terminal retirement acros
   const user = userEvent.setup();
   render(<App />);
   await screen.findByText("Actor");
-  await user.type(screen.getByLabelText("Referencia operacional"), reference);
-  await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
+  await user.type(screen.getByLabelText("Referencia del pedido"), reference);
+  await user.click(screen.getByRole("button", { name: "Buscar pedido" }));
   await screen.findByRole("button", { name: "Cancelar pedido completo" });
   await user.click(
     screen.getByRole("button", { name: "Agregar productos a este Pedido" }),
@@ -146,7 +146,7 @@ it("coordinates cancellation uncertainty and confirmed terminal retirement acros
     /Hay productos pendientes de confirmar en este pedido/,
   );
   await user.click(
-    screen.getByRole("button", { name: "Abrir entrega de este Pedido" }),
+    screen.getByRole("button", { name: "Abrir entrega de este pedido" }),
   );
   await user.click(
     screen.getByRole("button", { name: "Cancelar pedido completo" }),
@@ -163,7 +163,7 @@ it("coordinates cancellation uncertainty and confirmed terminal retirement acros
     true,
   );
   expect(
-    screen.getByRole("button", { name: "Descartar Composición pendiente" }),
+    screen.getByRole("button", { name: "Descartar productos por confirmar" }),
   ).toBeDisabled();
   const before = pendingReads;
   await user.click(

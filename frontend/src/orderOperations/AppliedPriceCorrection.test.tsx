@@ -81,10 +81,10 @@ async function open(identityId: string | null = "basic-only") {
       onEndingBusy={busy}
     />,
   );
-  await user.type(screen.getByLabelText("Referencia operacional"), orderId);
-  await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
+  await user.type(screen.getByLabelText("Referencia del pedido"), orderId);
+  await user.click(screen.getByRole("button", { name: "Buscar pedido" }));
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Buscar Pedido" })).toBeEnabled(),
+    expect(screen.getByRole("button", { name: "Buscar pedido" })).toBeEnabled(),
   );
   return user;
 }
@@ -483,7 +483,7 @@ it.each(["network", "408", "503"])(
       screen.getByRole("button", { name: "Consultar precios aplicados" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Buscar Pedido" }),
+      screen.getByRole("button", { name: "Buscar pedido" }),
     ).toBeDisabled();
     mutation.mockImplementationOnce(async () => {
       expect(fetchMock.mock.calls).toHaveLength(reads + 1);

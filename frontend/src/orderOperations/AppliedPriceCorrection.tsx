@@ -241,7 +241,9 @@ export function AppliedPriceCorrection({
       }
       setPhase("idle");
       lock(false);
-      setMessage("No se pudo obtener la protección de la solicitud.");
+      setMessage(
+        "No pudimos preparar la corrección de precio. Intentá nuevamente.",
+      );
     }
   }
   const disabled = !canAct || phase !== "idle";
@@ -313,7 +315,7 @@ export function AppliedPriceCorrection({
                 </p>
                 <p>
                   Si hay cantidad efectivamente entregada, puede cambiar el
-                  Importe funcional antes de la Liquidación. La cantidad
+                  importe de lo entregado antes de la liquidación. La cantidad
                   entregada y la Composición pendiente se conservan.
                 </p>
                 <p>

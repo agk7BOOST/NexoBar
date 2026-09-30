@@ -9,8 +9,8 @@ async function login(
   name: string,
 ) {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(identifier);
-  await page.getByLabel("Secreto").fill(secret);
+  await page.getByLabel("Usuario de acceso").fill(identifier);
+  await page.getByLabel("Contraseña").fill(secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -22,7 +22,7 @@ async function login(
 async function logout(page: Page) {
   await page
     .getByRole("region", { name: "Usuario actual" })
-    .getByRole("button", { name: "Cambiar persona / salir" })
+    .getByRole("button", { name: "Cerrar sesión" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
 }
@@ -45,7 +45,7 @@ test("Applied Price Correction adopta Catálogo explícitamente y Liquida al pre
     "Catálogo precios E2E",
   );
   await page
-    .getByRole("textbox", { name: "Nombre operacional", exact: true })
+    .getByRole("textbox", { name: "Nombre", exact: true })
     .fill(productName);
   await page.getByLabel("Precio", { exact: true }).fill("10");
   await page.getByRole("button", { name: "Crear producto" }).click();
@@ -62,10 +62,10 @@ test("Applied Price Correction adopta Catálogo explícitamente y Liquida al pre
 
   // This existing actor has only OrderOperationsAndBasicClosure, no CatalogConfiguration.
   await login(page, "delivery-e2e", "delivery-e2e-secret", "Delivery E2E");
-  const composition = page.getByRole("region", { name: "Composición inicial" });
+  const composition = page.getByRole("region", { name: "Preparar pedido" });
   await composition
     .getByRole("button", {
-      name: `Agregar ${productName} a Composición inicial`,
+      name: `Agregar ${productName} a Preparar pedido`,
     })
     .click();
   await selectInitialContext(composition);
@@ -108,7 +108,7 @@ test("Applied Price Correction adopta Catálogo explícitamente y Liquida al pre
     }),
   ).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .getByRole("button", { name: "Abrir entrega de este pedido" })
     .click();
   const delivery = page.getByRole("region", {
     name: `Entrega del Pedido ${operationalReference}`,
@@ -125,9 +125,13 @@ test("Applied Price Correction adopta Catálogo explícitamente y Liquida al pre
   await deliveredContent.getByRole("button", { name: /^Entregar / }).click();
   await expect(deliveredContent).toContainText("Entregado1");
   const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
-  const amount = value(ending, "Importe funcional actual");
+  const amount = value(ending, "Importe de lo entregado");
   await expect(amount).toHaveText(/^10(?:\.0+)?$/);
-  for (const label of ["Liquidado", "Congelado", "Cerrado"])
+  for (const label of [
+    "Liquidado",
+    "Operación congelada por liquidación",
+    "Cerrado",
+  ])
     await expect(value(ending, label)).toHaveText("No");
   await logout(page);
 
@@ -144,9 +148,7 @@ test("Applied Price Correction adopta Catálogo explícitamente y Liquida al pre
     name: `Cambiar precio de ${productName}`,
   });
   await priceChange.getByLabel("Nuevo precio").fill("8");
-  await priceChange
-    .getByRole("button", { name: "Confirmar cambio de Precio" })
-    .click();
+  await priceChange.getByRole("button", { name: "Guardar precio" }).click();
   await expect(
     product.getByRole("cell", { name: "8", exact: true }),
   ).toBeVisible();
@@ -154,9 +156,9 @@ test("Applied Price Correction adopta Catálogo explícitamente y Liquida al pre
 
   await login(page, "delivery-e2e", "delivery-e2e-secret", "Delivery E2E");
   await page
-    .getByRole("textbox", { name: "Referencia operacional", exact: true })
+    .getByRole("textbox", { name: "Referencia del pedido", exact: true })
     .fill(operationalReference);
-  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  await page.getByRole("button", { name: "Buscar pedido" }).click();
   await originalContent();
   await expect(amount).toHaveText(/^10(?:\.0+)?$/);
 
@@ -250,10 +252,12 @@ test("Applied Price Correction adopta Catálogo explícitamente y Liquida al pre
   ).toBeVisible();
   await expect(amount).toHaveText(/^8(?:\.0+)?$/);
 
-  await ending.getByLabel("Medio de pago declarado").fill("Efectivo");
+  await ending.getByLabel("Medio de pago").fill("Efectivo");
   await ending.getByRole("button", { name: "Liquidar", exact: true }).click();
   await expect(value(ending, "Liquidado")).toHaveText("Sí");
   await expect(value(ending, "Importe liquidado")).toHaveText(/^8(?:\.0+)?$/);
-  await expect(value(ending, "Congelado")).toHaveText("Sí");
+  await expect(value(ending, "Operación congelada por liquidación")).toHaveText(
+    "Sí",
+  );
   await expect(ending.getByText(/Pedido congelado/)).toBeVisible();
 });

@@ -70,10 +70,10 @@ async function open(identityId: string | undefined = "base-only") {
       onEndingBusy={busy}
     />,
   );
-  await user.type(screen.getByLabelText("Referencia operacional"), reference);
-  await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
+  await user.type(screen.getByLabelText("Referencia del pedido"), reference);
+  await user.click(screen.getByRole("button", { name: "Buscar pedido" }));
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Buscar Pedido" })).toBeEnabled(),
+    expect(screen.getByRole("button", { name: "Buscar pedido" })).toBeEnabled(),
   );
   return user;
 }
@@ -274,7 +274,7 @@ it("uses the confirmed terminal response and retires the active Order without a 
   ).toBeVisible();
   expect(
     screen.queryByRole("button", {
-      name: /Liquidar|Cerrar Pedido|Agregar productos a este Pedido|Cancelar pedido completo/,
+      name: /Liquidar|Cerrar pedido|Agregar productos a este Pedido|Cancelar pedido completo/,
     }),
   ).not.toBeInTheDocument();
   expect(
@@ -353,7 +353,7 @@ it.each(["network", "408", "500", "malformed"])(
       screen.getByRole("button", { name: "Cancelar pedido completo" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Buscar Pedido" }),
+      screen.getByRole("button", { name: "Buscar pedido" }),
     ).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Agregar productos a este Pedido" }),
@@ -455,7 +455,7 @@ it("uses a confirmed terminal command even when a subsequent active read would f
 it("blocks cancellation while a Liquidation intent is uncertain", async () => {
   mutation.mockRejectedValue(new TypeError("offline"));
   const user = await open();
-  await user.type(screen.getByLabelText("Medio de pago declarado"), "Efectivo");
+  await user.type(screen.getByLabelText("Medio de pago"), "Efectivo");
   await user.click(screen.getByRole("button", { name: "Liquidar" }));
   await screen.findByText(/Resultado incierto/);
   expect(
@@ -474,7 +474,7 @@ it("invalidates a previously opened confirmation when a refreshed evaluation blo
     blockers: ["effective_delivery"],
     hasEffectiveDelivery: true,
   };
-  await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
+  await user.click(screen.getByRole("button", { name: "Buscar pedido" }));
   await waitFor(() =>
     expect(
       screen.getByRole("button", { name: "Cancelar pedido completo" }),

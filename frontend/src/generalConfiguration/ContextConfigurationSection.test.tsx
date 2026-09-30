@@ -30,6 +30,60 @@ beforeEach(() => {
 });
 
 describe("ContextConfigurationSection", () => {
+  it("keeps a confirmed creation separate from a failed refresh and retries only the GET", async () => {
+    list
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error("read failed"))
+      .mockResolvedValueOnce([
+        { id: "new", operationalName: "Terraza", isActive: true },
+      ]);
+    create.mockResolvedValueOnce({
+      id: "new",
+      operationalName: "Terraza",
+      isActive: true,
+    });
+    const user = userEvent.setup();
+    render(
+      <ContextConfigurationSection
+        onUnauthorized={vi.fn()}
+        onForbidden={vi.fn()}
+      />,
+    );
+    await screen.findByText(/Todavía no hay contextos/);
+    await user.type(screen.getByLabelText("Nombre del contexto"), "Terraza");
+    await user.click(screen.getByRole("button", { name: "Crear contexto" }));
+    expect(
+      await screen.findByText(
+        "Se creó “Terraza”, pero no pudimos actualizar la lista.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reintentar esta operación" }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Reintentar consulta" }),
+    );
+    await screen.findByText("Terraza");
+    expect(list).toHaveBeenCalledTimes(3);
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("does not call a failed initial read an empty list", async () => {
+    list.mockRejectedValueOnce(new Error("network"));
+    render(
+      <ContextConfigurationSection
+        onUnauthorized={vi.fn()}
+        onForbidden={vi.fn()}
+      />,
+    );
+    await screen.findByText("No pudimos consultar los contextos.");
+    expect(
+      screen.queryByText(/Todavía no hay contextos/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Reintentar consulta" }),
+    ).toBeEnabled();
+  });
   it("lista, crea y recarga de forma autoritativa; ofrece lifecycle administrativo", async () => {
     const user = userEvent.setup();
     create.mockResolvedValue({ id: "server-id", operationalName: "Salón" });
@@ -40,22 +94,17 @@ describe("ContextConfigurationSection", () => {
       />,
     );
     expect(await screen.findByText("Mesa A")).toBeInTheDocument();
-    await user.type(
-      screen.getByLabelText("Nombre operacional del Contexto"),
-      "Salón",
-    );
-    await user.click(screen.getByRole("button", { name: "Crear Contexto" }));
+    await user.type(screen.getByLabelText("Nombre del contexto"), "Salón");
+    await user.click(screen.getByRole("button", { name: "Crear contexto" }));
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
     expect(create).toHaveBeenCalledWith(
       { operationalName: "Salón" },
       expect.any(String),
       "csrf",
     );
+    expect(screen.getByText("Se creó “Salón”.")).toBeInTheDocument();
     expect(
-      screen.getByText("Contexto creado correctamente."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Cambiar nombre" }),
+      screen.getByRole("button", { name: "Cambiar nombre de Mesa A" }),
     ).toBeInTheDocument();
   });
 
@@ -68,21 +117,18 @@ describe("ContextConfigurationSection", () => {
       />,
     );
     await screen.findByText("Mesa A");
-    const nameInput = screen.getByLabelText("Nombre operacional del Contexto");
+    const nameInput = screen.getByLabelText("Nombre del contexto");
     expect(nameInput).toBeRequired();
-    await user.click(screen.getByRole("button", { name: "Crear Contexto" }));
+    await user.click(screen.getByRole("button", { name: "Crear contexto" }));
     expect(create).not.toHaveBeenCalled();
-    await user.type(
-      screen.getByLabelText("Nombre operacional del Contexto"),
-      "MESA A",
-    );
+    await user.type(screen.getByLabelText("Nombre del contexto"), "MESA A");
     create.mockRejectedValueOnce(
       new ContextConfigurationError({
         status: 409,
         code: "operational_configuration.context.operational_name_conflict",
       }),
     );
-    await user.click(screen.getByRole("button", { name: "Crear Contexto" }));
+    await user.click(screen.getByRole("button", { name: "Crear contexto" }));
     expect(
       await screen.findByText("Ya existe un Contexto equivalente."),
     ).toBeInTheDocument();
@@ -100,11 +146,8 @@ describe("ContextConfigurationSection", () => {
       />,
     );
     await screen.findByText("Mesa A");
-    await user.type(
-      screen.getByLabelText("Nombre operacional del Contexto"),
-      "Barra",
-    );
-    await user.click(screen.getByRole("button", { name: "Crear Contexto" }));
+    await user.type(screen.getByLabelText("Nombre del contexto"), "Barra");
+    await user.click(screen.getByRole("button", { name: "Crear contexto" }));
     await user.click(
       await screen.findByRole("button", { name: "Reintentar esta operación" }),
     );

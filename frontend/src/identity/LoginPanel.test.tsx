@@ -13,6 +13,49 @@ describe("LoginPanel", () => {
   beforeEach(() => {
     vi.mocked(login).mockReset();
   });
+  it("rejects empty local input and toggles the same password without submitting", async () => {
+    const user = userEvent.setup();
+    render(<LoginPanel onAuthenticated={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Ingresar" }));
+    expect(login).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Usuario de acceso")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    const password = screen.getByLabelText("Contraseña");
+    await user.type(password, "intact-secret");
+    await user.click(
+      screen.getByRole("button", { name: "Mostrar contraseña" }),
+    );
+    expect(password).toHaveAttribute("type", "text");
+    expect(password).toHaveValue("intact-secret");
+    await user.click(
+      screen.getByRole("button", { name: "Ocultar contraseña" }),
+    );
+    expect(password).toHaveAttribute("type", "password");
+    expect(password).toHaveValue("intact-secret");
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it("submits with Enter and keeps a generic 401 without blaming either field", async () => {
+    vi.mocked(login).mockRejectedValue(
+      new SessionProblemError(401, { code: "invalid_credentials" }),
+    );
+    const user = userEvent.setup();
+    render(<LoginPanel onAuthenticated={vi.fn()} />);
+    await user.type(screen.getByLabelText("Usuario de acceso"), "missing");
+    await user.type(screen.getByLabelText("Contraseña"), "wrong{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No pudimos ingresar. Revisá el usuario y la contraseña.",
+    );
+    expect(login).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("Usuario de acceso")).not.toHaveAttribute(
+      "aria-invalid",
+    );
+    expect(screen.getByLabelText("Contraseña")).not.toHaveAttribute(
+      "aria-invalid",
+    );
+  });
 
   it("clears secret and reports the current Identity after success", async () => {
     vi.mocked(login).mockResolvedValue({
@@ -24,8 +67,8 @@ describe("LoginPanel", () => {
     const user = userEvent.setup();
     render(<LoginPanel onAuthenticated={onAuthenticated} />);
 
-    await user.type(screen.getByLabelText("Identificador de acceso"), "ana");
-    const secret = screen.getByLabelText("Secreto");
+    await user.type(screen.getByLabelText("Usuario de acceso"), "ana");
+    const secret = screen.getByLabelText("Contraseña");
     await user.type(secret, "very-secret");
     await user.click(screen.getByRole("button", { name: "Ingresar" }));
 
@@ -45,15 +88,12 @@ describe("LoginPanel", () => {
     const user = userEvent.setup();
     render(<LoginPanel onAuthenticated={vi.fn()} />);
 
-    await user.type(
-      screen.getByLabelText("Identificador de acceso"),
-      "missing",
-    );
-    await user.type(screen.getByLabelText("Secreto"), "wrong");
+    await user.type(screen.getByLabelText("Usuario de acceso"), "missing");
+    await user.type(screen.getByLabelText("Contraseña"), "wrong");
     await user.click(screen.getByRole("button", { name: "Ingresar" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "No se pudo ingresar con las credenciales proporcionadas.",
+      "No pudimos ingresar. Revisá el usuario y la contraseña.",
     );
   });
 });

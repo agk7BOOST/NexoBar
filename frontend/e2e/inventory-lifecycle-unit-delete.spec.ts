@@ -14,8 +14,8 @@ const operator = {
 
 async function login(page: Page, actor: typeof configurator) {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(actor.identifier);
-  await page.getByLabel("Secreto").fill(actor.secret);
+  await page.getByLabel("Usuario de acceso").fill(actor.identifier);
+  await page.getByLabel("Contraseña").fill(actor.secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page.getByRole("region", { name: "Usuario actual" }).getByText(actor.name, {
@@ -27,7 +27,7 @@ async function login(page: Page, actor: typeof configurator) {
 async function logout(page: Page) {
   await page
     .getByRole("region", { name: "Usuario actual" })
-    .getByRole("button", { name: "Cambiar persona / salir" })
+    .getByRole("button", { name: "Cerrar sesión" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
 }
@@ -79,7 +79,7 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
   const config = page.getByRole("region", {
     name: "Configuración de Inventario",
   });
-  await config.getByLabel("Nombre operacional").fill(name);
+  await config.getByLabel("Nombre").fill(name);
   await config.locator("#inventory-operational-unit").fill("U1");
   const createdPromise = page.waitForResponse(
     (response) =>
@@ -101,14 +101,19 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
 
   await openConfigurationItem(row);
   await row.getByText(`Corregir unidad de ${name}`).click();
-  await row.getByLabel(`Unidad observada actualmente de ${name}`).fill("U1");
-  await row.getByLabel(`Nueva Unidad de ${name}`).fill("U2");
+  await expect(
+    row.getByLabel(`Unidad observada actualmente de ${name}`),
+  ).toHaveValue("U1");
+  await expect(
+    row.getByLabel(`Unidad observada actualmente de ${name}`),
+  ).toHaveAttribute("readonly", "");
+  await row.getByLabel(`Nueva unidad de ${name}`).fill("U2");
   const unitCorrection = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname.endsWith("/unit-corrections") &&
       response.request().method() === "POST",
   );
-  await row.getByRole("button", { name: "Corregir Unidad" }).click();
+  await row.getByRole("button", { name: "Corregir unidad" }).click();
   expect((await unitCorrection).ok()).toBeTruthy();
   await refreshConfiguration(page);
   await expect(row).toContainText("U2");
@@ -163,7 +168,7 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
   await row.getByText("Por qué no puede cambiarse la unidad").click();
   await expect(row).toContainText("La unidad ya no puede cambiarse");
   await expect(
-    row.getByRole("button", { name: "Corregir Unidad" }),
+    row.getByRole("button", { name: "Corregir unidad" }),
   ).toHaveCount(0);
   await expect(row).toContainText("retiralo, creá un elemento nuevo");
   await expect(row).toContainText(
@@ -172,6 +177,9 @@ test("MVP-FC-INV-LU-I3 lifecycle and Unit across physical existence", async ({
 
   await openConfigurationItem(row);
   await row.getByRole("button", { name: `Retirar ${name}` }).click();
+  await row
+    .getByRole("button", { name: "Confirmar retiro", exact: true })
+    .click();
   await expect(row).toContainText("Retirado");
   const retiredConfigurationRead = await refreshConfiguration(page);
   const retiredConfiguration = (await retiredConfigurationRead.json()) as {
@@ -248,7 +256,7 @@ test("MVP-FC-INV-LU-I3 eligible definitive Delete through Configuration", async 
   const config = page.getByRole("region", {
     name: "Configuración de Inventario",
   });
-  await config.getByLabel("Nombre operacional").fill(name);
+  await config.getByLabel("Nombre").fill(name);
   await config.locator("#inventory-operational-unit").fill("ud");
   await config.getByRole("button", { name: "Crear elemento" }).click();
   const row = configurationItem(config, name);
@@ -267,13 +275,15 @@ test("MVP-FC-INV-LU-I3 eligible definitive Delete through Configuration", async 
   await row
     .getByRole("button", { name: `Eliminar definitivamente ${name}` })
     .click();
-  const confirmation = page.getByRole("alertdialog", {
-    name: "Confirmar eliminación definitiva",
+  const confirmation = page.getByRole("dialog", {
+    name: `Eliminar definitivamente “${name}”`,
+    exact: true,
   });
-  await expect(confirmation).toContainText("No se puede deshacer");
+  await expect(confirmation).toContainText("no se puede deshacer");
   await expect(
     confirmation.getByRole("button", {
-      name: "Confirmar eliminación definitiva",
+      name: "Eliminar definitivamente",
+      exact: true,
     }),
   ).toBeVisible();
   const deletion = page.waitForResponse(
@@ -282,7 +292,7 @@ test("MVP-FC-INV-LU-I3 eligible definitive Delete through Configuration", async 
       response.request().method() === "POST",
   );
   await confirmation
-    .getByRole("button", { name: "Confirmar eliminación definitiva" })
+    .getByRole("button", { name: "Eliminar definitivamente", exact: true })
     .click();
   expect((await deletion).ok()).toBeTruthy();
   await refreshConfiguration(page);

@@ -9,8 +9,8 @@ async function openPreparation(page: Page, operator: "a" | "b") {
     `preparation-sse-${operator}-e2e`,
     `preparation-sse-${operator}-e2e-secret`,
   ];
-  await page.getByLabel("Identificador de acceso").fill(credentials[0]);
-  await page.getByLabel("Secreto").fill(credentials[1]);
+  await page.getByLabel("Usuario de acceso").fill(credentials[0]);
+  await page.getByLabel("Contraseña").fill(credentials[1]);
 
   // Passive network observation ensures the stream has opened before B acts.
   // No intercepted responses, injected events, or test-triggered business reads.

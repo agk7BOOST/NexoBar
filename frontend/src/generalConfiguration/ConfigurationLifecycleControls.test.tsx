@@ -51,13 +51,13 @@ it.each(["contexts", "preparation-responsibilities"] as const)(
   "renames %s with observed State and authoritative reload",
   async (entity) => {
     const { user, reload } = setup(entity);
-    await user.click(screen.getByRole("button", { name: "Cambiar nombre" }));
+    await user.click(
+      screen.getByRole("button", { name: "Cambiar nombre de Kitchen" }),
+    );
     const input = screen.getByRole("textbox");
     await user.clear(input);
     await user.type(input, "New Kitchen");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar cambio de nombre" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Guardar nombre" }));
     await waitFor(() => expect(reload).toHaveBeenCalledOnce());
     expect(execute).toHaveBeenCalledWith(
       entity,
@@ -78,12 +78,12 @@ it.each(["contexts", "preparation-responsibilities"] as const)(
   async (entity) => {
     const { user, reload } = setup(entity);
     expect(screen.getByText("Activo")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Retirar" }));
+    await user.click(screen.getByRole("button", { name: "Retirar Kitchen" }));
     expect(
       screen.getByText(
         entity === "contexts"
           ? /Los pedidos que ya lo usan no se modificarán/
-          : /El trabajo ya originado conservará este destino/,
+          : /El trabajo ya originado conserva su destino/,
       ),
     ).toBeInTheDocument();
     expect(execute).not.toHaveBeenCalled();
@@ -95,7 +95,7 @@ it.each(["contexts", "preparation-responsibilities"] as const)(
 it("reactivates a retired item and reloads", async () => {
   const { user, reload } = setup("preparation-responsibilities", false);
   expect(screen.getByText("Retirado")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Reactivar" }));
+  await user.click(screen.getByRole("button", { name: "Reactivar Kitchen" }));
   await waitFor(() => expect(reload).toHaveBeenCalledOnce());
   expect(execute.mock.calls[0][2]).toBe("reactivate");
 });
@@ -104,11 +104,11 @@ it.each([true, false])(
   async (active) => {
     const { user, reload } = setup("contexts", active);
     await user.click(
-      screen.getByRole("button", { name: "Eliminar definitivamente" }),
+      screen.getByRole("button", { name: "Eliminar definitivamente Kitchen" }),
     );
     expect(screen.getByText(/no se puede deshacer/)).toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+      screen.getByRole("button", { name: "Eliminar definitivamente" }),
     );
     await waitFor(() => expect(reload).toHaveBeenCalledOnce());
     expect(execute.mock.calls[0][2]).toBe("delete");
@@ -119,14 +119,16 @@ it("explains backend dependencies without calculating eligibility", async () => 
     new ConfigurationLifecycleError(
       409,
       "operational_configuration.preparation_responsibility.retire.active_products",
-      "Cambiá primero su configuración de preparación.",
+      "Este destino tiene productos activos que lo usan. Cambiá o deshabilitá su preparación antes de retirarlo.",
     ),
   );
   const { user, reload } = setup("preparation-responsibilities");
-  await user.click(screen.getByRole("button", { name: "Retirar" }));
+  await user.click(screen.getByRole("button", { name: "Retirar Kitchen" }));
   await user.click(screen.getByRole("button", { name: "Confirmar retiro" }));
   expect(
-    await screen.findByText("Cambiá primero su configuración de preparación."),
+    await screen.findByText(
+      "Este destino tiene productos activos que lo usan. Cambiá o deshabilitá su preparación antes de retirarlo.",
+    ),
   ).toBeInTheDocument();
   expect(reload).toHaveBeenCalledOnce();
 });
@@ -135,11 +137,11 @@ it.each([new Error("network"), new ConfigurationLifecycleError(503)])(
   async (error) => {
     execute.mockRejectedValueOnce(error);
     const { user, reload } = setup();
-    await user.click(screen.getByRole("button", { name: "Retirar" }));
+    await user.click(screen.getByRole("button", { name: "Retirar Kitchen" }));
     await user.click(screen.getByRole("button", { name: "Confirmar retiro" }));
     expect(reload).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: "Cambiar nombre" }),
+      screen.getByRole("button", { name: "Cambiar nombre de Kitchen" }),
     ).toBeDisabled();
     const original = execute.mock.calls[0];
     await user.click(
@@ -153,7 +155,7 @@ it.each([new Error("network"), new ConfigurationLifecycleError(503)])(
 it.each([401, 403])("reconciles authority rejection %s", async (status) => {
   execute.mockRejectedValueOnce(new ConfigurationLifecycleError(status));
   const { user, unauthorized, forbidden } = setup("contexts", false);
-  await user.click(screen.getByRole("button", { name: "Reactivar" }));
+  await user.click(screen.getByRole("button", { name: "Reactivar Kitchen" }));
   await waitFor(() =>
     expect(status === 401 ? unauthorized : forbidden).toHaveBeenCalledOnce(),
   );
@@ -162,20 +164,22 @@ it.each([401, 403])("reconciles authority rejection %s", async (status) => {
 it("keeps a committed mutation confirmed when authoritative reload fails", async () => {
   const { user, reload } = setup("contexts", false);
   reload.mockRejectedValueOnce(new Error("Read failed"));
-  await user.click(screen.getByRole("button", { name: "Reactivar" }));
+  await user.click(screen.getByRole("button", { name: "Reactivar Kitchen" }));
   expect(
     await screen.findByText(
-      /Operación confirmada. No se pudo actualizar la lista/,
+      /Se reactivó “Kitchen”, pero no pudimos actualizar la lista/,
     ),
   ).toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "Reintentar esta operación" }),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Cambiar nombre" })).toBeDisabled();
-  await user.click(screen.getByRole("button", { name: "Actualizar lista" }));
+  expect(
+    screen.getByRole("button", { name: "Cambiar nombre de Kitchen" }),
+  ).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Reintentar consulta" }));
   await waitFor(() =>
     expect(
-      screen.getByRole("button", { name: "Cambiar nombre" }),
+      screen.getByRole("button", { name: "Cambiar nombre de Kitchen" }),
     ).toBeEnabled(),
   );
   expect(execute).toHaveBeenCalledOnce();

@@ -1,3 +1,4 @@
+import { CopyReference } from "../ui/CopyReference.tsx";
 import {
   useEffect,
   useRef,
@@ -36,18 +37,15 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function quantities(target: InterventionTarget) {
   return [
-    ["Confirmada (Q)", target.confirmedQuantity],
-    [
-      "Retirada por corrección de contenido (R)",
-      target.removedByCorrectionQuantity,
-    ],
-    ["Cancelada (C)", target.cancelledQuantity],
-    ["Obligación de cumplimiento (F)", target.fulfillmentQuantity],
-    ["Pendiente (P)", target.pendingQuantity],
-    ["En preparación (I)", target.inPreparationQuantity],
-    ["Lista (Y)", target.readyQuantity],
-    ["Total vigente (T)", target.totalQuantity],
-    ["Entregada (D)", target.deliveredQuantity],
+    ["Cantidad confirmada", target.confirmedQuantity],
+    ["Quitada por corrección", target.removedByCorrectionQuantity],
+    ["Cantidad cancelada", target.cancelledQuantity],
+    ["Cantidad requerida", target.fulfillmentQuantity],
+    ["Pendiente", target.pendingQuantity],
+    ["En preparación", target.inPreparationQuantity],
+    ["Lista", target.readyQuantity],
+    ["Total requerido", target.totalQuantity],
+    ["Entregada", target.deliveredQuantity],
   ] as const;
 }
 
@@ -215,7 +213,7 @@ export function OperationalInterventionPanel({
         error.problem.code === "order_operations.order.frozen"
           ? "El Pedido está congelado por su Liquidación. Se consultará el Estado vigente."
           : error.problem.status === 409
-            ? "El Estado cambió o la intención fue rechazada. Se consultará el Estado vigente."
+            ? "El estado cambió o el cambio fue rechazado. Se consultará el estado vigente."
             : "La intervención fue rechazada. Se consultará el Estado vigente antes de continuar.";
       await load(exact, true, notice);
       return;
@@ -257,9 +255,7 @@ export function OperationalInterventionPanel({
         unauthorized();
         return;
       }
-      setMessage(
-        "No se pudo obtener la protección de la solicitud. Intentá nuevamente.",
-      );
+      setMessage("No pudimos preparar la intervención. Intentá nuevamente.");
       busy.current = false;
       setPhase("idle");
       return;
@@ -340,38 +336,64 @@ export function OperationalInterventionPanel({
             {target.productOperationalName ?? "Nombre histórico no disponible"}
           </h3>
           <p>{target.instruction ?? "Sin instrucción"}</p>
-          <dl
-            className="confirmation-summary"
-            aria-label="Identidad del contenido"
-          >
-            <div>
-              <dt>Pedido</dt>
-              <dd>{target.orderId}</dd>
-            </div>
-            <div>
-              <dt>Incorporación</dt>
-              <dd>{target.incorporationId}</dd>
-            </div>
-            <div>
-              <dt>Contenido</dt>
-              <dd>{target.contentOrdinal}</dd>
-            </div>
-            <div>
-              <dt>Trabajo de preparación</dt>
-              <dd>{target.workId}</dd>
-            </div>
-          </dl>
+          <details>
+            <summary>Referencias técnicas del contenido</summary>
+            <dl
+              className="confirmation-summary"
+              aria-label="Identidad del contenido"
+            >
+              <div>
+                <dt>Pedido</dt>
+                <dd>{target.orderId}</dd>
+              </div>
+              <div>
+                <dt>Incorporación</dt>
+                <dd>{target.incorporationId}</dd>
+              </div>
+              <div>
+                <dt>Contenido</dt>
+                <dd>{target.contentOrdinal}</dd>
+              </div>
+              <div>
+                <dt>Trabajo de preparación</dt>
+                <dd>{target.workId}</dd>
+              </div>
+            </dl>
+          </details>
+          <p className="technical-reference">
+            Referencia del contenido: {target.incorporationId} /{" "}
+            {target.contentOrdinal}
+          </p>
+          <CopyReference
+            value={`${target.incorporationId} / ${target.contentOrdinal}`}
+            label="Copiar referencia del contenido"
+          />
           <p>
             Pendiente, en preparación, lista y total describen la obligación
             vigente.
           </p>
+          <details>
+            <summary>Cantidades confirmadas, corregidas y canceladas</summary>
+            <dl>
+              {quantities(target)
+                .slice(0, 3)
+                .map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+            </dl>
+          </details>
           <dl className="confirmation-summary" aria-label="Obligación vigente">
-            {quantities(target).map(([label, value]) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
+            {quantities(target)
+              .slice(3)
+              .map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
           </dl>
           {target.isFrozen ? (
             <p role="status">

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -100,6 +100,88 @@ describe("InventoryHistory", () => {
     vi.mocked(getAntiforgeryToken).mockResolvedValue("csrf");
     vi.mocked(getInventoryMovementHistory).mockReset();
     vi.mocked(correctInventoryMovement).mockReset();
+  });
+  it("blocks a pending correction without displaying uncertainty or permitting a duplicate", async () => {
+    const root = movement({
+      movementId: "sending-root",
+      movementRevision: 5,
+      nature: "entry",
+    });
+    vi.mocked(getInventoryMovementHistory).mockResolvedValue(history([root]));
+    let reject!: (error: unknown) => void;
+    vi.mocked(correctInventoryMovement).mockReturnValueOnce(
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+    );
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByText("Actor sending-root");
+    await user.click(
+      screen.getByRole("button", { name: "Corregir movimiento" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Guardar corrección" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Guardando corrección…" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByText(/No pudimos confirmar si se guardó/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reintentar corrección" }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Guardando corrección…" }),
+    );
+    expect(correctInventoryMovement).toHaveBeenCalledOnce();
+    await act(async () => {
+      reject(new InventoryNetworkError());
+    });
+    expect(
+      await screen.findByRole("button", { name: "Reintentar corrección" }),
+    ).toBeEnabled();
+    expect(screen.getByLabelText("Cantidad corregida")).toBeDisabled();
+  });
+
+  it("keeps the editor after a known rejection and explains the mutation rather than a history failure", async () => {
+    vi.mocked(getInventoryMovementHistory).mockResolvedValue(
+      history([
+        movement({
+          movementId: "known-root",
+          movementRevision: 5,
+          nature: "entry",
+        }),
+      ]),
+    );
+    vi.mocked(correctInventoryMovement).mockRejectedValueOnce(
+      new InventoryProblemError(409, {
+        code: "inventory.movement_correction.stale_revision",
+      }),
+    );
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByText("Actor known-root");
+    await user.click(
+      screen.getByRole("button", { name: "Corregir movimiento" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Guardar corrección" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "El movimiento cambió.",
+    );
+    expect(screen.getByLabelText("Cantidad corregida")).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Guardar corrección" }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByText("No pudimos consultar los movimientos."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reintentar corrección" }),
+    ).not.toBeInTheDocument();
   });
 
   it("presents distinct natures, movement effects, actor names and timestamp", async () => {
@@ -442,7 +524,9 @@ describe("InventoryHistory", () => {
       screen.getByRole("button", { name: "Guardar corrección" }),
     );
     expect(
-      await screen.findByText(/resultado todavía no está confirmado/),
+      await screen.findByText(
+        /No pudimos confirmar si se guardó la corrección/,
+      ),
     ).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: "Reintentar corrección" }),
@@ -508,7 +592,9 @@ describe("InventoryHistory", () => {
       within(card).getByRole("button", { name: "Corregir movimiento" }),
     );
     expect(screen.getByLabelText("Cantidad corregida")).toHaveValue("2");
-    expect(screen.getByLabelText("Naturaleza corregida")).toHaveValue("Waste");
+    expect(screen.getByLabelText("Tipo de movimiento corregido")).toHaveValue(
+      "Waste",
+    );
   });
 
   it("blocks malformed correction quantities in the form", async () => {
@@ -575,9 +661,11 @@ describe("InventoryHistory", () => {
     renderHistory();
 
     expect(
-      await screen.findByText("No se pudo cargar la Historia de Movimientos."),
+      await screen.findByText("No pudimos consultar los movimientos."),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+    await user.click(
+      screen.getByRole("button", { name: "Reintentar consulta" }),
+    );
     expect(
       await screen.findByText(
         "No hay movimientos registrados para este elemento.",

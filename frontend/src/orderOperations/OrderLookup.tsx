@@ -1,3 +1,4 @@
+import { CopyReference } from "../ui/CopyReference.tsx";
 import {
   type FormEvent,
   useCallback,
@@ -57,11 +58,11 @@ function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
     return "Tu usuario no tiene autorización para consultar el pedido.";
   }
   if (problem.code === "order_operations.order.operational_reference_invalid") {
-    return "La Referencia operacional no es válida.";
+    return "La Referencia del pedido no es válida.";
   }
 
   if (problem.code === "order_operations.order.not_found") {
-    return "No se encontró un Pedido con esa Referencia operacional.";
+    return "No se encontró un Pedido con esa Referencia del pedido.";
   }
 
   return "No se pudo consultar el Pedido. Revisá la Referencia e intentá nuevamente.";
@@ -284,7 +285,7 @@ export function OrderLookup({
         setContextPending(null);
         if (code === "order.context_change.expected_context_stale")
           setContextNotice(
-            "Otra persona cambió el Contexto. Se actualizó el Pedido; iniciá una nueva intención si necesitás otro cambio.",
+            "Otra persona cambió el Contexto. Se actualizó el Pedido; revisá el contexto antes de volver a cambiarlo.",
           );
         else if (code === "order.context_change.no_change")
           setContextNotice(
@@ -346,7 +347,7 @@ export function OrderLookup({
           onSubmit={(event) => void handleSubmit(event)}
         >
           <label htmlFor="order-operational-reference">
-            Referencia operacional
+            Referencia del pedido
           </label>
           <input
             id="order-operational-reference"
@@ -360,7 +361,7 @@ export function OrderLookup({
             type="submit"
             disabled={isLoading || endingBusy || cancellationBusy || priceBusy}
           >
-            {isLoading ? "Buscando…" : "Buscar Pedido"}
+            {isLoading ? "Buscando…" : "Buscar pedido"}
           </button>
         </form>
 
@@ -407,9 +408,10 @@ export function OrderLookup({
                 <dd aria-label="Contexto actual del Pedido">{order.context}</dd>
               </div>
               <div>
-                <dt>Referencia operacional</dt>
+                <dt>Referencia del pedido</dt>
                 <dd className="technical-reference">
-                  {order.operationalReference}
+                  <span>{order.operationalReference}</span>
+                  <CopyReference value={order.operationalReference} />
                 </dd>
               </div>
             </dl>
@@ -452,7 +454,7 @@ export function OrderLookup({
                   onClick={() => onOpenDelivery(order.operationalReference)}
                   disabled={priceBusy}
                 >
-                  Abrir entrega de este Pedido
+                  Abrir entrega de este pedido
                 </button>
               )}
               <button
@@ -628,8 +630,7 @@ export function OrderLookup({
             )}
 
             <p className="current-catalog-name-note">
-              El nombre mostrado proviene del Catálogo actual; puede diferir del
-              que tenía el producto cuando se confirmó este Pedido.
+              Se muestra el nombre registrado al confirmar.
             </p>
             <p className="applied-price-note">
               El precio aplicado se registró al confirmar el producto en este
@@ -643,27 +644,33 @@ export function OrderLookup({
                 aria-label={`Incorporación ${incorporation.ordinal}`}
               >
                 <h3>Incorporación {incorporation.ordinal}</h3>
-                <dl className="confirmation-summary">
-                  <div>
-                    <dt>Ordinal</dt>
-                    <dd>{incorporation.ordinal}</dd>
-                  </div>
-                  <div>
-                    <dt>Identificador</dt>
-                    <dd className="technical-reference">{incorporation.id}</dd>
-                  </div>
-                  <div>
-                    <dt>Momento de Confirmación</dt>
-                    <dd>
-                      <time
-                        dateTime={incorporation.confirmedAt}
-                        title={incorporation.confirmedAt}
-                      >
-                        {formatOperationalDate(incorporation.confirmedAt)}
-                      </time>
-                    </dd>
-                  </div>
-                </dl>
+                <p>Productos confirmados juntos</p>
+                <details>
+                  <summary>Detalle de la confirmación</summary>
+                  <dl className="confirmation-summary">
+                    <div>
+                      <dt>Número</dt>
+                      <dd>{incorporation.ordinal}</dd>
+                    </div>
+                    <div>
+                      <dt>Identificador</dt>
+                      <dd className="technical-reference">
+                        {incorporation.id}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Momento de Confirmación</dt>
+                      <dd>
+                        <time
+                          dateTime={incorporation.confirmedAt}
+                          title={incorporation.confirmedAt}
+                        >
+                          {formatOperationalDate(incorporation.confirmedAt)}
+                        </time>
+                      </dd>
+                    </div>
+                  </dl>
+                </details>
 
                 <div className="table-scroll">
                   <table>

@@ -1,3 +1,5 @@
+import { CopyReference } from "../ui/CopyReference.tsx";
+import { formatOperationalDate } from "../formatOperationalDate.ts";
 import {
   type FormEvent,
   useCallback,
@@ -131,7 +133,7 @@ function confirmationErrorMessage(
     case "order_operations.first_confirmation.requires_preparation_not_supported":
       return `Un Producto requiere preparación, que todavía no está admitida.${productLabel}`;
     case "order_operations.order.operational_reference_invalid":
-      return "La Referencia operacional del Pedido no es válida.";
+      return "La Referencia del pedido del Pedido no es válida.";
     case "order_operations.order.not_found":
       return "El Pedido activo ya no existe.";
     case "order_operations.first_confirmation.idempotency_key_conflict":
@@ -166,11 +168,17 @@ export function OrderWorkflow({
   const operationalProducts = products ?? loadedOperationalProducts;
   const [operationalReadRetired, setOperationalReadRetired] = useState(false);
   const operationalReadGeneration = useRef(0);
+  const [productReadState, setProductReadState] = useState<
+    "loading" | "ready" | "error"
+  >(products ? "ready" : "loading");
+  const [productReadRevision, setProductReadRevision] = useState(0);
+  const [contextReadRevision, setContextReadRevision] = useState(0);
   const [composition, setComposition] = useState<CompositionLine[]>([]);
   const [contextId, setContextId] = useState("");
   const [contexts, setContexts] = useState<OperationalContextOption[]>([]);
   const [contextsLoaded, setContextsLoaded] = useState(false);
   const [contextLoadFailed, setContextLoadFailed] = useState(false);
+  const [contextsForbidden, setContextsForbidden] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmationNotice, setConfirmationNotice] = useState<Notice | null>(
     null,
@@ -208,17 +216,36 @@ export function OrderWorkflow({
   activeOrderRef.current = activeOperationalReference;
 
   useEffect(() => {
+    let current = true;
     void listOrderContexts()
       .then((loaded) => {
+        if (!current) return;
         setContexts(loaded);
+        setContextsForbidden(false);
         setContextsLoaded(true);
+        setContextLoadFailed(false);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        if (!current) return;
+        if (
+          error instanceof OrderOperationsProblemError &&
+          error.problem.status === 401
+        ) {
+          onUnauthorized();
+          return;
+        }
         setContexts([]);
         setContextsLoaded(true);
+        setContextsForbidden(
+          error instanceof OrderOperationsProblemError &&
+            error.problem.status === 403,
+        );
         setContextLoadFailed(true);
       });
-  }, []);
+    return () => {
+      current = false;
+    };
+  }, [contextReadRevision, onUnauthorized]);
 
   useEffect(() => {
     if (products !== undefined) return;
@@ -229,6 +256,7 @@ export function OrderWorkflow({
         if (generation === operationalReadGeneration.current) {
           setOperationalProducts(loadedProducts);
           setOperationalReadRetired(false);
+          setProductReadState("ready");
         }
       },
       (error: unknown) => {
@@ -245,13 +273,14 @@ export function OrderWorkflow({
           }
         }
         setOperationalProducts([]);
+        setProductReadState("error");
       },
     );
 
     return () => {
       operationalReadGeneration.current += 1;
     };
-  }, [onUnauthorized, products]);
+  }, [onUnauthorized, products, productReadRevision]);
 
   function rememberLocalPending(
     value: { orderId: string; marker: PendingComposition } | null,
@@ -745,7 +774,7 @@ export function OrderWorkflow({
       setDestinationMessage(null);
       setConfirmationNotice({
         kind: "success",
-        message: "Primera Confirmación realizada. Se creó el Pedido.",
+        message: `Pedido ${confirmed.operationalReference} creado.`,
       });
       onActivateOrder(confirmed.operationalReference);
       onOrderChanged(confirmed.operationalReference);
@@ -804,7 +833,7 @@ export function OrderWorkflow({
       setDestinationMessage(null);
       setConfirmationNotice({
         kind: "success",
-        message: "Nueva Incorporación confirmada correctamente.",
+        message: `Productos agregados al pedido ${intention.operationalReference}.`,
       });
       onOrderChanged(intention.operationalReference);
       await reconcilePending(intention.operationalReference);
@@ -936,7 +965,7 @@ export function OrderWorkflow({
   function requestNewOrder() {
     if (hasUncertainIntention) {
       setDestinationMessage(
-        "Resolvé o descartá la Confirmación incierta antes de iniciar un nuevo Pedido.",
+        "Reintentá la confirmación pendiente antes de iniciar otro pedido. Su resultado todavía no está confirmado.",
       );
       return;
     }
@@ -1011,7 +1040,9 @@ export function OrderWorkflow({
     (isSubsequent || contextId.length > 0) &&
     (!isSubsequent ||
       (localPending !== null && currentPendingAuthority !== null));
-  const modeLabel = isSubsequent ? "Nueva Composición" : "Composición inicial";
+  const modeLabel = isSubsequent
+    ? "Agregar productos al pedido"
+    : "Preparar pedido";
   const hasUnavailableProductExceptionRequested = composition.some(
     (line) => line.unavailableProductExceptionRequested,
   );
@@ -1019,7 +1050,7 @@ export function OrderWorkflow({
     requestedExistingReference === null
       ? null
       : hasUncertainIntention
-        ? "Resolvé o descartá la Confirmación incierta antes de cambiar de Pedido."
+        ? "Reintentá la confirmación pendiente para conocer su resultado antes de cambiar de pedido."
         : composition.length > 0 || hasAuthoritativePending
           ? "La Composición actual no se cambiará de destino. Descartala explícitamente para continuar el Pedido seleccionado."
           : null;
@@ -1040,7 +1071,7 @@ export function OrderWorkflow({
       <div className="section-heading">
         <div>
           <p className="eyebrow">
-            {isSubsequent ? "Pedido activo" : "Nuevo Pedido"}
+            {isSubsequent ? "Pedido activo" : "Nuevo pedido"}
           </p>
           <h2 id="composition-title" tabIndex={-1}>
             {modeLabel}
@@ -1051,8 +1082,9 @@ export function OrderWorkflow({
 
       {isSubsequent && (
         <div className="active-order-summary" role="status">
-          <span>Referencia del Pedido activo</span>
+          <span>Referencia del pedido activo</span>
           <strong>{activeOperationalReference}</strong>
+          <CopyReference value={activeOperationalReference!} />
           {activeOrderContext && (
             <span>Contexto actual: {activeOrderContext}</span>
           )}
@@ -1062,7 +1094,7 @@ export function OrderWorkflow({
             onClick={requestNewOrder}
             disabled={isWorkflowLocked}
           >
-            Iniciar nuevo Pedido
+            Iniciar nuevo pedido
           </button>
         </div>
       )}
@@ -1076,7 +1108,7 @@ export function OrderWorkflow({
               type="button"
               onClick={() => void discardCompositionAndChangeDestination()}
             >
-              Descartar Composición
+              Descartar productos y cambiar de pedido
             </button>
           )}
         </div>
@@ -1092,16 +1124,21 @@ export function OrderWorkflow({
               líneas no están disponibles en esta sesión del navegador. No se
               recuperarán ni descartarán automáticamente.
             </p>
-            <dl>
-              <div>
-                <dt>Identificador</dt>
-                <dd>{currentPendingAuthority.pendingCompositionId}</dd>
-              </div>
-              <div>
-                <dt>Creada</dt>
-                <dd>{currentPendingAuthority.createdAt}</dd>
-              </div>
-            </dl>
+            <details>
+              <summary>Detalle de la composición pendiente</summary>
+              <dl>
+                <div>
+                  <dt>Identificador</dt>
+                  <dd>{currentPendingAuthority.pendingCompositionId}</dd>
+                </div>
+                <div>
+                  <dt>Creada</dt>
+                  <dd>
+                    {formatOperationalDate(currentPendingAuthority.createdAt)}
+                  </dd>
+                </div>
+              </dl>
+            </details>
             <button
               className="secondary-button"
               type="button"
@@ -1110,7 +1147,7 @@ export function OrderWorkflow({
               }
               disabled={isCompositionLocked}
             >
-              Descartar Composición pendiente
+              Descartar productos por confirmar
             </button>
           </div>
         )}
@@ -1121,7 +1158,12 @@ export function OrderWorkflow({
           localPending.marker.pendingCompositionId && (
           <div className="active-order-summary" role="status">
             <span>Productos pendientes de confirmar en este pedido</span>
-            <strong>{localPending.marker.pendingCompositionId}</strong>
+            <details>
+              <summary>Referencia técnica de la composición</summary>
+              <span className="technical-reference">
+                {localPending.marker.pendingCompositionId}
+              </span>
+            </details>
             <button
               className="secondary-button"
               type="button"
@@ -1130,7 +1172,7 @@ export function OrderWorkflow({
               }
               disabled={isCompositionLocked}
             >
-              Descartar Composición actual
+              Descartar productos por confirmar
             </button>
           </div>
         )}
@@ -1145,6 +1187,21 @@ export function OrderWorkflow({
           <p role="alert">
             La lectura operacional de Productos ya no está autorizada.
           </p>
+        ) : productReadState === "loading" && products === undefined ? (
+          <p role="status">Cargando productos…</p>
+        ) : productReadState === "error" && products === undefined ? (
+          <div role="alert">
+            <p>No pudimos consultar los productos.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setProductReadState("loading");
+                setProductReadRevision((value) => value + 1);
+              }}
+            >
+              Reintentar consulta
+            </button>
+          </div>
         ) : operationalProducts.length === 0 ? (
           <p>No hay productos vigentes para agregar.</p>
         ) : (
@@ -1153,7 +1210,7 @@ export function OrderWorkflow({
               <thead>
                 <tr>
                   <th scope="col">Nombre</th>
-                  <th scope="col">Precio vigente informativo</th>
+                  <th scope="col">Precio actual del catálogo</th>
                   <th scope="col">Disponibilidad</th>
                   <th scope="col">Composición</th>
                 </tr>
@@ -1249,7 +1306,7 @@ export function OrderWorkflow({
               onClick={() => void submitFirst(uncertainFirst)}
               disabled={isConfirming}
             >
-              Reintentar misma Primera Confirmación
+              Reintentar confirmación
             </button>
           </div>
         </div>
@@ -1264,7 +1321,7 @@ export function OrderWorkflow({
           <h3>Confirmación posterior pendiente de resolución</h3>
           <dl>
             <div>
-              <dt>Referencia operacional</dt>
+              <dt>Referencia del pedido</dt>
               <dd>{uncertainSubsequent.operationalReference}</dd>
             </div>
           </dl>
@@ -1278,7 +1335,7 @@ export function OrderWorkflow({
               onClick={() => void submitSubsequent(uncertainSubsequent)}
               disabled={isConfirming}
             >
-              Reintentar misma Confirmación posterior
+              Reintentar confirmación
             </button>
           </div>
         </div>
@@ -1292,7 +1349,7 @@ export function OrderWorkflow({
         >
           <p>
             El resultado del inicio es incierto. El reintento conserva el mismo
-            Pedido y la misma Idempotency-Key.
+            pedido y los mismos datos; no se duplicará.
           </p>
           <button
             type="button"
@@ -1312,7 +1369,7 @@ export function OrderWorkflow({
         >
           <p>
             El resultado del descarte es incierto. El reintento conserva el
-            mismo Pedido, marcador e Idempotency-Key.
+            mismo pedido y los mismos datos; no se duplicará.
           </p>
           <button
             type="button"
@@ -1333,12 +1390,12 @@ export function OrderWorkflow({
             setStaleComposition(false);
           }}
         >
-          Descartar borrador local desvinculado
+          Descartar estos productos sin confirmar
         </button>
       )}
 
       {composition.length === 0 ? (
-        <p>La Composición está vacía.</p>
+        <p>Todavía no agregaste productos.</p>
       ) : (
         <>
           <p className="informative-price-note">
@@ -1350,7 +1407,7 @@ export function OrderWorkflow({
               <thead>
                 <tr>
                   <th scope="col">Nombre</th>
-                  <th scope="col">Precio vigente informativo</th>
+                  <th scope="col">Precio actual del catálogo</th>
                   <th scope="col">Cantidad</th>
                   <th scope="col">Instrucción opcional</th>
                   <th scope="col">Acciones</th>
@@ -1402,10 +1459,10 @@ export function OrderWorkflow({
           </p>
         ) : (
           <>
-            <label htmlFor="order-context">Contexto de coordinación</label>
+            <label htmlFor="order-context">Contexto del pedido</label>
             <select
               id="order-context"
-              aria-label="Contexto para Primera Confirmacion"
+              aria-label="Contexto del pedido"
               value={contextId}
               onChange={(event) => setContextId(event.target.value)}
               disabled={isCompositionLocked || contexts.length === 0}
@@ -1421,12 +1478,27 @@ export function OrderWorkflow({
               El Contexto ayuda a ubicar y coordinar el pedido, por ejemplo una
               mesa. No cambia precios, disponibilidad ni destino de preparación.
             </p>
-            {contextLoadFailed && (
+            {contextsForbidden && (
               <p role="alert">
-                No se pudo cargar la selección de Contextos. Actualizá e intentá
-                nuevamente.
+                Tu usuario no tiene autorización para consultar contextos.
               </p>
             )}
+            {contextLoadFailed && !contextsForbidden && (
+              <div role="alert">
+                <p>No pudimos consultar los contextos.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContextsLoaded(false);
+                    setContextLoadFailed(false);
+                    setContextReadRevision((value) => value + 1);
+                  }}
+                >
+                  Reintentar consulta
+                </button>
+              </div>
+            )}
+            {!contextsLoaded && <p role="status">Cargando contextos…</p>}
             {contextsLoaded && contexts.length === 0 && !contextLoadFailed && (
               <p role="status">
                 Se requiere configurar un Contexto antes de confirmar un Pedido.
@@ -1488,12 +1560,23 @@ function ConfirmationSnapshot({
 
           return (
             <div key={`${item.productId}:${item.instruction ?? ""}`}>
-              <dt>{product?.operationalName ?? item.productId}</dt>
+              <dt>
+                {product?.operationalName ??
+                  "Nombre del producto no disponible"}
+              </dt>
               <dd>
                 Cantidad: {item.quantity}. Instrucción:{" "}
                 {item.instruction ?? "Sin instrucción"}
                 {item.unavailableProductExceptionRequested &&
                   ". Intervención solicitada"}
+                {!product && (
+                  <details>
+                    <summary>Referencia técnica del producto</summary>
+                    <span className="technical-reference">
+                      {item.productId}
+                    </span>
+                  </details>
+                )}
               </dd>
             </div>
           );

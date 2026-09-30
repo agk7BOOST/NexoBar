@@ -3,8 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function login(page: Page, identifier: string, secret: string) {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(identifier);
-  await page.getByLabel("Secreto").fill(secret);
+  await page.getByLabel("Usuario de acceso").fill(identifier);
+  await page.getByLabel("Contraseña").fill(secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page.getByRole("region", { name: "Usuario actual" }),
@@ -38,13 +38,9 @@ test("eligible Identity is removed and functional Order History preserves anothe
     await expect(general).toBeVisible();
 
     async function createIdentity(name: string) {
-      await general
-        .getByLabel("Nombre operacional", { exact: true })
-        .fill(name);
+      await general.getByLabel("Nombre", { exact: true }).fill(name);
       await general.getByRole("button", { name: "Crear identidad" }).click();
-      await expect(
-        general.getByText("Identidad creada correctamente."),
-      ).toBeVisible();
+      await expect(general.getByText(/Se creó la identidad/)).toBeVisible();
       await general.getByRole("button", { name: "Actualizar" }).click();
       return general.getByRole("region", {
         name: `Administrar identidad ${name}`,
@@ -57,12 +53,12 @@ test("eligible Identity is removed and functional Order History preserves anothe
       .getByRole("button", { name: `Eliminar definitivamente ${eligibleName}` })
       .click();
     await expect(
-      general.getByRole("region", {
-        name: `Confirmar eliminación de ${eligibleName}`,
+      general.getByRole("dialog", {
+        name: `Eliminar definitivamente “${eligibleName}”`,
       }),
-    ).toContainText("no existen operaciones registradas");
+    ).toContainText("operaciones cuya atribución deba conservarse");
     await general
-      .getByRole("button", { name: "Confirmar eliminación definitiva" })
+      .getByRole("button", { name: "Eliminar definitivamente", exact: true })
       .click();
     await expect(eligible).toHaveCount(0);
 
@@ -77,16 +73,14 @@ test("eligible Identity is removed and functional Order History preserves anothe
       target.getByRole("list", { name: `Responsabilidades de ${actorName}` }),
     ).toContainText("Pedidos y cierre básico: Asignada");
     await target
-      .getByRole("button", { name: `Configurar credencial de ${actorName}` })
+      .getByRole("button", { name: `Configurar acceso de ${actorName}` })
       .click();
     const credential = general.getByRole("form", {
       name: `Configurar acceso de ${actorName}`,
     });
-    await credential.getByLabel("Identificador de acceso").fill(actorLogin);
-    await credential.getByLabel("Nueva clave secreta").fill(actorSecret);
-    await credential
-      .getByRole("button", { name: "Guardar credencial" })
-      .click();
+    await credential.getByLabel("Usuario de acceso").fill(actorLogin);
+    await credential.getByLabel("Nueva contraseña").fill(actorSecret);
+    await credential.getByRole("button", { name: "Guardar acceso" }).click();
     await expect(
       target.getByText("configurado", { exact: true }),
     ).toBeVisible();
@@ -94,9 +88,7 @@ test("eligible Identity is removed and functional Order History preserves anothe
     await expect(target.getByText("Activa", { exact: true })).toBeVisible();
 
     await login(catalog, "price-catalog-e2e", "price-catalog-e2e-secret");
-    await catalog
-      .getByLabel("Nombre operacional", { exact: true })
-      .fill(productName);
+    await catalog.getByLabel("Nombre", { exact: true }).fill(productName);
     await catalog.getByLabel("Precio", { exact: true }).fill("5");
     await catalog.getByRole("button", { name: "Crear producto" }).click();
     await expect(
@@ -107,15 +99,15 @@ test("eligible Identity is removed and functional Order History preserves anothe
 
     await login(actor, actorLogin, actorSecret);
     const composition = actor.getByRole("region", {
-      name: "Composición inicial",
+      name: "Preparar pedido",
     });
     await composition
       .getByRole("button", {
-        name: `Agregar ${productName} a Composición inicial`,
+        name: `Agregar ${productName} a Preparar pedido`,
       })
       .click();
     await composition
-      .getByLabel("Contexto para Primera Confirmacion")
+      .getByLabel("Contexto del pedido")
       .selectOption({ label: "Contexto base E2E" });
     const confirmation = actor.waitForResponse(
       (response) =>
@@ -130,7 +122,7 @@ test("eligible Identity is removed and functional Order History preserves anothe
       .getByRole("button", { name: `Eliminar definitivamente ${actorName}` })
       .click();
     await general
-      .getByRole("button", { name: "Confirmar eliminación definitiva" })
+      .getByRole("button", { name: "Eliminar definitivamente", exact: true })
       .click();
     await expect(
       general.getByText(

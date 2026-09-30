@@ -5,9 +5,11 @@ const itemName = "Insumo corrección Inventario E2E";
 async function signIn(page: Page) {
   await page.goto("/");
   await page
-    .getByLabel("Identificador de acceso")
+    .getByLabel("Usuario de acceso")
     .fill("inventory-operation-sse-a-e2e");
-  await page.getByLabel("Secreto").fill("inventory-operation-sse-a-e2e-secret");
+  await page
+    .getByLabel("Contraseña")
+    .fill("inventory-operation-sse-a-e2e-secret");
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page.getByRole("region", { name: "Usuario actual" }),
@@ -59,7 +61,9 @@ test("MVP-FC-INV-MC corrects the same root successively and preserves its histor
     .getByRole("button", { name: "Corregir movimiento" })
     .last()
     .click();
-  await history.getByLabel("Naturaleza corregida").selectOption("Waste");
+  await history
+    .getByLabel("Tipo de movimiento corregido")
+    .selectOption("Waste");
   await history.getByLabel("Cantidad corregida").fill("2");
   const correction2 = page.waitForResponse(
     (r) =>

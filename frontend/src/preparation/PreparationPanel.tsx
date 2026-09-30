@@ -33,6 +33,7 @@ type PreparationCommandKind =
 type PreparationIntentPhase = "submitting" | "uncertain";
 
 interface PreparationIntent {
+  productName?: string;
   operationalReference: string;
   phase: PreparationIntentPhase;
   kind: PreparationCommandKind;
@@ -50,7 +51,7 @@ interface QuantityInputs {
 }
 
 interface WorkMessage {
-  kind: "error" | "uncertain";
+  kind: "error" | "uncertain" | "success";
   text: string;
 }
 
@@ -411,7 +412,10 @@ export function PreparationPanel({
         }
 
         clearIntent(exactIntent.workId);
-        setWorkMessage(exactIntent.workId, null);
+        setWorkMessage(exactIntent.workId, {
+          kind: "success",
+          text: `${exactIntent.quantity} unidades de ${exactIntent.productName ?? "este producto"}: ${exactIntent.kind === "start" ? "preparación iniciada" : exactIntent.kind === "ready" ? "marcadas listas" : exactIntent.kind === "correct-start" ? "inicio corregido" : "listo corregido"}.`,
+        });
         applyCommandResult(result);
         void refreshPreparationWorkForSelectedDestination();
         onWorkChanged?.();
@@ -490,7 +494,7 @@ export function PreparationPanel({
             text:
               error.status === 403
                 ? forbiddenMessage
-                : "No se pudo obtener la protección de la solicitud.",
+                : "No pudimos preparar el cambio de preparación. Intentá nuevamente.",
           });
           return;
         }
@@ -538,6 +542,8 @@ export function PreparationPanel({
         phase: "submitting",
         kind,
         workId: item.workId,
+        productName:
+          item.productOperationalName ?? "Nombre histórico no disponible",
         quantity,
         idempotencyKey: crypto.randomUUID(),
       };
@@ -865,9 +871,13 @@ export function PreparationPanel({
                             className={`notice ${
                               itemMessage.kind === "uncertain"
                                 ? "notice--uncertain"
-                                : "notice--functional-error"
+                                : itemMessage.kind === "success"
+                                  ? "notice--success"
+                                  : "notice--functional-error"
                             }`}
-                            role="alert"
+                            role={
+                              itemMessage.kind === "error" ? "alert" : "status"
+                            }
                           >
                             <p>{itemMessage.text}</p>
                             {intent?.phase === "uncertain" && (

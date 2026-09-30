@@ -3,3 +3,13 @@ import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 
 afterEach(cleanup);
+
+// jsdom lacks the native dialog top layer; browser E2E verifies its behavior.
+if (!HTMLDialogElement.prototype.showModal) {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+}

@@ -68,8 +68,8 @@ async function authenticateThroughCurrent(
   actor: Actor,
 ): Promise<void> {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(actor.identifier);
-  await page.getByLabel("Secreto").fill(actor.secret);
+  await page.getByLabel("Usuario de acceso").fill(actor.identifier);
+  await page.getByLabel("Contraseña").fill(actor.secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -137,7 +137,7 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
       "/api/operational-configuration/preparation-responsibilities",
     );
     await configuration
-      .getByLabel("Nombre operacional del destino de preparación")
+      .getByLabel("Nombre del destino de preparación")
       .fill(preparationResponsibilityName);
     await configuration
       .getByRole("button", { name: "Crear destino de preparación" })
@@ -153,7 +153,7 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
       preparationResponsibilityName,
     );
     await expect(
-      configuration.getByText("Destino de preparación creado correctamente.", {
+      configuration.getByText(/Se creó el destino/, {
         exact: true,
       }),
     ).toBeVisible();
@@ -176,7 +176,7 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
     await expect(preparationOperator).toBeVisible();
     await expect(
       preparationOperator.getByRole("button", {
-        name: `Otorgar habilitación ${preparationResponsibilityName} a ${preparationActor.operationalName}`,
+        name: `Habilitar destino ${preparationResponsibilityName} a ${preparationActor.operationalName}`,
       }),
     ).toBeVisible();
     const enablementGrant = waitForResponse(
@@ -186,7 +186,7 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
     );
     await preparationOperator
       .getByRole("button", {
-        name: `Otorgar habilitación ${preparationResponsibilityName} a ${preparationActor.operationalName}`,
+        name: `Habilitar destino ${preparationResponsibilityName} a ${preparationActor.operationalName}`,
       })
       .click();
     const enablementResponse = await enablementGrant;
@@ -199,7 +199,7 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
     );
     await expect(
       preparationOperator.getByRole("list", {
-        name: `Habilitaciones de preparación de ${preparationActor.operationalName}`,
+        name: `Destinos habilitados de ${preparationActor.operationalName}`,
       }),
     ).toContainText(`${preparationResponsibilityName}: Habilitada`);
 
@@ -279,12 +279,12 @@ test("MVP-FC-PREP-I2 compone configuración de Preparation con operadores separa
     const orderPage = await orderContext.newPage();
     await authenticateThroughCurrent(orderPage, orderActor);
     const composition = orderPage.getByRole("region", {
-      name: "Composición inicial",
+      name: "Preparar pedido",
     });
     await expect(composition).toBeVisible();
     await composition
       .getByRole("button", {
-        name: `Agregar ${configuredProductName} a Composición inicial`,
+        name: `Agregar ${configuredProductName} a Preparar pedido`,
       })
       .click();
     await selectInitialContext(composition, orderContextName);

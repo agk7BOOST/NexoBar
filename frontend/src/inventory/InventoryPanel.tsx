@@ -64,7 +64,7 @@ function creationFailureMessage(error: InventoryProblemError): string {
     case "inventory.item.operational_name_conflict":
       return "Ya existe un elemento de Inventario con ese nombre.";
     case "inventory.item.idempotency_key_conflict":
-      return "La identidad de esta creación ya fue usada para otra intención.";
+      return "Esta creación no coincide con el envío original. Revisá el estado antes de continuar.";
     default:
       return "No se pudo crear el elemento. Revisá los datos e intentá nuevamente.";
   }
@@ -251,7 +251,7 @@ export function InventoryPanel({
         setOperationalUnit("");
         setCreateNotice({
           kind: "success",
-          message: "Elemento de Inventario creado correctamente.",
+          message: `Se creó el elemento “${intent.request.operationalName}”.`,
         });
         const refreshes: Promise<void>[] = [refreshConfiguration()];
         if (operationAuthorizedRef.current) refreshes.push(refreshOperation());
@@ -388,7 +388,7 @@ export function InventoryPanel({
         aria-busy={configuration.status === "loading"}
       >
         <div className="section-heading">
-          <h3 id="inventory-configuration-heading">
+          <h3 id="inventory-configuration-heading" tabIndex={-1}>
             Configuración de Inventario
           </h3>
           {configuration.status === "ready" && (
@@ -424,9 +424,7 @@ export function InventoryPanel({
               className="inventory-create-form"
               onSubmit={(event) => void submitCreate(event)}
             >
-              <label htmlFor="inventory-operational-name">
-                Nombre operacional
-              </label>
+              <label htmlFor="inventory-operational-name">Nombre</label>
               <input
                 id="inventory-operational-name"
                 name="operationalName"
@@ -436,7 +434,7 @@ export function InventoryPanel({
                 onChange={(event) => setOperationalName(event.target.value)}
               />
               <label htmlFor="inventory-operational-unit">
-                Unidad operacional
+                Unidad de medida
               </label>
               <input
                 id="inventory-operational-unit"
@@ -597,7 +595,7 @@ export function InventoryPanel({
                     >
                       Existencia física no establecida
                     </p>
-                    <p>Unidad operacional: {item.operationalUnit}</p>
+                    <p>Unidad de medida: {item.operationalUnit}</p>
                     <p>Cantidad actual: no establecida</p>
                     <p>Requiere conteo y reconciliación.</p>
                   </div>
@@ -612,7 +610,7 @@ export function InventoryPanel({
                 {item.hasNegativeBalanceInconsistency && (
                   <div className="inventory-negative-warning" role="alert">
                     <strong>Inconsistencia de saldo</strong>
-                    <span>Realiza un conteo para verificar la existencia.</span>
+                    <span>Realizá un conteo para verificar la existencia.</span>
                   </div>
                 )}
                 <InventoryItemOperations

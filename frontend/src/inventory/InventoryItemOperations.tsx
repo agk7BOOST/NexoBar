@@ -1,4 +1,10 @@
-import { type FormEvent, useCallback, useRef, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   discardAntiforgeryToken,
   getAntiforgeryToken,
@@ -91,7 +97,7 @@ function knownFailureMessage(
     case "inventory.count.idempotency_key_conflict":
     case "inventory.reconciliation.idempotency_key_conflict":
     case "inventory.movement.idempotency_key_conflict":
-      return `La identidad técnica de esta ${operationLabel(kind)} ya fue usada para otra intención.`;
+      return `Esta ${operationLabel(kind)} no coincide con el envío original. Revisá el estado antes de continuar.`;
     default:
       return `No se pudo completar la ${operationLabel(kind)}. Revisá los datos e intentá nuevamente.`;
   }
@@ -153,6 +159,7 @@ export function InventoryItemOperations({
         return;
       }
 
+      let committed = false;
       try {
         if (current.kind === "count") {
           const result = await recordInventoryCount(
@@ -161,6 +168,7 @@ export function InventoryItemOperations({
             current.idempotencyKey,
             antiforgeryToken,
           );
+          committed = true;
           setIntent(null);
           setCountObservation(result);
           setActiveOperation("reconcile");
@@ -180,6 +188,7 @@ export function InventoryItemOperations({
             current.idempotencyKey,
             antiforgeryToken,
           );
+          committed = true;
           setIntent(null);
           setCountObservation(null);
           setActiveOperation(null);
@@ -213,6 +222,7 @@ export function InventoryItemOperations({
                   current.idempotencyKey,
                   antiforgeryToken,
                 );
+        committed = true;
         setIntent(null);
         setCountObservation(null);
         if (current.kind === "entry") setEntryQuantity("");
@@ -224,6 +234,13 @@ export function InventoryItemOperations({
         });
         await onAuthoritativeMutation(current.itemId);
       } catch (error) {
+        if (committed) {
+          setNotice({
+            kind: "success",
+            message: `Se confirmó la ${operationLabel(current.kind)} de “${item.operationalName}”, pero no pudimos actualizar la vista. Actualizá la consulta.`,
+          });
+          return;
+        }
         if (error instanceof InventoryProblemError) {
           if (error.status === 401) {
             setIntent(null);
@@ -299,6 +316,7 @@ export function InventoryItemOperations({
     },
     [
       item.operationalUnit,
+      item.operationalName,
       onAuthoritativeMutation,
       onItemUnavailable,
       onStateRefresh,
@@ -370,6 +388,25 @@ export function InventoryItemOperations({
     void executeIntent(submitting);
   }
 
+  const operationRoot = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!activeOperation) return;
+    const opener = document.activeElement;
+    const field = operationRoot.current?.querySelector<HTMLElement>(
+      "form input, .inventory-reconciliation h5",
+    );
+    field?.focus();
+    return () => {
+      queueMicrotask(() => {
+        if (
+          opener instanceof HTMLElement &&
+          opener.isConnected &&
+          !opener.closest("[hidden]")
+        )
+          opener.focus();
+      });
+    };
+  }, [activeOperation]);
   const blocked = intent !== null;
   const countObservationStale =
     countObservation !== null &&
@@ -405,7 +442,16 @@ export function InventoryItemOperations({
       : [];
 
   return (
-    <div className="inventory-item-operations">
+    <div
+      ref={operationRoot}
+      className="inventory-item-operations"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && !blocked) {
+          event.preventDefault();
+          setActiveOperation(null);
+        }
+      }}
+    >
       <div
         className="inventory-operation-choices"
         aria-label={`Acciones de ${item.operationalName}`}
@@ -486,7 +532,7 @@ export function InventoryItemOperations({
           className="inventory-reconciliation"
           aria-label={`Reconciliar conteo de ${item.operationalName}`}
         >
-          <h5>Reconciliación</h5>
+          <h5 tabIndex={-1}>Reconciliación</h5>
           <p>
             Cantidad observada:{" "}
             <strong>
@@ -497,7 +543,7 @@ export function InventoryItemOperations({
           {countObservationStale && (
             <p className="notice notice--functional-error" role="alert">
               Este conteo ya no refleja el estado actual de Inventario. Se
-              requiere un nuevo conteo fÃ­sico antes de reconciliar.
+              requiere un nuevo conteo físico antes de reconciliar.
             </p>
           )}
           <button

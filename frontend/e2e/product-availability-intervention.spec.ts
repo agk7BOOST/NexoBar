@@ -49,8 +49,8 @@ async function authenticateThroughCurrent(
   actor: Actor,
 ): Promise<void> {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(actor.identifier);
-  await page.getByLabel("Secreto").fill(actor.secret);
+  await page.getByLabel("Usuario de acceso").fill(actor.identifier);
+  await page.getByLabel("Contraseña").fill(actor.secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -102,14 +102,14 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
     ).toHaveCount(0);
     await expect(
       interventionPage.getByRole("region", {
-        name: "Composici\u00f3n inicial",
+        name: "Preparar pedido",
       }),
     ).toHaveCount(0);
 
     const ordinaryPage = await ordinaryContext.newPage();
     await authenticateThroughCurrent(ordinaryPage, ordinaryOperator);
     const composition = ordinaryPage.getByRole("region", {
-      name: "Composici\u00f3n inicial",
+      name: "Preparar pedido",
     });
     await expect(composition).toBeVisible();
     await expect(
@@ -117,7 +117,7 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
     ).toBeVisible();
     await composition
       .getByRole("button", {
-        name: `Agregar ${productName} a Composici\u00f3n inicial`,
+        name: `Agregar ${productName} a Preparar pedido`,
       })
       .click();
     await expect(
@@ -140,7 +140,7 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
     const ordinaryBrowsePage = await ordinaryContext.newPage();
     await ordinaryBrowsePage.goto("/");
     const ordinaryBrowse = ordinaryBrowsePage.getByRole("region", {
-      name: "Composici\u00f3n inicial",
+      name: "Preparar pedido",
     });
     await expect(ordinaryBrowse).toBeVisible();
     await expect(
@@ -153,9 +153,7 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
           "/api/order-operations/first-confirmations" &&
         response.request().method() === "POST",
     );
-    await composition
-      .getByRole("button", { name: "Confirmar Primera Composici\u00f3n" })
-      .click();
+    await composition.getByRole("button", { name: "Crear Pedido" }).click();
     const rejected = await rejectedConfirmation;
     expect(rejected.status()).toBe(409);
     const rejectedBody = (await rejected.json()) as {
@@ -174,7 +172,7 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
     const dualPage = await dualContext.newPage();
     await authenticateThroughCurrent(dualPage, dualOperator);
     const dualComposition = dualPage.getByRole("region", {
-      name: "Composici\u00f3n inicial",
+      name: "Preparar pedido",
     });
     await expect(dualComposition).toBeVisible();
     const unavailableRow = dualComposition.getByRole("row").filter({
@@ -183,11 +181,11 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
     await expect(unavailableRow).toContainText("No disponible");
     await expect(
       unavailableRow.getByRole("button", {
-        name: `Agregar ${productName} a Composici\u00f3n inicial`,
+        name: `Agregar ${productName} a Preparar pedido`,
       }),
     ).toBeDisabled();
     const interventionAdd = unavailableRow.getByRole("button", {
-      name: `Agregar ${productName} mediante intervenci\u00f3n a Composici\u00f3n inicial`,
+      name: `Agregar ${productName} mediante intervenci\u00f3n a Preparar pedido`,
     });
     await expect(interventionAdd).toBeEnabled();
     await interventionAdd.click();
@@ -203,7 +201,7 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
         response.request().method() === "POST",
     );
     await dualComposition
-      .getByRole("button", { name: "Confirmar con intervenci\u00f3n" })
+      .getByRole("button", { name: "Crear Pedido con intervención" })
       .click();
     const confirmed = await confirmedResponse;
     expect(confirmed.ok()).toBeTruthy();
@@ -269,7 +267,7 @@ test("MVP-FC-AVAIL-I3 separates availability intervention from ordinary and S10 
 
     await ordinaryPage.reload();
     const ordinaryCompositionAfter = ordinaryPage.getByRole("region", {
-      name: "Composici\u00f3n inicial",
+      name: "Preparar pedido",
     });
     await expect(ordinaryCompositionAfter).toBeVisible();
     await expect(

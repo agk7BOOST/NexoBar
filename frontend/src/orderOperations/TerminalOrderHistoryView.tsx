@@ -1,3 +1,4 @@
+import { CopyReference } from "../ui/CopyReference.tsx";
 import { useState, type FormEvent } from "react";
 import {
   getTerminalOrderHistory,
@@ -12,7 +13,10 @@ import { formatOperationalDate } from "../formatOperationalDate.ts";
 
 function actor(id: string | null) {
   return (
-    <span className="technical-reference">Actor: {id ?? "No disponible"}</span>
+    <details className="terminal-history-technical">
+      <summary>Referencia de quien registró</summary>
+      <span className="technical-reference">{id ?? "No disponible"}</span>
+    </details>
   );
 }
 function when(value: string) {
@@ -31,7 +35,7 @@ function unavailable(error: unknown) {
     if (error.problem.status === 404)
       return "Historial no disponible para esa referencia.";
     if (error.problem.code?.includes("operational_reference_invalid"))
-      return "La Referencia operacional no es válida.";
+      return "La Referencia del pedido no es válida.";
   }
   if (error instanceof OrderLookupNetworkError)
     return "No se pudo consultar el historial por un fallo de comunicación.";
@@ -100,7 +104,7 @@ function Content({ content: c }: { content: TerminalHistoryContent }) {
       </p>
       {latest && (
         <p className="terminal-history-latest">
-          Último hecho: {latest.label}
+          Último registro: {latest.label}
           {latest.quantity !== null && ` · ${latest.quantity} unidades`} ·{" "}
           {when(latest.at)}
         </p>
@@ -124,7 +128,7 @@ function Content({ content: c }: { content: TerminalHistoryContent }) {
       )}
       <details className="terminal-content-events">
         <summary>
-          Ver hechos: {c.preparationHistory.length} de preparación,{" "}
+          Ver registros: {c.preparationHistory.length} de preparación,{" "}
           {c.deliveries.length} entregas,{" "}
           {c.priceCorrections.length +
             c.corrections.length +
@@ -184,7 +188,7 @@ function Content({ content: c }: { content: TerminalHistoryContent }) {
                       PreparationCorrection: "Corrección",
                       PreparationIntervention: "Intervención",
                     } as Record<string, string>
-                  )[x.type] ?? x.type}
+                  )[x.type] ?? "Registro de preparación"}
                   : {x.quantity} · Pendiente {x.resultingPendingQuantity}, en
                   preparación {x.resultingInPreparationQuantity}, listo{" "}
                   {x.resultingReadyQuantity}; {actor(x.actorIdentityId)} ·{" "}
@@ -202,7 +206,7 @@ function Content({ content: c }: { content: TerminalHistoryContent }) {
                 <li key={i}>
                   {x.type === "QuantityDelivered"
                     ? "Entrega registrada"
-                    : x.type}
+                    : "Registro de entrega"}
                   : {x.quantity} · acumulado {x.resultingDeliveredQuantity};{" "}
                   {actor(x.actorIdentityId)} · {when(x.occurredAtUtc)}
                 </li>
@@ -256,10 +260,12 @@ export function TerminalOrderHistoryView({
   }
   return (
     <section className="panel" aria-labelledby="terminal-history-lookup-title">
-      <h2 id="terminal-history-lookup-title">Consultar historial terminal</h2>
+      <h2 id="terminal-history-lookup-title">
+        Consultar historial de un pedido finalizado
+      </h2>
       <form className="order-lookup-form" onSubmit={(e) => void submit(e)}>
         <label htmlFor="terminal-history-reference">
-          Referencia operacional exacta
+          Referencia del pedido finalizado
         </label>
         <input
           id="terminal-history-reference"
@@ -290,11 +296,11 @@ function TerminalHistoryResult({
       <p role="status">Solo lectura</p>
       <dl className="confirmation-summary">
         <div>
-          <dt>Terminación</dt>
+          <dt>Finalización</dt>
           <dd>{cancellation ? "Cancelación completa" : "Cierre"}</dd>
         </div>
         <div>
-          <dt>Fecha terminal</dt>
+          <dt>{cancellation ? "Fecha de cancelación" : "Fecha de cierre"}</dt>
           <dd>{when(h.termination.occurredAt)}</dd>
         </div>
         <div>
@@ -302,8 +308,11 @@ function TerminalHistoryResult({
           <dd>{h.finalContextOperationalName}</dd>
         </div>
         <div>
-          <dt>Referencia operacional</dt>
-          <dd className="technical-reference">{h.operationalReference}</dd>
+          <dt>Referencia del pedido</dt>
+          <dd className="technical-reference">
+            <span>{h.operationalReference}</span>
+            <CopyReference value={h.operationalReference} />
+          </dd>
         </div>
       </dl>
       {h.contextChanges.length > 0 && (
@@ -325,9 +334,10 @@ function TerminalHistoryResult({
         {h.incorporations.map((i) => (
           <article key={i.id}>
             <h4>Incorporación {i.ordinal}</h4>
-            <p>
+            <p>Productos confirmados juntos</p>
+            <div>
               Confirmada: {when(i.confirmedAtUtc)} · {actor(i.actorIdentityId)}
-            </p>
+            </div>
             <p>Contexto de confirmación: {i.confirmedContext}</p>
             {i.contents.map((c) => (
               <Content key={c.contentOrdinal} content={c} />
@@ -339,7 +349,7 @@ function TerminalHistoryResult({
         <section>
           <h3>Liquidación</h3>
           <p>
-            Importe funcional: {h.liquidation.functionalAmount} · Modo:{" "}
+            Importe de lo entregado: {h.liquidation.functionalAmount} · Modo:{" "}
             {h.liquidation.mode === "Simple"
               ? "Liquidación simple"
               : h.liquidation.mode === "ExternalCollection"
@@ -349,27 +359,27 @@ function TerminalHistoryResult({
           {h.liquidation.declaredPaymentMedium && (
             <p>Medio declarado: {h.liquidation.declaredPaymentMedium}</p>
           )}
-          <p>
+          <div>
             {actor(h.liquidation.actorIdentityId)} ·{" "}
             {when(h.liquidation.occurredAt)}
-          </p>
+          </div>
         </section>
       )}
       {h.closure && (
         <section>
           <h3>Cierre</h3>
-          <p>
+          <div>
             {actor(h.closure.actorIdentityId)} · {when(h.closure.occurredAtUtc)}
-          </p>
+          </div>
         </section>
       )}
       {h.completeCancellation && (
         <section>
           <h3>Cancelación completa</h3>
-          <p>
+          <div>
             {actor(h.completeCancellation.actorIdentityId)} ·{" "}
             {when(h.completeCancellation.occurredAtUtc)}
-          </p>
+          </div>
           {h.completeCancellation.pendingCompositionDiscarded && (
             <p>Se descartó la composición pendiente.</p>
           )}

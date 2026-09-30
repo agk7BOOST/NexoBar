@@ -32,6 +32,7 @@ import { ProductAvailabilityInterventionPanel } from "./availability/ProductAvai
 type AuthState =
   | { status: "loading" }
   | { status: "unauthenticated" }
+  | { status: "error" }
   | { status: "authenticated"; identity: CurrentIdentity };
 
 type Workspace =
@@ -82,6 +83,8 @@ function App() {
   const [deliveryOperationalReference, setDeliveryOperationalReference] =
     useState<string | null>(null);
   const [authState, setAuthState] = useState<AuthState>({ status: "loading" });
+  const [sessionReadRevision, setSessionReadRevision] = useState(0);
+  const [loginReason, setLoginReason] = useState<string>();
   const identityGeneration = useRef(0);
   const [identityLifecycle, setIdentityLifecycle] = useState(0);
   const [terminalOrders, setTerminalOrders] = useState<Record<string, boolean>>(
@@ -136,16 +139,19 @@ function App() {
         if (!isCurrent || identityGeneration.current !== generation) return;
         if (error instanceof SessionProblemError && error.status === 401) {
           discardAntiforgeryToken();
+          setAuthState({ status: "unauthenticated" });
+        } else {
+          setAuthState({ status: "error" });
         }
-        setAuthState({ status: "unauthenticated" });
       },
     );
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [sessionReadRevision]);
 
   const returnToLogin = useCallback(() => {
+    setLoginReason(undefined);
     identityGeneration.current += 1;
     setIdentityLifecycle((current) => current + 1);
     discardAntiforgeryToken();
@@ -162,6 +168,10 @@ function App() {
     setPreparationBusy([]);
     setSelectedWorkspace(null);
   }, []);
+  const returnAfterAccessChanged = useCallback(() => {
+    returnToLogin();
+    setLoginReason("Tu acceso fue actualizado. Volvé a ingresar.");
+  }, [returnToLogin]);
 
   const setAuthenticatedIdentity = useCallback((identity: CurrentIdentity) => {
     identityGeneration.current += 1;
@@ -349,14 +359,31 @@ function App() {
             </span>
             <p className="eyebrow">NexoBar · Operación</p>
             <h1>Un espacio claro para cada tarea.</h1>
-            <p>Ingresá con tu identidad para continuar.</p>
+            <p>Ingresá con tu usuario y contraseña.</p>
           </header>
         )}
         {authState.status === "loading" && (
           <p role="status">Cargando sesión…</p>
         )}
         {authState.status === "unauthenticated" && (
-          <LoginPanel onAuthenticated={setAuthenticatedIdentity} />
+          <LoginPanel
+            reason={loginReason}
+            onAuthenticated={setAuthenticatedIdentity}
+          />
+        )}
+        {authState.status === "error" && (
+          <section className="panel">
+            <p role="alert">No pudimos comprobar tu sesión.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthState({ status: "loading" });
+                setSessionReadRevision((value) => value + 1);
+              }}
+            >
+              Reintentar
+            </button>
+          </section>
         )}
         {authState.status === "authenticated" && (
           <>
@@ -574,6 +601,7 @@ function App() {
                   >
                     {canConfigureGeneral && (
                       <GeneralConfigurationPanel
+                        onOwnAccessChanged={returnAfterAccessChanged}
                         key={`admin-general:${identity.identityId}:${identityLifecycle}:${identity.responsibilities.join(",")}`}
                         currentIdentityId={identity.identityId}
                         onCurrentIdentityChanged={refreshCurrentIdentity}
@@ -589,8 +617,8 @@ function App() {
                     Sin espacios asignados
                   </h1>
                   <p className="notice">
-                    Tu usuario no tiene responsabilidades operacionales
-                    asignadas.
+                    No tenés tareas habilitadas para usar NexoBar. Pedí a quien
+                    administra NexoBar que configure tus responsabilidades.
                   </p>
                 </div>
               )}

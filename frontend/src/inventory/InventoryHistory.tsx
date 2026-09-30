@@ -3,6 +3,7 @@ import { formatOperationalDate } from "../formatOperationalDate.ts";
 import {
   discardAntiforgeryToken,
   getAntiforgeryToken,
+  SessionProblemError,
 } from "../identity/sessionClient.ts";
 import {
   getInventoryMovementHistory,
@@ -254,14 +255,38 @@ export function InventoryHistory({
   const [correction, setCorrection] = useState<InventoryMovement | null>(null);
   const [nature, setNature] = useState("Entry");
   const [quantity, setQuantity] = useState("");
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
+  const [correctionNotice, setCorrectionNotice] = useState<{
+    error: boolean;
+    message: string;
+  } | null>(null);
   const [pending, setPending] = useState<{
     key: string;
     root: string;
     nature: string;
     quantity: string;
     revision: number;
+    token: string;
   } | null>(null);
   const requestSequence = useRef(0);
+  const correctionForm = useRef<HTMLFormElement>(null);
+  const correctionRoot = correction?.movementId;
+  useEffect(() => {
+    if (!correctionRoot) return;
+    const opener = document.activeElement;
+    correctionForm.current?.querySelector("select")?.focus();
+    return () => {
+      queueMicrotask(() => {
+        if (
+          opener instanceof HTMLElement &&
+          opener.isConnected &&
+          !opener.closest("[hidden]")
+        )
+          opener.focus();
+      });
+    };
+  }, [correctionRoot]);
   const cancelRequests = useCallback(() => {
     requestSequence.current++;
   }, []);
@@ -291,7 +316,7 @@ export function InventoryHistory({
   );
 
   const loadFirstPage = useCallback(async () => {
-    if (item === null) return;
+    if (item === null) return false;
     const sequence = ++requestSequence.current;
     setState({ status: "loading" });
     setPaginationError(false);
@@ -301,9 +326,12 @@ export function InventoryHistory({
       });
       if (sequence === requestSequence.current) {
         setState({ status: "ready", history });
+        return true;
       }
+      return false;
     } catch (error) {
       handleFailure(error, sequence);
+      return false;
     }
   }, [handleFailure, item]);
 
@@ -353,18 +381,32 @@ export function InventoryHistory({
   }
 
   async function saveCorrection() {
-    if (!correction || !item || state.status !== "ready") return;
-    const intent = pending ?? {
-      key: crypto.randomUUID(),
-      root: correction.movementId,
-      nature,
-      quantity,
-      revision:
-        state.history.asOfMovementRevision ?? item.asOfMovementRevision ?? 0,
-    };
-    setPending(intent);
+    if (
+      !correction ||
+      !item ||
+      (!pending && state.status !== "ready") ||
+      sendingRef.current
+    )
+      return;
+    sendingRef.current = true;
+    setSending(true);
+    setCorrectionNotice(null);
+    let intent = pending;
+    let committed = false;
     try {
-      const token = await getAntiforgeryToken();
+      intent ??= {
+        key: crypto.randomUUID(),
+        root: correction.movementId,
+        nature,
+        quantity,
+        revision:
+          (state.status === "ready"
+            ? state.history.asOfMovementRevision
+            : undefined) ??
+          item.asOfMovementRevision ??
+          0,
+        token: await getAntiforgeryToken(),
+      };
       await correctInventoryMovement(
         intent.root,
         {
@@ -373,15 +415,34 @@ export function InventoryHistory({
           expectedMovementRevision: intent.revision,
         },
         intent.key,
-        token,
+        intent.token,
       );
+      committed = true;
       setPending(null);
       setCorrection(null);
       setQuantity("");
       await onAuthoritativeMutation(item.itemId);
-      await loadFirstPage();
+      const refreshed = await loadFirstPage();
+      setCorrectionNotice({
+        error: false,
+        message: refreshed
+          ? `Se guardó la corrección de “${item.operationalName}”.`
+          : `Se guardó la corrección de “${item.operationalName}”, pero no pudimos actualizar los movimientos.`,
+      });
     } catch (error) {
-      if (error instanceof InventoryProblemError && error.status === 401) {
+      if (committed) {
+        setCorrectionNotice({
+          error: false,
+          message:
+            "Se guardó la corrección, pero no pudimos actualizar la vista. Reintentá la consulta.",
+        });
+        return;
+      }
+      if (
+        (error instanceof InventoryProblemError ||
+          error instanceof SessionProblemError) &&
+        error.status === 401
+      ) {
         discardAntiforgeryToken();
         onUnauthorized();
         return;
@@ -392,14 +453,33 @@ export function InventoryHistory({
         error.status < 500
       ) {
         setPending(null);
-        setState({ status: "error" });
+        setCorrectionNotice({
+          error: true,
+          message:
+            error.status === 403
+              ? "Tu usuario no tiene autorización para corregir movimientos."
+              : error.status === 409
+                ? "El movimiento cambió. Actualizá los movimientos antes de volver a guardar la corrección."
+                : error.status === 404
+                  ? "El movimiento ya no está disponible para corregir."
+                  : "No pudimos guardar la corrección. Revisá el tipo de movimiento y la cantidad.",
+        });
         return;
       }
-      setPending(intent);
+      if (intent) setPending(intent);
+      else
+        setCorrectionNotice({
+          error: true,
+          message: "No pudimos preparar la corrección. Intentá nuevamente.",
+        });
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
     }
   }
 
   function beginCorrection(movement: InventoryMovement) {
+    setCorrectionNotice(null);
     setCorrection(movement);
     const effective = movement.effectiveNature ?? movement.nature;
     setNature(
@@ -429,12 +509,17 @@ export function InventoryHistory({
           <button
             type="button"
             className="secondary-button"
-            disabled={state.status === "loading"}
+            disabled={state.status === "loading" || sending || pending !== null}
             onClick={() => void loadFirstPage()}
           >
             Actualizar
           </button>
-          <button type="button" className="secondary-button" onClick={onClose}>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={sending || pending !== null}
+            onClick={onClose}
+          >
             Cerrar movimientos
           </button>
         </div>
@@ -454,9 +539,9 @@ export function InventoryHistory({
       )}
       {state.status === "error" && (
         <div className="notice notice--functional-error" role="alert">
-          <p>No se pudo cargar la Historia de Movimientos.</p>
+          <p>No pudimos consultar los movimientos.</p>
           <button type="button" onClick={() => void loadFirstPage()}>
-            Reintentar
+            Reintentar consulta
           </button>
         </div>
       )}
@@ -471,30 +556,40 @@ export function InventoryHistory({
               movement={movement}
               unit={state.history.operationalUnit}
               onCorrect={beginCorrection}
-              busy={pending !== null}
+              busy={sending || pending !== null}
             />
           ))}
         </ol>
       )}
-      {correction && state.status === "ready" && (
+      {correction && (
         <form
+          ref={correctionForm}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !sending && !pending) {
+              event.preventDefault();
+              setCorrection(null);
+            }
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             void saveCorrection();
           }}
         >
           <h5>
-            Corregir {correction.nature} {correction.quantity}
+            Corregir {correctionNatureLabel(correction.nature)}{" "}
+            {correction.quantity}
           </h5>
           <p>
             Significado vigente:{" "}
-            {correction.effectiveNature ?? correction.nature}{" "}
+            {correctionNatureLabel(
+              correction.effectiveNature ?? correction.nature,
+            )}{" "}
             {correction.effectiveQuantity ?? correction.quantity}
           </p>
           <label>
-            Naturaleza corregida
+            Tipo de movimiento corregido
             <select
-              disabled={pending !== null}
+              disabled={sending || pending !== null}
               value={nature}
               onChange={(e) => setNature(e.target.value)}
             >
@@ -506,7 +601,7 @@ export function InventoryHistory({
           <label>
             Cantidad corregida
             <input
-              disabled={pending !== null}
+              disabled={sending || pending !== null}
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               inputMode="decimal"
@@ -517,18 +612,26 @@ export function InventoryHistory({
           {/^0+(?:\.0+)?$/.test(quantity) && (
             <p>Este movimiento queda sin efecto. Su historial permanece.</p>
           )}
-          {pending !== null && (
+          {pending !== null && !sending && (
             <p role="status">
-              El resultado todavía no está confirmado. Reintentá esta misma
-              corrección para consultar el resultado.
+              No pudimos confirmar si se guardó la corrección. Reintentá esta
+              misma corrección; no se duplicará.
             </p>
           )}
-          <button type="submit">
-            {pending ? "Reintentar corrección" : "Guardar corrección"}
+          {sending && <p role="status">Guardando corrección…</p>}
+          <button
+            type="submit"
+            disabled={sending || (!pending && state.status !== "ready")}
+          >
+            {sending
+              ? "Guardando corrección…"
+              : pending
+                ? "Reintentar corrección"
+                : "Guardar corrección"}
           </button>
           <button
             type="button"
-            disabled={pending !== null}
+            disabled={sending || pending !== null}
             onClick={() => {
               setCorrection(null);
               if (!pending) setQuantity("");
@@ -537,6 +640,14 @@ export function InventoryHistory({
             Cerrar
           </button>
         </form>
+      )}
+      {correctionNotice && (
+        <p
+          className={`notice notice--${correctionNotice.error ? "functional-error" : "success"}`}
+          role={correctionNotice.error ? "alert" : "status"}
+        >
+          {correctionNotice.message}
+        </p>
       )}
       {state.status === "ready" && paginationError && (
         <p className="notice notice--functional-error" role="alert">

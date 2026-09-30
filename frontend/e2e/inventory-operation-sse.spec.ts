@@ -4,8 +4,8 @@ const itemName = "Insumo SSE Inventario E2E";
 
 async function signIn(page: Page, login: string, secret: string, name: string) {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(login);
-  await page.getByLabel("Secreto").fill(secret);
+  await page.getByLabel("Usuario de acceso").fill(login);
+  await page.getByLabel("Contraseña").fill(secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page.getByRole("region", { name: "Usuario actual" }),

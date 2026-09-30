@@ -72,10 +72,8 @@ async function authenticateThroughCurrent(
   administrator: Administrator,
 ): Promise<void> {
   await page.goto("/");
-  await page
-    .getByLabel("Identificador de acceso")
-    .fill(administrator.identifier);
-  await page.getByLabel("Secreto").fill(administrator.secret);
+  await page.getByLabel("Usuario de acceso").fill(administrator.identifier);
+  await page.getByLabel("Contraseña").fill(administrator.secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -140,7 +138,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
 
     let configuration = generalConfiguration(adminAPage);
     await configuration
-      .getByRole("textbox", { name: "Nombre operacional", exact: true })
+      .getByRole("textbox", { name: "Nombre", exact: true })
       .fill(targetInitialName);
     const created = waitForResponse(adminAPage, "POST", "/api/identities");
     await configuration
@@ -148,7 +146,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       .click();
     expect((await created).ok()).toBeTruthy();
     await expect(
-      configuration.getByText("Identidad creada correctamente.", {
+      configuration.getByText(/Se creó la identidad/, {
         exact: true,
       }),
     ).toBeVisible();
@@ -183,9 +181,9 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       .getByRole("button", { name: `Cambiar nombre de ${targetInitialName}` })
       .click();
     const rename = configuration.getByRole("form", {
-      name: "Cambiar nombre operacional",
+      name: "Cambiar nombre",
     });
-    await rename.getByLabel("Nuevo nombre operacional").fill(targetRenamedName);
+    await rename.getByLabel("Nuevo nombre").fill(targetRenamedName);
     const renamed = waitForResponse(
       adminAPage,
       "POST",
@@ -197,7 +195,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     expect((await renamed).ok()).toBeTruthy();
     await expect(
       configuration.getByText(
-        `Nombre operacional de ${targetInitialName} actualizado correctamente.`,
+        `“${targetInitialName}” ahora se llama “${targetRenamedName}”.`,
         { exact: true },
       ),
     ).toBeVisible();
@@ -236,7 +234,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await target
       .getByRole("button", {
-        name: `Otorgar habilitaci\u00f3n ${preparationResponsibilityName} a ${targetRenamedName}`,
+        name: `Habilitar destino ${preparationResponsibilityName} a ${targetRenamedName}`,
       })
       .click();
     const enabledTarget = await grantPreparationEnablement;
@@ -251,7 +249,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     expect(enablementState.preparationEnablements).toHaveLength(1);
     await expect(
       target.getByRole("list", {
-        name: `Habilitaciones de preparaci\u00f3n de ${targetRenamedName}`,
+        name: `Destinos habilitados de ${targetRenamedName}`,
       }),
     ).toContainText(`${preparationResponsibilityName}: Habilitada`);
     await refreshAdministrativeState(adminAPage, configuration);
@@ -263,30 +261,28 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     ).toContainText("Preparación: Asignada");
     await expect(
       target.getByRole("list", {
-        name: `Habilitaciones de preparaci\u00f3n de ${targetRenamedName}`,
+        name: `Destinos habilitados de ${targetRenamedName}`,
       }),
     ).toContainText(`${preparationResponsibilityName}: Habilitada`);
 
     await target
       .getByRole("button", {
-        name: `Configurar credencial de ${targetRenamedName}`,
+        name: `Configurar acceso de ${targetRenamedName}`,
       })
       .click();
     const credential = configuration.getByRole("form", {
       name: /acceso de /,
     });
     await credential
-      .getByLabel("Identificador de acceso")
+      .getByLabel("Usuario de acceso")
       .fill(targetLoginIdentifier);
-    await credential.getByLabel("Nueva clave secreta").fill(targetSecret);
+    await credential.getByLabel("Nueva contraseña").fill(targetSecret);
     const credentialSet = waitForResponse(
       adminAPage,
       "POST",
       /\/api\/identities\/[^/]+\/credential/,
     );
-    await credential
-      .getByRole("button", { name: "Guardar credencial" })
-      .click();
+    await credential.getByRole("button", { name: "Guardar acceso" }).click();
     const credentialResponse = await credentialSet;
     expect(credentialResponse.ok()).toBeTruthy();
     expect(await credentialResponse.json()).toMatchObject({
@@ -294,15 +290,18 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
       loginIdentifier: targetLoginIdentifier,
     });
     await expect(
-      configuration.getByText("Credencial actualizada correctamente.", {
-        exact: true,
-      }),
+      configuration.getByText(
+        `Se actualizó el acceso de “${targetRenamedName}”.`,
+        {
+          exact: true,
+        },
+      ),
     ).toBeVisible();
     await expect(
       target.getByText("configurado", { exact: true }),
     ).toBeVisible();
     await expect(
-      target.getByText(`Identificador de acceso: ${targetLoginIdentifier}`, {
+      target.getByText(`Usuario de acceso: ${targetLoginIdentifier}`, {
         exact: true,
       }),
     ).toBeVisible();
@@ -325,6 +324,9 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await target
       .getByRole("button", { name: `Desactivar ${targetRenamedName}` })
+      .click();
+    await configuration
+      .getByRole("button", { name: "Confirmar desactivación", exact: true })
       .click();
     expect((await deactivated).ok()).toBeTruthy();
     await expect(target.getByText("Inactiva", { exact: true })).toBeVisible();
@@ -359,7 +361,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await adminBRow
       .getByRole("button", {
-        name: `Revocar Configuración general a ${adminB.operationalName}`,
+        name: `Quitar Configuración general a ${adminB.operationalName}`,
       })
       .click();
     expect((await revokeAdminB).ok()).toBeTruthy();
@@ -403,7 +405,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await adminARow
       .getByRole("button", {
-        name: `Revocar Configuración general a ${adminA.operationalName}`,
+        name: `Quitar Configuración general a ${adminA.operationalName}`,
       })
       .click();
     const lastPathResponse = await lastPathRejection;
@@ -462,21 +464,19 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await currentAdminA
       .getByRole("button", {
-        name: `Configurar credencial de ${adminA.operationalName}`,
+        name: `Cambiar acceso de ${adminA.operationalName}`,
       })
       .click();
     const replacement = configuration.getByRole("form", {
       name: /acceso de /,
     });
-    await replacement.getByLabel("Nueva clave secreta").fill(adminANewSecret);
+    await replacement.getByLabel("Nueva contraseña").fill(adminANewSecret);
     const selfCredentialReplacement = waitForResponse(
       adminAPage,
       "POST",
       /\/api\/identities\/[^/]+\/credential/,
     );
-    await replacement
-      .getByRole("button", { name: "Guardar credencial" })
-      .click();
+    await replacement.getByRole("button", { name: "Guardar acceso" }).click();
     expect((await selfCredentialReplacement).ok()).toBeTruthy();
     await expect(
       adminAPage.getByRole("heading", { name: "Ingresar" }),
@@ -497,7 +497,7 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     await selectIdentity(restoredConfiguration, adminA.operationalName);
     await identityRow(restoredConfiguration, adminAPage, adminA.operationalName)
       .getByRole("button", {
-        name: `Configurar credencial de ${adminA.operationalName}`,
+        name: `Cambiar acceso de ${adminA.operationalName}`,
       })
       .click();
     const restoreCredential = waitForResponse(
@@ -507,11 +507,11 @@ test("S9 General Configuration administra Identities con sesiones y endpoints re
     );
     await restoredConfiguration
       .getByRole("form", { name: /acceso de / })
-      .getByLabel("Nueva clave secreta")
+      .getByLabel("Nueva contraseña")
       .fill(adminA.secret);
     await restoredConfiguration
       .getByRole("form", { name: /acceso de / })
-      .getByRole("button", { name: "Guardar credencial" })
+      .getByRole("button", { name: "Guardar acceso" })
       .click();
     expect((await restoreCredential).ok()).toBeTruthy();
     await authenticateThroughCurrent(adminAPage, adminA);

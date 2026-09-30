@@ -115,7 +115,7 @@ async function createWithName(
   user: ReturnType<typeof userEvent.setup>,
   name = "Nueva",
 ) {
-  await user.type(screen.getByLabelText("Nombre operacional"), name);
+  await user.type(screen.getByLabelText("Nombre"), name);
   await user.click(screen.getByRole("button", { name: "Crear identidad" }));
 }
 
@@ -160,9 +160,7 @@ describe("GeneralConfigurationPanel", () => {
     expect(list).toHaveTextContent("Activa · Acceso configurado");
     expect(list).toHaveTextContent("Inactiva · Acceso sin configurar");
     await selectIdentity("Ana");
-    expect(
-      screen.getByText("Identificador de acceso: ana"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Usuario de acceso: ana")).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByText(/secret|verifier|hash/i)).not.toBeInTheDocument();
     expect(listAdministrativeIdentitiesMock).toHaveBeenCalledOnce();
@@ -193,12 +191,12 @@ describe("GeneralConfigurationPanel", () => {
         screen.getByRole("button", { name: "Eliminar definitivamente Beto" }),
       );
       expect(
-        screen.getByText(/no existen operaciones registradas/),
+        screen.getByText(/no tiene operaciones cuya atribución/),
       ).toBeInTheDocument();
       expect(deleteIdentityMock).not.toHaveBeenCalled();
       await user.click(
         screen.getByRole("button", {
-          name: "Confirmar eliminación definitiva",
+          name: "Eliminar definitivamente",
         }),
       );
       await waitFor(() => expect(deleteIdentityMock).toHaveBeenCalledOnce());
@@ -238,7 +236,7 @@ describe("GeneralConfigurationPanel", () => {
       );
       await user.click(
         screen.getByRole("button", {
-          name: "Confirmar eliminación definitiva",
+          name: "Eliminar definitivamente",
         }),
       );
       expect(await screen.findByText(expected)).toBeInTheDocument();
@@ -257,7 +255,7 @@ describe("GeneralConfigurationPanel", () => {
       }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+      screen.getByRole("button", { name: "Eliminar definitivamente" }),
     );
     await waitFor(() =>
       expect(onCurrentIdentityChanged).toHaveBeenCalledOnce(),
@@ -277,7 +275,7 @@ describe("GeneralConfigurationPanel", () => {
     await createWithName(user);
 
     expect(
-      await screen.findByText("Identidad creada correctamente."),
+      await screen.findByText(/Se creó la identidad “/),
     ).toBeInTheDocument();
     const [request, key, token] = createIdentityMock.mock.calls[0]!;
     expect(request).toEqual({ operationalName: "Nueva" });
@@ -342,7 +340,7 @@ describe("GeneralConfigurationPanel", () => {
       screen.getByLabelText("Listado de destinos de preparación"),
     ).toHaveTextContent("Cocina");
     await user.type(
-      screen.getByLabelText("Nombre operacional del destino de preparación"),
+      screen.getByLabelText("Nombre del destino de preparación"),
       "Barra",
     );
     await user.click(
@@ -351,9 +349,7 @@ describe("GeneralConfigurationPanel", () => {
       }),
     );
 
-    expect(
-      await screen.findByText("Destino de preparación creado correctamente."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Se creó el destino “/)).toBeInTheDocument();
     expect(createPreparationResponsibilityMock.mock.calls[0]?.[0]).toEqual({
       operationalName: "Barra",
     });
@@ -365,14 +361,14 @@ describe("GeneralConfigurationPanel", () => {
     ).toHaveTextContent("Barra");
     await selectIdentity("Ana");
     expect(
-      screen.getByRole("button", { name: "Otorgar habilitación Barra a Ana" }),
+      screen.getByRole("button", { name: "Habilitar destino Barra a Ana" }),
     ).toBeInTheDocument();
   });
 
   it("rejects a blank name locally and displays a duplicate conflict", async () => {
     const { user } = renderPanel();
     await user.type(
-      screen.getByLabelText("Nombre operacional del destino de preparación"),
+      screen.getByLabelText("Nombre del destino de preparación"),
       " ",
     );
     await user.click(
@@ -386,10 +382,10 @@ describe("GeneralConfigurationPanel", () => {
     expect(createPreparationResponsibilityMock).not.toHaveBeenCalled();
 
     await user.clear(
-      screen.getByLabelText("Nombre operacional del destino de preparación"),
+      screen.getByLabelText("Nombre del destino de preparación"),
     );
     await user.type(
-      screen.getByLabelText("Nombre operacional del destino de preparación"),
+      screen.getByLabelText("Nombre del destino de preparación"),
       "Cocina",
     );
     createPreparationResponsibilityMock.mockRejectedValueOnce(
@@ -417,7 +413,7 @@ describe("GeneralConfigurationPanel", () => {
       });
     const { user } = renderPanel();
     await user.type(
-      screen.getByLabelText("Nombre operacional del destino de preparación"),
+      screen.getByLabelText("Nombre del destino de preparación"),
       "Cocina",
     );
     await user.click(
@@ -432,7 +428,7 @@ describe("GeneralConfigurationPanel", () => {
     await user.click(
       screen.getByRole("button", { name: "Reintentar esta operación" }),
     );
-    await screen.findByText("Destino de preparación creado correctamente.");
+    await screen.findByText(/Se creó el destino/);
     expect(createPreparationResponsibilityMock.mock.calls[1]).toEqual(
       firstCall,
     );
@@ -459,28 +455,28 @@ describe("GeneralConfigurationPanel", () => {
     await user.click(
       screen.getByRole("button", { name: "Reintentar esta operación" }),
     );
-    await screen.findByText("Identidad creada correctamente.");
+    await screen.findByText(/Se creó la identidad/);
     expect(createIdentityMock.mock.calls[1]).toEqual(firstCall);
 
     createIdentityMock.mockRejectedValueOnce(
       new IdentityAdministrationNetworkError(),
     );
-    await user.clear(screen.getByLabelText("Nombre operacional"));
-    await user.type(screen.getByLabelText("Nombre operacional"), "Segunda");
+    await user.clear(screen.getByLabelText("Nombre"));
+    await user.type(screen.getByLabelText("Nombre"), "Segunda");
     await user.click(screen.getByRole("button", { name: "Crear identidad" }));
     await screen.findByRole("region", {
       name: "Creación de identidad con resultado no confirmado",
     });
     await user.click(
-      screen.getByRole("button", { name: "Descartar e iniciar nueva" }),
+      screen.getByRole("button", { name: "Dejar de reintentar" }),
     );
     createIdentityMock.mockResolvedValueOnce(
       identity({ operationalName: "Tercera" }),
     );
-    await user.clear(screen.getByLabelText("Nombre operacional"));
-    await user.type(screen.getByLabelText("Nombre operacional"), "Tercera");
+    await user.clear(screen.getByLabelText("Nombre"));
+    await user.type(screen.getByLabelText("Nombre"), "Tercera");
     await user.click(screen.getByRole("button", { name: "Crear identidad" }));
-    await screen.findByText("Identidad creada correctamente.");
+    await screen.findByText(/Se creó la identidad/);
     expect(createIdentityMock.mock.calls[3]?.[1]).not.toBe(
       createIdentityMock.mock.calls[2]?.[1],
     );
@@ -496,11 +492,8 @@ describe("GeneralConfigurationPanel", () => {
     await user.click(
       screen.getByRole("button", { name: "Cambiar nombre de Ana" }),
     );
-    await user.clear(screen.getByLabelText("Nuevo nombre operacional"));
-    await user.type(
-      screen.getByLabelText("Nuevo nombre operacional"),
-      "Ana renovada",
-    );
+    await user.clear(screen.getByLabelText("Nuevo nombre"));
+    await user.type(screen.getByLabelText("Nuevo nombre"), "Ana renovada");
     await user.click(
       screen.getByRole("button", { name: "Confirmar cambio de nombre" }),
     );
@@ -530,11 +523,8 @@ describe("GeneralConfigurationPanel", () => {
     await user.click(
       screen.getByRole("button", { name: "Cambiar nombre de Ana" }),
     );
-    await user.clear(screen.getByLabelText("Nuevo nombre operacional"));
-    await user.type(
-      screen.getByLabelText("Nuevo nombre operacional"),
-      "Nombre fallido",
-    );
+    await user.clear(screen.getByLabelText("Nuevo nombre"));
+    await user.type(screen.getByLabelText("Nuevo nombre"), "Nombre fallido");
     await user.click(
       screen.getByRole("button", { name: "Confirmar cambio de nombre" }),
     );
@@ -675,7 +665,7 @@ describe("GeneralConfigurationPanel", () => {
 
     await screen.findByText("Cocina: No habilitada");
     await user.click(
-      screen.getByRole("button", { name: "Otorgar habilitación Cocina a Ana" }),
+      screen.getByRole("button", { name: "Habilitar destino Cocina a Ana" }),
     );
 
     expect(await screen.findByText("Cocina: Habilitada")).toBeInTheDocument();
@@ -724,7 +714,7 @@ describe("GeneralConfigurationPanel", () => {
 
     await screen.findByText("Cocina: No habilitada");
     await user.click(
-      screen.getByRole("button", { name: "Otorgar habilitación Cocina a Ana" }),
+      screen.getByRole("button", { name: "Habilitar destino Cocina a Ana" }),
     );
     await screen.findByRole("region", {
       name: "Habilitación de preparación con resultado no confirmado",
@@ -737,16 +727,16 @@ describe("GeneralConfigurationPanel", () => {
     expect(grantPreparationEnablementMock.mock.calls[1]).toEqual(firstCall);
 
     await user.click(
-      screen.getByRole("button", { name: "Otorgar habilitación Barra a Ana" }),
+      screen.getByRole("button", { name: "Habilitar destino Barra a Ana" }),
     );
     await screen.findByRole("region", {
       name: "Habilitación de preparación con resultado no confirmado",
     });
     await user.click(
-      screen.getByRole("button", { name: "Descartar e iniciar nueva" }),
+      screen.getByRole("button", { name: "Dejar de reintentar" }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Otorgar habilitación Barra a Ana" }),
+      screen.getByRole("button", { name: "Habilitar destino Barra a Ana" }),
     );
     expect(grantPreparationEnablementMock.mock.calls[2]?.[2]).not.toBe(
       grantPreparationEnablementMock.mock.calls[3]?.[2],
@@ -770,7 +760,7 @@ describe("GeneralConfigurationPanel", () => {
 
     await screen.findByText("Cocina: Habilitada");
     await user.click(
-      screen.getByRole("button", { name: "Revocar habilitación Cocina a Ana" }),
+      screen.getByRole("button", { name: "Quitar habilitación Cocina a Ana" }),
     );
     expect(
       await screen.findByText(
@@ -786,7 +776,7 @@ describe("GeneralConfigurationPanel", () => {
       }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Revocar habilitación Cocina a Ana" }),
+      screen.getByRole("button", { name: "Quitar habilitación Cocina a Ana" }),
     );
     expect(
       await screen.findByText("Cocina: No habilitada"),
@@ -819,7 +809,7 @@ describe("GeneralConfigurationPanel", () => {
 
     await screen.findByText("Cocina: Habilitada");
     await user.click(
-      screen.getByRole("button", { name: "Revocar Preparación a Ana" }),
+      screen.getByRole("button", { name: "Quitar Preparación a Ana" }),
     );
     expect(
       await screen.findByText("Preparación: No asignada"),
@@ -857,7 +847,7 @@ describe("GeneralConfigurationPanel", () => {
 
     await screen.findByText("Cocina: Habilitada");
     await user.click(
-      screen.getByRole("button", { name: "Revocar habilitación Cocina a Ana" }),
+      screen.getByRole("button", { name: "Quitar habilitación Cocina a Ana" }),
     );
     await screen.findByRole("region", {
       name: "Habilitación de preparación con resultado no confirmado",
@@ -930,7 +920,7 @@ describe("GeneralConfigurationPanel", () => {
     ]);
 
     await user.click(
-      screen.getByRole("button", { name: "Revocar Preparación a Ana" }),
+      screen.getByRole("button", { name: "Quitar Preparación a Ana" }),
     );
     expect(
       await screen.findByText("Preparación: No asignada"),
@@ -957,7 +947,7 @@ describe("GeneralConfigurationPanel", () => {
     await screen.findByText("Configuración general: Asignada");
     await user.click(
       screen.getByRole("button", {
-        name: "Revocar Configuración general a Ana",
+        name: "Quitar Configuración general a Ana",
       }),
     );
 
@@ -984,6 +974,10 @@ describe("GeneralConfigurationPanel", () => {
     await selectIdentity("Ana");
 
     await user.click(screen.getByRole("button", { name: "Desactivar Ana" }));
+    expect(deactivateIdentityMock).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar desactivación" }),
+    );
 
     expect(
       await screen.findByText(
@@ -1073,7 +1067,7 @@ describe("GeneralConfigurationPanel", () => {
       name: "Actualización de identidad con resultado no confirmado",
     });
     await user.click(
-      screen.getByRole("button", { name: "Descartar e iniciar nueva" }),
+      screen.getByRole("button", { name: "Dejar de reintentar" }),
     );
     await user.click(
       screen.getByRole("button", {
@@ -1109,7 +1103,7 @@ describe("GeneralConfigurationPanel", () => {
     await screen.findByText("Configuración general: Asignada");
     await user.click(
       screen.getByRole("button", {
-        name: "Revocar Configuración general a Ana",
+        name: "Quitar Configuración general a Ana",
       }),
     );
 
@@ -1128,6 +1122,9 @@ describe("GeneralConfigurationPanel", () => {
     await selectIdentity("Ana");
 
     await user.click(screen.getByRole("button", { name: "Desactivar Ana" }));
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar desactivación" }),
+    );
 
     expect(await screen.findByText("Inactiva")).toBeInTheDocument();
     await waitFor(() =>
@@ -1154,27 +1151,23 @@ describe("GeneralConfigurationPanel", () => {
     const { onCurrentIdentityChanged, user } = renderPanel();
     await selectIdentity("Beto");
     await user.click(
-      screen.getByRole("button", { name: "Configurar credencial de Beto" }),
+      screen.getByRole("button", { name: "Cambiar acceso de Beto" }),
     );
     expect(
-      screen.getByRole("form", { name: "Reemplazar acceso de Beto" }),
-    ).toHaveTextContent("Identificador vigente: beto");
+      screen.getByRole("form", { name: "Cambiar acceso de Beto" }),
+    ).toHaveTextContent("Usuario de acceso actual: beto");
     expect(
       screen.getByText(/se revocarán todas las sesiones de esta persona/),
     ).toBeVisible();
-    await user.type(screen.getByLabelText("Nueva clave secreta"), "secret-new");
-    await user.click(
-      screen.getByRole("button", { name: "Guardar credencial" }),
-    );
+    await user.type(screen.getByLabelText("Nueva contraseña"), "secret-new");
+    await user.click(screen.getByRole("button", { name: "Guardar acceso" }));
 
-    await screen.findByText("Credencial actualizada correctamente.");
+    await screen.findByText(/Se actualizó el acceso de/);
     expect(setLocalCredentialMock.mock.calls[0]?.[1]).toEqual({
       secret: "secret-new",
     });
     expect(onCurrentIdentityChanged).not.toHaveBeenCalled();
-    expect(
-      screen.queryByLabelText("Nueva clave secreta"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Nueva contraseña")).not.toBeInTheDocument();
   });
 
   it("requires an explicit login identifier for credentialless setup and returns to login after self success", async () => {
@@ -1184,26 +1177,22 @@ describe("GeneralConfigurationPanel", () => {
     const { onUnauthorized, user } = renderPanel();
     await selectIdentity("Ana");
     await user.click(
-      screen.getByRole("button", { name: "Configurar credencial de Ana" }),
+      screen.getByRole("button", { name: "Configurar acceso de Ana" }),
     );
     expect(
       screen.getByRole("form", { name: "Configurar acceso de Ana" }),
     ).toBeVisible();
-    await user.type(screen.getByLabelText("Nueva clave secreta"), "secret-new");
-    await user.click(
-      screen.getByRole("button", { name: "Guardar credencial" }),
-    );
+    await user.type(screen.getByLabelText("Nueva contraseña"), "secret-new");
+    await user.click(screen.getByRole("button", { name: "Guardar acceso" }));
     expect(
-      await screen.findByText("Ingresá un identificador de acceso."),
+      await screen.findByText("Ingresá un usuario de acceso."),
     ).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("Identificador de acceso"), "ana");
+    await user.type(screen.getByLabelText("Usuario de acceso"), "ana");
     setLocalCredentialMock.mockResolvedValueOnce(
       identity({ hasLocalCredential: true, loginIdentifier: "ana" }),
     );
-    await user.click(
-      screen.getByRole("button", { name: "Guardar credencial" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Guardar acceso" }));
     await waitFor(() => expect(onUnauthorized).toHaveBeenCalledOnce());
     expect(setLocalCredentialMock.mock.calls[0]?.[1]).toEqual({
       loginIdentifier: "ana",

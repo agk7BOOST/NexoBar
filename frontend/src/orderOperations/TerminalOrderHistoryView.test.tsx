@@ -152,7 +152,7 @@ async function load(data: ReturnType<typeof fixture>) {
   const user = userEvent.setup();
   render(<TerminalOrderHistoryView />);
   await user.type(
-    screen.getByLabelText("Referencia operacional exacta"),
+    screen.getByLabelText("Referencia del pedido finalizado"),
     "REF",
   );
   await user.click(screen.getByRole("button", { name: "Ver historial" }));
@@ -177,7 +177,7 @@ describe("TerminalOrderHistoryView", () => {
       result.getByText("Nombre histórico no disponible"),
     ).toBeInTheDocument();
     expect(
-      result.getByText(/Último hecho: Entrega corregida de 1 a 0/),
+      result.getByText(/Último registro: Entrega corregida de 1 a 0/),
     ).toBeInTheDocument();
     expect(result.getAllByRole("listitem")[1]).toHaveTextContent("10 → 12");
     expect(result.getByText("Corrección de contenido")).toBeInTheDocument();
@@ -189,13 +189,16 @@ describe("TerminalOrderHistoryView", () => {
     expect(
       result.getByRole("heading", { name: "Correcciones de entrega" }),
     ).toBeInTheDocument();
-    expect(result.getByText(/Actor: actor-confirm/)).toBeInTheDocument();
+    expect(result.getByText(/actor-confirm/)).toBeInTheDocument();
     expect(result.getByText(/Tarjeta/)).toBeInTheDocument();
     expect(
       result.getByRole("heading", { name: "Liquidación" }),
     ).toBeInTheDocument();
     expect(result.getAllByRole("heading", { name: "Cierre" })).toHaveLength(1);
-    expect(result.queryByRole("button")).not.toBeInTheDocument();
+    expect(result.getAllByRole("button")).toHaveLength(1);
+    expect(
+      result.getByRole("button", { name: "Copiar referencia" }),
+    ).toBeInTheDocument();
   });
   it("renders Complete Cancellation without inventing liquidation or closure", async () => {
     const result = within(await load(fixture("CompleteCancellation")));
@@ -215,7 +218,7 @@ describe("TerminalOrderHistoryView", () => {
     const user = userEvent.setup();
     render(<TerminalOrderHistoryView />);
     await user.type(
-      screen.getByLabelText("Referencia operacional exacta"),
+      screen.getByLabelText("Referencia del pedido finalizado"),
       "REF",
     );
     await user.click(screen.getByRole("button", { name: "Ver historial" }));
@@ -231,7 +234,7 @@ describe("TerminalOrderHistoryView", () => {
     const user = userEvent.setup();
     render(<TerminalOrderHistoryView />);
     await user.type(
-      screen.getByLabelText("Referencia operacional exacta"),
+      screen.getByLabelText("Referencia del pedido finalizado"),
       "REF",
     );
     await user.click(screen.getByRole("button", { name: "Ver historial" }));
@@ -249,12 +252,12 @@ describe("TerminalOrderHistoryView", () => {
     const user = userEvent.setup();
     render(<TerminalOrderHistoryView />);
     await user.type(
-      screen.getByLabelText("Referencia operacional exacta"),
+      screen.getByLabelText("Referencia del pedido finalizado"),
       "bad",
     );
     await user.click(screen.getByRole("button", { name: "Ver historial" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "La Referencia operacional no es válida.",
+      "La Referencia del pedido no es válida.",
     );
   });
   it("handles unauthorized response without disclosing reference existence", async () => {
@@ -265,7 +268,7 @@ describe("TerminalOrderHistoryView", () => {
     const user = userEvent.setup();
     render(<TerminalOrderHistoryView onUnauthorized={unauthorized} />);
     await user.type(
-      screen.getByLabelText("Referencia operacional exacta"),
+      screen.getByLabelText("Referencia del pedido finalizado"),
       "REF",
     );
     await user.click(screen.getByRole("button", { name: "Ver historial" }));
@@ -282,7 +285,7 @@ describe("TerminalOrderHistoryView", () => {
     const user = userEvent.setup();
     render(<TerminalOrderHistoryView onUnauthorized={unauthorized} />);
     await user.type(
-      screen.getByLabelText("Referencia operacional exacta"),
+      screen.getByLabelText("Referencia del pedido finalizado"),
       "REF",
     );
     await user.click(screen.getByRole("button", { name: "Ver historial" }));

@@ -19,8 +19,8 @@ const productName = "Bebida E2E directa";
 
 async function login(page: Page, actor: typeof oabc | typeof general) {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(actor.login);
-  await page.getByLabel("Secreto").fill(actor.secret);
+  await page.getByLabel("Usuario de acceso").fill(actor.login);
+  await page.getByLabel("Contraseña").fill(actor.secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -32,7 +32,7 @@ async function login(page: Page, actor: typeof oabc | typeof general) {
 async function logout(page: Page) {
   await page
     .getByRole("region", { name: "Usuario actual" })
-    .getByRole("button", { name: "Cambiar persona / salir" })
+    .getByRole("button", { name: "Cerrar sesión" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
 }
@@ -41,20 +41,22 @@ test("MVP-FC-TOH-CLOSE OABC consults closed Order History by exact reference", a
   page,
 }) => {
   await login(page, general);
-  await expect(page.getByLabel("Referencia operacional exacta")).toHaveCount(0);
+  await expect(page.getByLabel("Referencia del pedido finalizado")).toHaveCount(
+    0,
+  );
   await expect(page.getByRole("button", { name: "Ver historial" })).toHaveCount(
     0,
   );
   await logout(page);
 
   await login(page, oabc);
-  const composition = page.getByRole("region", { name: "Composición inicial" });
+  const composition = page.getByRole("region", { name: "Preparar pedido" });
   await composition
     .getByRole("button", {
-      name: `Agregar ${productName} a Composición inicial`,
+      name: `Agregar ${productName} a Preparar pedido`,
     })
     .click();
-  const context = composition.getByLabel("Contexto para Primera Confirmacion");
+  const context = composition.getByLabel("Contexto del pedido");
   await expect(
     context.getByRole("option", { name: "Contexto base E2E", exact: true }),
   ).toHaveCount(1);
@@ -82,7 +84,7 @@ test("MVP-FC-TOH-CLOSE OABC consults closed Order History by exact reference", a
   ).toBe(productName);
 
   await page
-    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .getByRole("button", { name: "Abrir entrega de este pedido" })
     .click();
   const delivery = page.getByRole("region", {
     name: `Entrega del Pedido ${reference}`,
@@ -94,9 +96,9 @@ test("MVP-FC-TOH-CLOSE OABC consults closed Order History by exact reference", a
 
   const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
   await expect(
-    ending.getByText("Importe funcional actual").locator("..").locator("dd"),
+    ending.getByText("Importe de lo entregado").locator("..").locator("dd"),
   ).toHaveText("5");
-  await ending.getByLabel("Medio de pago declarado").fill("Efectivo E2E");
+  await ending.getByLabel("Medio de pago").fill("Efectivo E2E");
   const activeAfterLiquidation = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===
@@ -113,14 +115,14 @@ test("MVP-FC-TOH-CLOSE OABC consults closed Order History by exact reference", a
   expect((await liquidation).ok()).toBeTruthy();
   expect((await activeAfterLiquidation).status()).toBe(200);
   await expect(
-    ending.getByRole("button", { name: "Cerrar Pedido" }),
+    ending.getByRole("button", { name: "Cerrar pedido" }),
   ).toBeEnabled();
   const closure = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === `/api/orders/${reference}/close` &&
       response.request().method() === "POST",
   );
-  await ending.getByRole("button", { name: "Cerrar Pedido" }).click();
+  await ending.getByRole("button", { name: "Cerrar pedido" }).click();
   expect((await closure).ok()).toBeTruthy();
   const closed = page.getByRole("status").filter({
     hasText: `Pedido cerrado: ${reference}`,
@@ -128,7 +130,7 @@ test("MVP-FC-TOH-CLOSE OABC consults closed Order History by exact reference", a
   await expect(closed.getByRole("time")).toHaveAttribute("datetime", /\S+/);
   await expect(ending).toHaveCount(0);
 
-  const historyLookup = page.getByLabel("Referencia operacional exacta");
+  const historyLookup = page.getByLabel("Referencia del pedido finalizado");
   await historyLookup.fill(reference);
   const historyRequest = page.waitForResponse(
     (response) =>
@@ -173,7 +175,10 @@ test("MVP-FC-TOH-CLOSE OABC consults closed Order History by exact reference", a
   await expect(result.getByRole("heading", { name: "Cierre" })).toBeVisible();
   expect(history.liquidation).not.toBeNull();
   expect(history.closure).not.toBeNull();
-  await expect(result.getByRole("button")).toHaveCount(0);
+  await expect(result.getByRole("button")).toHaveCount(1);
+  await expect(
+    result.getByRole("button", { name: "Copiar referencia", exact: true }),
+  ).toBeVisible();
   await expect(result.getByRole("textbox")).toHaveCount(0);
   await expect(result.getByRole("combobox")).toHaveCount(0);
   await expect(result.getByRole("checkbox")).toHaveCount(0);
@@ -183,14 +188,14 @@ test("MVP-FC-TOH-CLOSE Complete Cancellation History stays distinct from Closure
   page,
 }) => {
   await login(page, cancellation);
-  const composition = page.getByRole("region", { name: "Composición inicial" });
+  const composition = page.getByRole("region", { name: "Preparar pedido" });
   await composition
     .getByRole("button", {
-      name: `Agregar ${productName} a Composición inicial`,
+      name: `Agregar ${productName} a Preparar pedido`,
     })
     .click();
   await composition
-    .getByLabel("Contexto para Primera Confirmacion")
+    .getByLabel("Contexto del pedido")
     .selectOption({ label: "Contexto base E2E" });
   const confirmation = page.waitForResponse(
     (response) =>
@@ -227,7 +232,7 @@ test("MVP-FC-TOH-CLOSE Complete Cancellation History stays distinct from Closure
     .click();
   expect((await cancelled).ok()).toBeTruthy();
 
-  const historyInput = page.getByLabel("Referencia operacional exacta");
+  const historyInput = page.getByLabel("Referencia del pedido finalizado");
   await historyInput.fill(reference);
   const responsePromise = page.waitForResponse(
     (response) =>
@@ -254,7 +259,10 @@ test("MVP-FC-TOH-CLOSE Complete Cancellation History stays distinct from Closure
     result.getByRole("heading", { name: "Liquidación" }),
   ).toHaveCount(0);
   await expect(result.getByRole("heading", { name: "Cierre" })).toHaveCount(0);
-  await expect(result.getByRole("button")).toHaveCount(0);
+  await expect(result.getByRole("button")).toHaveCount(1);
+  await expect(
+    result.getByRole("button", { name: "Copiar referencia", exact: true }),
+  ).toBeVisible();
   await expect(result.getByRole("textbox")).toHaveCount(0);
   await expect(result.getByRole("combobox")).toHaveCount(0);
 });

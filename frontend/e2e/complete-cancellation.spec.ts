@@ -12,8 +12,8 @@ async function login(
   name: string,
 ) {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(identifier);
-  await page.getByLabel("Secreto").fill(secret);
+  await page.getByLabel("Usuario de acceso").fill(identifier);
+  await page.getByLabel("Contraseña").fill(secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -25,18 +25,18 @@ async function login(
 async function logout(page: Page) {
   await page
     .getByRole("region", { name: "Usuario actual" })
-    .getByRole("button", { name: "Cambiar persona / salir" })
+    .getByRole("button", { name: "Cerrar sesión" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
 }
 
 async function lookup(page: Page, reference: string) {
   await page
-    .getByRole("textbox", { name: "Referencia operacional", exact: true })
+    .getByRole("textbox", { name: "Referencia del pedido", exact: true })
     .fill(reference);
-  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  await page.getByRole("button", { name: "Buscar pedido" }).click();
   await expect(
-    page.getByRole("button", { name: "Buscar Pedido" }),
+    page.getByRole("button", { name: "Buscar pedido" }),
   ).toBeEnabled();
 }
 
@@ -57,9 +57,9 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   );
 
   // One confirmed Content is enough to demonstrate two cancellation origins.
-  const composition = page.getByRole("region", { name: "Composición inicial" });
+  const composition = page.getByRole("region", { name: "Preparar pedido" });
   const add = composition.getByRole("button", {
-    name: `Agregar ${productName} a Composición inicial`,
+    name: `Agregar ${productName} a Preparar pedido`,
   });
   await add.click();
   await add.click();
@@ -129,13 +129,15 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
     pendingComposition: null,
   });
   const pendingComposition = page.getByRole("region", {
-    name: "Nueva Composición",
+    name: "Agregar productos al pedido",
   });
   await expect(
     pendingComposition.getByText(operationalReference, { exact: true }),
   ).toBeVisible();
   await pendingComposition
-    .getByRole("button", { name: `Agregar ${productName} a Nueva Composición` })
+    .getByRole("button", {
+      name: `Agregar ${productName} a Agregar productos al pedido`,
+    })
     .click();
   await expect(
     pendingComposition.getByText(
@@ -162,25 +164,29 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
     .click();
   const obligation = intervention.getByRole("definition");
   await expect(obligation).not.toHaveCount(0);
-  await quantity(intervention, "Confirmada (Q)", "2");
-  await quantity(intervention, "Retirada por corrección de contenido (R)", "0");
-  await quantity(intervention, "Cancelada (C)", "0");
-  await quantity(intervention, "Obligación de cumplimiento (F)", "2");
-  await quantity(intervention, "Pendiente (P)", "1");
-  await quantity(intervention, "En preparación (I)", "1");
-  await quantity(intervention, "Lista (Y)", "0");
-  await quantity(intervention, "Total vigente (T)", "2");
-  await quantity(intervention, "Entregada (D)", "0");
+  await quantity(intervention, "Cantidad confirmada", "2");
+  await quantity(intervention, "Quitada por corrección", "0");
+  await quantity(intervention, "Cantidad cancelada", "0");
+  await quantity(intervention, "Cantidad requerida", "2");
+  await quantity(intervention, "Pendiente", "1");
+  await quantity(intervention, "En preparación", "1");
+  await quantity(intervention, "Lista", "0");
+  await quantity(intervention, "Total requerido", "2");
+  await quantity(intervention, "Entregada", "0");
 
   await page.getByRole("button", { name: "Pedidos", exact: true }).click();
   await lookup(page, operationalReference);
   const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
-  for (const label of ["Liquidado", "Congelado", "Cerrado"])
+  for (const label of [
+    "Liquidado",
+    "Operación congelada por liquidación",
+    "Cerrado",
+  ])
     await quantity(ending, label, "No");
   const cancellation = page.getByRole("region", {
     name: "Cancelación completa excepcional",
   });
-  await expect(cancellation).toContainText("OperationalIntervention");
+  await expect(cancellation).toContainText("Intervención operacional");
   await expect(
     cancellation.getByRole("button", {
       name: "Cancelar pedido completo",
@@ -289,16 +295,16 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   await intervention
     .getByRole("button", { name: "Actualizar contenido", exact: true })
     .click();
-  await quantity(intervention, "Confirmada (Q)", "2");
-  await quantity(intervention, "Retirada por corrección de contenido (R)", "0");
-  await quantity(intervention, "Cancelada (C)", "2");
+  await quantity(intervention, "Cantidad confirmada", "2");
+  await quantity(intervention, "Quitada por corrección", "0");
+  await quantity(intervention, "Cantidad cancelada", "2");
   for (const label of [
-    "Obligación de cumplimiento (F)",
-    "Pendiente (P)",
-    "En preparación (I)",
-    "Lista (Y)",
-    "Total vigente (T)",
-    "Entregada (D)",
+    "Cantidad requerida",
+    "Pendiente",
+    "En preparación",
+    "Lista",
+    "Total requerido",
+    "Entregada",
   ])
     await quantity(intervention, label, "0");
   await expect(
@@ -323,7 +329,7 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
     page.getByRole("region", { name: "Usuario actual" }),
   ).toBeVisible();
   await page
-    .getByLabel("Referencia operacional exacta")
+    .getByLabel("Referencia del pedido finalizado")
     .fill(operationalReference);
   await page.getByRole("button", { name: "Ver historial" }).click();
   await expect(
@@ -331,7 +337,7 @@ test("Complete Cancellation termina obligación Pending e InPreparation y descar
   ).toContainText(productName);
   await expect(
     page.getByRole("button", {
-      name: /^(Agregar productos a este Pedido|Liquidar|Cerrar Pedido|Cancelar pedido completo)$/,
+      name: /^(Agregar productos a este Pedido|Liquidar|Cerrar pedido|Cancelar pedido completo)$/,
     }),
   ).toHaveCount(0);
 });

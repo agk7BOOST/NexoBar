@@ -117,7 +117,7 @@ function action() {
   });
 }
 function input() {
-  return screen.getByLabelText(/^Cantidad a retirar \(x\)/);
+  return screen.getByLabelText(/^Cantidad confirmada a corregir/);
 }
 function submit() {
   return screen.getByRole("button", {
@@ -136,7 +136,7 @@ async function correct(value: string) {
   fireEvent.click(submit());
 }
 function amount() {
-  return screen.getByText("Importe funcional actual").parentElement!;
+  return screen.getByText("Importe de lo entregado").parentElement!;
 }
 
 beforeEach(() => {
@@ -278,7 +278,9 @@ it.each(["", "0", "-1", "1.5", "5"])(
       await screen.findByText("Ingresá una cantidad entera entre 1 y 4."),
     ).toBeVisible();
     expect(mutation).not.toHaveBeenCalled();
-    expect(article()).toHaveTextContent("F resultante (prevista): —");
+    expect(article()).toHaveTextContent(
+      "Cantidad requerida resultante (prevista): —",
+    );
   },
 );
 it.each([1, 4])(
@@ -337,7 +339,7 @@ it.each([2, 5])(
     fireEvent.click(action());
     fireEvent.change(input(), { target: { value: String(quantity) } });
     expect(article()).toHaveTextContent(
-      `F resultante (prevista): ${5 - quantity}`,
+      `Cantidad requerida resultante (prevista): ${5 - quantity}`,
     );
     fireEvent.click(submit());
     await waitFor(() => expect(mutation).toHaveBeenCalledOnce());

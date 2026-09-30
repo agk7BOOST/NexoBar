@@ -69,10 +69,10 @@ describe("CatalogPanel - eliminación definitiva", () => {
     ).toBeInTheDocument();
     await user.click(remove);
     expect(
-      screen.getByText(/nunca participó en un Pedido confirmado/),
+      screen.getByText(/nunca participó en un pedido confirmado/),
     ).toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+      screen.getByRole("button", { name: "Eliminar definitivamente" }),
     );
     await waitFor(() =>
       expect(
@@ -102,7 +102,7 @@ describe("CatalogPanel - eliminación definitiva", () => {
       }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+      screen.getByRole("button", { name: "Eliminar definitivamente" }),
     );
     expect(
       await screen.findByText(/Podés retirarlo por separado/),
@@ -133,7 +133,7 @@ describe("CatalogPanel - eliminación definitiva", () => {
       }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+      screen.getByRole("button", { name: "Eliminar definitivamente" }),
     );
     expect(await screen.findByText(/Ya está retirado/)).toBeVisible();
     expect(screen.queryByText(/Podés retirarlo/)).not.toBeInTheDocument();
@@ -150,7 +150,7 @@ describe("CatalogPanel - eliminación definitiva", () => {
       }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Confirmar eliminación definitiva" }),
+      screen.getByRole("button", { name: "Eliminar definitivamente" }),
     );
     await user.click(
       await screen.findByRole("button", {
@@ -203,7 +203,7 @@ async function fillCreation(
   name = "Soda",
   price = "10.50",
 ) {
-  await user.type(screen.getByLabelText("Nombre operacional"), name);
+  await user.type(screen.getByLabelText("Nombre"), name);
   await user.type(screen.getByLabelText("Precio"), price);
 }
 
@@ -285,9 +285,7 @@ describe("CatalogPanel - alta y listado", () => {
     await fillCreation(user);
 
     await user.click(screen.getByRole("button", { name: "Crear producto" }));
-    expect(
-      await screen.findByText("Producto creado correctamente."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Se creó “/)).toBeInTheDocument();
 
     const [request, key] = createProductMock.mock.calls[0]!;
     expect(request).toEqual({
@@ -300,7 +298,7 @@ describe("CatalogPanel - alta y listado", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
     expect(reloadProducts).toHaveBeenCalledOnce();
-    expect(screen.getByLabelText("Nombre operacional")).toHaveValue("");
+    expect(screen.getByLabelText("Nombre")).toHaveValue("");
     expect(screen.getByLabelText("Precio")).toHaveValue("");
   });
 
@@ -309,9 +307,7 @@ describe("CatalogPanel - alta y listado", () => {
     const { user } = renderPanel();
     await fillCreation(user);
     await user.click(screen.getByRole("button", { name: "Crear producto" }));
-    expect(
-      await screen.findByText("Producto creado correctamente."),
-    ).toBeVisible();
+    expect(await screen.findByText(/Se creó “/)).toBeVisible();
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: "Crear producto" }),
@@ -325,9 +321,7 @@ describe("CatalogPanel - alta y listado", () => {
       ),
     );
     await waitFor(() =>
-      expect(
-        screen.queryByText("Producto creado correctamente."),
-      ).not.toBeInTheDocument(),
+      expect(screen.queryByText(/Se creó “/)).not.toBeInTheDocument(),
     );
   });
 
@@ -346,7 +340,7 @@ describe("CatalogPanel - alta y listado", () => {
     expect(
       await screen.findByText("Ya existe un producto vigente con ese nombre."),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Nombre operacional")).toHaveValue("Soda");
+    expect(screen.getByLabelText("Nombre")).toHaveValue("Soda");
   });
 
   it("congela una creación incierta, no reintenta y reusa request/key manualmente", async () => {
@@ -376,7 +370,7 @@ describe("CatalogPanel - alta y listado", () => {
     await user.click(
       screen.getByRole("button", { name: "Reintentar esta operación" }),
     );
-    await screen.findByText("Producto creado correctamente.");
+    await screen.findByText(/Se creó “/);
     expect(createProductMock.mock.calls[1]).toEqual(firstCall);
   });
 
@@ -390,8 +384,8 @@ describe("CatalogPanel - alta y listado", () => {
     });
     const firstKey = createProductMock.mock.calls[0]?.[1];
 
-    await user.clear(screen.getByLabelText("Nombre operacional"));
-    await user.type(screen.getByLabelText("Nombre operacional"), "Agua");
+    await user.clear(screen.getByLabelText("Nombre"));
+    await user.type(screen.getByLabelText("Nombre"), "Agua");
     await user.clear(screen.getByLabelText("Precio"));
     await user.type(screen.getByLabelText("Precio"), "20.00");
     expect(
@@ -399,11 +393,11 @@ describe("CatalogPanel - alta y listado", () => {
     ).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("button", { name: "Descartar e iniciar nueva" }),
+      screen.getByRole("button", { name: "Dejar de reintentar" }),
     );
     createProductMock.mockResolvedValueOnce(product());
     await user.click(screen.getByRole("button", { name: "Crear producto" }));
-    await screen.findByText("Producto creado correctamente.");
+    await screen.findByText(/Se creó “/);
 
     expect(createProductMock.mock.calls[1]?.[0]).toEqual({
       operationalName: "Agua",
@@ -428,6 +422,38 @@ describe("CatalogPanel - cambio de Precio", () => {
     listGroupsMock.mockResolvedValue([]);
   });
 
+  it("keeps a confirmed price change separate from refresh failure and retries only the read", async () => {
+    const listedProduct = product({ price: "10.00" });
+    changeProductPriceMock.mockResolvedValue({
+      productId: listedProduct.id,
+      price: "12.00",
+    });
+    const { reloadProducts, user } = renderPanel([listedProduct]);
+    reloadProducts
+      .mockRejectedValueOnce(new Error("Read failed"))
+      .mockResolvedValue(undefined);
+    await openPriceChange(user, listedProduct, "12.00");
+    await user.click(screen.getByRole("button", { name: "Guardar precio" }));
+    expect(
+      await screen.findByText(
+        "El cambio está confirmado, pero no pudimos actualizar la lista.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("Se actualizó el precio de “Agua tónica”."),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("region", {
+        name: "Cambio de Precio con resultado no confirmado",
+      }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Reintentar consulta" }),
+    );
+    await waitFor(() => expect(reloadProducts).toHaveBeenCalledTimes(2));
+    expect(changeProductPriceMock).toHaveBeenCalledOnce();
+  });
+
   it("congela expectedCurrentPrice, acepta zero string y recarga tras éxito", async () => {
     const listedProduct = product({ price: "10.00" });
     changeProductPriceMock.mockResolvedValueOnce({
@@ -440,9 +466,7 @@ describe("CatalogPanel - cambio de Precio", () => {
     expect(
       screen.getByText("Precio vigente observado").parentElement,
     ).toHaveTextContent("10.00");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar cambio de Precio" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Guardar precio" }));
 
     expect(changeProductPriceMock).toHaveBeenCalledOnce();
     const [productId, request, key] = changeProductPriceMock.mock.calls[0]!;
@@ -456,7 +480,7 @@ describe("CatalogPanel - cambio de Precio", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
     expect(
-      await screen.findByText(/actualizado correctamente/),
+      await screen.findByText(/Se actualizó el precio/),
     ).toBeInTheDocument();
     expect(reloadProducts).toHaveBeenCalledOnce();
     expect(screen.queryByLabelText("Nuevo precio")).not.toBeInTheDocument();
@@ -473,9 +497,7 @@ describe("CatalogPanel - cambio de Precio", () => {
     );
     const { reloadProducts, user } = renderPanel([listedProduct]);
     await openPriceChange(user, listedProduct, "15.00");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar cambio de Precio" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Guardar precio" }));
 
     expect(
       await screen.findByText(/Precio vigente es 12.00/),
@@ -494,9 +516,7 @@ describe("CatalogPanel - cambio de Precio", () => {
     changeProductPriceMock.mockRejectedValueOnce(new CatalogNetworkError());
     const { user } = renderPanel([listedProduct]);
     await openPriceChange(user, listedProduct, "12.00");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar cambio de Precio" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Guardar precio" }));
 
     const uncertain = await screen.findByRole("region", {
       name: "Cambio de Precio con resultado no confirmado",
@@ -516,7 +536,7 @@ describe("CatalogPanel - cambio de Precio", () => {
         name: "Reintentar mismo cambio de Precio",
       }),
     );
-    await screen.findByText(/actualizado correctamente/);
+    await screen.findByText(/Se actualizó el precio/);
     expect(changeProductPriceMock.mock.calls[1]).toEqual(firstCall);
   });
 
@@ -525,26 +545,22 @@ describe("CatalogPanel - cambio de Precio", () => {
     changeProductPriceMock.mockRejectedValueOnce(new CatalogNetworkError());
     const { user } = renderPanel([listedProduct]);
     await openPriceChange(user, listedProduct, "12.00");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar cambio de Precio" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Guardar precio" }));
     await screen.findByRole("region", {
       name: "Cambio de Precio con resultado no confirmado",
     });
     const firstKey = changeProductPriceMock.mock.calls[0]?.[2];
 
     await user.click(
-      screen.getByRole("button", { name: "Descartar cambio incierto" }),
+      screen.getByRole("button", { name: "Dejar de reintentar" }),
     );
     changeProductPriceMock.mockResolvedValueOnce({
       productId: listedProduct.id,
       price: "13.00",
     });
     await openPriceChange(user, listedProduct, "13.00");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar cambio de Precio" }),
-    );
-    await screen.findByText(/actualizado correctamente/);
+    await user.click(screen.getByRole("button", { name: "Guardar precio" }));
+    await screen.findByText(/Se actualizó el precio/);
 
     expect(changeProductPriceMock.mock.calls[1]?.[2]).not.toBe(firstKey);
   });

@@ -116,8 +116,8 @@ it("muestra la revisión de Composición antes de Contexto y creación", async (
       onUnauthorized={vi.fn()}
     />,
   );
-  const review = screen.getByText("La Composición está vacía.");
-  const context = await screen.findByLabelText("Contexto de coordinación");
+  const review = screen.getByText("Todavía no agregaste productos.");
+  const context = await screen.findByLabelText("Contexto del pedido");
   const creation = screen.getByRole("button", { name: "Crear Pedido" });
   expect(review.compareDocumentPosition(context)).toBe(
     Node.DOCUMENT_POSITION_FOLLOWING,
@@ -156,14 +156,16 @@ it("bloquea la Composición del Pedido congelado y permite iniciar otro Pedido",
   );
   await waitFor(() => expect(getPendingCompositionMock).toHaveBeenCalled());
   expect(
-    screen.getByRole("button", { name: "Agregar Agua a Nueva Composición" }),
+    screen.getByRole("button", {
+      name: "Agregar Agua a Agregar productos al pedido",
+    }),
   ).toBeDisabled();
   expect(
     screen.getByRole("button", { name: "Agregar al Pedido" }),
   ).toBeDisabled();
   await userEvent
     .setup()
-    .click(screen.getByRole("button", { name: "Iniciar nuevo Pedido" }));
+    .click(screen.getByRole("button", { name: "Iniciar nuevo pedido" }));
   expect(onStartNewOrder).toHaveBeenCalledOnce();
 });
 
@@ -258,7 +260,7 @@ function Harness({
 async function addProduct(
   user: ReturnType<typeof userEvent.setup>,
   product: Product,
-  mode: "Composición inicial" | "Nueva Composición",
+  mode: "Preparar pedido" | "Agregar productos al pedido",
   times = 1,
 ) {
   const button = screen.getByRole("button", {
@@ -275,14 +277,16 @@ it("refresca el Pedido al iniciar y descartar Composición para actualizar elegi
   render(<Harness initialReference="order-active" onChanged={onChanged} />);
   await waitFor(() =>
     expect(
-      screen.getByRole("button", { name: "Agregar Agua a Nueva Composición" }),
+      screen.getByRole("button", {
+        name: "Agregar Agua a Agregar productos al pedido",
+      }),
     ).toBeEnabled(),
   );
-  await addProduct(user, water, "Nueva Composición");
+  await addProduct(user, water, "Agregar productos al pedido");
   expect(onChanged).toHaveBeenCalledWith("order-active");
   onChanged.mockClear();
   await user.click(
-    screen.getByRole("button", { name: "Descartar Composición actual" }),
+    screen.getByRole("button", { name: "Descartar productos por confirmar" }),
   );
   await waitFor(() => expect(onChanged).toHaveBeenCalledWith("order-active"));
 });
@@ -290,9 +294,7 @@ it("refresca el Pedido al iniciar y descartar Composición para actualizar elegi
 describe("OrderWorkflow - Composición y Primera Confirmación", () => {
   it("loads configured operational names in an accessible selector and exposes no free-text Context input", async () => {
     render(<Harness />);
-    const selector = await screen.findByLabelText(
-      "Contexto para Primera Confirmacion",
-    );
+    const selector = await screen.findByLabelText("Contexto del pedido");
     expect(
       await screen.findByRole("option", { name: "Mesa 7" }),
     ).toBeInTheDocument();
@@ -327,22 +329,22 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
 
     expect(
       screen.getByRole("button", {
-        name: "Agregar Agua a Composición inicial",
+        name: "Agregar Agua a Preparar pedido",
       }),
     ).toBeEnabled();
     expect(
       screen.queryByRole("button", {
-        name: "Agregar Agua mediante intervención a Composición inicial",
+        name: "Agregar Agua mediante intervención a Preparar pedido",
       }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: "Agregar Jugo agotado a Composición inicial",
+        name: "Agregar Jugo agotado a Preparar pedido",
       }),
     ).toBeDisabled();
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+        name: "Agregar Jugo agotado mediante intervención a Preparar pedido",
       }),
     );
 
@@ -362,12 +364,12 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
 
     expect(
       screen.getByRole("button", {
-        name: "Agregar Jugo agotado a Composición inicial",
+        name: "Agregar Jugo agotado a Preparar pedido",
       }),
     ).toBeDisabled();
     expect(
       screen.queryByRole("button", {
-        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+        name: "Agregar Jugo agotado mediante intervención a Preparar pedido",
       }),
     ).not.toBeInTheDocument();
   });
@@ -387,7 +389,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar Agua a Composición inicial",
+        name: "Agregar Agua a Preparar pedido",
       }),
     );
 
@@ -399,7 +401,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar Agua mediante intervención a Composición inicial",
+        name: "Agregar Agua mediante intervención a Preparar pedido",
       }),
     );
 
@@ -418,12 +420,12 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+        name: "Agregar Jugo agotado mediante intervención a Preparar pedido",
       }),
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Retirar Jugo agotado, línea 1, de la composición",
+        name: "Quitar de la composición Jugo agotado, línea 1",
       }),
     );
     expect(
@@ -432,7 +434,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+        name: "Agregar Jugo agotado mediante intervención a Preparar pedido",
       }),
     );
     expect(screen.getByText("Intervención solicitada")).toBeInTheDocument();
@@ -453,13 +455,13 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       />,
     );
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
-    await addProduct(user, water, "Composición inicial");
+    await addProduct(user, water, "Preparar pedido");
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+        name: "Agregar Jugo agotado mediante intervención a Preparar pedido",
       }),
     );
     await user.click(
@@ -497,10 +499,10 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
   it("mantiene una entry por Product y cantidades enteras positivas", async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await addProduct(user, water, "Composición inicial", 2);
+    await addProduct(user, water, "Preparar pedido", 2);
 
     const composition = screen.getByRole("region", {
-      name: "Composición inicial",
+      name: "Preparar pedido",
     });
     expect(
       within(composition).getByLabelText("Cantidad de Agua"),
@@ -521,17 +523,17 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       }),
     );
     expect(
-      within(composition).getByText("La Composición está vacía."),
+      within(composition).getByText("Todavía no agregaste productos."),
     ).toBeInTheDocument();
   });
 
   it("agrega normal sobre la línea sin instrucción y crea otra línea editable enfocada", async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await addProduct(user, burger, "Composición inicial", 2);
+    await addProduct(user, burger, "Preparar pedido", 2);
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar otra línea de Hamburguesa a Composición inicial",
+        name: "Agregar otra línea de Hamburguesa a Preparar pedido",
       }),
     );
 
@@ -543,7 +545,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/líneas duplicadas/);
 
     await user.type(secondInstruction, "sin cebolla");
-    await addProduct(user, burger, "Composición inicial");
+    await addProduct(user, burger, "Preparar pedido");
 
     const normalLine = screen.getByRole("row", {
       name: "Hamburguesa, línea de Composición 1, sin instrucción",
@@ -562,10 +564,10 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
   it("opera cantidad y retiro por draftLineId sin afectar otra línea del Product", async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await addProduct(user, burger, "Composición inicial");
+    await addProduct(user, burger, "Preparar pedido");
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar otra línea de Hamburguesa a Composición inicial",
+        name: "Agregar otra línea de Hamburguesa a Preparar pedido",
       }),
     );
     await user.type(
@@ -579,7 +581,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Retirar Hamburguesa, línea 1, de la composición",
+        name: "Quitar de la composición Hamburguesa, línea 1",
       }),
     );
 
@@ -598,17 +600,17 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
-    await addProduct(user, burger, "Composición inicial");
+    await addProduct(user, burger, "Preparar pedido");
     await user.type(
       screen.getByLabelText("Instrucción para Hamburguesa, línea 1"),
       "sin cebolla",
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar otra línea de Hamburguesa a Composición inicial",
+        name: "Agregar otra línea de Hamburguesa a Preparar pedido",
       }),
     );
     await user.type(
@@ -624,7 +626,7 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
   it("aumenta y retira entradas sin producir Confirmaciones", async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await addProduct(user, water, "Composición inicial");
+    await addProduct(user, water, "Preparar pedido");
 
     await user.click(
       screen.getByRole("button", {
@@ -634,11 +636,13 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     expect(screen.getByLabelText("Cantidad de Agua")).toHaveTextContent("2");
     await user.click(
       screen.getByRole("button", {
-        name: "Retirar Agua, línea 1, de la composición",
+        name: "Quitar de la composición Agua, línea 1",
       }),
     );
 
-    expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Todavía no agregaste productos."),
+    ).toBeInTheDocument();
     expect(confirmFirstMock).not.toHaveBeenCalled();
     expect(confirmSubsequentMock).not.toHaveBeenCalled();
   });
@@ -652,17 +656,17 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
 
     expect(confirm).toBeDisabled();
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "",
     );
-    await addProduct(user, water, "Composición inicial");
+    await addProduct(user, water, "Preparar pedido");
     expect(confirm).toBeDisabled();
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "",
     );
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
     expect(confirm).toBeEnabled();
@@ -683,11 +687,13 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     );
 
     const add = screen.getByRole("button", {
-      name: "Agregar Agua a Composición inicial",
+      name: "Agregar Agua a Preparar pedido",
     });
     expect(add).toBeDisabled();
     await user.click(add);
-    expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Todavía no agregaste productos."),
+    ).toBeInTheDocument();
   });
 
   it("keeps unavailable operational Products visible but non-actionable alongside available Products", async () => {
@@ -712,21 +718,21 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     expect(screen.getByText("No disponible")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: "Agregar Agua a Composición inicial",
+        name: "Agregar Agua a Preparar pedido",
       }),
     ).toBeEnabled();
     expect(
       screen.getByRole("button", {
-        name: "Agregar Cerveza a Composición inicial",
+        name: "Agregar Cerveza a Preparar pedido",
       }),
     ).toBeDisabled();
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar Agua a Composición inicial",
+        name: "Agregar Agua a Preparar pedido",
       }),
     );
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
     expect(screen.getByRole("button", { name: "Crear Pedido" })).toBeEnabled();
@@ -747,11 +753,11 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar Agua a Composición inicial",
+        name: "Agregar Agua a Preparar pedido",
       }),
     );
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
     expect(screen.getByRole("button", { name: "Crear Pedido" })).toBeEnabled();
@@ -772,13 +778,13 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const user = userEvent.setup();
     render(<Harness onActivate={onActivate} onChanged={onChanged} />);
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
-    await addProduct(user, water, "Composición inicial", 2);
+    await addProduct(user, water, "Preparar pedido", 2);
 
     await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
-    await screen.findByRole("region", { name: "Nueva Composición" });
+    await screen.findByRole("region", { name: "Agregar productos al pedido" });
 
     const [request, key] = confirmFirstMock.mock.calls[0]!;
     expect(request).toEqual({
@@ -797,7 +803,9 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     );
     expect(onActivate).toHaveBeenCalledWith("order-created");
     expect(onChanged).toHaveBeenCalledWith("order-created");
-    expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Todavía no agregaste productos."),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("Contexto")).not.toBeInTheDocument();
   });
 
@@ -806,17 +814,17 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-8",
     );
-    await addProduct(user, burger, "Composición inicial");
+    await addProduct(user, burger, "Preparar pedido");
     await user.type(
       screen.getByLabelText("Instrucción para Hamburguesa, línea 1"),
       "   ",
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar otra línea de Hamburguesa a Composición inicial",
+        name: "Agregar otra línea de Hamburguesa a Preparar pedido",
       }),
     );
     await user.type(
@@ -867,10 +875,10 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       const user = userEvent.setup();
       render(<Harness />);
       await user.selectOptions(
-        await screen.findByLabelText("Contexto para Primera Confirmacion"),
+        await screen.findByLabelText("Contexto del pedido"),
         "ctx-mesa-7",
       );
-      await addProduct(user, burger, "Composición inicial");
+      await addProduct(user, burger, "Preparar pedido");
       const instruction = screen.getByLabelText(
         "Instrucción para Hamburguesa, línea 1",
       );
@@ -893,10 +901,10 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
-    await addProduct(user, water, "Composición inicial", 2);
+    await addProduct(user, water, "Preparar pedido", 2);
     await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
 
     const uncertain = await screen.findByRole("region", {
@@ -904,12 +912,10 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     });
     expect(uncertain).toHaveTextContent("Mesa 7");
     expect(uncertain).toHaveTextContent("Cantidad: 2");
-    expect(
-      screen.getByLabelText("Contexto para Primera Confirmacion"),
-    ).toBeDisabled();
+    expect(screen.getByLabelText("Contexto del pedido")).toBeDisabled();
     expect(
       screen.getByRole("button", {
-        name: "Agregar Agua a Composición inicial",
+        name: "Agregar Agua a Preparar pedido",
       }),
     ).toBeDisabled();
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -921,10 +927,10 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
-    await addProduct(user, water, "Composición inicial", 2);
+    await addProduct(user, water, "Preparar pedido", 2);
     await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
     await screen.findByRole("region", {
       name: "Primera Confirmación con resultado no confirmado",
@@ -934,11 +940,11 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     confirmFirstMock.mockResolvedValueOnce(firstResponse);
     await user.click(
       screen.getByRole("button", {
-        name: "Reintentar misma Primera Confirmación",
+        name: "Reintentar confirmación",
       }),
     );
 
-    await screen.findByRole("heading", { name: "Nueva Composición" });
+    await screen.findByRole("heading", { name: "Agregar productos al pedido" });
     expect(confirmFirstMock.mock.calls[1]).toEqual(firstCall);
     expect(
       screen.queryByRole("region", {
@@ -957,12 +963,12 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
       />,
     );
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar Jugo agotado mediante intervención a Composición inicial",
+        name: "Agregar Jugo agotado mediante intervención a Preparar pedido",
       }),
     );
     await user.click(
@@ -979,10 +985,10 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     confirmFirstMock.mockResolvedValueOnce(firstResponse);
     await user.click(
       screen.getByRole("button", {
-        name: "Reintentar misma Primera Confirmación",
+        name: "Reintentar confirmación",
       }),
     );
-    await screen.findByRole("heading", { name: "Nueva Composición" });
+    await screen.findByRole("heading", { name: "Agregar productos al pedido" });
     expect(confirmFirstMock.mock.calls[1]).toEqual(firstCall);
   });
 
@@ -991,10 +997,10 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
-    await addProduct(user, burger, "Composición inicial");
+    await addProduct(user, burger, "Preparar pedido");
     const instruction = screen.getByLabelText(
       "Instrucción para Hamburguesa, línea 1",
     );
@@ -1012,10 +1018,10 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     confirmFirstMock.mockResolvedValueOnce(firstResponse);
     await user.click(
       screen.getByRole("button", {
-        name: "Reintentar misma Primera Confirmación",
+        name: "Reintentar confirmación",
       }),
     );
-    await screen.findByRole("heading", { name: "Nueva Composición" });
+    await screen.findByRole("heading", { name: "Agregar productos al pedido" });
     expect(confirmFirstMock.mock.calls[1]).toEqual(firstCall);
   });
 
@@ -1024,29 +1030,27 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
-    await addProduct(user, water, "Composición inicial");
+    await addProduct(user, water, "Preparar pedido");
     await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
     await screen.findByRole("region", {
       name: "Primera Confirmación con resultado no confirmado",
     });
     const firstCall = confirmFirstMock.mock.calls[0];
     expect(
-      screen.queryByRole("button", { name: "Descartar intención incierta" }),
+      screen.queryByRole("button", { name: "Dejar de reintentar" }),
     ).not.toBeInTheDocument();
     expect(screen.getByLabelText("Cantidad de Agua")).toHaveTextContent("1");
-    expect(
-      screen.getByLabelText("Contexto para Primera Confirmacion"),
-    ).toBeDisabled();
+    expect(screen.getByLabelText("Contexto del pedido")).toBeDisabled();
     confirmFirstMock.mockResolvedValueOnce(firstResponse);
     await user.click(
       screen.getByRole("button", {
-        name: "Reintentar misma Primera Confirmación",
+        name: "Reintentar confirmación",
       }),
     );
-    await screen.findByRole("heading", { name: "Nueva Composición" });
+    await screen.findByRole("heading", { name: "Agregar productos al pedido" });
     expect(confirmFirstMock.mock.calls[1]).toEqual(firstCall);
   });
 
@@ -1055,10 +1059,10 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
-    await addProduct(user, burger, "Composición inicial");
+    await addProduct(user, burger, "Preparar pedido");
     const instruction = screen.getByLabelText(
       "Instrucción para Hamburguesa, línea 1",
     );
@@ -1082,10 +1086,10 @@ describe("OrderWorkflow - Composición y Primera Confirmación", () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
-    await addProduct(user, water, "Composición inicial");
+    await addProduct(user, water, "Preparar pedido");
     await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
 
     expect(await screen.findByText(/ya no está disponible/)).toHaveTextContent(
@@ -1117,7 +1121,7 @@ describe("OrderWorkflow - lectura operacional de Products", () => {
 
     expect(
       await screen.findByRole("button", {
-        name: "Agregar Agua a Composición inicial",
+        name: "Agregar Agua a Preparar pedido",
       }),
     ).toBeEnabled();
     expect(listOperationalProductsMock).toHaveBeenCalledOnce();
@@ -1170,11 +1174,11 @@ describe("OrderWorkflow - lectura operacional de Products", () => {
     );
     await user.click(
       await screen.findByRole("button", {
-        name: "Agregar Agua a Composición inicial",
+        name: "Agregar Agua a Preparar pedido",
       }),
     );
     await user.selectOptions(
-      await screen.findByLabelText("Contexto para Primera Confirmacion"),
+      await screen.findByLabelText("Contexto del pedido"),
       "ctx-mesa-7",
     );
     await user.click(screen.getByRole("button", { name: "Crear Pedido" }));
@@ -1187,7 +1191,7 @@ describe("OrderWorkflow - lectura operacional de Products", () => {
     );
     expect(
       screen.getByRole("button", {
-        name: "Agregar Agua mediante intervención a Composición inicial",
+        name: "Agregar Agua mediante intervención a Preparar pedido",
       }),
     ).toBeInTheDocument();
     expect(
@@ -1240,7 +1244,7 @@ describe("OrderWorkflow - lectura operacional de Products", () => {
     rerender(<OrderWorkflow key="identity-new" {...workflowProps} />);
     expect(
       await screen.findByRole("button", {
-        name: "Agregar Soda a Composición inicial",
+        name: "Agregar Soda a Preparar pedido",
       }),
     ).toBeEnabled();
     resolveOldRead?.([
@@ -1270,11 +1274,11 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" onChanged={onChanged} />);
     expect(screen.queryByLabelText("Contexto")).not.toBeInTheDocument();
-    await addProduct(user, soda, "Nueva Composición");
-    await addProduct(user, water, "Nueva Composición", 2);
+    await addProduct(user, soda, "Agregar productos al pedido");
+    await addProduct(user, water, "Agregar productos al pedido", 2);
 
     await user.click(screen.getByRole("button", { name: "Agregar al Pedido" }));
-    await screen.findByText("Nueva Incorporación confirmada correctamente.");
+    await screen.findByText(/Productos agregados al pedido/);
 
     const [reference, request, key] = confirmSubsequentMock.mock.calls[0]!;
     expect(reference).toBe("order-active");
@@ -1303,17 +1307,19 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     );
     expect(onChanged).toHaveBeenCalledWith("order-active");
     expect(screen.getByText("order-active")).toBeInTheDocument();
-    expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Todavía no agregaste productos."),
+    ).toBeInTheDocument();
   });
 
   it("envía Subsequent exacta con múltiples líneas e instructions canonical", async () => {
     confirmSubsequentMock.mockResolvedValueOnce(subsequentResponse);
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" />);
-    await addProduct(user, burger, "Nueva Composición", 2);
+    await addProduct(user, burger, "Agregar productos al pedido", 2);
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar otra línea de Hamburguesa a Nueva Composición",
+        name: "Agregar otra línea de Hamburguesa a Agregar productos al pedido",
       }),
     );
     await user.type(
@@ -1322,7 +1328,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Agregar al Pedido" }));
-    await screen.findByText("Nueva Incorporación confirmada correctamente.");
+    await screen.findByText(/Productos agregados al pedido/);
 
     expect(confirmSubsequentMock.mock.calls[0]?.[0]).toBe("order-active");
     expect(confirmSubsequentMock.mock.calls[0]?.[1]).toEqual({
@@ -1357,7 +1363,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     );
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" />);
-    await addProduct(user, water, "Nueva Composición");
+    await addProduct(user, water, "Agregar productos al pedido");
     const instruction = screen.getByLabelText("Instrucción para Agua, línea 1");
     await user.type(instruction, "con hielo");
     await user.click(screen.getByRole("button", { name: "Agregar al Pedido" }));
@@ -1380,7 +1386,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     );
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" />);
-    await addProduct(user, burger, "Nueva Composición", 2);
+    await addProduct(user, burger, "Agregar productos al pedido", 2);
     const instruction = screen.getByLabelText(
       "Instrucción para Hamburguesa, línea 1",
     );
@@ -1396,7 +1402,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     expect(instruction).toBeDisabled();
     expect(
       screen.getByRole("button", {
-        name: "Agregar Hamburguesa a Nueva Composición",
+        name: "Agregar Hamburguesa a Agregar productos al pedido",
       }),
     ).toBeDisabled();
     const firstCall = confirmSubsequentMock.mock.calls[0];
@@ -1404,10 +1410,10 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     expect(firstCall?.[1].items[0]?.instruction).toBe("sin cebolla");
 
     expect(
-      screen.getByRole("button", { name: "Iniciar nuevo Pedido" }),
+      screen.getByRole("button", { name: "Iniciar nuevo pedido" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("heading", { name: "Nueva Composición" }),
+      screen.getByRole("heading", { name: "Agregar productos al pedido" }),
     ).toBeInTheDocument();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(confirmSubsequentMock).toHaveBeenCalledOnce();
@@ -1415,10 +1421,10 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     confirmSubsequentMock.mockResolvedValueOnce(subsequentResponse);
     await user.click(
       screen.getByRole("button", {
-        name: "Reintentar misma Confirmación posterior",
+        name: "Reintentar confirmación",
       }),
     );
-    await screen.findByText("Nueva Incorporación confirmada correctamente.");
+    await screen.findByText(/Productos agregados al pedido/);
     expect(confirmSubsequentMock.mock.calls[1]).toEqual(firstCall);
   });
 
@@ -1436,7 +1442,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Agregar Jugo agotado mediante intervención a Nueva Composición",
+        name: "Agregar Jugo agotado mediante intervención a Agregar productos al pedido",
       }),
     );
     await user.click(
@@ -1455,10 +1461,10 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     confirmSubsequentMock.mockResolvedValueOnce(subsequentResponse);
     await user.click(
       screen.getByRole("button", {
-        name: "Reintentar misma Confirmación posterior",
+        name: "Reintentar confirmación",
       }),
     );
-    await screen.findByText("Nueva Incorporación confirmada correctamente.");
+    await screen.findByText(/Productos agregados al pedido/);
     expect(confirmSubsequentMock.mock.calls[1]).toEqual(firstCall);
   });
 
@@ -1468,7 +1474,7 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     );
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" />);
-    await addProduct(user, burger, "Nueva Composición");
+    await addProduct(user, burger, "Agregar productos al pedido");
     const instruction = screen.getByLabelText(
       "Instrucción para Hamburguesa, línea 1",
     );
@@ -1480,15 +1486,15 @@ describe("OrderWorkflow - Confirmación posterior", () => {
     const firstCall = confirmSubsequentMock.mock.calls[0];
     expect(instruction).toBeDisabled();
     expect(
-      screen.queryByRole("button", { name: "Descartar intención incierta" }),
+      screen.queryByRole("button", { name: "Dejar de reintentar" }),
     ).not.toBeInTheDocument();
     confirmSubsequentMock.mockResolvedValueOnce(subsequentResponse);
     await user.click(
       screen.getByRole("button", {
-        name: "Reintentar misma Confirmación posterior",
+        name: "Reintentar confirmación",
       }),
     );
-    await screen.findByText("Nueva Incorporación confirmada correctamente.");
+    await screen.findByText(/Productos agregados al pedido/);
     expect(confirmSubsequentMock.mock.calls[1]).toEqual(firstCall);
   });
 });
@@ -1503,7 +1509,7 @@ describe("OrderWorkflow - autoridad de Composición pendiente", () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    await addProduct(user, water, "Composición inicial");
+    await addProduct(user, water, "Preparar pedido");
 
     expect(startPendingCompositionMock).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Cantidad de Agua")).toHaveTextContent("1");
@@ -1515,7 +1521,7 @@ describe("OrderWorkflow - autoridad de Composición pendiente", () => {
     await waitFor(() => expect(getPendingCompositionMock).toHaveBeenCalled());
     expect(startPendingCompositionMock).not.toHaveBeenCalled();
 
-    await addProduct(user, water, "Nueva Composición");
+    await addProduct(user, water, "Agregar productos al pedido");
 
     expect(startPendingCompositionMock).toHaveBeenCalledOnce();
     expect(startPendingCompositionMock.mock.calls[0]?.[0]).toMatchObject({
@@ -1539,15 +1545,17 @@ describe("OrderWorkflow - autoridad de Composición pendiente", () => {
     render(<Harness initialReference="order-active" />);
 
     expect(await screen.findByText("pending-remote")).toBeInTheDocument();
-    expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
-    await addProduct(user, water, "Nueva Composición");
+    expect(
+      screen.getByText("Todavía no agregaste productos."),
+    ).toBeInTheDocument();
+    await addProduct(user, water, "Agregar productos al pedido");
     expect(startPendingCompositionMock).not.toHaveBeenCalled();
     expect(
       await screen.findAllByText(/líneas no están disponibles/),
     ).toHaveLength(2);
 
     await user.click(
-      screen.getByRole("button", { name: "Descartar Composición pendiente" }),
+      screen.getByRole("button", { name: "Descartar productos por confirmar" }),
     );
     await waitFor(() =>
       expect(discardPendingCompositionMock).toHaveBeenCalledOnce(),
@@ -1559,7 +1567,7 @@ describe("OrderWorkflow - autoridad de Composición pendiente", () => {
     });
     expect(startPendingCompositionMock).not.toHaveBeenCalled();
 
-    await addProduct(user, water, "Nueva Composición");
+    await addProduct(user, water, "Agregar productos al pedido");
     expect(startPendingCompositionMock).toHaveBeenCalledOnce();
   });
 
@@ -1569,9 +1577,9 @@ describe("OrderWorkflow - autoridad de Composición pendiente", () => {
     );
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" />);
-    await screen.findByText("La Composición está vacía.");
+    await screen.findByText("Todavía no agregaste productos.");
 
-    await addProduct(user, water, "Nueva Composición");
+    await addProduct(user, water, "Agregar productos al pedido");
     const uncertain = await screen.findByRole("region", {
       name: "Inicio de Composición con resultado incierto",
     });
@@ -1601,7 +1609,7 @@ describe("OrderWorkflow - autoridad de Composición pendiente", () => {
     await screen.findByText("pending-remote");
 
     await user.click(
-      screen.getByRole("button", { name: "Descartar Composición pendiente" }),
+      screen.getByRole("button", { name: "Descartar productos por confirmar" }),
     );
     const uncertain = await screen.findByRole("region", {
       name: "Descarte de Composición con resultado incierto",
@@ -1621,29 +1629,33 @@ describe("OrderWorkflow - autoridad de Composición pendiente", () => {
   it("no abandona un marcador autoritativo aunque ya no queden líneas locales", async () => {
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" />);
-    await addProduct(user, water, "Nueva Composición");
+    await addProduct(user, water, "Agregar productos al pedido");
     await user.click(
       screen.getByRole("button", {
-        name: "Retirar Agua, línea 1, de la composición",
+        name: "Quitar de la composición Agua, línea 1",
       }),
     );
-    expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Todavía no agregaste productos."),
+    ).toBeInTheDocument();
 
     const newOrder = screen.getByRole("button", {
-      name: "Iniciar nuevo Pedido",
+      name: "Iniciar nuevo pedido",
     });
     await waitFor(() => expect(newOrder).toBeEnabled());
     await user.click(newOrder);
     expect(screen.getByText(/Descartala explícitamente/)).toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: "Descartar Composición" }),
+      screen.getByRole("button", {
+        name: "Descartar productos y cambiar de pedido",
+      }),
     );
 
     await waitFor(() =>
       expect(discardPendingCompositionMock).toHaveBeenCalledOnce(),
     );
     expect(
-      await screen.findByRole("heading", { name: "Composición inicial" }),
+      await screen.findByRole("heading", { name: "Preparar pedido" }),
     ).toBeInTheDocument();
   });
 
@@ -1688,7 +1700,7 @@ describe("OrderWorkflow - autoridad de Composición pendiente", () => {
     });
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" />);
-    await addProduct(user, water, "Nueva Composición");
+    await addProduct(user, water, "Agregar productos al pedido");
     await user.click(screen.getByRole("button", { name: "Agregar al Pedido" }));
 
     expect(
@@ -1704,7 +1716,7 @@ describe("OrderWorkflow - autoridad de Composición pendiente", () => {
     expect(confirmSubsequentMock).toHaveBeenCalledOnce();
     expect(
       screen.getByRole("button", {
-        name: "Descartar borrador local desvinculado",
+        name: "Descartar estos productos sin confirmar",
       }),
     ).toBeInTheDocument();
   });
@@ -1728,7 +1740,9 @@ describe("OrderWorkflow - cambio de destino", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: "Nueva Composición" }),
+      await screen.findByRole("heading", {
+        name: "Agregar productos al pedido",
+      }),
     ).toBeInTheDocument();
     expect(onActivate).toHaveBeenCalledWith("order-b");
   });
@@ -1737,7 +1751,7 @@ describe("OrderWorkflow - cambio de destino", () => {
     const onActivate = vi.fn();
     const user = userEvent.setup();
     const { rerender } = render(<Harness onActivate={onActivate} />);
-    await addProduct(user, water, "Composición inicial");
+    await addProduct(user, water, "Preparar pedido");
 
     rerender(
       <Harness
@@ -1750,37 +1764,45 @@ describe("OrderWorkflow - cambio de destino", () => {
       await screen.findByText(/no se cambiará de destino/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Composición inicial" }),
+      screen.getByRole("heading", { name: "Preparar pedido" }),
     ).toBeInTheDocument();
     expect(onActivate).not.toHaveBeenCalled();
 
     await user.click(
-      screen.getByRole("button", { name: "Descartar Composición" }),
+      screen.getByRole("button", {
+        name: "Descartar productos y cambiar de pedido",
+      }),
     );
     expect(
-      await screen.findByRole("heading", { name: "Nueva Composición" }),
+      await screen.findByRole("heading", {
+        name: "Agregar productos al pedido",
+      }),
     ).toBeInTheDocument();
     expect(onActivate).toHaveBeenCalledWith("order-b");
-    expect(screen.getByText("La Composición está vacía.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Todavía no agregaste productos."),
+    ).toBeInTheDocument();
   });
 
   it("exige discard antes de pasar de Pedido activo a Nuevo Pedido", async () => {
     const user = userEvent.setup();
     render(<Harness initialReference="order-active" />);
-    await addProduct(user, water, "Nueva Composición");
+    await addProduct(user, water, "Agregar productos al pedido");
     await user.click(
-      screen.getByRole("button", { name: "Iniciar nuevo Pedido" }),
+      screen.getByRole("button", { name: "Iniciar nuevo pedido" }),
     );
 
     expect(
-      screen.getByRole("heading", { name: "Nueva Composición" }),
+      screen.getByRole("heading", { name: "Agregar productos al pedido" }),
     ).toBeInTheDocument();
     expect(screen.getByText(/no se cambiará de destino/)).toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: "Descartar Composición" }),
+      screen.getByRole("button", {
+        name: "Descartar productos y cambiar de pedido",
+      }),
     );
     expect(
-      await screen.findByRole("heading", { name: "Composición inicial" }),
+      await screen.findByRole("heading", { name: "Preparar pedido" }),
     ).toBeInTheDocument();
   });
 });

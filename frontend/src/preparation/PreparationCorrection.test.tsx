@@ -114,6 +114,7 @@ describe("Preparation progress correction", () => {
     await renderWork();
 
     expect(correctionInput("inicio")).toHaveAttribute("max", "2");
+    await user.click(screen.getByText("Corregir progreso de Papas"));
     await user.clear(correctionInput("inicio"));
     await user.type(correctionInput("inicio"), "3");
     await user.click(correctionButton("inicio"));
@@ -145,6 +146,7 @@ describe("Preparation progress correction", () => {
       .mockResolvedValueOnce([refreshed]);
     const user = userEvent.setup();
     await renderWork();
+    await user.click(screen.getByText("Corregir progreso de Papas"));
 
     await user.clear(correctionInput("inicio"));
     await user.type(correctionInput("inicio"), "1");
@@ -191,6 +193,7 @@ describe("Preparation progress correction", () => {
       .mockResolvedValueOnce([refreshed]);
     const user = userEvent.setup();
     await renderWork();
+    await user.click(screen.getByText("Corregir progreso de Papas"));
 
     await user.clear(correctionInput("listo"));
     await user.type(correctionInput("listo"), "1");

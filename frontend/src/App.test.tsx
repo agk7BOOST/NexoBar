@@ -95,6 +95,25 @@ function identity(responsibilities: string[]): CurrentIdentity {
 }
 
 describe("App capability-aware administrative mounting", () => {
+  it("keeps a failed current-session read separate from unauthenticated and retries only that read", async () => {
+    getCurrentIdentityMock
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce(identity(["GeneralConfiguration"]));
+    render(<App />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No pudimos comprobar tu sesión.",
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Ingresar" }),
+    ).not.toBeInTheDocument();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(
+      await screen.findByLabelText("Configuracion general administrativa"),
+    ).toBeInTheDocument();
+    expect(getCurrentIdentityMock).toHaveBeenCalledTimes(2);
+  });
   beforeEach(() => {
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
@@ -147,7 +166,9 @@ describe("App capability-aware administrative mounting", () => {
   );
 
   it("does not mount General Configuration while unauthenticated", async () => {
-    getCurrentIdentityMock.mockRejectedValueOnce({ status: 401 });
+    getCurrentIdentityMock.mockRejectedValueOnce(
+      new SessionProblemError(401, { status: 401 }),
+    );
     render(<App />);
 
     await screen.findByRole("heading", { name: "Ingresar" });

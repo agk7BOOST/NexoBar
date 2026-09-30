@@ -118,10 +118,10 @@ async function search(
   user: ReturnType<typeof userEvent.setup>,
   operationalReference: string,
 ) {
-  const input = screen.getByLabelText("Referencia operacional");
+  const input = screen.getByLabelText("Referencia del pedido");
   await user.clear(input);
   await user.type(input, operationalReference);
-  await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
+  await user.click(screen.getByRole("button", { name: "Buscar pedido" }));
 }
 
 function renderLookup(
@@ -214,7 +214,7 @@ describe("OrderLookup", () => {
     });
     await search(user, order.operationalReference);
     await screen.findByRole("region", { name: "Pedido activo" });
-    await user.type(screen.getByLabelText("Medio de pago declarado"), "Vale");
+    await user.type(screen.getByLabelText("Medio de pago"), "Vale");
     await user.click(screen.getByRole("button", { name: "Liquidar" }));
     await waitFor(() => expect(endingSendMock).toHaveBeenCalledOnce());
     act(() => sse.invalidate?.());
@@ -222,7 +222,7 @@ describe("OrderLookup", () => {
     await act(async () => confirmCommand("2026-09-24T21:28:47Z"));
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Cerrar Pedido" }),
+        screen.getByRole("button", { name: "Cerrar pedido" }),
       ).toBeEnabled(),
     );
     expect(getOrderMock).toHaveBeenCalledTimes(2);
@@ -234,9 +234,9 @@ describe("OrderLookup", () => {
   it("renderiza el campo etiquetado y el botón", () => {
     renderLookup();
 
-    expect(screen.getByLabelText("Referencia operacional")).toBeInTheDocument();
+    expect(screen.getByLabelText("Referencia del pedido")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Buscar Pedido" }),
+      screen.getByRole("button", { name: "Buscar pedido" }),
     ).toBeInTheDocument();
   });
 
@@ -257,7 +257,7 @@ describe("OrderLookup", () => {
     });
     expect(result).toHaveTextContent(order.operationalReference);
     expect(result).toHaveTextContent("Mesa 7");
-    expect(incorporation).toHaveTextContent("Ordinal");
+    expect(incorporation).toHaveTextContent("Número");
     expect(incorporation).toHaveTextContent("1");
     expect(within(incorporation).getByRole("time")).toHaveAttribute(
       "datetime",
@@ -382,13 +382,13 @@ describe("OrderLookup", () => {
 
     expect(
       await screen.findByText(
-        "No se encontró un Pedido con esa Referencia operacional.",
+        "No se encontró un Pedido con esa Referencia del pedido.",
       ),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: "Pedido consultado" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Referencia operacional")).toHaveValue(
+    expect(screen.getByLabelText("Referencia del pedido")).toHaveValue(
       "missing-reference",
     );
   });
@@ -407,7 +407,7 @@ describe("OrderLookup", () => {
 
     expect(getOrderMock).toHaveBeenCalledWith("esto no es un UUID");
     expect(
-      await screen.findByText("La Referencia operacional no es válida."),
+      await screen.findByText("La Referencia del pedido no es válida."),
     ).toBeInTheDocument();
   });
 
@@ -435,10 +435,10 @@ describe("OrderLookup", () => {
     renderLookup();
 
     await user.type(
-      screen.getByLabelText("Referencia operacional"),
+      screen.getByLabelText("Referencia del pedido"),
       "pending-reference",
     );
-    await user.click(screen.getByRole("button", { name: "Buscar Pedido" }));
+    await user.click(screen.getByRole("button", { name: "Buscar pedido" }));
 
     expect(screen.getByRole("button", { name: "Buscando…" })).toBeDisabled();
   });
@@ -498,7 +498,7 @@ describe("OrderLookup", () => {
 
     await search(user, "manual-reference");
     await user.click(
-      screen.getByRole("button", { name: "Abrir entrega de este Pedido" }),
+      screen.getByRole("button", { name: "Abrir entrega de este pedido" }),
     );
 
     expect(getOrderMock).toHaveBeenCalledTimes(1);

@@ -11,8 +11,8 @@ async function login(
   identityName: string,
 ) {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(identifier);
-  await page.getByLabel("Secreto").fill(secret);
+  await page.getByLabel("Usuario de acceso").fill(identifier);
+  await page.getByLabel("Contraseña").fill(secret);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(
     page
@@ -24,7 +24,7 @@ async function login(
 async function logout(page: Page) {
   await page
     .getByRole("region", { name: "Usuario actual" })
-    .getByRole("button", { name: "Cambiar persona / salir" })
+    .getByRole("button", { name: "Cerrar sesión" })
     .click();
   await expect(page.getByRole("heading", { name: "Ingresar" })).toBeVisible();
 }
@@ -104,11 +104,14 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
 
   await login(page, "delivery-e2e", "delivery-e2e-secret", "Delivery E2E");
   await page
-    .getByRole("textbox", { name: "Referencia operacional", exact: true })
+    .getByRole("textbox", { name: "Referencia del pedido", exact: true })
     .fill(operationalReference);
-  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  await page.getByRole("button", { name: "Buscar pedido" }).click();
   const order = page.getByRole("region", { name: "Pedido consultado" });
   const incorporation = order.getByRole("article", { name: "Incorporación 1" });
+  await incorporation
+    .getByText("Detalle de la confirmación", { exact: true })
+    .click();
   const incorporationId = (
     await incorporation
       .getByRole("definition")
@@ -117,7 +120,7 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
   ).trim();
   await expect(incorporationId).toMatch(/^[0-9a-f-]{36}$/i);
   await page
-    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .getByRole("button", { name: "Abrir entrega de este pedido" })
     .click();
   const delivery = page.getByRole("region", {
     name: "Entrega del Pedido " + operationalReference,
@@ -147,7 +150,9 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
     "intervention-e2e-secret",
     "Intervención E2E",
   );
-  await page.getByRole("button", { name: "Intervención en preparación" }).click();
+  await page
+    .getByRole("button", { name: "Intervención en preparación" })
+    .click();
   const intervention = page.getByRole("region", {
     name: "Intervención operacional",
   });
@@ -161,9 +166,9 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
   await expect(
     intervention.getByText(productName, { exact: true }),
   ).toBeVisible();
-  await expect(intervention).toContainText("En preparación (I)0");
-  await expect(intervention).toContainText("Lista (Y)2");
-  await expect(intervention).toContainText("Entregada (D)1");
+  await expect(intervention).toContainText("En preparación0");
+  await expect(intervention).toContainText("Lista2");
+  await expect(intervention).toContainText("Entregada1");
   await expect(intervention).toContainText("Máximo: 1");
   await expect(
     intervention.getByRole("button", { name: "Cancelar cantidad ya lista" }),
@@ -181,18 +186,18 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
     intervention.getByRole("table", {
       name: "Vista previa: Cancelar cantidad ya lista",
     }),
-  ).toContainText("Total vigente (T)");
+  ).toContainText("Total requerido");
   await intervention
     .getByRole("button", { name: "Cancelar cantidad ya lista" })
     .click();
   await expect(intervention).toContainText(
     "Intervención registrada. Consultando la obligación vigente.",
   );
-  await expect(intervention).toContainText("Cancelada (C)1");
-  await expect(intervention).toContainText("Obligación de cumplimiento (F)1");
-  await expect(intervention).toContainText("Total vigente (T)1");
-  await expect(intervention).toContainText("Lista (Y)1");
-  await expect(intervention).toContainText("Entregada (D)1");
+  await expect(intervention).toContainText("Cantidad cancelada1");
+  await expect(intervention).toContainText("Cantidad requerida1");
+  await expect(intervention).toContainText("Total requerido1");
+  await expect(intervention).toContainText("Lista1");
+  await expect(intervention).toContainText("Entregada1");
   await expect(intervention).toContainText(
     "No hay cantidad elegible para intervenir.",
   );
@@ -200,11 +205,11 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
 
   await login(page, "delivery-e2e", "delivery-e2e-secret", "Delivery E2E");
   await page
-    .getByRole("textbox", { name: "Referencia operacional", exact: true })
+    .getByRole("textbox", { name: "Referencia del pedido", exact: true })
     .fill(operationalReference);
-  await page.getByRole("button", { name: "Buscar Pedido" }).click();
+  await page.getByRole("button", { name: "Buscar pedido" }).click();
   await page
-    .getByRole("button", { name: "Abrir entrega de este Pedido" })
+    .getByRole("button", { name: "Abrir entrega de este pedido" })
     .click();
   const finalDelivery = page.getByRole("region", {
     name: "Entrega del Pedido " + operationalReference,
@@ -217,12 +222,12 @@ test("OperationalIntervention cancela Ready real y liquida la obligación reduci
   await expect(finalPrepared).toContainText("Disponible para entregar0");
   const ending = page.getByRole("region", { name: "Liquidación y Cierre" });
   await expect(
-    ending.getByText("Importe funcional actual").locator("..").locator("dd"),
+    ending.getByText("Importe de lo entregado").locator("..").locator("dd"),
   ).toHaveText(/^7(?:\.0+)?$/);
   await expect(
     ending.getByRole("button", { name: "Liquidar", exact: true }),
   ).toBeEnabled();
-  await ending.getByLabel("Medio de pago declarado").fill("Efectivo");
+  await ending.getByLabel("Medio de pago").fill("Efectivo");
   await ending.getByRole("button", { name: "Liquidar", exact: true }).click();
   await expect(ending.getByText(/Pedido congelado/)).toBeVisible();
   await expect(

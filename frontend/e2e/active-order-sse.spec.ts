@@ -4,8 +4,8 @@ const productName = "Papas SSE E2E";
 
 async function signIn(page: Page, login: string, secret: string, name: string) {
   await page.goto("/");
-  await page.getByLabel("Identificador de acceso").fill(login);
-  await page.getByLabel("Secreto").fill(secret);
+  await page.getByLabel("Usuario de acceso").fill(login);
+  await page.getByLabel("Contraseña").fill(secret);
   const loginResponse = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === "/api/identity-sessions" &&
@@ -52,9 +52,9 @@ test("Delivery abierto recibe por SSE la cantidad marcada lista por Preparation"
       "Delivery E2E",
     );
     await deliveryPage
-      .getByRole("textbox", { name: "Referencia operacional", exact: true })
+      .getByRole("textbox", { name: "Referencia del pedido", exact: true })
       .fill(operationalReference);
-    await deliveryPage.getByRole("button", { name: "Buscar Pedido" }).click();
+    await deliveryPage.getByRole("button", { name: "Buscar pedido" }).click();
     const order = deliveryPage.getByRole("region", {
       name: "Pedido consultado",
     });
@@ -79,7 +79,7 @@ test("Delivery abierto recibe por SSE la cantidad marcada lista por Preparation"
     await activeOrderStream;
 
     await deliveryPage
-      .getByRole("button", { name: "Abrir entrega de este Pedido" })
+      .getByRole("button", { name: "Abrir entrega de este pedido" })
       .click();
     const delivery = deliveryPage.getByRole("region", {
       name: `Entrega del Pedido ${operationalReference}`,
