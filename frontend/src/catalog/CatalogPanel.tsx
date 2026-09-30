@@ -1,3 +1,7 @@
+import {
+  CatalogPreparationEditor,
+  type PreparationEditor,
+} from "./CatalogPreparationEditor.tsx";
 import { SensitiveActionDialog } from "../ui/SensitiveActionDialog.tsx";
 import {
   type FormEvent,
@@ -62,14 +66,6 @@ interface ProductPriceChangeIntention {
   request: ChangeProductPriceRequest;
   idempotencyKey: string;
   antiforgeryToken: string;
-}
-
-interface PreparationEditor {
-  productId: string;
-  operationalName: string;
-  observedPreparationResponsibilityId: string | null;
-  requiresPreparation: boolean;
-  selectedPreparationResponsibilityId: string | null;
 }
 
 interface ProductPreparationChangeIntention {
@@ -1970,120 +1966,28 @@ export function CatalogPanel({
         )}
 
         {preparationEditor && uncertainPreparationChange === null && (
-          <form
-            className="price-change-form"
-            id="catalog-preparation-editor"
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && !isChangingPreparation) {
-                event.preventDefault();
-                setPreparationEditor(null);
-                returnToProduct();
-              }
-            }}
-            tabIndex={-1}
+          <CatalogPreparationEditor
+            preparationEditor={preparationEditor}
+            preparationResponsibilityOptions={preparationResponsibilityOptions}
+            isChangingPreparation={isChangingPreparation}
+            onRequiresPreparationChange={(requiresPreparation) =>
+              setPreparationEditor((current) =>
+                current === null ? null : { ...current, requiresPreparation },
+              )
+            }
+            onDestinationChange={(selectedPreparationResponsibilityId) =>
+              setPreparationEditor((current) =>
+                current === null
+                  ? null
+                  : { ...current, selectedPreparationResponsibilityId },
+              )
+            }
             onSubmit={(event) => void handlePreparationChange(event)}
-            aria-label={`Configurar preparación de ${preparationEditor.operationalName}`}
-          >
-            <div>
-              <span className="field-label">Producto</span>
-              <strong>{preparationEditor.operationalName}</strong>
-            </div>
-            <label>
-              <input
-                type="checkbox"
-                checked={preparationEditor.requiresPreparation}
-                onChange={(event) =>
-                  setPreparationEditor((current) =>
-                    current === null
-                      ? null
-                      : {
-                          ...current,
-                          requiresPreparation: event.target.checked,
-                        },
-                  )
-                }
-                disabled={isChangingPreparation}
-              />{" "}
-              Requiere preparación
-            </label>
-            <label htmlFor="preparation-responsibility-destination">
-              Destino de preparación
-            </label>
-            <select
-              id="preparation-responsibility-destination"
-              value={
-                preparationEditor.selectedPreparationResponsibilityId ?? ""
-              }
-              onChange={(event) =>
-                setPreparationEditor((current) =>
-                  current === null
-                    ? null
-                    : {
-                        ...current,
-                        selectedPreparationResponsibilityId:
-                          event.target.value || null,
-                      },
-                )
-              }
-              disabled={
-                isChangingPreparation || !preparationEditor.requiresPreparation
-              }
-            >
-              <option value="">Seleccioná una responsabilidad</option>
-              {preparationEditor.selectedPreparationResponsibilityId !== null &&
-                !preparationResponsibilityOptions.some(
-                  (option) =>
-                    option.id ===
-                    preparationEditor.selectedPreparationResponsibilityId,
-                ) && (
-                  <option
-                    value={
-                      preparationEditor.selectedPreparationResponsibilityId
-                    }
-                  >
-                    Destino actual no disponible
-                  </option>
-                )}
-              {preparationResponsibilityOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.operationalName}
-                </option>
-              ))}
-            </select>
-            {preparationEditor.requiresPreparation &&
-              preparationEditor.selectedPreparationResponsibilityId ===
-                null && (
-                <p role="alert">
-                  Seleccioná un destino de preparación antes de confirmar.
-                </p>
-              )}
-            <div className="intention-actions">
-              <button
-                type="submit"
-                disabled={
-                  isChangingPreparation ||
-                  (preparationEditor.requiresPreparation &&
-                    preparationEditor.selectedPreparationResponsibilityId ===
-                      null)
-                }
-              >
-                {isChangingPreparation
-                  ? "Actualizando…"
-                  : "Confirmar configuración de preparación"}
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => {
-                  setPreparationEditor(null);
-                  returnToProduct();
-                }}
-                disabled={isChangingPreparation}
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
+            onCancel={() => {
+              setPreparationEditor(null);
+              returnToProduct();
+            }}
+          />
         )}
 
         {uncertainGroupChange && (
