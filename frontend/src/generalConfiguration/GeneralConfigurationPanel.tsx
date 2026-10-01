@@ -126,7 +126,7 @@ function messageForProblem(
     return "Esta operación ya está asociada a otros datos. Revisá la operación pendiente antes de iniciar una nueva.";
   }
   if (problem.code === "identities_and_capabilities.invalid_request") {
-    return "Ingresá un nombre operacional válido.";
+    return "Ingresá un nombre válido.";
   }
   if (problem.code === "identities_and_capabilities.identity_not_found") {
     return "La identidad ya no existe. Actualizá el listado.";
@@ -152,7 +152,7 @@ function messageForProblem(
   return action === "create"
     ? "No se pudo crear la identidad. Revisá los datos e intentá nuevamente."
     : action === "rename"
-      ? "No se pudo cambiar el nombre operacional. Revisá los datos e intentá nuevamente."
+      ? "No se pudo cambiar el nombre. Revisá los datos e intentá nuevamente."
       : "No se pudo actualizar la identidad. Revisá los datos e intentá nuevamente.";
 }
 
@@ -163,7 +163,7 @@ function preparationResponsibilityCreationMessage(
     return "Ya existe un destino de preparación con ese nombre.";
   }
   if (problem.status === 400) {
-    return "Ingresá un nombre operacional válido.";
+    return "Ingresá un nombre válido.";
   }
   return "No se pudo crear el destino de preparación. Revisá los datos e intentá nuevamente.";
 }
@@ -403,7 +403,7 @@ export function GeneralConfigurationPanel({
       }
       setNotice({
         kind: "functional-error",
-        message: "No se pudo preparar la operación administrativa segura.",
+        message: "No pudimos preparar el cambio. Intentá nuevamente.",
       });
       return null;
     }
@@ -534,7 +534,7 @@ export function GeneralConfigurationPanel({
     if (preparationResponsibilityName.trim() === "") {
       setPreparationResponsibilityCreationNotice({
         kind: "functional-error",
-        message: "Ingresá un nombre operacional válido.",
+        message: "Ingresá un nombre válido.",
       });
       return;
     }

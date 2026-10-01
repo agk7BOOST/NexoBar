@@ -659,7 +659,7 @@ describe("InventoryPanel", () => {
     await user.click(screen.getByRole("button", { name: "Crear elemento" }));
 
     expect(
-      await screen.findByText("Ingresá un nombre operacional válido."),
+      await screen.findByText("Ingresá un nombre válido."),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Crear elemento" }),

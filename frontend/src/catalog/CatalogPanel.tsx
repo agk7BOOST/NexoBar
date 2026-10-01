@@ -128,7 +128,7 @@ function creationErrorMessage(problem: ProblemDetails): string {
 
   if (problem.code === "catalog.product.invalid") {
     if (problem.field === "operationalName") {
-      return "Ingresá un nombre operacional válido.";
+      return "Ingresá un nombre válido.";
     }
 
     if (problem.field === "price") {
@@ -178,7 +178,7 @@ function preparationChangeErrorMessage(problem: ProblemDetails): string {
 function groupErrorMessage(problem: ProblemDetails): string {
   switch (problem.code) {
     case "catalog.group.operational_name_conflict":
-      return "Ya existe un Grupo con ese nombre operacional.";
+      return "Ya existe un grupo con ese nombre.";
     case "catalog.group.invalid":
       return "Ingresá un nombre de Grupo válido.";
     case "catalog.group.not_found":
@@ -198,7 +198,7 @@ function groupErrorMessage(problem: ProblemDetails): string {
 function renameErrorMessage(problem: ProblemDetails): string {
   switch (problem.code) {
     case "catalog.product.operational_name_invalid":
-      return "Ingresá un nombre operacional válido.";
+      return "Ingresá un nombre válido.";
     case "catalog.product.operational_name_conflict":
       return "Ya existe un Producto activo con ese nombre.";
     case "catalog.product.operational_name_concurrency_conflict":
@@ -321,6 +321,8 @@ export function CatalogPanel({
   const groupsReadGeneration = useRef(0);
   const [catalogRefreshRequired, setCatalogRefreshRequired] = useState(false);
   const editorOpener = useRef<HTMLElement | null>(null);
+  const preparationOpener = useRef<HTMLElement | null>(null);
+  const restorePreparationFocus = useRef(false);
   const [editorRequest, setEditorRequest] = useState<{
     kind: "price" | "preparation" | "group" | "rename" | "delete";
     sequence: number;
@@ -365,6 +367,26 @@ export function CatalogPanel({
     else document.getElementById("products-title")?.focus();
     editorOpener.current?.scrollIntoView?.({ block: "nearest" });
   }
+
+  useEffect(() => {
+    if (
+      !restorePreparationFocus.current ||
+      isChangingPreparation ||
+      preparationEditor
+    )
+      return;
+    restorePreparationFocus.current = false;
+    const heading = document.getElementById("products-title");
+    if (
+      !heading ||
+      heading.closest("[hidden]") ||
+      document.activeElement !== document.body
+    )
+      return;
+    const opener = preparationOpener.current;
+    if (opener?.isConnected && !opener.matches(":disabled")) opener.focus();
+    else heading.focus();
+  }, [isChangingPreparation, preparationEditor]);
 
   const loadCatalog = useCallback(
     async (generation: number) => {
@@ -760,6 +782,7 @@ export function CatalogPanel({
     });
     setPreparationNotice(null);
     focusOpenedEditor("preparation");
+    preparationOpener.current = editorOpener.current;
   }
 
   async function submitPreparationChange(
@@ -776,6 +799,7 @@ export function CatalogPanel({
         intention.antiforgeryToken,
       );
       setUncertainPreparationChange(null);
+      restorePreparationFocus.current = true;
       setPreparationEditor(null);
       setPreparationNotice({
         kind: "success",
@@ -1101,7 +1125,7 @@ export function CatalogPanel({
       if (renameEditor?.newName.trim() === "")
         setRenameNotice({
           kind: "functional-error",
-          message: "Ingresá un nombre operacional válido.",
+          message: "Ingresá un nombre válido.",
         });
       return;
     }

@@ -381,9 +381,7 @@ describe("OrderLookup", () => {
     await search(user, "missing-reference");
 
     expect(
-      await screen.findByText(
-        "No se encontró un Pedido con esa Referencia del pedido.",
-      ),
+      await screen.findByText("No se encontró un pedido con esa referencia."),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: "Pedido consultado" }),
@@ -407,7 +405,7 @@ describe("OrderLookup", () => {
 
     expect(getOrderMock).toHaveBeenCalledWith("esto no es un UUID");
     expect(
-      await screen.findByText("La Referencia del pedido no es válida."),
+      await screen.findByText("La referencia del pedido no es válida."),
     ).toBeInTheDocument();
   });
 

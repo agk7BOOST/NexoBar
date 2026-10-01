@@ -591,6 +591,54 @@ describe("CatalogPanel - configuración de preparación", () => {
     );
   }
 
+  it.each(["owned", "provided", "failed-refresh"] as const)(
+    "restores logical focus after saving preparation with %s products",
+    async (mode) => {
+      const listedProduct = product({
+        requiresPreparation: true,
+        preparationResponsibilityId: kitchen.id,
+      });
+      changeProductPreparationConfigurationMock.mockResolvedValueOnce(
+        undefined,
+      );
+      listProductsMock.mockReset().mockResolvedValue([listedProduct]);
+      if (mode === "failed-refresh") {
+        listProductsMock
+          .mockReset()
+          .mockResolvedValueOnce([listedProduct])
+          .mockRejectedValue(new CatalogNetworkError());
+      }
+      const user = userEvent.setup();
+      if (mode === "provided") renderPanel([listedProduct]);
+      else render(<CatalogPanel onUnauthorized={vi.fn()} />);
+      const opener = await screen.findByRole("button", {
+        name: "Configurar preparación de Agua tónica",
+      });
+      await user.click(opener);
+      await user.click(screen.getByLabelText("Requiere preparación"));
+      await user.click(
+        screen.getByRole("button", {
+          name: "Confirmar configuración de preparación",
+        }),
+      );
+      await screen.findByText("Se actualizó la preparación de “Agua tónica”.");
+      await waitFor(() =>
+        expect([
+          screen.queryByRole("button", {
+            name: "Configurar preparación de Agua tónica",
+          }),
+          screen.getByRole("heading", { name: "Productos" }),
+        ]).toContain(document.activeElement),
+      );
+      expect(changeProductPreparationConfigurationMock).toHaveBeenCalledOnce();
+      expect(
+        screen.queryByRole("form", {
+          name: "Configurar preparación de Agua tónica",
+        }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it("loads Catalog-owned options and enables preparation with the observed null destination", async () => {
     const listedProduct = product();
     changeProductPreparationConfigurationMock.mockResolvedValueOnce(undefined);

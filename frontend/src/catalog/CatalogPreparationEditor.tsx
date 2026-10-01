@@ -68,7 +68,7 @@ export function CatalogPreparationEditor({
           isChangingPreparation || !preparationEditor.requiresPreparation
         }
       >
-        <option value="">Seleccioná una responsabilidad</option>
+        <option value="">Seleccioná un destino de preparación</option>
         {preparationEditor.selectedPreparationResponsibilityId !== null &&
           !preparationResponsibilityOptions.some(
             (option) =>

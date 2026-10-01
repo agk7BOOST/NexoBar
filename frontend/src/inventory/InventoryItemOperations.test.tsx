@@ -111,6 +111,34 @@ async function recordCount(
 }
 
 describe("InventoryItemOperations", () => {
+  it("keeps focus in the new operation and returns to its own opener on Escape", async () => {
+    const user = userEvent.setup();
+    renderOperations();
+    await user.click(screen.getByRole("button", { name: "Conteo" }));
+    expect(screen.getByRole("textbox")).toHaveFocus();
+    const entry = screen.getByRole("button", { name: "Entrada" });
+    await user.click(entry);
+    expect(screen.getByRole("textbox")).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(entry).toHaveFocus();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(recordInventoryCount).not.toHaveBeenCalled();
+    expect(recordInventoryEntry).not.toHaveBeenCalled();
+  });
+
+  it("focuses reconciliation after recording a count without restoring the old form", async () => {
+    vi.mocked(recordInventoryCount).mockResolvedValueOnce(count);
+    const user = userEvent.setup();
+    renderOperations();
+    await recordCount(user);
+    expect(
+      screen.getByRole("heading", { name: "Reconciliación" }),
+    ).toHaveFocus();
+    expect(reconcileInventoryCount).not.toHaveBeenCalled();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "Conteo" })).toHaveFocus();
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.mocked(discardAntiforgeryToken).mockReset();

@@ -136,7 +136,7 @@ export function ContextConfigurationSection({
   async function handle(event: FormEvent) {
     event.preventDefault();
     if (busy || pending || !name.trim()) {
-      if (!pending) setNotice("Ingresá un nombre operacional válido.");
+      if (!pending) setNotice("Ingresá un nombre válido.");
       return;
     }
     setBusy(true);

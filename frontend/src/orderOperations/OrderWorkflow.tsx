@@ -133,7 +133,7 @@ function confirmationErrorMessage(
     case "order_operations.first_confirmation.requires_preparation_not_supported":
       return `Un Producto requiere preparación, que todavía no está admitida.${productLabel}`;
     case "order_operations.order.operational_reference_invalid":
-      return "La Referencia del pedido del Pedido no es válida.";
+      return "La referencia del pedido no es válida.";
     case "order_operations.order.not_found":
       return "El Pedido activo ya no existe.";
     case "order_operations.first_confirmation.idempotency_key_conflict":

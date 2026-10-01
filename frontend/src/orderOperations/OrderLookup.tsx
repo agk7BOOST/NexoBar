@@ -58,11 +58,11 @@ function lookupErrorMessage(problem: OrderOperationsProblemDetails): string {
     return "Tu usuario no tiene autorización para consultar el pedido.";
   }
   if (problem.code === "order_operations.order.operational_reference_invalid") {
-    return "La Referencia del pedido no es válida.";
+    return "La referencia del pedido no es válida.";
   }
 
   if (problem.code === "order_operations.order.not_found") {
-    return "No se encontró un Pedido con esa Referencia del pedido.";
+    return "No se encontró un pedido con esa referencia.";
   }
 
   return "No se pudo consultar el Pedido. Revisá la Referencia e intentá nuevamente.";

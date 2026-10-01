@@ -257,7 +257,7 @@ describe("TerminalOrderHistoryView", () => {
     );
     await user.click(screen.getByRole("button", { name: "Ver historial" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "La Referencia del pedido no es válida.",
+      "La referencia del pedido no es válida.",
     );
   });
   it("handles unauthorized response without disclosing reference existence", async () => {

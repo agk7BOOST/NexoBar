@@ -58,9 +58,9 @@ const operationForbiddenMessage =
 function creationFailureMessage(error: InventoryProblemError): string {
   switch (error.problem.code) {
     case "inventory.item.operational_name_invalid":
-      return "Ingresá un nombre operacional válido.";
+      return "Ingresá un nombre válido.";
     case "inventory.item.operational_unit_invalid":
-      return "Ingresá una unidad operacional válida.";
+      return "Ingresá una unidad de medida válida.";
     case "inventory.item.operational_name_conflict":
       return "Ya existe un elemento de Inventario con ese nombre.";
     case "inventory.item.idempotency_key_conflict":
@@ -317,7 +317,7 @@ export function InventoryPanel({
     if (request.operationalName === "" || request.operationalUnit === "") {
       setCreateNotice({
         kind: "functional-error",
-        message: "Completá el nombre y la unidad operacional.",
+        message: "Completá el nombre y la unidad de medida.",
       });
       return;
     }

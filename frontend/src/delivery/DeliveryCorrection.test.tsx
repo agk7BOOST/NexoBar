@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { DeliveryPanel } from "./DeliveryPanel.tsx";
 import { OrderLookup } from "../orderOperations/OrderLookup.tsx";
@@ -164,6 +165,53 @@ beforeEach(() => {
   });
   vi.stubGlobal("fetch", fetchMock);
 });
+it.each(["Volver", "Escape"])(
+  "returns focus to the correct content using %s with two editors open",
+  async (close) => {
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url, init) => {
+      const response = await original(url, init);
+      if (String(url).endsWith("/delivery")) {
+        const data = await response.json();
+        data.contents.push({
+          ...data.contents[0],
+          incorporationId: "inc-2",
+          incorporationOrdinal: 2,
+        });
+        return json(data);
+      }
+      return response;
+    });
+    const user = userEvent.setup();
+    await open();
+    const first = screen.getByRole("button", {
+      name: "Corregir entrega Agua, sin instrucción, incorporación 1",
+    });
+    const second = screen.getByRole("button", {
+      name: "Corregir entrega Agua, sin instrucción, incorporación 2",
+    });
+    await user.click(first);
+    await user.click(second);
+    const secondInput = screen.getByLabelText(
+      "Cantidad a corregir — Agua, sin instrucción, incorporación 2",
+    );
+    await user.type(secondInput, "2");
+    if (close === "Volver")
+      await user.click(
+        within(content()).getByRole("button", { name: "Volver" }),
+      );
+    else {
+      await user.click(
+        within(content()).getByLabelText(/^Cantidad a corregir —/),
+      );
+      await user.keyboard("{Escape}");
+    }
+    expect(first).toHaveFocus();
+    expect(secondInput).toHaveValue(2);
+    expect(mutation).not.toHaveBeenCalled();
+  },
+);
+
 it("offers explicit Correction only with effective delivery", async () => {
   delivered = 0;
   await open();

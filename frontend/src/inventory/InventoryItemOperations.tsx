@@ -389,23 +389,26 @@ export function InventoryItemOperations({
   }
 
   const operationRoot = useRef<HTMLDivElement>(null);
+  const operationOpener = useRef<HTMLButtonElement | null>(null);
+  function openOperation(
+    kind: InventoryOperationIntent["kind"],
+    opener: HTMLButtonElement,
+  ) {
+    operationOpener.current = opener;
+    setActiveOperation(kind);
+  }
   useEffect(() => {
-    if (!activeOperation) return;
-    const opener = document.activeElement;
+    if (operationRoot.current?.closest("[hidden]")) return;
+    if (!activeOperation) {
+      const opener = operationOpener.current;
+      operationOpener.current = null;
+      if (opener?.isConnected && !opener.disabled) opener.focus();
+      return;
+    }
     const field = operationRoot.current?.querySelector<HTMLElement>(
       "form input, .inventory-reconciliation h5",
     );
     field?.focus();
-    return () => {
-      queueMicrotask(() => {
-        if (
-          opener instanceof HTMLElement &&
-          opener.isConnected &&
-          !opener.closest("[hidden]")
-        )
-          opener.focus();
-      });
-    };
   }, [activeOperation]);
   const blocked = intent !== null;
   const countObservationStale =
@@ -460,7 +463,7 @@ export function InventoryItemOperations({
           type="button"
           className="secondary-button"
           disabled={blocked}
-          onClick={() => setActiveOperation("count")}
+          onClick={(event) => openOperation("count", event.currentTarget)}
         >
           Conteo
         </button>
@@ -469,7 +472,7 @@ export function InventoryItemOperations({
             type="button"
             className="secondary-button"
             disabled={blocked}
-            onClick={() => setActiveOperation("reconcile")}
+            onClick={(event) => openOperation("reconcile", event.currentTarget)}
           >
             Reconciliación
           </button>
@@ -480,7 +483,7 @@ export function InventoryItemOperations({
             type="button"
             className="secondary-button"
             disabled={blocked}
-            onClick={() => setActiveOperation(form.kind)}
+            onClick={(event) => openOperation(form.kind, event.currentTarget)}
           >
             {form.title}
           </button>

@@ -377,7 +377,7 @@ describe("GeneralConfigurationPanel", () => {
       }),
     );
     expect(
-      await screen.findByText("Ingresá un nombre operacional válido."),
+      await screen.findByText("Ingresá un nombre válido."),
     ).toBeInTheDocument();
     expect(createPreparationResponsibilityMock).not.toHaveBeenCalled();
 
@@ -530,7 +530,7 @@ describe("GeneralConfigurationPanel", () => {
     );
 
     expect(
-      await screen.findByText("Ingresá un nombre operacional válido."),
+      await screen.findByText("Ingresá un nombre válido."),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Administrar Ana" }),

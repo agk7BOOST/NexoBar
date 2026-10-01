@@ -93,7 +93,7 @@ function knownFailureMessage(
 ): string {
   switch (error.problem.code) {
     case "inventory.item.reactivation_name_conflict":
-      return "Otro elemento activo ya usa ese nombre. Elegí un nombre operacional de reemplazo para reactivar este elemento.";
+      return "Otro elemento activo ya usa ese nombre. Elegí un nombre de reemplazo para reactivar este elemento.";
     case "inventory.item.unit_correction_requires_replacement":
       return "La unidad ya no puede cambiarse porque este elemento tiene historial de movimientos. Retirá este elemento y creá otro con la unidad corregida.";
     case "inventory.item.delete_movement_history_conflict":
@@ -321,7 +321,7 @@ export function InventoryConfigurationItemControls({
     if (replacementNameRequired && requestedName === "") {
       setNotice({
         kind: "functional-error",
-        message: "Ingresá un nombre operacional de reemplazo.",
+        message: "Ingresá un nombre de reemplazo.",
       });
       return;
     }

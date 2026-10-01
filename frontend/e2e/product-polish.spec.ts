@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
 const accounts = {
+  catalog: ["price-catalog-e2e", "price-catalog-e2e-secret"],
   general: [
     "general-configuration-admin-a-e2e",
     "general-configuration-admin-a-e2e-secret",
@@ -38,6 +39,129 @@ async function command(page: Page, url: string, data: object) {
   expect(response.ok()).toBeTruthy();
   return response;
 }
+
+test("polish: switching Inventory forms and Escape preserve keyboard focus", async ({
+  page,
+}) => {
+  await login(page, "inventory");
+  const name = "Insumo corrección Inventario E2E";
+  const item = page.getByRole("article", { name, exact: true });
+  await item.getByRole("button", { name: "Conteo", exact: true }).click();
+  await expect(
+    item.getByLabel(`Cantidad observada para ${name}`),
+  ).toBeFocused();
+  const entry = item.getByRole("button", { name: "Entrada", exact: true });
+  await entry.click();
+  const input = item.getByLabel(`Cantidad de entrada para ${name}`);
+  await expect(input).toBeFocused();
+  await input.press("Escape");
+  await expect(entry).toBeFocused();
+  await expect(input).toHaveCount(0);
+});
+
+test("polish: saving Product preparation restores focus after the list refresh", async ({
+  page,
+}) => {
+  await login(page, "catalog");
+  const name = `Foco preparación ${randomUUID().slice(0, 8)}`;
+  await command(page, "/api/catalog/products", {
+    operationalName: name,
+    price: "1",
+    requiresPreparation: false,
+  });
+  await page.reload();
+  const opener = page.getByRole("button", {
+    name: `Configurar preparación de ${name}`,
+    exact: true,
+  });
+  await opener.click();
+  const editor = page.getByRole("form", {
+    name: `Configurar preparación de ${name}`,
+    exact: true,
+  });
+  await editor.getByLabel("Requiere preparación", { exact: true }).check();
+  await editor
+    .getByLabel("Destino de preparación")
+    .selectOption({ label: "Cocina E2E" });
+  await editor
+    .getByRole("button", {
+      name: "Confirmar configuración de preparación",
+      exact: true,
+    })
+    .click();
+  await expect(editor).toHaveCount(0);
+  await expect(
+    page.getByText(`Se actualizó la preparación de “${name}”.`, {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("heading", { name: "Productos", exact: true })
+      .or(opener)
+      .and(page.locator(":focus")),
+  ).toHaveCount(1);
+});
+
+test("polish: closing one Delivery editor preserves the other content and returns its own focus", async ({
+  page,
+}) => {
+  await login(page, "catalog");
+  const names = [
+    `Entrega foco A ${randomUUID().slice(0, 8)}`,
+    `Entrega foco B ${randomUUID().slice(0, 8)}`,
+  ];
+  for (const name of names)
+    await command(page, "/api/catalog/products", {
+      operationalName: name,
+      price: "1",
+      requiresPreparation: false,
+    });
+  await page
+    .getByRole("button", { name: "Cerrar sesión", exact: true })
+    .click();
+  await login(page, "order");
+  const workflow = page.getByRole("region", {
+    name: "Preparar pedido",
+    exact: true,
+  });
+  for (const name of names)
+    await workflow
+      .getByRole("button", {
+        name: `Agregar ${name} a Preparar pedido`,
+        exact: true,
+      })
+      .click();
+  await workflow
+    .getByLabel("Contexto del pedido")
+    .selectOption({ label: "Contexto base E2E" });
+  await workflow
+    .getByRole("button", { name: "Crear Pedido", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Abrir entrega de este pedido", exact: true })
+    .click();
+  const contents = names.map((name) =>
+    page.getByRole("article", {
+      name: `${name}, sin instrucción, incorporación 1`,
+      exact: true,
+    }),
+  );
+  for (const content of contents) {
+    await content.getByRole("button", { name: /^Entregar / }).click();
+    await expect(
+      content.getByRole("button", { name: /^Corregir entrega / }),
+    ).toBeEnabled();
+  }
+  const first = contents[0].getByRole("button", { name: /^Corregir entrega / });
+  await first.click();
+  await contents[1].getByRole("button", { name: /^Corregir entrega / }).click();
+  const secondInput = contents[1].getByLabel(/^Cantidad a corregir —/);
+  await secondInput.fill("1");
+  await contents[0].getByLabel(/^Cantidad a corregir —/).press("Escape");
+  await expect(first).toBeFocused();
+  await expect(secondInput).toHaveValue("1");
+});
 
 test("polish: session read failure, GET retry, local empty validation, password toggle, 401, Enter and logout", async ({
   page,

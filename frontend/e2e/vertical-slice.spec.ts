@@ -431,7 +431,7 @@ test("informa un Pedido inexistente sin conservar el resultado previo", async ({
   await page.getByRole("button", { name: "Buscar pedido" }).click();
 
   await expect(
-    page.getByText("No se encontró un Pedido con esa Referencia del pedido.", {
+    page.getByText("No se encontró un pedido con esa referencia.", {
       exact: true,
     }),
   ).toBeVisible();

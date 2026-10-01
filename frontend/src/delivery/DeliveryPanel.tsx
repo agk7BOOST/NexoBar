@@ -104,21 +104,29 @@ export function DeliveryPanel({
   onOrderRetired,
   onBusyChange,
 }: DeliveryPanelProps) {
-  const editorOpener = useRef<HTMLButtonElement | null>(null);
-  const [editorFocus, setEditorFocus] = useState<string | null>(null);
+  const editorOpeners = useRef(new Map<string, HTMLButtonElement>());
+  const [editorFocus, setEditorFocus] = useState<{
+    fieldId: string;
+    restore: boolean;
+  } | null>(null);
   useEffect(() => {
-    if (editorFocus) document.getElementById(editorFocus)?.focus();
+    if (!editorFocus) return;
+    const heading = document.getElementById("delivery-heading");
+    if (!heading || heading.closest("[hidden]")) return;
+    if (editorFocus.restore) {
+      const opener = editorOpeners.current.get(editorFocus.fieldId);
+      editorOpeners.current.delete(editorFocus.fieldId);
+      if (opener?.isConnected && !opener.disabled) opener.focus();
+      else heading.focus();
+    } else document.getElementById(editorFocus.fieldId)?.focus();
   }, [editorFocus]);
-  function returnEditorFocus() {
-    setEditorFocus(null);
-    queueMicrotask(() => {
-      if (
-        editorOpener.current?.isConnected &&
-        !editorOpener.current.closest("[hidden]")
-      )
-        editorOpener.current.focus();
-    });
+  function focusEditor(fieldId: string, opener: HTMLButtonElement) {
+    editorOpeners.current.set(fieldId, opener);
+    setEditorFocus({ fieldId, restore: false });
   }
+  const returnEditorFocus = useCallback((fieldId: string) => {
+    setEditorFocus({ fieldId, restore: true });
+  }, []);
   const [cancellationInputs, setCancellationInputs] = useState<
     Record<string, string>
   >({});
@@ -148,6 +156,7 @@ export function DeliveryPanel({
   useEffect(() => {
     editedQuantityKeys.current.clear();
     authoritativeDelivered.current.clear();
+    editorOpeners.current.clear();
   }, [operationalReference]);
   const [correctionInputs, setCorrectionInputs] = useState<
     Record<string, string>
@@ -476,7 +485,18 @@ export function DeliveryPanel({
         const refreshed = await refreshDelivery(reference);
         onOrderChanged?.(reference);
         if (refreshed) setSynchronizingKey(key, false);
-        if (intent.kind !== "delivery") returnEditorFocus();
+        if (
+          intent.kind !== "delivery" &&
+          document.activeElement === document.body
+        ) {
+          const suffix =
+            intent.kind === "contentCorrection"
+              ? "content-correction"
+              : intent.kind;
+          returnEditorFocus(
+            `delivery-quantity-${intent.incorporationId}-${intent.contentOrdinal}-${suffix}`,
+          );
+        }
       } catch (error) {
         if (error instanceof DeliveryProblemError && error.status === 401) {
           handleUnauthorized();
@@ -598,6 +618,7 @@ export function DeliveryPanel({
       setIntent,
       setSynchronizingKey,
       onOrderChanged,
+      returnEditorFocus,
     ],
   );
 
@@ -758,7 +779,7 @@ export function DeliveryPanel({
               <dd>{delivery.currentContext}</dd>
             </div>
             <div>
-              <dt>Referencia operacional</dt>
+              <dt>Referencia del pedido</dt>
               <dd className="technical-reference">
                 {delivery.operationalReference}
               </dd>
@@ -915,8 +936,10 @@ export function DeliveryPanel({
                               className="secondary-button"
                               disabled={isBlocked}
                               onClick={(event) => {
-                                editorOpener.current = event.currentTarget;
-                                setEditorFocus(fieldId + "-content-correction");
+                                focusEditor(
+                                  fieldId + "-content-correction",
+                                  event.currentTarget,
+                                );
                                 setContentCorrectionOpen((current) => ({
                                   ...current,
                                   [key]: true,
@@ -934,7 +957,9 @@ export function DeliveryPanel({
                                       ...current,
                                       [key]: false,
                                     }));
-                                    returnEditorFocus();
+                                    returnEditorFocus(
+                                      fieldId + "-content-correction",
+                                    );
                                   }
                                 }}
                                 noValidate
@@ -987,7 +1012,9 @@ export function DeliveryPanel({
                                       ...current,
                                       [key]: false,
                                     }));
-                                    returnEditorFocus();
+                                    returnEditorFocus(
+                                      fieldId + "-content-correction",
+                                    );
                                   }}
                                 >
                                   Volver
@@ -1024,8 +1051,10 @@ export function DeliveryPanel({
                               className="secondary-button"
                               disabled={isBlocked}
                               onClick={(event) => {
-                                editorOpener.current = event.currentTarget;
-                                setEditorFocus(fieldId + "-cancellation");
+                                focusEditor(
+                                  fieldId + "-cancellation",
+                                  event.currentTarget,
+                                );
                                 setCancellationOpen((current) => ({
                                   ...current,
                                   [key]: true,
@@ -1043,7 +1072,9 @@ export function DeliveryPanel({
                                       ...current,
                                       [key]: false,
                                     }));
-                                    returnEditorFocus();
+                                    returnEditorFocus(
+                                      fieldId + "-cancellation",
+                                    );
                                   }
                                 }}
                                 noValidate
@@ -1093,7 +1124,9 @@ export function DeliveryPanel({
                                       ...current,
                                       [key]: false,
                                     }));
-                                    returnEditorFocus();
+                                    returnEditorFocus(
+                                      fieldId + "-cancellation",
+                                    );
                                   }}
                                 >
                                   Volver
@@ -1112,8 +1145,10 @@ export function DeliveryPanel({
                           disabled={isBlocked}
                           aria-label={`Corregir entrega ${description}`}
                           onClick={(event) => {
-                            editorOpener.current = event.currentTarget;
-                            setEditorFocus(fieldId + "-correction");
+                            focusEditor(
+                              fieldId + "-correction",
+                              event.currentTarget,
+                            );
                             setCorrectionOpen((current) => ({
                               ...current,
                               [key]: true,
@@ -1131,7 +1166,7 @@ export function DeliveryPanel({
                                   ...current,
                                   [key]: false,
                                 }));
-                                returnEditorFocus();
+                                returnEditorFocus(fieldId + "-correction");
                               }
                             }}
                             noValidate
@@ -1191,7 +1226,7 @@ export function DeliveryPanel({
                                   ...current,
                                   [key]: false,
                                 }));
-                                returnEditorFocus();
+                                returnEditorFocus(fieldId + "-correction");
                               }}
                             >
                               Volver

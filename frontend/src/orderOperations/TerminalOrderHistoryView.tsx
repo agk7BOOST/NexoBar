@@ -35,7 +35,7 @@ function unavailable(error: unknown) {
     if (error.problem.status === 404)
       return "Historial no disponible para esa referencia.";
     if (error.problem.code?.includes("operational_reference_invalid"))
-      return "La Referencia del pedido no es válida.";
+      return "La referencia del pedido no es válida.";
   }
   if (error instanceof OrderLookupNetworkError)
     return "No se pudo consultar el historial por un fallo de comunicación.";
