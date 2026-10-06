@@ -4,11 +4,6 @@ import { ActiveOrderFreshnessSubscription } from "../notifications/ActiveOrderFr
 import { FreshnessReadCoordinator } from "../notifications/FreshnessReadCoordinator.ts";
 import { maximumContentCorrection } from "./contentCorrection.ts";
 import { getOrder } from "../orderOperations/orderOperationsClient.ts";
-import { listPreparationDestinations } from "../identity/sessionClient.ts";
-import {
-  listPreparationWork,
-  type PreparationWork,
-} from "../preparation/preparationClient.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   discardAntiforgeryToken,
@@ -133,7 +128,6 @@ export function DeliveryPanel({
   const [cancellationOpen, setCancellationOpen] = useState<
     Record<string, boolean>
   >({});
-  const [works, setWorks] = useState<PreparationWork[]>([]);
   const [correctionState, setCorrectionState] = useState<
     | "loading"
     | "available"
@@ -298,7 +292,6 @@ export function DeliveryPanel({
         const loaded = await getOrderDelivery(reference);
         if (sequence !== requestSequence.current || !isCurrent()) return false;
         let nextCorrectionState: typeof correctionState = "insufficient";
-        let preparation: PreparationWork[] = [];
         if (
           loaded.contents.every((item) => item.confirmedQuantity !== undefined)
         ) {
@@ -311,22 +304,6 @@ export function DeliveryPanel({
             )
               ? "inconsistent"
               : "available";
-            if (
-              loaded.contents.some(
-                (item) => item.requiresPreparationAtConfirmation,
-              )
-            ) {
-              const destinations = await listPreparationDestinations();
-              preparation = (
-                await Promise.all(
-                  destinations.map((destination) =>
-                    listPreparationWork(
-                      destination.preparationResponsibilityId,
-                    ),
-                  ),
-                )
-              ).flat();
-            }
           } catch (error) {
             const status =
               (error as { status?: number }).status ??
@@ -340,7 +317,6 @@ export function DeliveryPanel({
           }
         }
         if (sequence !== requestSequence.current || !isCurrent()) return false;
-        setWorks(preparation);
         setCorrectionState(nextCorrectionState);
         setAuthoritativeDelivery(loaded);
         return true;
@@ -643,11 +619,11 @@ export function DeliveryPanel({
       const maximum =
         kind === "cancellation"
           ? correctionState === "available"
-            ? (maximumContentCancellation(item, works) ?? 0)
+            ? (maximumContentCancellation(item) ?? 0)
             : 0
           : kind === "contentCorrection"
             ? correctionState === "available"
-              ? (maximumContentCorrection(item, works) ?? 0)
+              ? (maximumContentCorrection(item) ?? 0)
               : 0
             : kind === "correction"
               ? item.deliveredQuantity
@@ -699,7 +675,6 @@ export function DeliveryPanel({
       contentCorrectionInputs,
       cancellationInputs,
       correctionState,
-      works,
       delivery,
       setContentMessage,
       setIntent,
@@ -802,11 +777,11 @@ export function DeliveryPanel({
                   item.totalQuantity > 0 && item.remainingQuantity === 0;
                 const correctionMaximum =
                   correctionState === "available"
-                    ? maximumContentCorrection(item, works)
+                    ? maximumContentCorrection(item)
                     : null;
                 const cancellationMaximum =
                   correctionState === "available"
-                    ? maximumContentCancellation(item, works)
+                    ? maximumContentCancellation(item)
                     : null;
                 const cancellationRequested = cancellationInputs[key] ?? "";
                 const validCancellation =

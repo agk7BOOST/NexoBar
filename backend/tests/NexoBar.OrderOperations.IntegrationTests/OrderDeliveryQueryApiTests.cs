@@ -35,7 +35,7 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
         var pending = Assert.Single(work, item => item.Instruction == "Sin cebolla");
         var partialReady = Assert.Single(work, item => item.Instruction == "Con extra queso");
         var partialDelivered = Assert.Single(work, item => item.Instruction == "Bien cocida");
-        await SetWorkQuantitiesAsync(partialReady, pending: 3, preparing: 0, ready: 2, token);
+        await SetWorkQuantitiesAsync(partialReady, pending: 2, preparing: 1, ready: 2, token);
         await SetWorkQuantitiesAsync(
             partialDelivered,
             pending: 2,
@@ -67,6 +67,12 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
             token);
         using var client = await fixture.LoginAsync(actor, token);
 
+        using (var preparationAccess = await client.GetAsync(
+                   "/api/identity-sessions/current/preparation-destinations", token))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, preparationAccess.StatusCode);
+        }
+
         var response = await ReadAsync(client, first.OperationalReference, token);
 
         Assert.Equal(Guid.Parse(first.OperationalReference), response.OrderId);
@@ -81,18 +87,24 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
 
         AssertPrepared(
             Assert.Single(response.Contents, content => content.Instruction == "Sin cebolla"),
+            pending: 5,
+            preparing: 0,
             ready: 0,
             delivered: 0,
             deliverable: 0,
             remaining: 5);
         AssertPrepared(
             Assert.Single(response.Contents, content => content.Instruction == "Con extra queso"),
+            pending: 2,
+            preparing: 1,
             ready: 2,
             delivered: 0,
             deliverable: 2,
             remaining: 5);
         AssertPrepared(
             Assert.Single(response.Contents, content => content.Instruction == "Bien cocida"),
+            pending: 2,
+            preparing: 0,
             ready: 3,
             delivered: 2,
             deliverable: 1,
@@ -385,7 +397,8 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
             "productOperationalName", "instruction", "totalQuantity",
             "requiresPreparationAtConfirmation", "readyQuantity", "deliveredQuantity",
             "deliverableQuantity", "remainingQuantity",
-            "confirmedQuantity", "removedByCorrectionQuantity", "cancelledQuantity", "currentFulfillmentQuantity"
+            "confirmedQuantity", "removedByCorrectionQuantity", "cancelledQuantity", "currentFulfillmentQuantity",
+            "pendingQuantity", "inPreparationQuantity"
         };
         Assert.Equal(expected.Order(), schema.EnumerateObject().Select(property => property.Name).Order());
     }
@@ -531,6 +544,8 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
 
     private static void AssertPrepared(
         OrderDeliveryContentResponse content,
+        int pending,
+        int preparing,
         int ready,
         int delivered,
         int deliverable,
@@ -538,6 +553,8 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
     {
         Assert.True(content.RequiresPreparationAtConfirmation);
         Assert.Equal(5, content.TotalQuantity);
+        Assert.Equal(pending, content.PendingQuantity);
+        Assert.Equal(preparing, content.InPreparationQuantity);
         Assert.Equal(ready, content.ReadyQuantity);
         Assert.Equal(delivered, content.DeliveredQuantity);
         Assert.Equal(deliverable, content.DeliverableQuantity);
@@ -554,6 +571,8 @@ public sealed class OrderDeliveryQueryApiTests(OrderOperationsApiFixture fixture
         Assert.False(content.RequiresPreparationAtConfirmation);
         Assert.Equal(total, content.TotalQuantity);
         Assert.Null(content.ReadyQuantity);
+        Assert.Null(content.PendingQuantity);
+        Assert.Null(content.InPreparationQuantity);
         Assert.Equal(delivered, content.DeliveredQuantity);
         Assert.Equal(deliverable, content.DeliverableQuantity);
         Assert.Equal(remaining, content.RemainingQuantity);

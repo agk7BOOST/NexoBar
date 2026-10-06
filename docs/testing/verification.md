@@ -1,5 +1,17 @@
 # Testing y verificación
 
+## Corrección de lectura de Entrega sin Preparation (2026-10-06) — validación local completada
+
+Entrega consultaba los destinos/Works de Preparation para evaluar Content Correction y Content Cancellation ordinarias. Una Identity con `OrderOperationsAndBasicClosure` sin `Preparation` recibía 403 en esa lectura auxiliar y perdía ambas acciones. El cambio proyecta Pending/InPreparation en el mismo read autorizado y consistente de Delivery; el frontend no consulta las colas de Preparation. No amplía responsabilidades ni introduce migraciones.
+
+Las dos nuevas regresiones reprodujeron el fallo antes del cambio. Después, Vitest focalizado Delivery pasó **121/121** y Vitest completo pasó **664/664** en 45 archivos, exit 0. Typecheck, lint y build frontend: **PASS**. Typecheck independiente del nuevo E2E: **PASS**. Build completo backend: **PASS**, 0 warnings/errores. Formato de C# modificado y de los archivos frontend modificados: **PASS**. `git diff --check`: **PASS**.
+
+Después del reinicio, integración `OrderDeliveryQueryApiTests`: **12/12 PASS**, sin fallos ni omitidas, con PostgreSQL real. El nuevo E2E `prepared-content-reductions.spec.ts`: **1/1 PASS**, con migraciones canónicas y `HasPendingModelChanges=false` en los cinco modelos. Separa un actor OABC sin Preparation de otro con Preparation y recorre corrección/cancelación de Pending → preparación → entrega → liquidación → cierre. El operador de pedidos sigue recibiendo 403 al consultar destinos de Preparation y la UI de Entrega no solicita sus endpoints. Se generaron capturas locales de los formularios de corrección y cancelación; no certifican todavía la instalación pública.
+
+Los intentos del 5 de octubre quedaron bloqueados antes de comprobar el producto por `DockerUnavailableException`. La primera corrida E2E del 6 de octubre llegó al Cierre, pero falló su comprobación final al contar archivos Vite `/src/preparation/*` como consultas operacionales. El detector se limitó a los endpoints API de Preparation; el escenario funcional y producción no cambiaron por esa reparación del test. La nueva corrida con base aislada pasó.
+
+Formato global: dos fallos preexistentes backend (`OperationalContextLifecycleService.cs`, `PreparationResponsibilityLifecycleService.cs`) y dos frontend (`configurationLifecycleClient.test.ts`, `OperationalInterventionEntry.test.tsx`), todos fuera del diff de esta tarea. Se conservan sin cambios. Esta validación parcial no sustituye el checkpoint global histórico ni afirma deployment.
+
 ## R14 — cierre global MVP (2026-09-25)
 
 **MVP FUNCTIONAL COMPLETION — CLOSED. MVP GLOBAL VERIFICATION — PASSED. MVP INITIAL IMPLEMENTATION — CLOSED.** `scripts\verify.cmd --e2e`, con acceso a Docker, terminó con **exit code 0**. Backend build: 0 warnings, 0 errores; integración backend: **1354/1354**; migraciones canónicas y model drift: **PASS**, con `HasPendingModelChanges=false` para los cinco DbContext; frontend typecheck, lint y Prettier: **PASS**; Vitest global: **613/613**; frontend build: **PASS**; Playwright global: **31/31**, 0 failed. `git diff --check`: **PASS**.

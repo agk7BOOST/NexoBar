@@ -41,9 +41,13 @@ El contrato relevante por Content contiene:
 - `readyQuantity` nullable;
 - `deliveredQuantity`;
 - `deliverableQuantity`;
-- `remainingQuantity`.
+- `remainingQuantity`;
+- `confirmedQuantity`, `removedByCorrectionQuantity`, `cancelledQuantity` y `currentFulfillmentQuantity` (Q/R/C/F);
+- `pendingQuantity` e `inPreparationQuantity`, ambas nullable y sólo aplicables al Content preparado.
 
 No expone Status, WorkId, destination ni `appliedPrice`.
+
+`pendingQuantity` e `inPreparationQuantity` proceden de la misma proyección coherente y validada que F, Ready y Delivered. Permiten evaluar Content Correction y Content Cancellation ordinarias desde Delivery con `OrderOperationsAndBasicClosure`, sin consultar la cola de Preparation ni exigir sus capacidades. En direct ambas son `null`; en prepared conservan `Pending + InPreparation + Ready = F`. Los comandos vuelven a validar la cantidad elegible y Freeze en su propia transacción; el máximo observado no autoriza por sí solo una mutación.
 
 `ProductId` conserva la identidad autoritativa. `productOperationalName` es el nombre actual de Catalog, no un snapshot histórico: un rename posterior a Confirmation cambia la presentación de Delivery, y un Product inactive/retired continúa resolviéndose. Un Product referenciado que ya no existe es inconsistencia técnica y produce `500`; no existe fallback al UUID ni snapshot histórico del nombre en Delivery.
 

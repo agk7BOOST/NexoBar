@@ -142,7 +142,9 @@ internal sealed class OrderDeliveryQueryService(
                 row.ConfirmedQuantity.Value,
                 row.RemovedByCorrectionQuantity.Value,
                 row.CancelledQuantity!.Value,
-                total);
+                total,
+                requiresPreparation ? row.WorkPendingQuantity!.Value : (int?)null,
+                requiresPreparation ? row.WorkInPreparationQuantity!.Value : (int?)null);
         }).ToArray();
 
         var first = persisted[0];

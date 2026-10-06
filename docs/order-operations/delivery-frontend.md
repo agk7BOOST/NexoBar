@@ -13,6 +13,7 @@
 - Ante network, timeout o `5xx` conservadoramente incierto no modifica quantities: conserva target, quantity y key, marca `uncertain` y el retry usa exactamente el mismo endpoint, body y key. No ofrece descarte ordinario que habilite una Delivery incompatible.
 - Un `401` vuelve a `unauthenticated`, limpia antiforgery e intents y retorna al login. Un `403` conserva la Identity autenticada y muestra la falla de autorización. Un `404` del GET informa Pedido no encontrado; un `404` del POST rechaza el intent conocido y refresca. Un `400` es un error conocido, no outcome incierto.
 - Cada Content con `DeliveredQuantity > 0` expone la acción explícita “Corregir entrega”. La intención congela endpoint, target, body e `Idempotency-Key`; ante un resultado incierto, el retry reutiliza exactamente esos mismos valores. Tras éxito, el frontend refresca Delivery y Order para mostrar el Estado y Functional Amount autoritativos, sin aritmética optimista.
+- Content Correction y Content Cancellation ordinarias usan Q/R/C/F, Pending, InPreparation, Ready y Delivered del read autorizado de Delivery del mismo Content. No consultan destinos ni Works de Preparation: una Identity con `OrderOperationsAndBasicClosure` puede operarlas sin Preparation. El límite es Pending para prepared y F − Delivered para direct. Si faltan cantidades o sus invariantes no cierran, no ofrece la acción; la lectura de Order conserva los bloqueos de Freeze e inconsistencia.
 
 ## Continuidad pendiente de intenciones
 

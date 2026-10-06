@@ -48,6 +48,8 @@ function prepared(pending = 2, inPreparation = 1, ready = 2) {
   item = {
     ...item,
     requiresPreparationAtConfirmation: true,
+    pendingQuantity: pending,
+    inPreparationQuantity: inPreparation,
     readyQuantity: ready,
     deliverableQuantity: ready - item.deliveredQuantity,
   };
@@ -230,33 +232,30 @@ it("identifies a confirmed inconsistent order state without offering correction"
     screen.queryByRole("button", { name: "Corregir cantidad confirmada" }),
   ).not.toBeInTheDocument();
 });
-it("does not cross-associate same Product across Contents or Incorporations", () => {
+it("uses quantities belonging to each Content even when the Product is the same", () => {
   prepared();
-  const exact = works[0];
   const other = {
-    ...exact,
+    ...item,
+    incorporationId: "inc-other",
     contentOrdinal: 1,
     pendingQuantity: 5,
     inPreparationQuantity: 0,
     readyQuantity: 0,
+    deliveredQuantity: 0,
+    deliverableQuantity: 0,
+    remainingQuantity: 5,
   };
-  expect(maximumContentCorrection(item, [other, exact])).toBe(2);
-  expect(maximumContentCorrection(item, [other])).toBeNull();
-  expect(
-    maximumContentCorrection(item, [
-      { ...exact, incorporationId: "inc-other" },
-    ]),
-  ).toBeNull();
-  expect(maximumContentCorrection(item, [exact, exact])).toBeNull();
+  expect(maximumContentCorrection(item)).toBe(2);
+  expect(maximumContentCorrection(other)).toBe(5);
 });
 it.each(["missing", "total", "ready", "buckets", "qrf"])(
   "makes inconsistent %s reads unavailable",
   async (kind) => {
     prepared();
-    if (kind === "missing") works = [];
-    if (kind === "total") works[0].totalQuantity = 4;
+    if (kind === "missing") item.pendingQuantity = undefined;
+    if (kind === "total") item.totalQuantity = 4;
     if (kind === "ready") item.readyQuantity = 3;
-    if (kind === "buckets") works[0].pendingQuantity = 3;
+    if (kind === "buckets") item.pendingQuantity = 3;
     if (kind === "qrf") item.removedByCorrectionQuantity = 2;
     await open();
     expect(
@@ -350,6 +349,7 @@ it.each([2, 5])(
       currentFulfillmentQuantity: 5 - quantity,
       totalQuantity: 5 - quantity,
       remainingQuantity: 5 - quantity,
+      pendingQuantity: 5 - quantity,
     };
     works[0] = {
       ...works[0],

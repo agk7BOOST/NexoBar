@@ -3,6 +3,8 @@ export interface OrderDeliveryContent {
   confirmedQuantity?: number;
   removedByCorrectionQuantity?: number;
   currentFulfillmentQuantity?: number;
+  pendingQuantity?: number | null;
+  inPreparationQuantity?: number | null;
   incorporationId: string;
   incorporationOrdinal: number;
   contentOrdinal: number;

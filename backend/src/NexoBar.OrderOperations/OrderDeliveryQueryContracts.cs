@@ -22,7 +22,9 @@ internal sealed record OrderDeliveryContentResponse(
     int ConfirmedQuantity,
     int RemovedByCorrectionQuantity,
     int CancelledQuantity,
-    int CurrentFulfillmentQuantity);
+    int CurrentFulfillmentQuantity,
+    int? PendingQuantity,
+    int? InPreparationQuantity);
 
 internal sealed record OrderDeliveryQueryResult(
     OrderDeliveryQueryOutcome Outcome,
